@@ -1,3 +1,14 @@
+const storedRole =
+  localStorage.getItem("role") ||
+  localStorage.getItem("selectedRole") ||
+  "";
+
+if (!storedRole) {
+  if (typeof window.showRoleChooser === "function") {
+    window.showRoleChooser();
+    return; // stop boot
+  }
+}
 document.addEventListener("DOMContentLoaded",()=>{
   window.setTimeout(()=>{
     const s=document.getElementById("splash");
