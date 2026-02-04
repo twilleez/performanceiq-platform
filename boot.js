@@ -1,9 +1,27 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // 1) Splash: always hide after 2s
-  window.setTimeout(() => {
-    const s = document.getElementById("splash");
-    if (s) s.classList.add("hidden");
-  }, 2000);
+function hideSplash() {
+  const s = document.getElementById("splash");
+  if (!s) return;
+
+  // Force-hide regardless of CSS
+  s.style.display = "none";
+  s.style.visibility = "hidden";
+  s.style.opacity = "0";
+
+  // Remove from DOM (prevents it covering the app)
+  s.remove();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Always hide splash after 2s no matter what else happens
+  setTimeout(hideSplash, 2000);
+
+  // ALSO hide splash immediately if user interacts (extra safety)
+  window.addEventListener("click", hideSplash, { once: true });
+  window.addEventListener("touchstart", hideSplash, { once: true });
+
+  // ...keep the rest of your boot logic below...
+});
 
   // 2) Switch Role button
   document.getElementById("btnSwitchRole")?.addEventListener("click", async () => {
