@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0f14">
+  <title>PerformanceIQ</title>
+  <link rel="icon" href="./icon-192.png">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div id="splash">
+    <div id="splashCard">
+      <img src="./logo.png" alt="Logo">
+      <div class="small">Loading…</div>
+    </div>
+  </div>
+
+  <div id="onboard" style="display:none"></div>
+
+  <div class="topbar">
+    <div class="brand">
+      <img src="./logo.png" alt="Logo">
+      <div class="brandTitle">PerformanceIQ</div>
+      <div class="chip">phase45-20260203-042316</div>
+      <div class="pill" id="rolePill">Role: —</div>
+      <div class="pill" id="trialPill">—</div>
+    </div>
+    <div class="nav" role="navigation" aria-label="Primary">
+      <button id="nav-profile" type="button">Profile</button>
+      <button id="nav-program" type="button">Program</button>
+      <button id="nav-log" type="button">Log</button>
+      <button id="nav-performance" type="button">Performance</button>
+      <button id="nav-dashboard" type="button">Dashboard</button>
+      <button id="nav-team" type="button">Team</button>
+      <button id="nav-parent" type="button">Parent</button>
+      <button id="nav-settings" type="button">Settings</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="grid">
+      <div class="card" id="tab-profile">
+        <h2>Profile</h2>
+        <div class="row">
+          <div class="field">
+            <label for="sport">Sport</label>
+            <select id="sport">
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="baseball">Baseball</option>
+              <option value="volleyball">Volleyball</option>
+              <option value="soccer">Soccer</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="level">Level</label>
+            <select id="level">
+              <option value="youth">Youth development</option>
+              <option value="hs">High school</option>
+              <option value="college">College prep</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="field">
+            <label for="days">Days per week</label>
+            <select id="days"><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option></select>
+          </div>
+          <div class="field">
+            <label for="programLevel">Program</label>
+            <select id="programLevel"><option value="easy">Easy</option><option value="standard" selected>Standard</option><option value="advanced">Advanced</option></select>
+          </div>
+          <div class="field">
+            <label for="focus">Primary focus</label>
+            <select id="focus"><option value="balanced">Balanced</option><option value="faster">Get faster</option><option value="jump">Jump higher</option><option value="power">Explosive power</option></select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="field">
+            <label for="secondary">Secondary focus (optional)</label>
+            <select id="secondary"><option value="none" selected>None</option><option value="conditioning">Conditioning</option><option value="strength">Strength</option><option value="quickness">Quickness / COD</option><option value="mobility">Mobility / Injury prevention</option><option value="skill">Skill volume</option></select>
+          </div>
+          <div class="field">
+            <label for="position">Position</label>
+            <select id="position"></select>
+          </div>
+          <div class="field">
+            <label for="skill">Skill emphasis</label>
+            <select id="skill"></select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="field">
+            <label for="landmine">Include landmine work</label>
+            <select id="landmine"><option value="on" selected>On</option><option value="off">Off</option></select>
+          </div>
+          <div class="field">
+            <label>Wellness today</label>
+            <div class="sliderRow">
+              <input id="wellness" type="range" min="1" max="10" step="1" value="7">
+              <div class="sliderNum" id="wellnessNum">7</div>
+            </div>
+            <div class="small">1 = low readiness • 10 = great</div>
+          </div>
+          <div class="field">
+            <label for="notes">Notes (optional)</label>
+            <textarea id="notes" placeholder="Anything to consider today (practice/game/soreness)…"></textarea>
+          </div>
+        </div>
+
+        <div class="btnRow">
+          <button class="btn" id="btnGenerateWeek" type="button">Generate weekly microcycle</button>
+          <button class="btn secondary" id="btnShowToday" type="button">Show today’s session</button>
+        </div>
+
+        <div class="wcard" style="margin-top:12px">
+          <div class="whead"><div class="wtitle">Auto micro-goals</div><div class="badge">weekly</div></div>
+          <div id="microGoals" class="small" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" id="tab-program" style="display:none">
+          <h2>Program</h2>
+          <div class="btnRow hidePrint">
+            <button class="btn" id="btnPrintWeek" type="button">Export weekly PDF</button>
+            <button class="btn secondary" id="btnPrintToday" type="button">Export today PDF</button>
+          </div>
+          <div id="programOutput" class="small">Generate a weekly microcycle from Profile.</div>
+        </div>
+
+        <div class="card" id="tab-log" style="display:none">
+          <h2>Workout log</h2>
+          <div class="row">
+            <div class="field" style="max-width:220px"><label for="logDate">Date</label><input id="logDate" type="date"></div>
+            <div class="field" style="max-width:260px"><label for="logDay">Day in microcycle</label><select id="logDay"></select></div>
+            <div class="field"><label for="injuryFlag">Injury log</label><select id="injuryFlag"><option value="none" selected>None</option><option value="soreness">Soreness</option><option value="pain">Pain</option><option value="injury">Injury</option></select></div>
+          </div>
+          <div class="small" style="margin-top:8px">Enter weights for each set (lbs). Saved locally.</div>
+          <div id="logContainer" style="margin-top:10px"></div>
+          <div class="btnRow">
+            <button class="btn" id="btnSaveLog" type="button">Save log</button>
+            <button class="btn secondary" id="btnExportCSV" type="button">Export logs CSV</button>
+          </div>
+        </div>
+
+        <div class="card" id="tab-performance" style="display:none">
+          <h2>Performance tests</h2>
+          <div class="small">Track key numbers over time (saved locally).</div>
+          <div class="row" style="margin-top:10px">
+            <div class="field"><label for="testDate">Date</label><input id="testDate" type="date"></div>
+            <div class="field"><label for="vert">Vertical jump (in)</label><input id="vert" inputmode="decimal" placeholder="e.g., 28.5"></div>
+            <div class="field"><label for="sprint10">10 yd / 10 m time (sec)</label><input id="sprint10" inputmode="decimal" placeholder="e.g., 1.78"></div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <div class="field"><label for="cod">COD test (sec) (optional)</label><input id="cod" inputmode="decimal" placeholder="e.g., 4.45"></div>
+            <div class="field"><label for="bw">Bodyweight (lbs) (optional)</label><input id="bw" inputmode="decimal" placeholder="e.g., 179"></div>
+            <div class="field"><label for="sleep">Sleep (hrs) (optional)</label><input id="sleep" inputmode="decimal" placeholder="e.g., 7.5"></div>
+          </div>
+          <div class="btnRow"><button class="btn" id="btnSaveTests" type="button">Save test entry</button></div>
+          <div class="sectionGrid" style="margin-top:12px">
+            <div class="wcard"><div class="whead"><div class="wtitle">Vertical jump trend</div><div class="badge">inches</div></div><canvas id="chartVert" width="900" height="220"></canvas></div>
+            <div class="wcard"><div class="whead"><div class="wtitle">10 yd / 10 m trend</div><div class="badge">seconds</div></div><canvas id="chartSprint" width="900" height="220"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card" id="tab-dashboard" style="display:none">
+          <h2>Dashboard</h2>
+          <div class="small">Weekly strength volume trend from logs (sum(weight × reps)).</div>
+          <canvas id="volChart" width="900" height="220"></canvas>
+          <div id="dashSummary" class="small" style="margin-top:10px"></div>
+
+          <div class="wcard" style="margin-top:12px">
+            <div class="whead"><div class="wtitle">Weekly summary + prompts</div><div class="badge">coach</div></div>
+            <div id="weeklySummary" class="small" style="margin-top:10px"></div>
+            <div class="row" style="margin-top:10px">
+              <div class="field"><label for="promptHard">What felt hardest?</label><input id="promptHard" placeholder="optional"></div>
+              <div class="field"><label for="promptImprove">Where do you feel improvement?</label><input id="promptImprove" placeholder="optional"></div>
+            </div>
+            <div class="btnRow hidePrint">
+              <button class="btn secondary" id="btnSavePrompts" type="button">Save prompt responses</button>
+              <button class="btn secondary" id="btnPrintReport" type="button">Export weekly report PDF</button>
+            </div>
+          </div>
+
+          <div class="wcard" style="margin-top:12px">
+            <div class="whead"><div class="wtitle">Auto insights</div><div class="badge">suggestions</div></div>
+            <div id="insights" class="small" style="margin-top:10px">Save logs to generate insights.</div>
+          </div>
+        </div>
+
+        <div class="card" id="tab-team" style="display:none">
+          <h2>Team</h2>
+          <div class="small">Coach mode: roster + attendance + message board.</div>
+          <div class="row" style="margin-top:10px">
+            <div class="field"><label for="teamName">Team name</label><input id="teamName" placeholder="e.g., Trailblazers 16U"></div>
+            <div class="field"><label for="compliance">Compliance mode</label><select id="compliance"><option value="off" selected>Off</option><option value="on">On (hide heavy lifts for underclassmen)</option></select></div>
+          </div>
+
+          <div class="wcard" style="margin-top:12px">
+            <div class="whead"><div class="wtitle">Roster</div><div class="badge">local</div></div>
+            <div class="row" style="margin-top:10px">
+              <div class="field"><label for="athName">Name</label><input id="athName" placeholder="Athlete name"></div>
+              <div class="field"><label for="athPos">Position</label><input id="athPos" placeholder="Position"></div>
+              <div class="field"><label for="athGrade">Grade</label><input id="athGrade" inputmode="numeric" placeholder="e.g., 8"></div>
+              <div class="field"><label for="athId">ID</label><input id="athId" placeholder="optional unique id"></div>
+            </div>
+            <div class="btnRow">
+              <button class="btn" id="btnAddAthlete" type="button">Add athlete</button>
+              <button class="btn secondary" id="btnExportTeam" type="button">Export team JSON</button>
+              <button class="btn secondary" id="btnImportTeam" type="button">Import team JSON</button>
+              <input id="fileTeam" type="file" accept="application/json" style="display:none">
+            </div>
+            <div id="rosterTable" style="margin-top:10px"></div>
+          </div>
+
+          <div class="wcard" style="margin-top:12px">
+            <div class="whead"><div class="wtitle">Attendance</div><div class="badge">per session</div></div>
+            <div class="row" style="margin-top:10px"><div class="field" style="max-width:220px"><label for="attDate">Date</label><input id="attDate" type="date"></div></div>
+            <div id="attendanceTable" style="margin-top:10px"></div>
+            <div class="btnRow"><button class="btn" id="btnSaveAttendance" type="button">Save attendance</button></div>
+          </div>
+
+          <div class="wcard" style="margin-top:12px">
+            <div class="whead"><div class="wtitle">Team message board</div><div class="badge">alignment</div></div>
+            <label class="small" style="margin-top:8px">This week’s focus</label>
+            <textarea id="teamBoard" placeholder="Example: acceleration mechanics + finishing."></textarea>
+            <div class="btnRow"><button class="btn secondary" id="btnSaveBoard" type="button">Save board</button></div>
+          </div>
+        </div>
+
+        <div class="card" id="tab-parent" style="display:none">
+          <h2>Parent view</h2>
+          <div class="small">Read-only: goals + attendance.</div>
+          <div class="row" style="margin-top:10px">
+            <div class="field"><label for="parentAthlete">Select athlete</label><select id="parentAthlete"></select></div>
+            <div class="field"><label for="parentMode">Parent view mode</label><select id="parentMode"><option value="goals_attendance" selected>Goals + attendance only</option></select></div>
+          </div>
+          <div class="sectionGrid" style="margin-top:12px">
+            <div class="wcard"><div class="whead"><div class="wtitle">Attendance</div><div class="badge">%</div></div><div id="parentAttendance" class="small" style="margin-top:10px">No team data yet.</div></div>
+            <div class="wcard"><div class="whead"><div class="wtitle">Goals</div><div class="badge">weekly</div></div><div id="parentGoals" class="small" style="margin-top:10px"></div></div>
+            <div class="wcard"><div class="whead"><div class="wtitle">Monthly progress report</div><div class="badge">print</div></div>
+              <div class="small" style="margin-top:10px">Print this screen to PDF for a simple narrative report.</div>
+              <div class="btnRow hidePrint"><button class="btn secondary" id="btnPrintParent" type="button">Export parent report PDF</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="tab-settings" style="display:none">
+          <h2>Settings</h2>
+          <div class="wcard">
+            <div class="whead"><div class="wtitle">Trial & license</div><div class="badge">offline gate</div></div>
+            <div id="licenseStatus" class="small" style="margin-top:10px">—</div>
+            <div class="row" style="margin-top:10px"><div class="field"><label for="licenseKey">Enter license key</label><input id="licenseKey" placeholder="XXXXXXXXXXXX"><div class="small">Offline lock for this device only.</div></div></div>
+            <div class="btnRow"><button class="btn ok" id="btnActivate" type="button">Activate 12-month license</button><button class="btn secondary" id="btnResetData" type="button">Reset all saved data</button></div>
+            <div class="small" style="margin-top:8px">After trial ends, Settings is the only accessible tab until activated.</div>
+          </div>
+
+          <div class="wcard" style="margin-top:12px">
+            <div class="whead"><div class="wtitle">Export / Import</div><div class="badge">backup</div></div>
+            <div class="btnRow"><button class="btn secondary" id="btnExportAll" type="button">Export all data JSON</button><button class="btn secondary" id="btnImportAll" type="button">Import all data JSON</button><input id="fileAll" type="file" accept="application/json" style="display:none"></div>
+          </div>
+
+          <div class="wcard" style="margin-top:12px">
+            <div class="whead"><div class="wtitle">Safety</div><div class="badge">info</div></div>
+            <div class="small" style="margin-top:10px">General training planner only. Stop if pain increases. Use “Injury log” and reduce volume on low wellness days.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./boot.js"></script>
+  <script src="./core.js"></script>
+</body>
+</html>
