@@ -43,3 +43,23 @@ export async function listWorkoutLogs(athleteId, limit = 60) {
   if (error) throw error;
   return data;
 }
+export async function addPerformanceMetric(metric) {
+  const { data, error } = await sb
+    .from("performance_metrics")
+    .insert(metric)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function listPerformanceMetrics(athleteId, limit = 60) {
+  const { data, error } = await sb
+    .from("performance_metrics")
+    .select("*")
+    .eq("athlete_id", athleteId)
+    .order("date", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data;
+}
