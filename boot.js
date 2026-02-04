@@ -1,15 +1,15 @@
 // boot.js (COPY/PASTE FULL FILE)
 
 (function () {
-  console.log("boot.js loaded");
+  console.log("boot.js loaded v1.0.4");
 
   function hideSplash() {
     const s = document.getElementById("splash");
     if (!s) return;
-
-    // Hide and remove so it can't block the UI
     s.classList.add("hidden");
     s.style.display = "none";
+    s.style.visibility = "hidden";
+    s.style.opacity = "0";
     try { s.remove(); } catch {}
   }
 
@@ -25,16 +25,41 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // Always kill splash after 2s no matter what
+    // Hide splash ASAP + guaranteed fallback
+    setTimeout(hideSplash, 0);
     setTimeout(hideSplash, 2000);
     window.addEventListener("click", hideSplash, { once: true });
     window.addEventListener("touchstart", hideSplash, { once: true });
 
-    // Switch Role button
+    // Switch Role
     document.getElementById("btnSwitchRole")?.addEventListener("click", () => {
       if (!confirm("Switch role? This will return you to role setup.")) return;
 
       try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      try { localStorage.removeItem("athleteProfile"); } catch {}
+      try { localStorage.removeItem("appState"); } catch {}
+
+      showRoleChooserSafe();
+    });
+
+    // Role gate
+    const storedRole = (
+      localStorage.getItem("role") ||
+      localStorage.getItem("selectedRole") ||
+      ""
+    ).trim();
+
+    if (!storedRole) {
+      setTimeout(showRoleChooserSafe, 0);
+      return;
+    }
+
+    // Continue init if exposed
+    if (typeof window.startApp === "function") window.startApp();
+    else if (typeof window.renderApp === "function") window.renderApp();
+  });
+})();      try { localStorage.removeItem("role"); } catch {}
       try { localStorage.removeItem("selectedRole"); } catch {}
       try { localStorage.removeItem("athleteProfile"); } catch {}
       try { localStorage.removeItem("appState"); } catch {}
