@@ -1,40 +1,77 @@
-document.addEventListener("DOMContentLoaded", () => {
-function hideSplash() {
-  const s = document.getElementById("splash");
-  if (!s) return;
-  s.style.display = "none";
-  s.remove();
-}
+// boot.js (COPY/PASTE FULL FILE)
 
-document.addEventListener("DOMContentLoaded", () => {
-  setTimeout(hideSplash, 2000);
-  window.addEventListener("click", hideSplash, { once: true });
-  window.addEventListener("touchstart", hideSplash, { once: true });
-});
+(function () {
+  function hideSplash() {
+    const s = document.getElementById("splash");
+    if (!s) return;
 
-  // Force-hide regardless of CSS
-  s.style.display = "none";
-  s.style.visibility = "hidden";
-  s.style.opacity = "0";
+    // Force-hide regardless of CSS
+    s.style.display = "none";
+    s.style.visibility = "hidden";
+    s.style.opacity = "0";
 
-  // Remove from DOM (prevents it covering the app)
-  s.remove();
-}
+    // Remove from DOM so it can't block UI
+    try { s.remove(); } catch {}
+  }
 
-document.addEventListener("DOMContentLoaded", () => {
-  // Always hide splash after 2s no matter what else happens
-  setTimeout(hideSplash, 2000);
+  function showRoleChooserSafe() {
+    // Ensure onboard container is visible if your core uses it
+    const ob = document.getElementById("onboard");
+    if (ob) ob.style.display = "";
 
-  // ALSO hide splash immediately if user interacts (extra safety)
-  window.addEventListener("click", hideSplash, { once: true });
-  window.addEventListener("touchstart", hideSplash, { once: true });
+    if (typeof window.showRoleChooser === "function") {
+      window.showRoleChooser();
+    } else {
+      console.error("showRoleChooser() not found. Make sure core.js loads before boot.js.");
+    }
+  }
 
-  // ...keep the rest of your boot logic below...
-});
+  document.addEventListener("DOMContentLoaded", () => {
+    // 1) Splash: hide after 2s, and also on first interaction
+    setTimeout(hideSplash, 2000);
+    window.addEventListener("click", hideSplash, { once: true });
+    window.addEventListener("touchstart", hideSplash, { once: true });
 
-  // 2) Switch Role button
-  document.getElementById("btnSwitchRole")?.addEventListener("click", async () => {
-    if (!confirm("Switch role? This will return you to role setup.")) return;
+    // 2) Switch Role button
+    document.getElementById("btnSwitchRole")?.addEventListener("click", async () => {
+      if (!confirm("Switch role? This will return you to role setup.")) return;
+
+      // Clear local app state
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      try { localStorage.removeItem("athleteProfile"); } catch {}
+      try { localStorage.removeItem("appState"); } catch {}
+
+      // Optional: sign out if you want role changes to require re-login
+      // try { await window.supabaseClient?.auth?.signOut(); } catch {}
+
+      showRoleChooserSafe();
+    });
+
+    // 3) Boot gate: require role selection
+    const storedRole = (
+      localStorage.getItem("role") ||
+      localStorage.getItem("selectedRole") ||
+      ""
+    ).trim();
+
+    if (!storedRole) {
+      // Let core finish registering global functions, then show chooser
+      setTimeout(showRoleChooserSafe, 0);
+      return; // STOP boot until role is selected
+    }
+
+    // 4) Role exists: proceed to app init (if your core exposes an init)
+    if (typeof window.startApp === "function") {
+      window.startApp();
+    } else if (typeof window.renderApp === "function") {
+      window.renderApp();
+    } else {
+      // If your core auto-initializes, this is fine
+      console.log("Boot complete. Role:", storedRole);
+    }
+  });
+})();    if (!confirm("Switch role? This will return you to role setup.")) return;
 
     try { localStorage.removeItem("role"); } catch {}
     try { localStorage.removeItem("athleteProfile"); } catch {}
