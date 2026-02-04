@@ -1,40 +1,64 @@
 // boot.js (COPY/PASTE FULL FILE)
 
 (function () {
+  console.log("boot.js loaded");
+
   function hideSplash() {
     const s = document.getElementById("splash");
     if (!s) return;
 
-    // Force-hide regardless of CSS
+    // Hide and remove so it can't block the UI
+    s.classList.add("hidden");
     s.style.display = "none";
-    s.style.visibility = "hidden";
-    s.style.opacity = "0";
-
-    // Remove from DOM so it can't block UI
     try { s.remove(); } catch {}
   }
 
   function showRoleChooserSafe() {
-    // Ensure onboard container is visible if your core uses it
     const ob = document.getElementById("onboard");
     if (ob) ob.style.display = "";
 
     if (typeof window.showRoleChooser === "function") {
       window.showRoleChooser();
     } else {
-      console.error("showRoleChooser() not found. Make sure core.js loads before boot.js.");
+      console.error("showRoleChooser() not found. Ensure core.js loads before boot.js.");
     }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // 1) Splash: hide after 2s, and also on first interaction
+    // Always kill splash after 2s no matter what
     setTimeout(hideSplash, 2000);
     window.addEventListener("click", hideSplash, { once: true });
     window.addEventListener("touchstart", hideSplash, { once: true });
 
-    // 2) Switch Role button
-    document.getElementById("btnSwitchRole")?.addEventListener("click", async () => {
+    // Switch Role button
+    document.getElementById("btnSwitchRole")?.addEventListener("click", () => {
       if (!confirm("Switch role? This will return you to role setup.")) return;
+
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      try { localStorage.removeItem("athleteProfile"); } catch {}
+      try { localStorage.removeItem("appState"); } catch {}
+
+      showRoleChooserSafe();
+    });
+
+    // Require role selection
+    const storedRole = (
+      localStorage.getItem("role") ||
+      localStorage.getItem("selectedRole") ||
+      ""
+    ).trim();
+
+    if (!storedRole) {
+      setTimeout(showRoleChooserSafe, 0);
+      return;
+    }
+
+    // Continue normal init if your app provides a starter function
+    if (typeof window.startApp === "function") window.startApp();
+    else if (typeof window.renderApp === "function") window.renderApp();
+  });
+})();      if (!confirm("Switch role? This will return you to role setup.")) return;
 
       // Clear local app state
       try { localStorage.removeItem("role"); } catch {}
