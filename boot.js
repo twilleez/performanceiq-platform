@@ -2,6 +2,15 @@ document.addEventListener("DOMContentLoaded", () => {
 function hideSplash() {
   const s = document.getElementById("splash");
   if (!s) return;
+  s.style.display = "none";
+  s.remove();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  setTimeout(hideSplash, 2000);
+  window.addEventListener("click", hideSplash, { once: true });
+  window.addEventListener("touchstart", hideSplash, { once: true });
+});
 
   // Force-hide regardless of CSS
   s.style.display = "none";
