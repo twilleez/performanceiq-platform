@@ -55,7 +55,7 @@
     if (error) throw error;
     return data || [];
   };
-})();  const { data, error } = await sb
+{)();  const { data, error } = await sb
     .from("workout_logs")
     .select("*")
     .eq("athlete_id", athleteId)
