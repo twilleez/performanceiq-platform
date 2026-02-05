@@ -1,22 +1,101 @@
-const STORAGE_KEY="piq_state_v1";
-const TRIAL_DAYS=30, LICENSE_MONTHS=12;
-const $=id=>document.getElementById(id);
-const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
-const nowMs=()=>Date.now();
-const daysBetween=(a,b)=>Math.floor((b-a)/(1000*60*60*24));
-function addMonths(date, months){const d=new Date(date);const day=d.getDate();d.setMonth(d.getMonth()+months);if(d.getDate()<day)d.setDate(0);return d;}
-function normalizeKey(k){return String(k||"").toUpperCase().replace(/[^A-Z0-9]/g,"");}
-function validKey(k){const nk=normalizeKey(k);if(nk.length!==12)return false;const body=nk.slice(0,10),chk=nk.slice(10);let sum=0;for(const ch of body)sum+=ch.charCodeAt(0);const expected=String(sum%97).padStart(2,"0");return chk===expected;}
-function loadState(){try{const raw=localStorage.getItem(STORAGE_KEY);return raw?JSON.parse(raw):null;}catch(e){return null;}}
-function saveState(s){try{localStorage.setItem(STORAGE_KEY, JSON.stringify(s));}catch(e){}}
-function defaultState(){return{
-  role:"athlete",
-  trial:{startedAtMs:nowMs(),activated:false,licenseKey:"",licenseUntilMs:0},
-  profile:{sport:"basketball",level:"youth",days:4,programLevel:"standard",focus:"balanced",secondary:"none",position:"General",skill:"Balanced",landmine:"on",wellness:7,notes:""},
-  week:null,todayIndex:0,logs:[],tests:[],prompts:[],
-  team:{name:"",compliance:"off",roster:[],attendance:[],board:""}
-};}
-const state=loadState()||defaultState();
+// core.js (TOP SECTION - COPY/PASTE)
+
+(function () {
+  "use strict";
+
+  // Prevent double-init if core.js is accidentally loaded twice
+  if (window.__PIQ_CORE_LOADED__) return;
+  window.__PIQ_CORE_LOADED__ = true;
+
+  const STORAGE_KEY = "piq_state_v1";
+  const TRIAL_DAYS = 30, LICENSE_MONTHS = 12;
+
+  const $ = (id) => document.getElementById(id);
+
+  const esc = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+
+  const nowMs = () => Date.now();
+  const daysBetween = (a, b) => Math.floor((b - a) / (1000 * 60 * 60 * 24));
+
+  function addMonths(date, months) {
+    const d = new Date(date);
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + months);
+    if (d.getDate() < day) d.setDate(0);
+    return d;
+  }
+
+  function normalizeKey(k) {
+    return String(k || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
+
+  function validKey(k) {
+    const nk = normalizeKey(k);
+    if (nk.length !== 12) return false;
+    const body = nk.slice(0, 10), chk = nk.slice(10);
+    let sum = 0;
+    for (const ch of body) sum += ch.charCodeAt(0);
+    const expected = String(sum % 97).padStart(2, "0");
+    return chk === expected;
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveState(s) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    } catch (e) {}
+  }
+
+  function defaultState() {
+    return {
+      role: "athlete",
+      trial: { startedAtMs: nowMs(), activated: false, licenseKey: "", licenseUntilMs: 0 },
+      profile: {
+        sport: "basketball",
+        level: "youth",
+        days: 4,
+        programLevel: "standard",
+        focus: "balanced",
+        secondary: "none",
+        position: "General",
+        skill: "Balanced",
+        landmine: "on",
+        wellness: 7,
+        notes: ""
+      },
+      week: null,
+      todayIndex: 0,
+      logs: [],
+      tests: [],
+      prompts: [],
+      team: { name: "", compliance: "off", roster: [], attendance: [], board: "" }
+    };
+  }
+
+  // IMPORTANT: keep state scoped in this IIFE
+  const state = loadState() || defaultState();
+
+  // (Optional) expose a tiny API if other files need it
+  window.PIQ = window.PIQ || {};
+  window.PIQ._getState = () => state;
+  window.PIQ._saveState = () => saveState(state);
+
+  // ---- your existing core.js continues below this line ----
 
 const SPORT_DATA={
  basketball:{positions:["General","PG","SG/Wing","SF/PF","C/Big"],skills:["Balanced","Ball-handling","Shooting","Finishing","Defense"],
