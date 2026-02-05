@@ -1,15 +1,12 @@
-// boot.js (COPY/PASTE FULL FILE)
-
+// boot.js
 (function () {
-  console.log("boot.js loaded v1.0.4");
+  console.log("boot.js loaded");
 
   function hideSplash() {
     const s = document.getElementById("splash");
     if (!s) return;
     s.classList.add("hidden");
     s.style.display = "none";
-    s.style.visibility = "hidden";
-    s.style.opacity = "0";
     try { s.remove(); } catch {}
   }
 
@@ -20,21 +17,46 @@
     if (typeof window.showRoleChooser === "function") {
       window.showRoleChooser();
     } else {
-      console.error("showRoleChooser() not found. Ensure core.js loads before boot.js.");
+      console.error("showRoleChooser() not found. core.js must load before boot.js.");
     }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // Hide splash ASAP + guaranteed fallback
     setTimeout(hideSplash, 0);
     setTimeout(hideSplash, 2000);
+
     window.addEventListener("click", hideSplash, { once: true });
     window.addEventListener("touchstart", hideSplash, { once: true });
 
-    // Switch Role
-    document.getElementById("btnSwitchRole")?.addEventListener("click", () => {
+    document.getElementById("btnSwitchRole")?.addEventListener("click", async () => {
       if (!confirm("Switch role? This will return you to role setup.")) return;
 
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      try { localStorage.removeItem("athleteProfile"); } catch {}
+      try { localStorage.removeItem("appState"); } catch {}
+
+      // Optional: also sign out
+      // try { await window.authStore?.signOut(); } catch {}
+
+      showRoleChooserSafe();
+    });
+
+    const storedRole = (
+      localStorage.getItem("role") ||
+      localStorage.getItem("selectedRole") ||
+      ""
+    ).trim();
+
+    if (!storedRole) {
+      setTimeout(showRoleChooserSafe, 0);
+      return;
+    }
+
+    if (typeof window.startApp === "function") window.startApp();
+    else if (typeof window.renderApp === "function") window.renderApp();
+  });
+})();
       try { localStorage.removeItem("role"); } catch {}
       try { localStorage.removeItem("selectedRole"); } catch {}
       try { localStorage.removeItem("athleteProfile"); } catch {}
