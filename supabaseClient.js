@@ -1,26 +1,34 @@
 // supabaseClient.js
 (function () {
-  window.PERFIQ = window.PERFIQ || {};
-  const url = window.PERFIQ.SUPABASE_URL;
-  const key = window.PERFIQ.SUPABASE_ANON_KEY;
+  "use strict";
 
-  if (!url || !/^https?:\/\//i.test(url)) {
-    console.error("Supabase URL missing/invalid. Check config.js window.PERFIQ.SUPABASE_URL");
+  // Prevent redeclare / double init
+  if (window.supabaseClient) return;
+
+  const url = (window.SUPABASE_URL || "").trim();
+  const key = (window.SUPABASE_ANON_KEY || "").trim();
+
+  // Hard validation to avoid: "Invalid supabaseUrl"
+  const isValidHttpUrl = (s) => {
+    try {
+      const u = new URL(s);
+      return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+
+  if (!isValidHttpUrl(url)) {
+    console.error("Supabase URL is invalid. config.js must set window.SUPABASE_URL to a full https:// URL.", url);
+    // Don't throw—allow offline mode to still run
     return;
   }
+
   if (!key) {
-    console.error("Supabase anon key missing. Check config.js window.PERFIQ.SUPABASE_ANON_KEY");
-    return;
-  }
-  if (!window.supabase) {
-    console.error("Supabase library not loaded. Check the CDN script tag in index.html.");
+    console.error("Supabase anon key missing. config.js must set window.SUPABASE_ANON_KEY.");
     return;
   }
 
-  // Create once
-  if (!window.supabaseClient) {
-    window.supabaseClient = window.supabase.createClient(url, key, {
-      auth: { persistSession: true, autoRefreshToken: true }
-    });
-  }
+  // Supabase CDN exposes global `supabase`
+  window.supabaseClient = window.supabase.createClient(url, key);
 })();
