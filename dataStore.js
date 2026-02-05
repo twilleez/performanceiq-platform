@@ -1,40 +1,31 @@
-// dataStore.js (plain script)
-(function () {
-  "use strict";
-  if (window.PIQ_DataStore) return;
+window.dataStore.listPerformanceMetrics = async function (athleteId, limit = 60) {
+  const client = sb(); // sb() must return a Supabase client
 
-  const api = {
-    // stub: add cloud sync later
-    save: async () => true,
-    load: async () => null
+  // 1) Performance metrics
+  const { data: metrics, error: metricsError } = await client
+    .from("performance_metrics")
+    .select("*")
+    .eq("athlete_id", athleteId)
+    .order("date", { ascending: false })
+    .limit(limit);
+
+  if (metricsError) throw metricsError;
+
+  // 2) Workout logs
+  const { data: logs, error: logsError } = await client
+    .from("workout_logs")
+    .select("*")
+    .eq("athlete_id", athleteId)
+    .order("date", { ascending: false })
+    .limit(limit);
+
+  if (logsError) throw logsError;
+
+  return {
+    metrics: metrics || [],
+    logs: logs || []
   };
-
-  window.PIQ_DataStore = api;
-})();  window.dataStore.addWorkoutLog = async function (log) {
-    const client = sb();
-    const { data, error } = await client
-      .from("workout_logs")
-      .insert(log)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  };
-
-  window.dataStore.listWorkoutLogs = async function (athleteId, limit) {
-    const client = sb();
-    const { data, error } = await client
-      .from("workout_logs")
-      .select("*")
-      .eq("athlete_id", athleteId)
-      .order("date", { ascending: false })
-      .limit(limit || 60);
-    if (error) throw error;
-    return data || [];
-  };
-
-  window.dataStore.addPerformanceMetric = async function (metric) {
-    const client = sb();
+};    const client = sb();
     const { data, error } = await client
       .from("performance_metrics")
       .insert(metric)
