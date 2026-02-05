@@ -1,40 +1,87 @@
 // boot.js
 (function () {
-  console.log("boot.js loaded");
+  "use strict";
+
+  if (window.__PIQ_BOOT_LOADED__) return;
+  window.__PIQ_BOOT_LOADED__ = true;
 
   function hideSplash() {
     const s = document.getElementById("splash");
     if (!s) return;
-    s.classList.add("hidden");
-    s.style.display = "none";
+    s.classList.add("hidden");   // works with your CSS
+    s.style.display = "none";    // hard-force
     try { s.remove(); } catch {}
   }
 
   function showRoleChooserSafe() {
-    const ob = document.getElementById("onboard");
-    if (ob) ob.style.display = "";
-
     if (typeof window.showRoleChooser === "function") {
       window.showRoleChooser();
-    } else {
-      console.error("showRoleChooser() not found. core.js must load before boot.js.");
+      return true;
     }
+    console.error("showRoleChooser() not found. Make sure core.js defines it before boot.js runs.");
+    return false;
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(hideSplash, 0);
-    setTimeout(hideSplash, 2000);
+  function wireSwitchRole() {
+    const btn = document.getElementById("btnSwitchRole");
+    if (!btn) return;
 
-    window.addEventListener("click", hideSplash, { once: true });
-    window.addEventListener("touchstart", hideSplash, { once: true });
-
-    document.getElementById("btnSwitchRole")?.addEventListener("click", async () => {
-      if (!confirm("Switch role? This will return you to role setup.")) return;
+    btn.addEventListener("click", () => {
+      const ok = confirm("Switch role? This will return you to role setup.");
+      if (!ok) return;
 
       try { localStorage.removeItem("role"); } catch {}
       try { localStorage.removeItem("selectedRole"); } catch {}
       try { localStorage.removeItem("athleteProfile"); } catch {}
       try { localStorage.removeItem("appState"); } catch {}
+      try { localStorage.removeItem("piq_state_v1"); } catch {}
+
+      // Go to onboarding/role chooser
+      const shown = showRoleChooserSafe();
+      if (!shown) location.reload();
+    });
+  }
+
+  function bootGateRole() {
+    const storedRole = (
+      localStorage.getItem("role") ||
+      localStorage.getItem("selectedRole") ||
+      ""
+    ).trim();
+
+    if (!storedRole) {
+      // Ensure UI exists and core loaded before showing chooser
+      setTimeout(() => {
+        showRoleChooserSafe();
+        // still remove splash so they can see the chooser
+        hideSplash();
+      }, 0);
+      return false;
+    }
+    return true;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    // Splash lifecycle (3.5s? change here)
+    const SPLASH_MS = 2000;
+    setTimeout(hideSplash, SPLASH_MS);
+    window.addEventListener("click", hideSplash, { once: true });
+    window.addEventListener("touchstart", hideSplash, { once: true });
+
+    // Buttons
+    wireSwitchRole();
+
+    // Gate
+    const okRole = bootGateRole();
+    if (!okRole) return;
+
+    // Start app if core exposes a starter
+    if (typeof window.startApp === "function") {
+      window.startApp();
+    }
+    // If core auto-inits on DOMContentLoaded, this is fine too.
+  });
+})();      try { localStorage.removeItem("appState"); } catch {}
 
       // Optional: also sign out
       // try { await window.authStore?.signOut(); } catch {}
