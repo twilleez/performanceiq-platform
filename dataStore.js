@@ -1,40 +1,16 @@
-// dataStore.js
+// dataStore.js (plain script)
 (function () {
-  const sb = () => window.supabaseClient;
+  "use strict";
+  if (window.PIQ_DataStore) return;
 
-  window.dataStore = window.dataStore || {};
-
-  window.dataStore.getCurrentUser = async function () {
-    const client = sb();
-    if (!client) return null;
-    const { data, error } = await client.auth.getUser();
-    if (error) throw error;
-    return data.user || null;
+  const api = {
+    // stub: add cloud sync later
+    save: async () => true,
+    load: async () => null
   };
 
-  window.dataStore.getAthleteProfile = async function (userId) {
-    const client = sb();
-    const { data, error } = await client
-      .from("athlete_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-    if (error && error.code !== "PGRST116") throw error; // no row
-    return data || null;
-  };
-
-  window.dataStore.upsertAthleteProfile = async function (profile) {
-    const client = sb();
-    const { data, error } = await client
-      .from("athlete_profiles")
-      .upsert(profile, { onConflict: "user_id" })
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  };
-
-  window.dataStore.addWorkoutLog = async function (log) {
+  window.PIQ_DataStore = api;
+})();  window.dataStore.addWorkoutLog = async function (log) {
     const client = sb();
     const { data, error } = await client
       .from("workout_logs")
