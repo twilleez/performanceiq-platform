@@ -1,4 +1,12 @@
-/* ===========================
+(function () {
+  "use strict";
+
+  if (window.__PIQ_CORE_LOADED__) return;
+  window.__PIQ_CORE_LOADED__ = true;
+
+  // ... your existing core.js continues ...
+})();
+* ===========================
    core.js — FULL PATCH (COPY/PASTE)
    Includes:
    - IIFE wrapper + double-load guard (fixes STORAGE_KEY redeclare)
