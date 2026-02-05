@@ -1,25 +1,26 @@
 // authStore.js
-const sb = window.supabaseClient;
+(function () {
+  const sb = () => window.supabaseClient;
 
-export async function signUp(email, password) {
-  const { data, error } = await sb.auth.signUp({ email, password });
-  if (error) throw error;
-  return data;
-}
+  window.authStore = window.authStore || {};
 
-export async function signIn(email, password) {
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data;
-}
+  window.authStore.signUp = async function (email, password) {
+    const client = sb();
+    const { data, error } = await client.auth.signUp({ email, password });
+    if (error) throw error;
+    return data;
+  };
 
-export async function signOut() {
-  const { error } = await sb.auth.signOut();
-  if (error) throw error;
-}
+  window.authStore.signIn = async function (email, password) {
+    const client = sb();
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data;
+  };
 
-export async function getCurrentUser() {
-  const { data, error } = await sb.auth.getUser();
-  if (error) throw error;
-  return data.user; // null if not logged in
-}
+  window.authStore.signOut = async function () {
+    const client = sb();
+    const { error } = await client.auth.signOut();
+    if (error) throw error;
+  };
+})();
