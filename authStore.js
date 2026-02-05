@@ -1,26 +1,12 @@
-// authStore.js
+// authStore.js (plain script)
 (function () {
-  const sb = () => window.supabaseClient;
+  "use strict";
+  if (window.PIQ_AuthStore) return;
 
-  window.authStore = window.authStore || {};
-
-  window.authStore.signUp = async function (email, password) {
-    const client = sb();
-    const { data, error } = await client.auth.signUp({ email, password });
-    if (error) throw error;
-    return data;
+  const api = {
+    // stub: add auth later
+    user: () => null
   };
 
-  window.authStore.signIn = async function (email, password) {
-    const client = sb();
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
-  };
-
-  window.authStore.signOut = async function () {
-    const client = sb();
-    const { error } = await client.auth.signOut();
-    if (error) throw error;
-  };
+  window.PIQ_AuthStore = api;
 })();
