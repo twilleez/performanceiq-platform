@@ -1,11 +1,11 @@
-// dataStore.js (plain script)
+// dataStore.js (plain script, no exports)
 (function () {
   "use strict";
 
   if (window.dataStore) return;
 
   function requireClient() {
-    const client = (typeof window.sb === "function") ? window.sb() : null;
+    const client = typeof window.sb === "function" ? window.sb() : null;
     if (!client) throw new Error("Supabase not configured (offline mode).");
     return client;
   }
@@ -32,34 +32,27 @@
 
       if (logsError) throw logsError;
 
-      return {
-        metrics: metrics || [],
-        logs: logs || []
-      };
+      return { metrics: metrics || [], logs: logs || [] };
     },
 
     async addPerformanceMetric(metric) {
       const client = requireClient();
-
       const { data, error } = await client
         .from("performance_metrics")
         .insert(metric)
         .select()
         .single();
-
       if (error) throw error;
       return data;
     },
 
-    async addWorkoutLog(log) {
+    async addWorkoutLog(logRow) {
       const client = requireClient();
-
       const { data, error } = await client
         .from("workout_logs")
-        .insert(log)
+        .insert(logRow)
         .select()
         .single();
-
       if (error) throw error;
       return data;
     }
