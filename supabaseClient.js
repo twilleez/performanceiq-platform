@@ -1,10 +1,16 @@
-// supabaseClient.js
+// supabaseClient.js (plain script, no exports)
 (function () {
   "use strict";
 
-  // Prevent double-init
-  if (window.__PIQ_SUPABASE_LOADED__) return;
-  window.__PIQ_SUPABASE_LOADED__ = true;
+  // Don't double-init
+  if (window.supabaseClient) {
+    // Ensure sb() exists even if client already exists
+    window.sb = window.sb || (() => window.supabaseClient);
+    return;
+  }
+
+  const url = String(window.SUPABASE_URL || "").trim();
+  const key = String(window.SUPABASE_ANON_KEY || "").trim();
 
   function isValidHttpUrl(s) {
     try {
@@ -15,32 +21,23 @@
     }
   }
 
-  function init() {
-    const url = (window.SUPABASE_URL || "").trim();
-    const key = (window.SUPABASE_ANON_KEY || "").trim();
-
-    if (!isValidHttpUrl(url)) {
-      console.warn("[supabaseClient] Supabase URL invalid or missing. Running offline mode.");
-      return null;
-    }
-    if (!key) {
-      console.warn("[supabaseClient] Supabase anon key missing. Running offline mode.");
-      return null;
-    }
-    if (!window.supabase || !window.supabase.createClient) {
-      console.error("[supabaseClient] supabase-js CDN not loaded (window.supabase missing).");
-      return null;
-    }
-
-    return window.supabase.createClient(url, key);
+  if (!isValidHttpUrl(url)) {
+    console.error("[supabaseClient] Invalid SUPABASE_URL:", url);
+    return; // allow offline mode
   }
 
-  // Create client once
-  const client = init();
-  if (client) window.supabaseClient = client;
+  if (!key) {
+    console.error("[supabaseClient] Missing SUPABASE_ANON_KEY");
+    return; // allow offline mode
+  }
 
-  // ✅ sb() accessor used everywhere else
-  window.sb = function () {
-    return window.supabaseClient || null;
-  };
+  if (!window.supabase || typeof window.supabase.createClient !== "function") {
+    console.error("[supabaseClient] Supabase CDN not loaded. Check script tag for @supabase/supabase-js@2");
+    return;
+  }
+
+  window.supabaseClient = window.supabase.createClient(url, key);
+
+  // ✅ This is what your dataStore expects
+  window.sb = () => window.supabaseClient;
 })();
