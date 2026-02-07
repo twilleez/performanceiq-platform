@@ -1,8 +1,5 @@
-window.showRoleChooser = window.showRoleChooser || function () {
-  alert("Role chooser not implemented yet.");
-};
 
-//core.js
+//core.js (Top - Copy/PASTE)
 (function () {
   "use strict";
 
@@ -11,18 +8,7 @@ window.showRoleChooser = window.showRoleChooser || function () {
 
   // ... your existing core.js continues ...
 })();
-* ===========================
-   core.js — FULL PATCH (COPY/PASTE)
-   Includes:
-   - IIFE wrapper + double-load guard (fixes STORAGE_KEY redeclare)
-   - SPORT_DATA object (all sports)
-   - Trial/license UI + gate
-   - Safe DOM helpers + null-safe UI functions
-   - Role + onboarding flow (writes role to localStorage for boot gate)
-   - Program generation + logging + charts + dashboard + team + parent + settings
-   =========================== */
 
-(function () {
   "use strict";
 
   // Prevent double-init if core.js is accidentally loaded twice
