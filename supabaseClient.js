@@ -2,11 +2,9 @@
 (function () {
   "use strict";
 
-  // Prevent double init
-  if (window.supabaseClient) return;
-
-  const url = (window.SUPABASE_URL || "").trim();
-  const key = (window.SUPABASE_ANON_KEY || "").trim();
+  // Prevent double-init
+  if (window.__PIQ_SUPABASE_LOADED__) return;
+  window.__PIQ_SUPABASE_LOADED__ = true;
 
   function isValidHttpUrl(s) {
     try {
@@ -17,28 +15,31 @@
     }
   }
 
-  // If not configured, keep app in offline mode
-  if (!isValidHttpUrl(url) || !key) {
-    console.warn("[supabaseClient] Offline mode. Missing/invalid SUPABASE_URL or SUPABASE_ANON_KEY.");
-    // Still define sb() so callers can check it safely.
-    window.sb = function () {
+  function init() {
+    const url = (window.SUPABASE_URL || "").trim();
+    const key = (window.SUPABASE_ANON_KEY || "").trim();
+
+    if (!isValidHttpUrl(url)) {
+      console.warn("[supabaseClient] Supabase URL invalid or missing. Running offline mode.");
       return null;
-    };
-    return;
+    }
+    if (!key) {
+      console.warn("[supabaseClient] Supabase anon key missing. Running offline mode.");
+      return null;
+    }
+    if (!window.supabase || !window.supabase.createClient) {
+      console.error("[supabaseClient] supabase-js CDN not loaded (window.supabase missing).");
+      return null;
+    }
+
+    return window.supabase.createClient(url, key);
   }
 
-  // Supabase CDN exposes window.supabase
-  if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    console.error("[supabaseClient] Supabase CDN not loaded. Make sure the CDN script is included BEFORE this file.");
-    window.sb = function () {
-      return null;
-    };
-    return;
-  }
+  // Create client once
+  const client = init();
+  if (client) window.supabaseClient = client;
 
-  window.supabaseClient = window.supabase.createClient(url, key);
-
-  // ✅ Define sb(): dataStore depends on this
+  // ✅ sb() accessor used everywhere else
   window.sb = function () {
     return window.supabaseClient || null;
   };
