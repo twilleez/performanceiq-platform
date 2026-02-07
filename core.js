@@ -1,12 +1,17 @@
-
-//core.js (Top - Copy/PASTE)
+// core.js (TOP — COPY/PASTE)
 (function () {
   "use strict";
 
+  // Prevent double-init if core.js is accidentally loaded twice
   if (window.__PIQ_CORE_LOADED__) return;
   window.__PIQ_CORE_LOADED__ = true;
 
-  // ... your existing core.js continues ...
+  // OPTIONAL safety stub (remove later if you implement a real chooser)
+  window.showRoleChooser = window.showRoleChooser || function () {
+    alert("Role chooser not implemented yet.");
+  };
+
+  // ...the rest of your real core.js code goes here...
 })();
 
   "use strict";
