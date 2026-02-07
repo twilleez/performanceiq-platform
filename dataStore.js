@@ -1,40 +1,54 @@
-// dataStore.js  (COPY/PASTE)
+// dataStore.js (plain script)
 (function () {
   "use strict";
 
-  // Prevent double-load
-  if (window.__PIQ_DATASTORE_LOADED__) return;
-  window.__PIQ_DATASTORE_LOADED__ = true;
-
-  // Ensure namespace
-  window.dataStore = window.dataStore || {};
+  if (window.dataStore) return;
 
   function requireClient() {
-    const client = (typeof window.sb === "function") ? window.sb() : null;
-    if (!client) {
-      // Offline mode or missing Supabase config
-      throw new Error("Supabase client not available (offline mode or config missing).");
-    }
+    const client = window.sb ? window.sb() : null;
+    if (!client) throw new Error("Supabase not configured (offline mode).");
     return client;
   }
 
-  // --- Performance Metrics ---
-  window.dataStore.addPerformanceMetric = async function (metric) {
-    const client = requireClient();
+  window.dataStore = {
+    async listPerformanceMetrics(athleteId, limit = 60) {
+      const client = requireClient();
 
-    const { data, error } = await client
-      .from("performance_metrics")
-      .insert(metric)
-      .select("*")
-      .single();
+      const { data: metrics, error: metricsError } = await client
+        .from("performance_metrics")
+        .select("*")
+        .eq("athlete_id", athleteId)
+        .order("date", { ascending: false })
+        .limit(limit);
 
-    if (error) throw error;
-    return data;
+      if (metricsError) throw metricsError;
+
+      const { data: logs, error: logsError } = await client
+        .from("workout_logs")
+        .select("*")
+        .eq("athlete_id", athleteId)
+        .order("date", { ascending: false })
+        .limit(limit);
+
+      if (logsError) throw logsError;
+
+      return { metrics: metrics || [], logs: logs || [] };
+    },
+
+    async addPerformanceMetric(metric) {
+      const client = requireClient();
+
+      const { data, error } = await client
+        .from("performance_metrics")
+        .insert(metric)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    }
   };
-
-  window.dataStore.listPerformanceMetrics = async function (athleteId, limit = 60) {
-    const client = requireClient();
-
+})();
     const { data, error } = await client
       .from("performance_metrics")
       .select("*")
