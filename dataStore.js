@@ -49,6 +49,20 @@
     }
   };
 })();
+    async addPerformanceMetric(metric) {
+      const client = requireClient();
+
+      const { data, error } = await client
+        .from("performance_metrics")
+        .insert(metric)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    }
+  };
+})();
     const { data, error } = await client
       .from("performance_metrics")
       .select("*")
