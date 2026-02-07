@@ -1,60 +1,136 @@
-// dataStore.js (plain script, no exports)
+// dataStore.js (plain script)
 (function () {
   "use strict";
 
   if (window.dataStore) return;
 
   function requireClient() {
-    const client = typeof window.sb === "function" ? window.sb() : null;
-    if (!client) throw new Error("Supabase not configured (offline mode).");
-    return client;
+    const c = typeof window.sb === "function" ? window.sb() : null;
+    if (!c) throw new Error("Supabase not configured (offline mode).");
+    return c;
+  }
+
+  async function requireUserId() {
+    const auth = window.PIQ_AuthStore;
+    if (!auth) throw new Error("Auth store not loaded.");
+    const user = await auth.getUser();
+    if (!user) throw new Error("Not signed in.");
+    return user.id;
+  }
+
+  // --- App state sync (whole blob) ---
+  async function pullState() {
+    const client = requireClient();
+    const userId = await requireUserId();
+
+    const { data, error } = await client
+      .from("piq_state")
+      .select("state, updated_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || null; // {state, updated_at} or null
+  }
+
+  async function pushState(stateObj) {
+    const client = requireClient();
+    const userId = await requireUserId();
+
+    const payload = {
+      user_id: userId,
+      state: stateObj,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await client
+      .from("piq_state")
+      .upsert(payload, { onConflict: "user_id" });
+
+    if (error) throw error;
+    return true;
+  }
+
+  // --- Performance metrics ---
+  async function upsertPerformanceMetric(metric) {
+    const client = requireClient();
+    const userId = await requireUserId();
+
+    // Force ownership
+    const row = { ...metric, athlete_id: userId };
+
+    const { data, error } = await client
+      .from("performance_metrics")
+      .insert(row)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async function listPerformanceMetrics(limit = 60) {
+    const client = requireClient();
+    const userId = await requireUserId();
+
+    const { data, error } = await client
+      .from("performance_metrics")
+      .select("*")
+      .eq("athlete_id", userId)
+      .order("date", { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  // --- Workout logs ---
+  async function upsertWorkoutLog(logRow) {
+    const client = requireClient();
+    const userId = await requireUserId();
+
+    const row = {
+      athlete_id: userId,
+      date: logRow.date,
+      day_index: logRow.day_index ?? null,
+      theme: logRow.theme ?? null,
+      injury: logRow.injury ?? null,
+      wellness: logRow.wellness ?? null,
+      entries: logRow.entries ?? []
+    };
+
+    // Upsert by (athlete_id, date) using the unique index
+    const { data, error } = await client
+      .from("workout_logs")
+      .upsert(row, { onConflict: "athlete_id,date" })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async function listWorkoutLogs(limit = 60) {
+    const client = requireClient();
+    const userId = await requireUserId();
+
+    const { data, error } = await client
+      .from("workout_logs")
+      .select("*")
+      .eq("athlete_id", userId)
+      .order("date", { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data || [];
   }
 
   window.dataStore = {
-    async listPerformanceMetrics(athleteId, limit = 60) {
-      const client = requireClient();
-
-      const { data: metrics, error: metricsError } = await client
-        .from("performance_metrics")
-        .select("*")
-        .eq("athlete_id", athleteId)
-        .order("date", { ascending: false })
-        .limit(limit);
-
-      if (metricsError) throw metricsError;
-
-      const { data: logs, error: logsError } = await client
-        .from("workout_logs")
-        .select("*")
-        .eq("athlete_id", athleteId)
-        .order("date", { ascending: false })
-        .limit(limit);
-
-      if (logsError) throw logsError;
-
-      return { metrics: metrics || [], logs: logs || [] };
-    },
-
-    async addPerformanceMetric(metric) {
-      const client = requireClient();
-      const { data, error } = await client
-        .from("performance_metrics")
-        .insert(metric)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-
-    async addWorkoutLog(logRow) {
-      const client = requireClient();
-      const { data, error } = await client
-        .from("workout_logs")
-        .insert(logRow)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    }
+    pullState,
+    pushState,
+    upsertPerformanceMetric,
+    listPerformanceMetrics,
+    upsertWorkoutLog,
+    listWorkoutLogs
   };
 })();
