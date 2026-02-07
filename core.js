@@ -2118,4 +2118,7 @@ function init(){
  route();
  if(onboardingNeeded()) showOnboarding();
 }
-document.addEventListener("DOMContentLoaded", init);
+// Expose starter for boot.js
+window.startApp = function () {
+  init();
+};
