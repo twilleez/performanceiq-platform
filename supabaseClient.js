@@ -2,12 +2,11 @@
 (function () {
   "use strict";
 
-  // Prevent double-init
-  if (window.__PIQ_SUPABASE_LOADED__) return;
-  window.__PIQ_SUPABASE_LOADED__ = true;
+  // Prevent double init
+  if (window.supabaseClient) return;
 
-  const url = String(window.SUPABASE_URL || "").trim();
-  const key = String(window.SUPABASE_ANON_KEY || "").trim();
+  const url = (window.SUPABASE_URL || "").trim();
+  const key = (window.SUPABASE_ANON_KEY || "").trim();
 
   function isValidHttpUrl(s) {
     try {
@@ -18,43 +17,29 @@
     }
   }
 
-  // Always expose sb() so other files don't crash in offline mode
-  window.sb = function sb() {
+  // If not configured, keep app in offline mode
+  if (!isValidHttpUrl(url) || !key) {
+    console.warn("[supabaseClient] Offline mode. Missing/invalid SUPABASE_URL or SUPABASE_ANON_KEY.");
+    // Still define sb() so callers can check it safely.
+    window.sb = function () {
+      return null;
+    };
+    return;
+  }
+
+  // Supabase CDN exposes window.supabase
+  if (!window.supabase || typeof window.supabase.createClient !== "function") {
+    console.error("[supabaseClient] Supabase CDN not loaded. Make sure the CDN script is included BEFORE this file.");
+    window.sb = function () {
+      return null;
+    };
+    return;
+  }
+
+  window.supabaseClient = window.supabase.createClient(url, key);
+
+  // ✅ Define sb(): dataStore depends on this
+  window.sb = function () {
     return window.supabaseClient || null;
   };
-
-  if (!isValidHttpUrl(url)) {
-    console.error("[supabaseClient.js] Invalid SUPABASE_URL (offline mode).", url);
-    return; // offline mode ok
-  }
-
-  if (!key) {
-    console.error("[supabaseClient.js] Missing SUPABASE_ANON_KEY (offline mode).");
-    return; // offline mode ok
-  }
-
-  if (!window.supabase || !window.supabase.createClient) {
-    console.error("[supabaseClient.js] Supabase CDN not loaded. Check script order.");
-    return;
-  }
-
-  window.supabaseClient = window.supabase.createClient(url, key);
-})();    console.error("[supabaseClient.js] Missing SUPABASE_ANON_KEY.");
-    return;
-  }
-
-  // Ensure the Supabase CDN loaded
-  if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    console.error(
-      "[supabaseClient.js] Supabase CDN not available. Ensure this is loaded BEFORE supabaseClient.js:",
-      "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
-    );
-    return;
-  }
-
-  // Create client once
-  window.supabaseClient = window.supabase.createClient(url, key);
-
-  // Optional: tiny signal for debugging
-  window.__PIQ_SUPABASE_READY__ = true;
 })();
