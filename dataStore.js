@@ -1,15 +1,12 @@
-// dataStore.js
+// dataStore.js (plain script)
 (function () {
   "use strict";
 
   if (window.dataStore) return;
 
   function requireClient() {
-    if (!window.sb) {
-      throw new Error("Supabase client not available (offline mode)");
-    }
-    const client = window.sb();
-    if (!client) throw new Error("Supabase not initialized");
+    const client = (typeof window.sb === "function") ? window.sb() : null;
+    if (!client) throw new Error("Supabase not configured (offline mode).");
     return client;
   }
 
@@ -47,6 +44,19 @@
       const { data, error } = await client
         .from("performance_metrics")
         .insert(metric)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+
+    async addWorkoutLog(log) {
+      const client = requireClient();
+
+      const { data, error } = await client
+        .from("workout_logs")
+        .insert(log)
         .select()
         .single();
 
