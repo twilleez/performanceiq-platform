@@ -1,3 +1,8 @@
+window.showRoleChooser = window.showRoleChooser || function () {
+  alert("Role chooser not implemented yet.");
+};
+
+//core.js
 (function () {
   "use strict";
 
@@ -2118,7 +2123,9 @@ function init(){
  route();
  if(onboardingNeeded()) showOnboarding();
 }
-// Expose starter for boot.js
-window.startApp = function () {
-  init();
-};
+  // expose starter for boot.js
+  window.startApp = function () {
+    init();
+  };
+
+})();
