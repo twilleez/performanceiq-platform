@@ -1,16 +1,10 @@
-// supabaseClient.js  (COPY/PASTE)
+// supabaseClient.js
 (function () {
   "use strict";
 
-  // Prevent double init even if script is loaded twice
+  // Prevent double-init
   if (window.__PIQ_SUPABASE_LOADED__) return;
   window.__PIQ_SUPABASE_LOADED__ = true;
-
-  // Always provide a stable accessor so other files can call sb()
-  // sb() returns a Supabase client OR null (offline / misconfigured)
-  window.sb = window.sb || function () {
-    return window.supabaseClient || null;
-  };
 
   const url = String(window.SUPABASE_URL || "").trim();
   const key = String(window.SUPABASE_ANON_KEY || "").trim();
@@ -19,22 +13,33 @@
     try {
       const u = new URL(s);
       return u.protocol === "http:" || u.protocol === "https:";
-    } catch (e) {
+    } catch {
       return false;
     }
   }
 
-  // If config is missing, keep app usable offline
+  // Always expose sb() so other files don't crash in offline mode
+  window.sb = function sb() {
+    return window.supabaseClient || null;
+  };
+
   if (!isValidHttpUrl(url)) {
-    console.error(
-      "[supabaseClient.js] Invalid SUPABASE_URL. It must be a full https:// URL. Got:",
-      url
-    );
-    return;
+    console.error("[supabaseClient.js] Invalid SUPABASE_URL (offline mode).", url);
+    return; // offline mode ok
   }
 
   if (!key) {
-    console.error("[supabaseClient.js] Missing SUPABASE_ANON_KEY.");
+    console.error("[supabaseClient.js] Missing SUPABASE_ANON_KEY (offline mode).");
+    return; // offline mode ok
+  }
+
+  if (!window.supabase || !window.supabase.createClient) {
+    console.error("[supabaseClient.js] Supabase CDN not loaded. Check script order.");
+    return;
+  }
+
+  window.supabaseClient = window.supabase.createClient(url, key);
+})();    console.error("[supabaseClient.js] Missing SUPABASE_ANON_KEY.");
     return;
   }
 
