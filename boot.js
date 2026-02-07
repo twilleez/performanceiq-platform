@@ -1,40 +1,48 @@
-// boot.js  (COPY/PASTE)
+// boot.js
 (function () {
   "use strict";
 
-  // Prevent double-load
   if (window.__PIQ_BOOT_LOADED__) return;
   window.__PIQ_BOOT_LOADED__ = true;
 
-  // Adjust splash timing here (ms)
   const SPLASH_MS = 2000;
 
   function hideSplash() {
     const s = document.getElementById("splash");
     if (!s) return;
-
-    // Make sure it cannot cover the UI
     s.classList.add("hidden");
     s.style.display = "none";
-    s.style.visibility = "hidden";
-    s.style.opacity = "0";
-
-    try { s.remove(); } catch (e) {}
+    try { s.remove(); } catch {}
   }
 
-  function showRoleChooserSafe() {
-    // Prefer a dedicated role chooser if your core defines it
-    if (typeof window.showRoleChooser === "function") {
-      window.showRoleChooser();
-      return true;
-    }
+  document.addEventListener("DOMContentLoaded", () => {
+    // Always hide splash
+    setTimeout(hideSplash, SPLASH_MS);
+    window.addEventListener("click", hideSplash, { once: true });
+    window.addEventListener("touchstart", hideSplash, { once: true });
 
-    // Fallback: if your core uses onboarding modal, call it
-    if (typeof window.showOnboarding === "function") {
-      window.showOnboarding();
-      return true;
-    }
+    // Switch role
+    const btn = document.getElementById("btnSwitchRole");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        if (!confirm("Switch role? This will return you to role setup.")) return;
 
+        try { localStorage.removeItem("role"); } catch {}
+        try { localStorage.removeItem("selectedRole"); } catch {}
+        try { localStorage.removeItem("athleteProfile"); } catch {}
+        try { localStorage.removeItem("appState"); } catch {}
+        try { localStorage.removeItem("piq_state_v1"); } catch {}
+
+        // If core has onboarding modal, show it; otherwise reload
+        if (typeof window.PIQ?.showOnboarding === "function") {
+          window.PIQ.showOnboarding();
+        } else {
+          location.reload();
+        }
+      });
+    }
+  });
+})();
     console.error(
       "[boot.js] No role chooser found. Expected window.showRoleChooser() or window.showOnboarding()."
     );
