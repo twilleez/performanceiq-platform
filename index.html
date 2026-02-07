@@ -8,12 +8,8 @@
 
   <link rel="icon" href="./icon-192.png">
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./app.css?v=1.0.5">
-
-  <!-- Supabase CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="./app.css?v=1.0.6">
 </head>
-
 <body>
   <div id="splash">
     <div id="splashCard">
@@ -24,17 +20,56 @@
 
   <div id="onboard" style="display:none"></div>
 
-<!-- Vendor -->
+  <div class="topbar">
+    <div class="brand">
+      <img src="./logo.png" alt="Logo">
+      <div class="brandTitle">PerformanceIQ</div>
+      <div class="pill" id="rolePill">Role: —</div>
+      <div class="pill" id="trialPill">—</div>
+    </div>
+
+    <div class="nav" role="navigation" aria-label="Primary">
+      <button id="nav-profile" type="button">Profile</button>
+      <button id="nav-program" type="button">Program</button>
+      <button id="nav-log" type="button">Log</button>
+      <button id="nav-performance" type="button">Performance</button>
+      <button id="nav-dashboard" type="button">Dashboard</button>
+      <button id="nav-team" type="button">Team</button>
+      <button id="nav-parent" type="button">Parent</button>
+      <button id="nav-settings" type="button">Settings</button>
+      <button id="btnSwitchRole" type="button">Switch Role</button>
+    </div>
+  </div>
+
+  <!-- YOUR EXISTING UI TABS BELOW THIS LINE (keep what you already have) -->
+  <div class="container">
+    <div class="grid">
+      <div class="card" id="tab-profile">
+        <!-- keep your current Profile markup -->
+      </div>
+
+      <div>
+        <div class="card" id="tab-program" style="display:none"></div>
+        <div class="card" id="tab-log" style="display:none"></div>
+        <div class="card" id="tab-performance" style="display:none"></div>
+        <div class="card" id="tab-dashboard" style="display:none"></div>
+        <div class="card" id="tab-team" style="display:none"></div>
+        <div class="card" id="tab-parent" style="display:none"></div>
+        <div class="card" id="tab-settings" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Scripts (single, correct order) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- App (single, correct order; cache-busted) -->
-  <script src="./config.js?v=1.0.5"></script>
-  <script src="./supabaseClient.js?v=1.0.5"></script>
-  <script src="./dataStore.js?v=1.0.5"></script>
-  <script src="./authStore.js?v=1.0.5"></script>
-  <script src="./core.js?v=1.0.5"></script>
-  <script src="./boot.js?v=1.0.5"></script>
+  <script src="./config.js?v=1.0.6"></script>
+  <script src="./supabaseClient.js?v=1.0.6"></script>
+
+  <script src="./dataStore.js?v=1.0.6"></script>
+  <script src="./authStore.js?v=1.0.6"></script>
+
+  <script src="./core.js?v=1.0.6"></script>
+  <script src="./boot.js?v=1.0.6"></script>
 </body>
 </html>
-
-
