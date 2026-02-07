@@ -1,40 +1,118 @@
-// boot.js
+// boot.js  (COPY/PASTE)
 (function () {
   "use strict";
 
+  // Prevent double-load
   if (window.__PIQ_BOOT_LOADED__) return;
   window.__PIQ_BOOT_LOADED__ = true;
+
+  // Adjust splash timing here (ms)
+  const SPLASH_MS = 2000;
 
   function hideSplash() {
     const s = document.getElementById("splash");
     if (!s) return;
-    s.classList.add("hidden");   // works with your CSS
-    s.style.display = "none";    // hard-force
-    try { s.remove(); } catch {}
+
+    // Make sure it cannot cover the UI
+    s.classList.add("hidden");
+    s.style.display = "none";
+    s.style.visibility = "hidden";
+    s.style.opacity = "0";
+
+    try { s.remove(); } catch (e) {}
   }
 
   function showRoleChooserSafe() {
+    // Prefer a dedicated role chooser if your core defines it
     if (typeof window.showRoleChooser === "function") {
       window.showRoleChooser();
       return true;
     }
-    console.error("showRoleChooser() not found. Make sure core.js defines it before boot.js runs.");
+
+    // Fallback: if your core uses onboarding modal, call it
+    if (typeof window.showOnboarding === "function") {
+      window.showOnboarding();
+      return true;
+    }
+
+    console.error(
+      "[boot.js] No role chooser found. Expected window.showRoleChooser() or window.showOnboarding()."
+    );
     return false;
+  }
+
+  function storedRole() {
+    return String(
+      localStorage.getItem("role") ||
+      localStorage.getItem("selectedRole") ||
+      ""
+    ).trim();
+  }
+
+  function clearRoleState() {
+    // Clear only role/profile keys (keep other data unless you want a full reset)
+    try { localStorage.removeItem("role"); } catch (e) {}
+    try { localStorage.removeItem("selectedRole"); } catch (e) {}
+    try { localStorage.removeItem("athleteProfile"); } catch (e) {}
+    try { localStorage.removeItem("appState"); } catch (e) {}
+    // If your app stores everything in one key, clear it too:
+    // try { localStorage.removeItem("piq_state_v1"); } catch (e) {}
   }
 
   function wireSwitchRole() {
     const btn = document.getElementById("btnSwitchRole");
     if (!btn) return;
 
-    btn.addEventListener("click", () => {
+    // Avoid double-binding if DOMContentLoaded somehow fires twice
+    if (btn.__piq_bound__) return;
+    btn.__piq_bound__ = true;
+
+    btn.addEventListener("click", function () {
       const ok = confirm("Switch role? This will return you to role setup.");
       if (!ok) return;
 
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
-      try { localStorage.removeItem("athleteProfile"); } catch {}
-      try { localStorage.removeItem("appState"); } catch {}
-      try { localStorage.removeItem("piq_state_v1"); } catch {}
+      clearRoleState();
+
+      // Show chooser and ensure splash isn't blocking it
+      hideSplash();
+
+      // Defer so core has a tick to be ready
+      setTimeout(function () {
+        const shown = showRoleChooserSafe();
+        if (!shown) location.reload();
+      }, 0);
+    });
+  }
+
+  function gateRoleThenStart() {
+    const role = storedRole();
+
+    if (!role) {
+      // Ensure user can SEE the chooser (splash must not trap them)
+      hideSplash();
+
+      // Let core register its globals first
+      setTimeout(function () {
+        const shown = showRoleChooserSafe();
+        if (!shown) {
+          // As a last fallback, at least show the Profile tab
+          location.hash = "#profile";
+        }
+      }, 0);
+
+      return; // STOP boot until role is set
+    }
+
+    // Role exists: proceed. Most of your app already initializes in core.js,
+    // but call startApp if you have it.
+    if (typeof window.startApp === "function") {
+      window.startApp();
+    } else if (typeof window.renderApp === "function") {
+      window.renderApp();
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function      try { localStorage.removeItem("piq_state_v1"); } catch {}
 
       // Go to onboarding/role chooser
       const shown = showRoleChooserSafe();
