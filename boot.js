@@ -1,4 +1,4 @@
-// boot.js
+// boot.js (clean)
 (function () {
   "use strict";
 
@@ -18,7 +18,7 @@
       window.showRoleChooser();
       return true;
     }
-    console.error("showRoleChooser() not found. core.js must define it before boot.js runs.");
+    console.error("showRoleChooser() not found (core.js did not run).");
     return false;
   }
 
@@ -27,20 +27,20 @@
     if (!btn) return;
 
     btn.addEventListener("click", () => {
-      if (!confirm("Switch role? This will return you to setup.")) return;
+      if (!confirm("Switch role? This will return you to role setup.")) return;
 
-      // Clear role + app state
       try { localStorage.removeItem("role"); } catch {}
       try { localStorage.removeItem("selectedRole"); } catch {}
       try { localStorage.removeItem("athleteProfile"); } catch {}
       try { localStorage.removeItem("appState"); } catch {}
       try { localStorage.removeItem("piq_state_v1"); } catch {}
 
-      showRoleChooserSafe();
+      hideSplash();
+      if (!showRoleChooserSafe()) location.reload();
     });
   }
 
-  function roleExists() {
+  function hasRole() {
     const storedRole = (
       localStorage.getItem("role") ||
       localStorage.getItem("selectedRole") ||
@@ -50,25 +50,18 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // Always remove splash after 2s and on first tap/click
     setTimeout(hideSplash, 2000);
     window.addEventListener("click", hideSplash, { once: true });
     window.addEventListener("touchstart", hideSplash, { once: true });
 
     wireSwitchRole();
 
-    if (!roleExists()) {
-      // show chooser and remove splash so they can see it
-      setTimeout(() => {
-        showRoleChooserSafe();
-        hideSplash();
-      }, 0);
+    if (!hasRole()) {
+      hideSplash();
+      showRoleChooserSafe();
       return;
     }
 
-    // If core exposes a starter, call it
-    if (typeof window.startApp === "function") {
-      window.startApp();
-    }
+    if (typeof window.startApp === "function") window.startApp();
   });
 })();
