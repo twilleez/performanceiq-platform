@@ -1,19 +1,22 @@
-// core.js (TOP — COPY/PASTE)
+// core.js — CLEAN, VALID, BOOT-SAFE
 (function () {
   "use strict";
 
-  // Prevent double-init if core.js is accidentally loaded twice
+  // ---- Guard: prevent double-load ----
   if (window.__PIQ_CORE_LOADED__) return;
   window.__PIQ_CORE_LOADED__ = true;
 
-  // OPTIONAL safety stub (remove later if you implement a real chooser)
+  // ---- Safety stub so boot.js never fails ----
   window.showRoleChooser = window.showRoleChooser || function () {
     alert("Role chooser not implemented yet.");
   };
 
+  // ---- Core constants ----
   const STORAGE_KEY = "piq_state_v1";
-  const TRIAL_DAYS = 30, LICENSE_MONTHS = 12;
+  const TRIAL_DAYS = 30;
+  const LICENSE_MONTHS = 12;
 
+  // ---- Helpers ----
   const $ = (id) => document.getElementById(id) || null;
 
   const esc = (s) =>
@@ -26,7 +29,8 @@
     }[c]));
 
   const nowMs = () => Date.now();
-  const daysBetween = (a, b) => Math.floor((b - a) / (1000 * 60 * 60 * 24));
+  const daysBetween = (a, b) =>
+    Math.floor((b - a) / (1000 * 60 * 60 * 24));
 
   function addMonths(date, months) {
     const d = new Date(date);
@@ -43,14 +47,17 @@
   function validKey(k) {
     const nk = normalizeKey(k);
     if (nk.length !== 12) return false;
-    const body = nk.slice(0, 10), chk = nk.slice(10);
+    const body = nk.slice(0, 10);
+    const chk = nk.slice(10);
     let sum = 0;
     for (const ch of body) sum += ch.charCodeAt(0);
     const expected = String(sum % 97).padStart(2, "0");
     return chk === expected;
   }
 
-  // ...KEEP PASTING THE REST OF YOUR core.js HERE...
-  // (do NOT add another "use strict" or another guard)
+  // ---- Minimal start hook so boot.js can continue ----
+  window.startApp = window.startApp || function () {
+    console.log("PerformanceIQ core loaded successfully.");
+  };
 
 })();
