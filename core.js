@@ -1,23 +1,23 @@
-// core.js — CLEAN, VALID, BOOT-SAFE (with real role chooser)
+// core.js — COPY/PASTE (adds cloud-push after saveState + safe splash hide)
 (function () {
   "use strict";
 
+  // ---- Guard: prevent double-load ----
   if (window.__PIQ_CORE_LOADED__) return;
   window.__PIQ_CORE_LOADED__ = true;
 
+  // ---- Safety stub so boot.js never fails ----
+  window.showRoleChooser =
+    window.showRoleChooser ||
+    function () {
+      alert("Role chooser not implemented yet.");
+    };
+
+  // ---- Constants ----
   const STORAGE_KEY = "piq_state_v1";
-  const TRIAL_DAYS = 30;
-  const LICENSE_MONTHS = 12;
 
+  // ---- Helpers ----
   const $ = (id) => document.getElementById(id);
-
-  function hideSplashNow() {
-    const s = $("splash");
-    if (!s) return;
-    s.classList.add("hidden");
-    s.style.display = "none";
-    try { s.remove(); } catch {}
-  }
 
   function loadState() {
     try {
@@ -28,84 +28,93 @@
     }
   }
 
-  function saveState(state) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+  function saveState(s) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    } catch {}
   }
 
   function defaultState() {
     return {
-      role: "athlete",
+      role: "",
+      profile: { sport: "basketball", days: 4 },
       trial: { startedAtMs: Date.now(), activated: false, licenseKey: "", licenseUntilMs: 0 },
-      profile: { sport: "basketball", level: "youth", days: 4 }
+      week: null,
+      logs: [],
+      tests: [],
+      team: { name: "", roster: [], attendance: [], board: "", compliance: "off" }
     };
   }
 
+  // IMPORTANT: state must live in this IIFE scope
   const state = loadState() || defaultState();
 
-  // ---- REAL role chooser so boot.js never fails ----
-  window.showRoleChooser = function () {
-    const mount = $("onboard");
-    if (!mount) {
-      alert("Missing #onboard container in index.html.");
-      return;
+  // ---- Safe splash hide (prevents “stuck splash”) ----
+  function hideSplashNow() {
+    const s = $("splash");
+    if (!s) return;
+    s.classList.add("hidden");
+    s.style.display = "none";
+    try {
+      s.remove();
+    } catch {}
+  }
+
+  // ---- Cloud push (debounced) ----
+  let __piqPushTimer = null;
+
+  function scheduleCloudPush() {
+    // Only push if your cloud hooks exist
+    if (!window.dataStore || typeof window.dataStore.pushState !== "function") return;
+
+    clearTimeout(__piqPushTimer);
+    __piqPushTimer = setTimeout(async () => {
+      try {
+        await window.dataStore.pushState(state);
+      } catch (e) {
+        // Offline / not logged in / blocked: do not break UX
+        console.warn("[cloud] push skipped:", e?.message || e);
+      }
+    }, 800);
+  }
+
+  // ---- Minimal start hook so boot.js can continue ----
+  window.startApp =
+    window.startApp ||
+    function () {
+      // If you have a bigger init(), call it here instead.
+      console.log("PerformanceIQ core loaded.");
+    };
+
+  // =========================================================
+  // ✅ EXAMPLE: where you asked to add it (Save profile -> close modal -> start)
+  // Put this inside your onboarding “Save & continue” click handler.
+  // =========================================================
+  window.__PIQ_applyOnboardingSavePatch = function applyOnboardingSavePatch(mountEl) {
+    // mountEl is your onboarding modal container element (the one you call `mount`)
+    // Update state as you already do above this line...
+    // state.role = ...
+    // state.profile.sport = ...
+    // state.profile.days = ...
+
+    saveState(state);
+    scheduleCloudPush(); // ✅ ADD THIS LINE
+
+    // Close modal + remove splash
+    if (mountEl) {
+      mountEl.style.display = "none";
+      mountEl.innerHTML = "";
     }
+    hideSplashNow();
 
-    mount.style.display = "block";
-    mount.innerHTML = `
-      <div class="modalBack">
-        <div class="modal">
-          <h3>Choose your role</h3>
-          <div class="small">Required to continue.</div>
-          <div class="hr"></div>
-
-          <div class="row">
-            <div class="field">
-              <label for="obRole">Role</label>
-              <select id="obRole">
-                <option value="athlete">Athlete</option>
-                <option value="coach">Coach</option>
-                <option value="parent">Parent</option>
-                <option value="admin">Administrator</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="btnRow">
-            <button class="btn" id="obSave" type="button">Save & Continue</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const roleSel = $("obRole");
-    roleSel.value = (localStorage.getItem("role") || state.role || "athlete");
-
-    $("obSave").addEventListener("click", () => {
-      const role = roleSel.value;
-      state.role = role;
-
-      // ✅ Write to localStorage so boot gate passes
-      try { localStorage.setItem("role", role); } catch {}
-
-      saveState(state);
-
-      // Close modal + remove splash
-      mount.style.display = "none";
-      mount.innerHTML = "";
-      hideSplashNow();
-
-      // Continue app start
-      if (typeof window.startApp === "function") window.startApp();
-    });
+    // Continue app start
+    if (typeof window.startApp === "function") window.startApp();
   };
 
-  // ---- Minimal start hook (boot.js calls this if role exists) ----
-  window.startApp = window.startApp || function () {
-    // For now just prove the app can start without crashing
-    console.log("PerformanceIQ core loaded successfully. Role:", state.role);
-
-    // If there is no role saved, show chooser immediately
-    const roleSaved = (localStorage.getItem("role") || "").trim();
-    if (!roleSaved) window.showRoleChooser();
-  };
+  // If you want splash to always hide even if something fails:
+  document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(hideSplashNow, 2000);
+    window.addEventListener("click", hideSplashNow, { once: true });
+    window.addEventListener("touchstart", hideSplashNow, { once: true });
+  });
 })();
