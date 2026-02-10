@@ -184,24 +184,46 @@
   // ✅ REQUIRED PATCH POINT YOU ASKED FOR:
   // Use this helper inside onboarding "Save & continue" handler.
   // =========================================================
-  window.PIQ_applyOnboardingSavePatch = function PIQ_applyOnboardingSavePatch(mountEl) {
-    // You should have already updated:
-    // state.role = ...
-    // state.profile.sport = ...
-    // state.profile.days = ...
-    // etc.
+  // Onboarding save patch (safe, plain-script)
+window.PIQ_applyOnboardingSavePatch = function PIQ_applyOnboardingSavePatch(mountEl) {
+  // Assumes you already updated `state` above this call.
+  // Example:
+  // state.role = ...
+  // state.profile.sport = ...
+  // state.profile.days = ...
 
+  // 1) Persist (local + cloud if enabled via saveState wrapper)
+  try {
     saveState(state);
+  } catch (e) {
+    console.warn("[onboarding] saveState failed:", e && e.message ? e.message : e);
+  }
 
-    if (mountEl) {
+  // 2) Close modal safely
+  try {
+    if (mountEl && mountEl.style) {
       mountEl.style.display = "none";
       mountEl.innerHTML = "";
     }
+  } catch (e) {
+    console.warn("[onboarding] mount cleanup failed:", e && e.message ? e.message : e);
+  }
 
-    hideSplashNow();
+  // 3) Hide splash safely (prefer global, fallback to local if available)
+  try {
+    if (typeof window.hideSplashNow === "function") window.hideSplashNow();
+    else if (typeof hideSplashNow === "function") hideSplashNow();
+  } catch (e) {
+    console.warn("[onboarding] hideSplashNow failed:", e && e.message ? e.message : e);
+  }
 
+  // 4) Continue app start
+  try {
     if (typeof window.startApp === "function") window.startApp();
-  };
+  } catch (e) {
+    console.warn("[onboarding] startApp failed:", e && e.message ? e.message : e);
+  }
+};
 
   // =========================================================
   // Failsafe: hide splash after 2s or on first interaction.
