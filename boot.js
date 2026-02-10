@@ -1,4 +1,4 @@
-// boot.js (clean)
+// boot.js (PLAIN SCRIPT)
 (function () {
   "use strict";
 
@@ -18,7 +18,7 @@
       window.showRoleChooser();
       return true;
     }
-    console.error("showRoleChooser() not found (core.js did not run).");
+    console.error("showRoleChooser() not found. core.js must load before boot.js.");
     return false;
   }
 
@@ -31,36 +31,40 @@
 
       try { localStorage.removeItem("role"); } catch {}
       try { localStorage.removeItem("selectedRole"); } catch {}
-      try { localStorage.removeItem("athleteProfile"); } catch {}
-      try { localStorage.removeItem("appState"); } catch {}
-      try { localStorage.removeItem("piq_state_v1"); } catch {}
 
+      // Let core handle the chooser UI
+      const shown = showRoleChooserSafe();
       hideSplash();
-      if (!showRoleChooserSafe()) location.reload();
+      if (!shown) location.reload();
     });
   }
 
-  function hasRole() {
+  function roleGate() {
     const storedRole = (
       localStorage.getItem("role") ||
       localStorage.getItem("selectedRole") ||
       ""
     ).trim();
-    return !!storedRole;
+
+    if (!storedRole) {
+      setTimeout(() => {
+        showRoleChooserSafe();
+        hideSplash();
+      }, 0);
+      return false;
+    }
+    return true;
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(hideSplash, 2000);
+    // Always kill splash (even if something else fails)
+    setTimeout(hideSplash, 1200);
     window.addEventListener("click", hideSplash, { once: true });
     window.addEventListener("touchstart", hideSplash, { once: true });
 
     wireSwitchRole();
 
-    if (!hasRole()) {
-      hideSplash();
-      showRoleChooserSafe();
-      return;
-    }
+    if (!roleGate()) return;
 
     if (typeof window.startApp === "function") window.startApp();
   });
