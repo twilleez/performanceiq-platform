@@ -6,14 +6,6 @@
   if (window.__PIQ_CORE_LOADED__) return;
   window.__PIQ_CORE_LOADED__ = true;
 
-  // ---- Safety stub so boot.js never fails ----
-  // Replace later with your real role chooser implementation.
-  window.showRoleChooser =
-    window.showRoleChooser ||
-    function () {
-      alert("Role chooser not implemented yet.");
-    };
-
   // ---- Constants ----
   const STORAGE_KEY = "piq_state_v1";
 
@@ -184,46 +176,268 @@
   // ✅ REQUIRED PATCH POINT YOU ASKED FOR:
   // Use this helper inside onboarding "Save & continue" handler.
   // =========================================================
-  // Onboarding save patch (safe, plain-script)
-window.PIQ_applyOnboardingSavePatch = function PIQ_applyOnboardingSavePatch(mountEl) {
-  // Assumes you already updated `state` above this call.
-  // Example:
-  // state.role = ...
-  // state.profile.sport = ...
-  // state.profile.days = ...
-
-  // 1) Persist (local + cloud if enabled via saveState wrapper)
-  try {
-    saveState(state);
-  } catch (e) {
-    console.warn("[onboarding] saveState failed:", e && e.message ? e.message : e);
-  }
-
-  // 2) Close modal safely
-  try {
-    if (mountEl && mountEl.style) {
-      mountEl.style.display = "none";
-      mountEl.innerHTML = "";
+  window.PIQ_applyOnboardingSavePatch = function PIQ_applyOnboardingSavePatch(mountEl) {
+    // 1) Persist (local + cloud if enabled via saveState wrapper)
+    try {
+      saveState(state);
+    } catch (e) {
+      console.warn("[onboarding] saveState failed:", e && e.message ? e.message : e);
     }
-  } catch (e) {
-    console.warn("[onboarding] mount cleanup failed:", e && e.message ? e.message : e);
+
+    // 2) Close modal safely
+    try {
+      if (mountEl && mountEl.style) {
+        mountEl.style.display = "none";
+        mountEl.innerHTML = "";
+      }
+    } catch (e) {
+      console.warn("[onboarding] mount cleanup failed:", e && e.message ? e.message : e);
+    }
+
+    // 3) Hide splash safely
+    try {
+      if (typeof window.hideSplashNow === "function") window.hideSplashNow();
+      else hideSplashNow();
+    } catch (e) {
+      console.warn("[onboarding] hideSplashNow failed:", e && e.message ? e.message : e);
+    }
+
+    // 4) Continue app start
+    try {
+      if (typeof window.startApp === "function") window.startApp();
+    } catch (e) {
+      console.warn("[onboarding] startApp failed:", e && e.message ? e.message : e);
+    }
+  };
+
+  // =========================================================
+  // ✅ ROLE CHOOSER + OFFLINE-FIRST SYNC
+  // (This replaces the old alert-only showRoleChooser stub.)
+  // =========================================================
+
+  function isSupabaseReady() {
+    return !!(window.supabaseClient && window.PIQ_AuthStore && window.dataStore);
   }
 
-  // 3) Hide splash safely (prefer global, fallback to local if available)
-  try {
-    if (typeof window.hideSplashNow === "function") window.hideSplashNow();
-    else if (typeof hideSplashNow === "function") hideSplashNow();
-  } catch (e) {
-    console.warn("[onboarding] hideSplashNow failed:", e && e.message ? e.message : e);
+  async function isSignedIn() {
+    try {
+      if (!window.PIQ_AuthStore) return false;
+      const u = await window.PIQ_AuthStore.getUser();
+      return !!u;
+    } catch {
+      return false;
+    }
   }
 
-  // 4) Continue app start
-  try {
-    if (typeof window.startApp === "function") window.startApp();
-  } catch (e) {
-    console.warn("[onboarding] startApp failed:", e && e.message ? e.message : e);
+  function ensureOnboardMount() {
+    let mount = $("onboard");
+    if (!mount) {
+      mount = document.createElement("div");
+      mount.id = "onboard";
+      document.body.appendChild(mount);
+    }
+    return mount;
   }
-};
+
+  function setRoleEverywhere(role) {
+    state.role = role;
+
+    // boot.js reads these keys for gating
+    try { localStorage.setItem("role", role); } catch {}
+    try { localStorage.setItem("selectedRole", role); } catch {}
+  }
+
+  function setProfileBasics(sport, days) {
+    state.profile = state.profile || {};
+    state.profile.sport = sport || state.profile.sport || "basketball";
+    state.profile.days = Number(days || state.profile.days || 4);
+  }
+
+  async function tryCloudPullIntoLocal() {
+    if (!isSupabaseReady()) return false;
+    const signed = await isSignedIn();
+    if (!signed) return false;
+
+    try {
+      const remote = await window.dataStore.pullState(); // expects {state, updated_at} or null
+      if (!remote || !remote.state) return false;
+      if (typeof remote.state !== "object") return false;
+
+      const remoteUpdated = Number(remote.state?.meta?.updatedAtMs || 0);
+      const localUpdated = Number(state?.meta?.updatedAtMs || 0);
+
+      if (remoteUpdated > localUpdated) {
+        const next = normalizeState(remote.state);
+
+        // mutate-in-place so `state` reference stays stable
+        Object.keys(state).forEach((k) => { delete state[k]; });
+        Object.keys(next).forEach((k) => { state[k] = next[k]; });
+
+        if (state.role) setRoleEverywhere(state.role);
+
+        try { __saveLocal(state); } catch {}
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      console.warn("[cloud] pull skipped:", e && e.message ? e.message : e);
+      return false;
+    }
+  }
+
+  async function renderRoleChooser() {
+    const mount = ensureOnboardMount();
+    mount.style.display = "block";
+
+    const supaOk = isSupabaseReady();
+    const signed = supaOk ? await isSignedIn() : false;
+
+    const currentRole = (state.role || "").trim();
+    const currentSport = (state.profile && state.profile.sport) ? state.profile.sport : "basketball";
+    const currentDays = (state.profile && Number.isFinite(state.profile.days)) ? String(state.profile.days) : "4";
+
+    mount.innerHTML = `
+      <div class="modalBack">
+        <div class="modal">
+          <h3 style="margin:0 0 6px 0">Choose your role</h3>
+          <div class="small">Required to continue.</div>
+          <div class="hr"></div>
+
+          <div class="row">
+            <div class="field">
+              <label for="piqRole">Role (required)</label>
+              <select id="piqRole">
+                <option value="athlete">Athlete</option>
+                <option value="coach">Coach</option>
+                <option value="parent">Parent</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="piqSport">Sport</label>
+              <select id="piqSport">
+                <option value="basketball">Basketball</option>
+                <option value="football">Football</option>
+                <option value="baseball">Baseball</option>
+                <option value="volleyball">Volleyball</option>
+                <option value="soccer">Soccer</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="piqDays">Days/week</label>
+              <select id="piqDays">
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="btnRow" style="margin-top:12px">
+            <button class="btn" id="piqSaveRole" type="button">Save & continue</button>
+            <button class="btn secondary" id="piqResetRole" type="button">Reset local data</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="small" id="piqSyncStatus"></div>
+
+          <div class="btnRow" style="margin-top:10px">
+            <button class="btn secondary" id="piqSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in to sync</button>
+            <button class="btn secondary" id="piqSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
+            <button class="btn secondary" id="piqPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
+          </div>
+
+          <div class="small" style="margin-top:8px">
+            Offline-first: the app works without signing in. Sync is optional and only runs when signed in.
+          </div>
+        </div>
+      </div>
+    `;
+
+    const roleSel = $("piqRole");
+    const sportSel = $("piqSport");
+    const daysSel = $("piqDays");
+    const syncEl = $("piqSyncStatus");
+
+    if (roleSel) roleSel.value = currentRole || "athlete";
+    if (sportSel) sportSel.value = currentSport;
+    if (daysSel) daysSel.value = currentDays;
+
+    if (syncEl) {
+      if (!supaOk) syncEl.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
+      else if (!signed) syncEl.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
+      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — you can pull/push.";
+    }
+
+    $("piqSaveRole")?.addEventListener("click", () => {
+      const role = roleSel ? roleSel.value : "athlete";
+      const sport = sportSel ? sportSel.value : "basketball";
+      const days = daysSel ? daysSel.value : "4";
+
+      setRoleEverywhere(role);
+      setProfileBasics(sport, days);
+
+      // this saves local + schedules cloud push (if signed in)
+      if (typeof window.PIQ_applyOnboardingSavePatch === "function") {
+        window.PIQ_applyOnboardingSavePatch(mount);
+      } else {
+        try { saveState(state); } catch {}
+        try { mount.style.display = "none"; mount.innerHTML = ""; } catch {}
+        try { hideSplashNow(); } catch {}
+        try { window.startApp?.(); } catch {}
+      }
+    });
+
+    $("piqResetRole")?.addEventListener("click", () => {
+      if (!confirm("Clear ALL saved data on this device?")) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      location.reload();
+    });
+
+    $("piqSignIn")?.addEventListener("click", async () => {
+      try {
+        if (!window.PIQ_AuthStore) return alert("Auth not available.");
+        const email = prompt("Enter email for magic-link sign-in:");
+        if (!email) return;
+        await window.PIQ_AuthStore.signInWithOtp(email.trim());
+        alert("Check your email for the sign-in link, then return here.");
+      } catch (e) {
+        alert("Sign-in failed: " + (e && e.message ? e.message : e));
+      }
+    });
+
+    $("piqSignOut")?.addEventListener("click", async () => {
+      try {
+        await window.PIQ_AuthStore?.signOut?.();
+        alert("Signed out.");
+        location.reload();
+      } catch (e) {
+        alert("Sign-out failed: " + (e && e.message ? e.message : e));
+      }
+    });
+
+    $("piqPull")?.addEventListener("click", async () => {
+      const pulled = await tryCloudPullIntoLocal();
+      alert(pulled ? "Pulled newer cloud state to this device." : "No newer cloud state found.");
+      location.reload();
+    });
+  }
+
+  // boot.js calls this when no role is stored
+  window.showRoleChooser = function () {
+    renderRoleChooser();
+  };
+
+  // Optional: pull once at startup if signed in and cloud is newer
+  document.addEventListener("DOMContentLoaded", async () => {
+    try { await tryCloudPullIntoLocal(); } catch {}
+  });
 
   // =========================================================
   // Failsafe: hide splash after 2s or on first interaction.
