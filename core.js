@@ -165,7 +165,6 @@
   window.PIQ.saveState = window.PIQ.saveState || saveState;
 
   // ---- Minimal start hook so boot.js can continue ----
-  // If you have a real init() (bindNav, route, render), call it here.
   window.startApp =
     window.startApp ||
     function () {
@@ -211,8 +210,156 @@
   };
 
   // =========================================================
+  // ✅ CLOUD HELPERS + TWO ONE-LINERS READY
+  // You will call these from saveLog() and saveTests()
+  // =========================================================
+
+  function __piqComputeVolumeFromEntries(entries) {
+    let vol = 0;
+    (entries || []).forEach((e) => {
+      const w = Number(e && e.weight);
+      const reps = Number(String(e && e.reps ? e.reps : "").replace(/[^0-9]/g, ""));
+      if (Number.isFinite(w) && Number.isFinite(reps)) vol += w * reps;
+    });
+    return vol;
+  }
+
+  function __piqLocalLogToWorkoutRow(localLog) {
+    if (!localLog) return null;
+
+    const numOrNull = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    return {
+      // dataStore injects athlete_id = auth.uid()
+      date: localLog.dateISO || null,
+      program_day: localLog.theme || null,
+      volume: __piqComputeVolumeFromEntries(localLog.entries || []),
+
+      wellness: numOrNull(localLog.wellness),
+      energy: numOrNull(localLog.energy),
+
+      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null,
+      injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none",
+
+      practice_intensity:
+        typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
+      practice_duration_min: numOrNull(localLog.practice_duration_min),
+
+      extra_gym: typeof localLog.extra_gym === "boolean" ? localLog.extra_gym : null,
+      extra_gym_duration_min: numOrNull(localLog.extra_gym_duration_min)
+    };
+  }
+
+  function __piqLocalTestToMetricRow(test) {
+    if (!test) return null;
+
+    const numOrNull = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    return {
+      // dataStore injects athlete_id = auth.uid()
+      date: test.dateISO || null,
+      vert_inches: numOrNull(test.vert),
+      sprint_seconds: numOrNull(test.sprint10),
+      cod_seconds: numOrNull(test.cod),
+      bw_lbs: numOrNull(test.bw),
+      sleep_hours: numOrNull(test.sleep)
+    };
+  }
+
+  async function __piqTryUpsertWorkoutLog(localLog) {
+    if (!window.dataStore || typeof window.dataStore.upsertWorkoutLog !== "function") return false;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
+    const row = __piqLocalLogToWorkoutRow(localLog);
+    if (!row || !row.date) return false;
+
+    try {
+      await window.dataStore.upsertWorkoutLog(row);
+      return true;
+    } catch (e) {
+      console.warn("[cloud] workout_logs upsert skipped:", e && e.message ? e.message : e);
+      return false;
+    }
+  }
+
+  async function __piqTryUpsertPerformanceMetric(localTest) {
+    if (
+      !window.dataStore ||
+      typeof window.dataStore.upsertPerformanceMetric !== "function"
+    ) return false;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
+    const row = __piqLocalTestToMetricRow(localTest);
+    if (!row || !row.date) return false;
+
+    try {
+      await window.dataStore.upsertPerformanceMetric(row);
+      return true;
+    } catch (e) {
+      console.warn("[cloud] performance_metrics upsert skipped:", e && e.message ? e.message : e);
+      return false;
+    }
+  }
+
+  async function __piqTryPullCloudStateIfNewer() {
+    if (!window.dataStore || typeof window.dataStore.pullState !== "function") return;
+    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return;
+
+    try {
+      const u = await window.PIQ_AuthStore.getUser();
+      if (!u) return;
+
+      const cloud = await window.dataStore.pullState(); // {state, updated_at} or null
+      if (!cloud || !cloud.state || typeof cloud.state !== "object") return;
+
+      const cloudUpdated = Number(cloud.state?.meta?.updatedAtMs || 0);
+      const localUpdated = Number(state?.meta?.updatedAtMs || 0);
+
+      if (cloudUpdated > localUpdated) {
+        const next = normalizeState(cloud.state);
+
+        // mutate in place
+        Object.keys(state).forEach((k) => { delete state[k]; });
+        Object.keys(next).forEach((k) => { state[k] = next[k]; });
+
+        try { __saveLocal(state); } catch {}
+        console.log("[cloud] pulled newer state");
+      }
+    } catch (e) {
+      console.warn("[cloud] pull skipped:", e && e.message ? e.message : e);
+    }
+  }
+
+  // Expose "two one-liners" targets
+  window.PIQ.cloud = window.PIQ.cloud || {};
+
+  // ONE-LINER target for saveLog(): window.PIQ.cloud.upsertWorkoutLogFromLocal(localLog)
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = function (localLog) {
+    __piqTryUpsertWorkoutLog(localLog);
+  };
+
+  // ONE-LINER target for saveTests(): window.PIQ.cloud.upsertPerformanceMetricFromLocal(localTest)
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = function (localTest) {
+    __piqTryUpsertPerformanceMetric(localTest);
+  };
+
+  // Optional: pull once after sign-in (if authStore supports onAuthChange)
+  (function __wirePullOnAuth() {
+    const auth = window.PIQ_AuthStore;
+    if (!auth || typeof auth.onAuthChange !== "function") return;
+    auth.onAuthChange((user) => {
+      if (user) __piqTryPullCloudStateIfNewer();
+    });
+  })();
+
+  // =========================================================
   // ✅ ROLE CHOOSER + OFFLINE-FIRST SYNC
-  // (This replaces the old alert-only showRoleChooser stub.)
   // =========================================================
 
   function isSupabaseReady() {
@@ -448,4 +595,17 @@
     window.addEventListener("click", hideSplashNow, { once: true });
     window.addEventListener("touchstart", hideSplashNow, { once: true });
   });
+
+  /* =========================================================
+     ✅ YOUR APP LOGIC GOES BELOW THIS LINE
+     When you add your saveLog() and saveTests(), add:
+
+     (1) After saveState(state) in saveLog():
+         window.PIQ?.cloud?.upsertWorkoutLogFromLocal(state.logs[state.logs.length - 1]);
+
+     (2) After saveState(state) in saveTests():
+         window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(state.tests[state.tests.length - 1]);
+
+     ========================================================= */
+
 })();
