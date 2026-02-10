@@ -1,4 +1,5 @@
-// core.js — BOOT-SAFE + SPLASH-SAFE + CLOUD-PUSH-READY (PLAIN SCRIPT)
+// core.js — FULL REPLACEMENT (PLAIN SCRIPT)
+// Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 (function () {
   "use strict";
 
@@ -8,24 +9,40 @@
 
   // ---- Constants ----
   const STORAGE_KEY = "piq_state_v1";
+  const CLOUD_PUSH_DEBOUNCE_MS = 800;
+  const SPLASH_FAILSAFE_MS = 2000;
 
   // ---- Helpers ----
   const $ = (id) => document.getElementById(id) || null;
 
-  function __loadLocal() {
+  const numOrNull = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const parseInputNumOrNull = (id) => {
+    const el = $(id);
+    const raw = (el?.value || "").trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+
+  function __loadLocalRaw() {
     try {
       return localStorage.getItem(STORAGE_KEY);
-    } catch (e) {
+    } catch {
       return null;
     }
   }
 
-  // Base save (do not call directly; use saveState below)
-  function __saveLocal(s) {
+  function __saveLocal(stateObj) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateObj));
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -57,7 +74,6 @@
 
   function normalizeState(s) {
     const d = defaultState();
-
     if (!s || typeof s !== "object") return d;
 
     // meta
@@ -97,12 +113,11 @@
   }
 
   function loadState() {
-    const raw = __loadLocal();
+    const raw = __loadLocalRaw();
     if (!raw) return null;
     try {
-      const parsed = JSON.parse(raw);
-      return normalizeState(parsed);
-    } catch (e) {
+      return normalizeState(JSON.parse(raw));
+    } catch {
       return null;
     }
   }
@@ -110,11 +125,11 @@
   // IMPORTANT: state must live in this IIFE scope
   const state = loadState() || defaultState();
 
-  // Optional: expose minimal handle for debugging
+  // ---- Expose debug handles ----
   window.PIQ = window.PIQ || {};
   window.PIQ.getState = () => state;
 
-  // ---- Safe splash hide (prevents “stuck splash”) ----
+  // ---- Splash safe hide ----
   function hideSplashNow() {
     const s = $("splash");
     if (!s) return;
@@ -122,96 +137,73 @@
     s.style.display = "none";
     s.style.visibility = "hidden";
     s.style.opacity = "0";
-    try { s.remove(); } catch (e) {}
+    try {
+      s.remove();
+    } catch {}
   }
-
-  // Make available to other files / handlers
   window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
-  // ---- Cloud push (debounced) ----
-  // Uses window.dataStore.pushState(state) if available.
-  // MUST NOT break offline mode.
-  let __piqPushTimer = null;
+  // ---- Supabase readiness helpers ----
+  function isSupabaseReady() {
+    // Must have: supabaseClient + auth store + data store
+    return !!(window.supabaseClient && window.PIQ_AuthStore && window.dataStore);
+  }
+
+  async function isSignedIn() {
+    try {
+      if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
+      const u = await window.PIQ_AuthStore.getUser();
+      return !!u;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---- Cloud push (state) debounced ----
+  let __pushTimer = null;
+
+  async function __pushStateNow() {
+    if (!window.dataStore || typeof window.dataStore.pushState !== "function") return false;
+    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
+    const u = await window.PIQ_AuthStore.getUser();
+    if (!u) return false;
+
+    await window.dataStore.pushState(state);
+    state.meta.lastSyncedAtMs = Date.now();
+    __saveLocal(state);
+    return true;
+  }
 
   function scheduleCloudPush() {
+    // Do not break offline mode
     if (!window.dataStore || typeof window.dataStore.pushState !== "function") return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
-    if (__piqPushTimer) clearTimeout(__piqPushTimer);
-    __piqPushTimer = setTimeout(async () => {
+    if (__pushTimer) clearTimeout(__pushTimer);
+    __pushTimer = setTimeout(async () => {
       try {
-        await window.dataStore.pushState(state);
-        state.meta.lastSyncedAtMs = Date.now();
-        __saveLocal(state);
+        await __pushStateNow();
       } catch (e) {
-        // Offline / not signed in / RLS: do not break UX
-        console.warn("[cloud] push skipped:", e && e.message ? e.message : e);
+        console.warn("[cloud] state push skipped:", e?.message || e);
       }
-    }, 800);
+    }, CLOUD_PUSH_DEBOUNCE_MS);
   }
 
-  // ---- Public saveState (always updates meta + local + schedules cloud push) ----
+  // ---- Public saveState wrapper ----
   function saveState(s) {
     try {
       s.meta = s.meta || {};
       s.meta.updatedAtMs = Date.now();
-    } catch (e) {}
-
+    } catch {}
     __saveLocal(s);
     scheduleCloudPush();
   }
-
-  // Expose saveState so other scripts can call it if needed
   window.PIQ.saveState = window.PIQ.saveState || saveState;
 
-  // ---- Minimal start hook so boot.js can continue ----
-  window.startApp =
-    window.startApp ||
-    function () {
-      console.log("PerformanceIQ core loaded.");
-    };
-
   // =========================================================
-  // ✅ REQUIRED PATCH POINT YOU ASKED FOR:
-  // Use this helper inside onboarding "Save & continue" handler.
-  // =========================================================
-  window.PIQ_applyOnboardingSavePatch = function PIQ_applyOnboardingSavePatch(mountEl) {
-    // 1) Persist (local + cloud if enabled via saveState wrapper)
-    try {
-      saveState(state);
-    } catch (e) {
-      console.warn("[onboarding] saveState failed:", e && e.message ? e.message : e);
-    }
-
-    // 2) Close modal safely
-    try {
-      if (mountEl && mountEl.style) {
-        mountEl.style.display = "none";
-        mountEl.innerHTML = "";
-      }
-    } catch (e) {
-      console.warn("[onboarding] mount cleanup failed:", e && e.message ? e.message : e);
-    }
-
-    // 3) Hide splash safely
-    try {
-      if (typeof window.hideSplashNow === "function") window.hideSplashNow();
-      else hideSplashNow();
-    } catch (e) {
-      console.warn("[onboarding] hideSplashNow failed:", e && e.message ? e.message : e);
-    }
-
-    // 4) Continue app start
-    try {
-      if (typeof window.startApp === "function") window.startApp();
-    } catch (e) {
-      console.warn("[onboarding] startApp failed:", e && e.message ? e.message : e);
-    }
-  };
-
-  // =========================================================
-  // ✅ CLOUD HELPERS + TWO ONE-LINERS READY
-  // You will call these from saveLog() and saveTests()
+  // CLOUD HELPERS (logs + metrics) — match YOUR Supabase schema
   // =========================================================
 
   function __piqComputeVolumeFromEntries(entries) {
@@ -224,13 +216,11 @@
     return vol;
   }
 
+  // workout_logs columns you listed:
+  // date, program_day, volume, wellness, energy, hydration, injury_flag, practice_intensity,
+  // practice_duration_min, extra_gym, extra_gym_duration_min
   function __piqLocalLogToWorkoutRow(localLog) {
     if (!localLog) return null;
-
-    const numOrNull = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
 
     return {
       // dataStore injects athlete_id = auth.uid()
@@ -253,13 +243,10 @@
     };
   }
 
+  // performance_metrics columns you listed:
+  // date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours
   function __piqLocalTestToMetricRow(test) {
     if (!test) return null;
-
-    const numOrNull = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
 
     return {
       // dataStore injects athlete_id = auth.uid()
@@ -283,26 +270,33 @@
       await window.dataStore.upsertWorkoutLog(row);
       return true;
     } catch (e) {
-      console.warn("[cloud] workout_logs upsert skipped:", e && e.message ? e.message : e);
+      console.warn("[cloud] workout_logs upsert skipped:", e?.message || e);
       return false;
     }
   }
 
   async function __piqTryUpsertPerformanceMetric(localTest) {
-    if (
-      !window.dataStore ||
-      typeof window.dataStore.upsertPerformanceMetric !== "function"
-    ) return false;
+    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function") return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
 
     const row = __piqLocalTestToMetricRow(localTest);
     if (!row || !row.date) return false;
 
+    // Don’t write an all-null row
+    const hasAny =
+      row.vert_inches !== null ||
+      row.sprint_seconds !== null ||
+      row.cod_seconds !== null ||
+      row.bw_lbs !== null ||
+      row.sleep_hours !== null;
+
+    if (!hasAny) return false;
+
     try {
       await window.dataStore.upsertPerformanceMetric(row);
       return true;
     } catch (e) {
-      console.warn("[cloud] performance_metrics upsert skipped:", e && e.message ? e.message : e);
+      console.warn("[cloud] performance_metrics upsert skipped:", e?.message || e);
       return false;
     }
   }
@@ -324,33 +318,29 @@
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
 
-        // mutate in place
-        Object.keys(state).forEach((k) => { delete state[k]; });
-        Object.keys(next).forEach((k) => { state[k] = next[k]; });
+        // mutate in place so references remain stable
+        Object.keys(state).forEach((k) => delete state[k]);
+        Object.keys(next).forEach((k) => (state[k] = next[k]));
 
-        try { __saveLocal(state); } catch {}
+        __saveLocal(state);
         console.log("[cloud] pulled newer state");
       }
     } catch (e) {
-      console.warn("[cloud] pull skipped:", e && e.message ? e.message : e);
+      console.warn("[cloud] pull skipped:", e?.message || e);
     }
   }
 
-  // Expose "two one-liners" targets
+  // Expose the two “one-liners” you wanted
   window.PIQ.cloud = window.PIQ.cloud || {};
-
-  // ONE-LINER target for saveLog(): window.PIQ.cloud.upsertWorkoutLogFromLocal(localLog)
   window.PIQ.cloud.upsertWorkoutLogFromLocal = function (localLog) {
     __piqTryUpsertWorkoutLog(localLog);
   };
-
-  // ONE-LINER target for saveTests(): window.PIQ.cloud.upsertPerformanceMetricFromLocal(localTest)
   window.PIQ.cloud.upsertPerformanceMetricFromLocal = function (localTest) {
     __piqTryUpsertPerformanceMetric(localTest);
   };
 
-  // Optional: pull once after sign-in (if authStore supports onAuthChange)
-  (function __wirePullOnAuth() {
+  // Pull once after sign-in if auth store supports onAuthChange
+  (function wirePullOnAuth() {
     const auth = window.PIQ_AuthStore;
     if (!auth || typeof auth.onAuthChange !== "function") return;
     auth.onAuthChange((user) => {
@@ -359,22 +349,8 @@
   })();
 
   // =========================================================
-  // ✅ ROLE CHOOSER + OFFLINE-FIRST SYNC
+  // ROLE CHOOSER (replaces alert stub)
   // =========================================================
-
-  function isSupabaseReady() {
-    return !!(window.supabaseClient && window.PIQ_AuthStore && window.dataStore);
-  }
-
-  async function isSignedIn() {
-    try {
-      if (!window.PIQ_AuthStore) return false;
-      const u = await window.PIQ_AuthStore.getUser();
-      return !!u;
-    } catch {
-      return false;
-    }
-  }
 
   function ensureOnboardMount() {
     let mount = $("onboard");
@@ -387,50 +363,17 @@
   }
 
   function setRoleEverywhere(role) {
-    state.role = role;
-
-    // boot.js reads these keys for gating
-    try { localStorage.setItem("role", role); } catch {}
-    try { localStorage.setItem("selectedRole", role); } catch {}
+    state.role = role || "";
+    // boot.js gate reads these keys
+    try { localStorage.setItem("role", state.role); } catch {}
+    try { localStorage.setItem("selectedRole", state.role); } catch {}
   }
 
   function setProfileBasics(sport, days) {
     state.profile = state.profile || {};
     state.profile.sport = sport || state.profile.sport || "basketball";
     state.profile.days = Number(days || state.profile.days || 4);
-  }
-
-  async function tryCloudPullIntoLocal() {
-    if (!isSupabaseReady()) return false;
-    const signed = await isSignedIn();
-    if (!signed) return false;
-
-    try {
-      const remote = await window.dataStore.pullState(); // expects {state, updated_at} or null
-      if (!remote || !remote.state) return false;
-      if (typeof remote.state !== "object") return false;
-
-      const remoteUpdated = Number(remote.state?.meta?.updatedAtMs || 0);
-      const localUpdated = Number(state?.meta?.updatedAtMs || 0);
-
-      if (remoteUpdated > localUpdated) {
-        const next = normalizeState(remote.state);
-
-        // mutate-in-place so `state` reference stays stable
-        Object.keys(state).forEach((k) => { delete state[k]; });
-        Object.keys(next).forEach((k) => { state[k] = next[k]; });
-
-        if (state.role) setRoleEverywhere(state.role);
-
-        try { __saveLocal(state); } catch {}
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      console.warn("[cloud] pull skipped:", e && e.message ? e.message : e);
-      return false;
-    }
+    if (!Number.isFinite(state.profile.days) || state.profile.days <= 0) state.profile.days = 4;
   }
 
   async function renderRoleChooser() {
@@ -441,8 +384,8 @@
     const signed = supaOk ? await isSignedIn() : false;
 
     const currentRole = (state.role || "").trim();
-    const currentSport = (state.profile && state.profile.sport) ? state.profile.sport : "basketball";
-    const currentDays = (state.profile && Number.isFinite(state.profile.days)) ? String(state.profile.days) : "4";
+    const currentSport = state.profile?.sport || "basketball";
+    const currentDays = Number.isFinite(state.profile?.days) ? String(state.profile.days) : "4";
 
     mount.innerHTML = `
       <div class="modalBack">
@@ -499,7 +442,7 @@
           </div>
 
           <div class="small" style="margin-top:8px">
-            Offline-first: the app works without signing in. Sync is optional and only runs when signed in.
+            Offline-first: works without signing in. Sync is optional and only runs when signed in.
           </div>
         </div>
       </div>
@@ -517,7 +460,7 @@
     if (syncEl) {
       if (!supaOk) syncEl.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
       else if (!signed) syncEl.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
-      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — you can pull/push.";
+      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
     }
 
     $("piqSaveRole")?.addEventListener("click", () => {
@@ -528,15 +471,16 @@
       setRoleEverywhere(role);
       setProfileBasics(sport, days);
 
-      // this saves local + schedules cloud push (if signed in)
-      if (typeof window.PIQ_applyOnboardingSavePatch === "function") {
-        window.PIQ_applyOnboardingSavePatch(mount);
-      } else {
-        try { saveState(state); } catch {}
-        try { mount.style.display = "none"; mount.innerHTML = ""; } catch {}
-        try { hideSplashNow(); } catch {}
-        try { window.startApp?.(); } catch {}
-      }
+      saveState(state);
+
+      try {
+        mount.style.display = "none";
+        mount.innerHTML = "";
+      } catch {}
+
+      hideSplashNow();
+
+      if (typeof window.startApp === "function") window.startApp();
     });
 
     $("piqResetRole")?.addEventListener("click", () => {
@@ -555,7 +499,7 @@
         await window.PIQ_AuthStore.signInWithOtp(email.trim());
         alert("Check your email for the sign-in link, then return here.");
       } catch (e) {
-        alert("Sign-in failed: " + (e && e.message ? e.message : e));
+        alert("Sign-in failed: " + (e?.message || e));
       }
     });
 
@@ -565,14 +509,18 @@
         alert("Signed out.");
         location.reload();
       } catch (e) {
-        alert("Sign-out failed: " + (e && e.message ? e.message : e));
+        alert("Sign-out failed: " + (e?.message || e));
       }
     });
 
     $("piqPull")?.addEventListener("click", async () => {
-      const pulled = await tryCloudPullIntoLocal();
-      alert(pulled ? "Pulled newer cloud state to this device." : "No newer cloud state found.");
-      location.reload();
+      try {
+        await __piqTryPullCloudStateIfNewer();
+        alert("Pulled cloud (if newer). Reloading.");
+        location.reload();
+      } catch (e) {
+        alert("Pull failed: " + (e?.message || e));
+      }
     });
   }
 
@@ -581,31 +529,95 @@
     renderRoleChooser();
   };
 
-  // Optional: pull once at startup if signed in and cloud is newer
-  document.addEventListener("DOMContentLoaded", async () => {
-    try { await tryCloudPullIntoLocal(); } catch {}
-  });
+  // =========================================================
+  // OPTIONAL: Minimal saveTests + saveLog implementations
+  // (Safe even if your UI doesn't have these fields/buttons yet)
+  // =========================================================
+
+  async function saveTestsMinimal() {
+    const dateISO = ($("testDate")?.value || todayISO()).trim();
+
+    const test = {
+      dateISO,
+      vert: parseInputNumOrNull("vert"),
+      sprint10: parseInputNumOrNull("sprint10"),
+      cod: parseInputNumOrNull("cod"),
+      bw: parseInputNumOrNull("bw"),
+      sleep: parseInputNumOrNull("sleep")
+    };
+
+    state.tests = (state.tests || []).filter((t) => t.dateISO !== dateISO);
+    state.tests.push(test);
+    state.tests.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    saveState(state);
+
+    // one-liner cloud sync
+    window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
+  }
+
+  async function saveLogMinimal() {
+    const dateISO = ($("logDate")?.value || todayISO()).trim();
+
+    // If you have a richer log builder elsewhere, keep it; this is a safe fallback.
+    const localLog = {
+      dateISO,
+      theme: $("logTheme")?.value || null,
+      injury: $("injuryFlag")?.value || "none",
+      wellness: numOrNull($("wellness")?.value),
+      entries: [] // you can populate this from your log table inputs later
+    };
+
+    state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
+    state.logs.push(localLog);
+    state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    saveState(state);
+
+    // one-liner cloud sync
+    window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
+  }
+
+  // Expose so buttons/other files can call them
+  window.PIQ.saveTests = window.PIQ.saveTests || saveTestsMinimal;
+  window.PIQ.saveLog = window.PIQ.saveLog || saveLogMinimal;
 
   // =========================================================
-  // Failsafe: hide splash after 2s or on first interaction.
-  // NOTE: If boot.js already does this, you can remove this block.
+  // startApp — safe init: ensures role gate + wires optional buttons
   // =========================================================
-  document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(hideSplashNow, 2000);
+  window.startApp =
+    window.startApp ||
+    function () {
+      // Ensure role is present; if not, show chooser.
+      const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
+      if (!role) {
+        window.showRoleChooser();
+        return;
+      }
+      if (!state.role) setRoleEverywhere(role);
+
+      // Wire optional buttons if present in your HTML
+      $("btnSaveTests")?.addEventListener("click", () => {
+        window.PIQ.saveTests().catch((e) => console.warn("[saveTests]", e?.message || e));
+      });
+
+      $("btnSaveLog")?.addEventListener("click", () => {
+        window.PIQ.saveLog().catch((e) => console.warn("[saveLog]", e?.message || e));
+      });
+
+      console.log("PerformanceIQ core started. Role:", state.role || role);
+    };
+
+  // =========================================================
+  // Startup: optional pull + splash failsafe
+  // =========================================================
+  document.addEventListener("DOMContentLoaded", async () => {
+    // Pull once at startup if signed in & cloud is newer
+    try {
+      if (await isSignedIn()) await __piqTryPullCloudStateIfNewer();
+    } catch {}
+
+    // Splash failsafe
+    setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
     window.addEventListener("click", hideSplashNow, { once: true });
     window.addEventListener("touchstart", hideSplashNow, { once: true });
   });
-
-  /* =========================================================
-     ✅ YOUR APP LOGIC GOES BELOW THIS LINE
-     When you add your saveLog() and saveTests(), add:
-
-     (1) After saveState(state) in saveLog():
-         window.PIQ?.cloud?.upsertWorkoutLogFromLocal(state.logs[state.logs.length - 1]);
-
-     (2) After saveState(state) in saveTests():
-         window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(state.tests[state.tests.length - 1]);
-
-     ========================================================= */
-
 })();
