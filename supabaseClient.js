@@ -1,43 +1,42 @@
-// supabaseClient.js (plain script, no exports)
+// supabaseClient.js (PLAIN SCRIPT)
 (function () {
   "use strict";
 
-  // Don't double-init
-  if (window.supabaseClient) {
-    // Ensure sb() exists even if client already exists
-    window.sb = window.sb || (() => window.supabaseClient);
-    return;
-  }
-
-  const url = String(window.SUPABASE_URL || "").trim();
-  const key = String(window.SUPABASE_ANON_KEY || "").trim();
+  // Guard against double load
+  if (window.__PIQ_SB_LOADED__) return;
+  window.__PIQ_SB_LOADED__ = true;
 
   function isValidHttpUrl(s) {
     try {
-      const u = new URL(s);
+      const u = new URL(String(s || ""));
       return u.protocol === "http:" || u.protocol === "https:";
     } catch {
       return false;
     }
   }
 
+  const url = (window.SUPABASE_URL || "").trim();
+  const key = (window.SUPABASE_ANON_KEY || "").trim();
+
+  // Define sb() no matter what (so callers can detect offline)
+  window.sb = function sb() {
+    return window.supabaseClient || null;
+  };
+
+  // If config missing/invalid, stay offline (don’t crash app)
   if (!isValidHttpUrl(url)) {
-    console.error("[supabaseClient] Invalid SUPABASE_URL:", url);
-    return; // allow offline mode
+    console.warn("[supabase] Offline mode: SUPABASE_URL invalid/missing:", url);
+    return;
   }
-
   if (!key) {
-    console.error("[supabaseClient] Missing SUPABASE_ANON_KEY");
-    return; // allow offline mode
+    console.warn("[supabase] Offline mode: SUPABASE_ANON_KEY missing.");
+    return;
   }
-
   if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    console.error("[supabaseClient] Supabase CDN not loaded. Check script tag for @supabase/supabase-js@2");
+    console.warn("[supabase] Offline mode: Supabase CDN not loaded.");
     return;
   }
 
+  // Create once
   window.supabaseClient = window.supabase.createClient(url, key);
-
-  // ✅ This is what your dataStore expects
-  window.sb = () => window.supabaseClient;
 })();
