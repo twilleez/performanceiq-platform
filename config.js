@@ -1,14 +1,13 @@
-// config.js (PLAIN SCRIPT)
+// config.js — FULL REPLACEMENT
 (function () {
   "use strict";
 
-  // Supabase Dashboard → Project Settings → API
-  // Example format:
-  // window.SUPABASE_URL = "https://xxxx.supabase.co";
-  // window.SUPABASE_ANON_KEY = "eyJhbGciOi...";
+  // IMPORTANT:
+  // - If either value is missing, cloud sync is disabled automatically (offline-first still works).
+  // - Do not commit secret keys. Supabase "anon" key is okay to ship.
 
-  window.SUPABASE_URL = "https://znhxaqlvkpcskvzljiev.supabase.co";
-window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....";
-
-  window.PIQ_VERSION = "1.0.6";
+  window.PIQ_CONFIG = window.PIQ_CONFIG || {
+    SUPABASE_URL: "",       // e.g. "https://xxxx.supabase.co"
+    SUPABASE_ANON_KEY: ""   // e.g. "eyJhbGciOiJIUzI1NiIs..."
+  };
 })();
