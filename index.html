@@ -8,9 +8,11 @@
 
   <link rel="icon" href="./icon-192.png">
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./app.css?v=1.0.7">
+  <link rel="stylesheet" href="./app.css?v=1.0.9">
 </head>
 <body>
+  <noscript>This app requires JavaScript.</noscript>
+
   <div id="splash">
     <div id="splashCard">
       <img src="./logo.png" alt="Logo">
@@ -18,7 +20,6 @@
     </div>
   </div>
 
-  <!-- Onboarding modal mount -->
   <div id="onboard" style="display:none"></div>
 
   <div class="topbar">
@@ -26,7 +27,7 @@
       <img src="./logo.png" alt="Logo">
       <div class="brandTitle">PerformanceIQ</div>
       <div class="pill" id="rolePill">Role: —</div>
-      <div class="pill" id="trialPill">Offline-first</div>
+      <div class="pill" id="syncPill">Offline-first</div>
     </div>
 
     <div class="nav" role="navigation" aria-label="Primary">
@@ -44,30 +45,28 @@
 
   <div class="container">
     <div class="grid">
-      <!-- Left column -->
-      <div class="card" id="tab-profile" role="region" aria-label="Profile"></div>
+      <div class="card" id="tab-profile"></div>
 
-      <!-- Right column -->
       <div>
-        <div class="card" id="tab-program" style="display:none" role="region" aria-label="Program"></div>
-        <div class="card" id="tab-log" style="display:none" role="region" aria-label="Log"></div>
-        <div class="card" id="tab-performance" style="display:none" role="region" aria-label="Performance"></div>
-        <div class="card" id="tab-dashboard" style="display:none" role="region" aria-label="Dashboard"></div>
-        <div class="card" id="tab-team" style="display:none" role="region" aria-label="Team"></div>
-        <div class="card" id="tab-parent" style="display:none" role="region" aria-label="Parent"></div>
-        <div class="card" id="tab-settings" style="display:none" role="region" aria-label="Settings"></div>
+        <div class="card" id="tab-program" style="display:none"></div>
+        <div class="card" id="tab-log" style="display:none"></div>
+        <div class="card" id="tab-performance" style="display:none"></div>
+        <div class="card" id="tab-dashboard" style="display:none"></div>
+        <div class="card" id="tab-team" style="display:none"></div>
+        <div class="card" id="tab-parent" style="display:none"></div>
+        <div class="card" id="tab-settings" style="display:none"></div>
       </div>
     </div>
   </div>
 
-  <!-- Scripts (order matters) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <!-- Scripts (defer preserves order) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <script src="./config.js?v=1.0.7" defer></script>
-  <script src="./supabaseClient.js?v=1.0.7" defer></script>
-  <script src="./authStore.js?v=1.0.7" defer></script>
-  <script src="./dataStore.js?v=1.0.7" defer></script>
-  <script src="./core.js?v=1.0.8" defer></script>
-  <script src="./boot.js?v=1.0.8" defer></script>
+  <script defer src="./config.js?v=1.0.9"></script>
+  <script defer src="./supabaseClient.js?v=1.0.9"></script>
+  <script defer src="./authStore.js?v=1.0.9"></script>
+  <script defer src="./dataStore.js?v=1.0.9"></script>
+  <script defer src="./core.js?v=1.0.9"></script>
+  <script defer src="./boot.js?v=1.0.9"></script>
 </body>
 </html>
