@@ -1,71 +1,32 @@
-// boot.js (PLAIN SCRIPT)
+// boot.js — FULL REPLACEMENT
 (function () {
   "use strict";
 
-  if (window.__PIQ_BOOT_LOADED__) return;
-  window.__PIQ_BOOT_LOADED__ = true;
-
-  function hideSplash() {
-    const s = document.getElementById("splash");
-    if (!s) return;
-    s.classList.add("hidden");
-    s.style.display = "none";
-    try { s.remove(); } catch {}
-  }
-
-  function showRoleChooserSafe() {
-    if (typeof window.showRoleChooser === "function") {
-      window.showRoleChooser();
-      return true;
-    }
-    console.error("showRoleChooser() not found. core.js must load before boot.js.");
-    return false;
-  }
-
-  function wireSwitchRole() {
-    const btn = document.getElementById("btnSwitchRole");
-    if (!btn) return;
-
-    btn.addEventListener("click", () => {
-      if (!confirm("Switch role? This will return you to role setup.")) return;
-
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
-
-      // Let core handle the chooser UI
-      const shown = showRoleChooserSafe();
-      hideSplash();
-      if (!shown) location.reload();
-    });
-  }
-
-  function roleGate() {
-    const storedRole = (
-      localStorage.getItem("role") ||
-      localStorage.getItem("selectedRole") ||
-      ""
-    ).trim();
-
-    if (!storedRole) {
-      setTimeout(() => {
-        showRoleChooserSafe();
-        hideSplash();
-      }, 0);
-      return false;
-    }
-    return true;
+  function safeHideSplash() {
+    try {
+      if (typeof window.hideSplashNow === "function") window.hideSplashNow();
+    } catch {}
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    // Always kill splash (even if something else fails)
-    setTimeout(hideSplash, 1200);
-    window.addEventListener("click", hideSplash, { once: true });
-    window.addEventListener("touchstart", hideSplash, { once: true });
+    // If core isn't ready, don't crash the page.
+    if (typeof window.startApp !== "function" || typeof window.showRoleChooser !== "function") {
+      console.warn("[boot] core not ready.");
+      safeHideSplash();
+      return;
+    }
 
-    wireSwitchRole();
+    try {
+      // Start app (core handles role gating + rendering)
+      window.startApp();
+    } catch (e) {
+      console.warn("[boot] startApp failed:", e?.message || e);
+      safeHideSplash();
+    }
 
-    if (!roleGate()) return;
-
-    if (typeof window.startApp === "function") window.startApp();
+    // Failsafe splash
+    setTimeout(safeHideSplash, 2000);
+    window.addEventListener("click", safeHideSplash, { once: true });
+    window.addEventListener("touchstart", safeHideSplash, { once: true });
   });
 })();
