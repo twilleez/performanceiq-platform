@@ -436,7 +436,11 @@
 
     $("piqSaveRole")?.addEventListener("click", () => {
       setRoleEverywhere(roleSel ? roleSel.value : ROLES.ATHLETE);
-      setProfileBasics(sportSel ? sportSel.value : SPORTS.BASKETBALL, daysSel ? daysSel.value : 4, state.profile?.name || "");
+      setProfileBasics(
+        sportSel ? sportSel.value : SPORTS.BASKETBALL,
+        daysSel ? daysSel.value : 4,
+        state.profile?.name || ""
+      );
       saveState();
 
       try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
@@ -494,15 +498,22 @@
   // ---- Tab system ----
   const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
 
+  // ✅ REPLACEMENT MERGED: showTab now renders immediately and owns the lifecycle (fixes "tab visible but empty")
   function showTab(tabName) {
+    if (!TABS.includes(tabName)) tabName = "profile";
+
     for (const t of TABS) {
       const el = $(`tab-${t}`);
       if (!el) continue;
       el.style.display = (t === tabName) ? "block" : "none";
     }
+
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
     __saveLocal(state); // UI-only; don't bump meta/version
+
+    // 🔥 critical: always render after the tab becomes active
+    renderActiveTab();
   }
 
   function activeTab() {
@@ -511,11 +522,11 @@
     return "profile";
   }
 
+  // ✅ REPLACEMENT MERGED: wireNav no longer calls renderActiveTab separately (showTab handles it)
   function wireNav() {
     for (const t of TABS) {
       $(`nav-${t}`)?.addEventListener("click", () => {
         showTab(t);
-        renderActiveTab();
       });
     }
   }
@@ -752,12 +763,10 @@
       setProfileBasics(nextSport, nextDays, $("profileName")?.value || "");
       state.week = generateProgram(state.profile.sport, state.profile.days);
       saveState();
-      showTab("program");
-      renderActiveTab();
+      showTab("program"); // showTab already renders now
     });
   }
 
-  // ✅ Updated Program renderer (structured)
   function renderProgram() {
     const el = $("tab-program");
     if (!el) return;
@@ -880,7 +889,7 @@
 
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const hydration = ($("hydrationLevel")?.value || "good").trim(); // hydration level
+      const hydration = ($("hydrationLevel")?.value || "good").trim();
 
       const localLog = {
         dateISO,
@@ -888,7 +897,7 @@
         injury: $("injuryFlag")?.value || "none",
         wellness: numOrNull($("wellness")?.value),
         energy: numOrNull($("energy")?.value),
-        hydration, // stored in local state
+        hydration, // hydration level (no fractions added)
         entries: []
       };
 
@@ -897,9 +906,7 @@
       state.logs.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
       saveState();
 
-      // cloud write (mapping supports hydration -> workout_logs.hydration)
       window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
-
       alert("Saved.");
     });
 
@@ -1228,8 +1235,7 @@
     if (!state.role) setRoleEverywhere(role);
 
     wireNav();
-    showTab(activeTab());
-    renderActiveTab();
+    showTab(activeTab()); // showTab renders now
     hideSplashNow();
 
     console.log("PerformanceIQ core started. Role:", state.role || role);
