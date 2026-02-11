@@ -931,38 +931,101 @@ function renderLog() {
   }
 
   function renderDashboard() {
-    const el = $("tab-dashboard");
-    if (!el) return;
+  const el = $("tab-dashboard");
+  if (!el) return;
 
-    const lastLog = Array.isArray(state.logs) && state.logs.length
-      ? state.logs.slice().sort((a,b)=>b.dateISO.localeCompare(a.dateISO))[0]
-      : null;
+  el.innerHTML = `
+    <h3 style="margin-top:0">Dashboard</h3>
+    <div class="small">Trends from your logs and tests.</div>
+    <div class="hr"></div>
 
-    const lastTest = Array.isArray(state.tests) && state.tests.length
-      ? state.tests.slice().sort((a,b)=>b.dateISO.localeCompare(a.dateISO))[0]
-      : null;
+    <div class="card" style="margin:10px 0">
+      <div class="small"><b>Wellness trend (last 14)</b></div>
+      <canvas id="chartWellness" width="320" height="140" style="width:100%;max-width:640px"></canvas>
+    </div>
 
-    el.innerHTML = `
-      <h3 style="margin-top:0">Dashboard</h3>
-      <div class="small">Quick snapshot.</div>
-      <div class="hr"></div>
+    <div class="card" style="margin:10px 0">
+      <div class="small"><b>Vertical trend (last 14)</b></div>
+      <canvas id="chartVert" width="320" height="140" style="width:100%;max-width:640px"></canvas>
+    </div>
+  `;
 
-      <div class="card" style="margin:10px 0">
-        <div><b>Profile</b></div>
-        <div class="small">Sport: ${sanitizeHTML(state.profile?.sport || "—")} • Days/week: ${sanitizeHTML(state.profile?.days ?? "—")}</div>
-      </div>
+  // Simple line chart helper (no external libs)
+  function drawLine(canvasId, points) {
+    const c = $(canvasId);
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
 
-      <div class="card" style="margin:10px 0">
-        <div><b>Latest Log</b></div>
-        <div class="small">${lastLog ? sanitizeHTML(lastLog.dateISO) + " — " + sanitizeHTML(lastLog.theme || "") : "No logs yet."}</div>
-      </div>
+    const w = c.width, h = c.height;
+    ctx.clearRect(0, 0, w, h);
 
-      <div class="card" style="margin:10px 0">
-        <div><b>Latest Test</b></div>
-        <div class="small">${lastTest ? sanitizeHTML(lastTest.dateISO) + " — Vert " + sanitizeHTML(lastTest.vert ?? "—") : "No tests yet."}</div>
-      </div>
-    `;
+    if (!points || points.length < 2) {
+      ctx.fillText("Not enough data yet.", 8, 18);
+      return;
+    }
+
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const pad = 10;
+
+    const scaleX = (x) => pad + (x / (points.length - 1)) * (w - pad * 2);
+    const scaleY = (y) => {
+      if (maxY === minY) return h / 2;
+      const t = (y - minY) / (maxY - minY);
+      return (h - pad) - t * (h - pad * 2);
+    };
+
+    // axis baseline
+    ctx.beginPath();
+    ctx.moveTo(pad, h - pad);
+    ctx.lineTo(w - pad, h - pad);
+    ctx.stroke();
+
+    // line
+    ctx.beginPath();
+    points.forEach((p, i) => {
+      const x = scaleX(i);
+      const y = scaleY(p.y);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // labels (min/max)
+    ctx.fillText(String(minY), pad, h - pad - 2);
+    ctx.fillText(String(maxY), pad, pad + 10);
   }
+
+  // wellness points
+  const logs = (state.logs || [])
+    .filter((l) => l && l.dateISO)
+    .slice()
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+    .slice(-14);
+
+  const wellnessPts = logs
+    .map((l, i) => ({ x: i, y: Number(l.wellness) }))
+    .filter((p) => Number.isFinite(p.y));
+
+  drawLine("chartWellness", wellnessPts);
+
+  // vert points
+  const tests = (state.tests || [])
+    .filter((t) => t && t.dateISO)
+    .slice()
+    .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+    .slice(-14);
+
+  const vertPts = tests
+    .map((t, i) => ({ x: i, y: Number(t.vert) }))
+    .filter((p) => Number.isFinite(p.y));
+
+  drawLine("chartVert", vertPts);
+}
 
   function renderTeam() {
     const el = $("tab-team");
