@@ -1,4 +1,4 @@
-// core.js — PRODUCTION-READY REPLACEMENT
+// core.js — PRODUCTION-READY REPLACEMENT (FIXED)
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 (function () {
   "use strict";
@@ -72,8 +72,12 @@
 
   // ---- Local persistence ----
   function __loadLocalRaw() {
-    try { return localStorage.getItem(STORAGE_KEY); }
-    catch (e) { logError("loadLocalRaw", e); return null; }
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      logError("loadLocalRaw", e);
+      return null;
+    }
   }
 
   function __saveLocal(stateObj) {
@@ -96,7 +100,8 @@
       week: null,
       logs: [],
       tests: [],
-      team: { name: "", roster: [], attendance: [], board: "", compliance: "off" }
+      team: { name: "", roster: [], attendance: [], board: "", compliance: "off" },
+      _ui: { activeTab: "profile" }
     };
   }
 
@@ -132,48 +137,30 @@
     if (typeof s.team.board !== "string") s.team.board = d.team.board;
     if (typeof s.team.compliance !== "string") s.team.compliance = d.team.compliance;
 
+    s._ui = s._ui && typeof s._ui === "object" ? s._ui : { activeTab: "profile" };
+    if (typeof s._ui.activeTab !== "string") s._ui.activeTab = "profile";
+
     return s;
   }
 
   function loadState() {
     const raw = __loadLocalRaw();
     if (!raw) return null;
-    try { return normalizeState(JSON.parse(raw)); }
-    catch (e) { logError("loadState", e); return null; }
+    try {
+      return normalizeState(JSON.parse(raw));
+    } catch (e) {
+      logError("loadState", e);
+      return null;
+    }
   }
 
-  // ---- State manager (simple) ----
+  // ---- State ----
   const state = loadState() || defaultState();
 
   function bumpMeta() {
     state.meta.updatedAtMs = Date.now();
     state.meta.version = (state.meta.version || 0) + 1;
   }
-
-  function saveState() {
-    bumpMeta();
-    __saveLocal(state);
-    scheduleCloudPush();
-    renderActiveTab(); // keep UI in sync
-  }
-
-  // ---- Expose debug handles ----
-  window.PIQ = window.PIQ || {};
-  window.PIQ.getState = () => state;
-  window.PIQ.getErrors = () => [...errorQueue];
-  window.PIQ.saveState = window.PIQ.saveState || (() => saveState());
-
-  // ---- Splash hide ----
-  function hideSplashNow() {
-    const s = $("splash");
-    if (!s) return;
-    s.classList.add("hidden");
-    s.style.display = "none";
-    s.style.visibility = "hidden";
-    s.style.opacity = "0";
-    try { s.remove(); } catch (e) { logError("hideSplash", e); }
-  }
-  window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
   // ---- Supabase readiness ----
   function isSupabaseReady() {
@@ -190,6 +177,22 @@
       return false;
     }
   }
+
+  // ---- Splash hide ----
+  function hideSplashNow() {
+    const s = $("splash");
+    if (!s) return;
+    s.classList.add("hidden");
+    s.style.display = "none";
+    s.style.visibility = "hidden";
+    s.style.opacity = "0";
+    try {
+      s.remove();
+    } catch (e) {
+      logError("hideSplash", e);
+    }
+  }
+  window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
   // ---- Cloud push (state) ----
   async function __pushStateNow() {
@@ -233,9 +236,8 @@
 
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
-        // mutate in place
-        Object.keys(state).forEach((k) => { delete state[k]; });
-        Object.keys(next).forEach((k) => { state[k] = next[k]; });
+        Object.keys(state).forEach((k) => delete state[k]);
+        Object.keys(next).forEach((k) => (state[k] = next[k]));
         __saveLocal(state);
         return true;
       }
@@ -245,6 +247,20 @@
       return false;
     }
   }
+
+  // ---- saveState (no args) ----
+  function saveState() {
+    bumpMeta();
+    __saveLocal(state);
+    scheduleCloudPush();
+    renderActiveTab(); // keep UI in sync
+  }
+
+  // ---- Expose debug handles ----
+  window.PIQ = window.PIQ || {};
+  window.PIQ.getState = () => state;
+  window.PIQ.getErrors = () => [...errorQueue];
+  window.PIQ.saveState = window.PIQ.saveState || saveState;
 
   // ---- Logs + Metrics cloud helpers (optional) ----
   function __piqComputeVolumeFromEntries(entries) {
@@ -265,9 +281,10 @@
       volume: __piqComputeVolumeFromEntries(localLog.entries || []),
       wellness: numOrNull(localLog.wellness),
       energy: numOrNull(localLog.energy),
-      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null,
+      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null, // ✅ hydration level
       injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none",
-      practice_intensity: typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
+      practice_intensity:
+        typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
       practice_duration_min: numOrNull(localLog.practice_duration_min),
       extra_gym: typeof localLog.extra_gym === "boolean" ? localLog.extra_gym : null,
       extra_gym_duration_min: numOrNull(localLog.extra_gym_duration_min)
@@ -291,13 +308,20 @@
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
     const row = __localLogToWorkoutRow(localLog);
     if (!row || !row.date) return false;
-    try { await window.dataStore.upsertWorkoutLog(row); return true; }
-    catch (e) { logError("upsertWorkoutLog", e); return false; }
+    try {
+      await window.dataStore.upsertWorkoutLog(row);
+      return true;
+    } catch (e) {
+      logError("upsertWorkoutLog", e);
+      return false;
+    }
   }
 
   async function __tryUpsertMetric(localTest) {
-    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function") return false;
+    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function")
+      return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
     const row = __localTestToMetricRow(localTest);
     if (!row || !row.date) return false;
 
@@ -310,19 +334,36 @@
 
     if (!hasAny) return false;
 
-    try { await window.dataStore.upsertPerformanceMetric(row); return true; }
-    catch (e) { logError("upsertPerformanceMetric", e); return false; }
+    try {
+      await window.dataStore.upsertPerformanceMetric(row);
+      return true;
+    } catch (e) {
+      logError("upsertPerformanceMetric", e);
+      return false;
+    }
   }
 
   window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => { __tryUpsertWorkoutLog(localLog); };
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => { __tryUpsertMetric(localTest); };
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => {
+    __tryUpsertWorkoutLog(localLog);
+  };
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => {
+    __tryUpsertMetric(localTest);
+  };
 
   // ---- Role helpers ----
   function setRoleEverywhere(role) {
     state.role = role || "";
-    try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
-    try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
+    try {
+      localStorage.setItem("role", state.role);
+    } catch (e) {
+      logError("setRole", e);
+    }
+    try {
+      localStorage.setItem("selectedRole", state.role);
+    } catch (e) {
+      logError("setSelectedRole", e);
+    }
   }
 
   function setProfileBasics(sport, days, name) {
@@ -333,7 +374,7 @@
     if (typeof name === "string") state.profile.name = name;
   }
 
-  // ---- Minimal, real role chooser UI ----
+  // ---- Role chooser UI ----
   function ensureOnboardMount() {
     let mount = $("onboard");
     if (!mount) {
@@ -432,20 +473,36 @@
 
     $("piqSaveRole")?.addEventListener("click", () => {
       setRoleEverywhere(roleSel ? roleSel.value : ROLES.ATHLETE);
-      setProfileBasics(sportSel ? sportSel.value : SPORTS.BASKETBALL, daysSel ? daysSel.value : 4);
+      setProfileBasics(
+        sportSel ? sportSel.value : SPORTS.BASKETBALL,
+        daysSel ? daysSel.value : 4,
+        ""
+      );
 
       saveState();
 
-      try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
+      try {
+        mount.style.display = "none";
+        mount.innerHTML = "";
+      } catch (e) {
+        logError("hideRoleChooser", e);
+      }
+
       hideSplashNow();
       window.startApp?.();
     });
 
     $("piqResetRole")?.addEventListener("click", () => {
       if (!confirm("Clear ALL saved data on this device?")) return;
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+      try {
+        localStorage.removeItem("role");
+      } catch {}
+      try {
+        localStorage.removeItem("selectedRole");
+      } catch {}
       location.reload();
     });
 
@@ -485,23 +542,22 @@
     });
   }
 
-  // boot.js calls this when no role is stored
-  window.showRoleChooser = function () { renderRoleChooser(); };
+  window.showRoleChooser = function () {
+    renderRoleChooser();
+  };
 
-  // ---- Tab system (THIS is what you were missing) ----
-  const TABS = [
-    "profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"
-  ];
+  // ---- Tab system ----
+  const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
 
   function showTab(tabName) {
     for (const t of TABS) {
       const el = $(`tab-${t}`);
       if (!el) continue;
-      el.style.display = (t === tabName) ? "block" : "none";
+      el.style.display = t === tabName ? "block" : "none";
     }
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
-    __saveLocal(state); // UI-only, don’t bump version
+    __saveLocal(state); // UI-only
   }
 
   function activeTab() {
@@ -527,12 +583,11 @@
     if (trialPill) trialPill.textContent = isSupabaseReady() ? "Offline-first + Sync" : "Offline-first";
   }
 
-  // ---- Program generator (simple, deterministic) ----
+  // ---- Program generator ----
   function generateProgram(sport, days) {
     const d = Number(days || 4);
     const s = (sport || SPORTS.BASKETBALL).toLowerCase();
 
-    // Minimal templates (you can expand later)
     const base = {
       warmup: ["5–8 min easy cardio", "Dynamic mobility", "Activation (glutes/core)"],
       finisher: ["Cooldown walk 5 min", "Stretch hips/ankles/hamstrings 8–10 min"]
@@ -646,12 +701,14 @@
       <div class="small">Tip: After generating a program, open the <b>Program</b> tab.</div>
     `;
 
-    $("profileSport").value = sport;
-    $("profileDays").value = String(days);
+    const sportEl = $("profileSport");
+    const daysEl = $("profileDays");
+    if (sportEl) sportEl.value = sport;
+    if (daysEl) daysEl.value = String(days);
 
     $("btnSaveProfile")?.addEventListener("click", () => {
-      const nextSport = $("profileSport")?.value || sport;
-      const nextDays = $("profileDays")?.value || days;
+      const nextSport = sportEl?.value || sport;
+      const nextDays = daysEl?.value || days;
       const nextName = $("profileName")?.value || "";
       setProfileBasics(nextSport, nextDays, nextName);
       saveState();
@@ -660,8 +717,8 @@
     });
 
     $("btnGenProgram")?.addEventListener("click", () => {
-      const nextSport = $("profileSport")?.value || sport;
-      const nextDays = $("profileDays")?.value || days;
+      const nextSport = sportEl?.value || sport;
+      const nextDays = daysEl?.value || days;
       setProfileBasics(nextSport, nextDays, $("profileName")?.value || "");
       state.week = generateProgram(state.profile.sport, state.profile.days);
       saveState();
@@ -683,14 +740,18 @@
       return;
     }
 
-    const daysHtml = (p.daysPlan || []).map((d) => `
+    const daysHtml = (p.daysPlan || [])
+      .map(
+        (d) => `
       <div class="card" style="margin:10px 0">
         <div style="font-weight:600">${sanitizeHTML(d.title)}</div>
         <ul style="margin:8px 0 0 18px">
           ${(d.blocks || []).map((b) => `<li>${sanitizeHTML(b)}</li>`).join("")}
         </ul>
       </div>
-    `).join("");
+    `
+      )
+      .join("");
 
     el.innerHTML = `
       <h3 style="margin-top:0">Program</h3>
@@ -698,123 +759,94 @@
       <div class="hr"></div>
 
       <div class="small"><b>Warmup</b></div>
-      <ul style="margin:8px 0 12px 18px">${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
+      <ul style="margin:8px 0 12px 18px">${(p.warmup || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
 
       ${daysHtml}
 
       <div class="small" style="margin-top:8px"><b>Finisher</b></div>
-      <ul style="margin:8px 0 0 18px">${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
+      <ul style="margin:8px 0 0 18px">${(p.finisher || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
     `;
   }
 
-function renderLog() {
-  const el = $("tab-log");
-  if (!el) return;
+  function renderLog() {
+    const el = $("tab-log");
+    if (!el) return;
 
-  const logs = Array.isArray(state.logs) ? state.logs.slice().sort((a,b)=>b.dateISO.localeCompare(a.dateISO)) : [];
+    const logs = Array.isArray(state.logs)
+      ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
+      : [];
 
-  el.innerHTML = `
-    <h3 style="margin-top:0">Log</h3>
-    <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
-    <div class="hr"></div>
+    el.innerHTML = `
+      <h3 style="margin-top:0">Log</h3>
+      <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
+      <div class="hr"></div>
 
-    <div class="row">
-      <div class="field">
-        <label for="logDate">Date</label>
-        <input id="logDate" type="date" value="${todayISO()}"/>
+      <div class="row">
+        <div class="field">
+          <label for="logDate">Date</label>
+          <input id="logDate" type="date" value="${todayISO()}"/>
+        </div>
+        <div class="field">
+          <label for="logTheme">Program day / theme</label>
+          <input id="logTheme" placeholder="e.g., Day 1 — Strength + Skill"/>
+        </div>
       </div>
-      <div class="field">
-        <label for="logTheme">Program day / theme</label>
-        <input id="logTheme" placeholder="e.g., Day 1 — Strength + Skill"/>
+
+      <div class="row" style="margin-top:10px">
+        <div class="field">
+          <label for="wellness">Wellness (1–10)</label>
+          <input id="wellness" inputmode="numeric" placeholder="7"/>
+        </div>
+        <div class="field">
+          <label for="energy">Energy (1–10)</label>
+          <input id="energy" inputmode="numeric" placeholder="7"/>
+        </div>
+        <div class="field">
+          <label for="hydrationLevel">Hydration level</label>
+          <select id="hydrationLevel">
+            <option value="low">Low</option>
+            <option value="ok">OK</option>
+            <option value="good" selected>Good</option>
+            <option value="great">Great</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="injuryFlag">Injury</label>
+          <select id="injuryFlag">
+            <option value="none">None</option>
+            <option value="sore">Sore</option>
+            <option value="minor">Minor</option>
+            <option value="out">Out</option>
+          </select>
+        </div>
       </div>
-    </div>
 
-    <div class="row" style="margin-top:10px">
-      <div class="field">
-        <label for="wellness">Wellness (1–10)</label>
-        <input id="wellness" inputmode="numeric" placeholder="7"/>
+      <div class="btnRow" style="margin-top:12px">
+        <button class="btn" id="btnSaveLog" type="button">Save Log</button>
       </div>
-      <div class="field">
-        <label for="energy">Energy (1–10)</label>
-        <input id="energy" inputmode="numeric" placeholder="7"/>
-      </div>
-      <div class="field">
-        <label for="hydrationLevel">Hydration level</label>
-        <select id="hydrationLevel">
-          <option value="low">Low</option>
-          <option value="ok">OK</option>
-          <option value="good" selected>Good</option>
-          <option value="great">Great</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="injuryFlag">Injury</label>
-        <select id="injuryFlag">
-          <option value="none">None</option>
-          <option value="sore">Sore</option>
-          <option value="minor">Minor</option>
-          <option value="out">Out</option>
-        </select>
-      </div>
-    </div>
 
-    <div class="btnRow" style="margin-top:12px">
-      <button class="btn" id="btnSaveLog" type="button">Save Log</button>
-    </div>
+      <div class="hr"></div>
 
-    <div class="hr"></div>
+      <div class="small"><b>Recent logs</b></div>
+      <div id="logList"></div>
+    `;
 
-    <div class="small"><b>Recent logs</b></div>
-    <div id="logList"></div>
-  `;
+    $("btnSaveLog")?.addEventListener("click", () => {
+      const dateISO = ($("logDate")?.value || todayISO()).trim();
 
-  $("btnSaveLog")?.addEventListener("click", () => {
-    const dateISO = ($("logDate")?.value || todayISO()).trim();
+      const localLog = {
+        dateISO,
+        theme: $("logTheme")?.value || null,
+        injury: $("injuryFlag")?.value || "none",
+        wellness: numOrNull($("wellness")?.value),
+        energy: numOrNull($("energy")?.value),
+        hydration: String($("hydrationLevel")?.value || "good"), // ✅ hydration level
+        entries: []
+      };
 
-    const hydration = ($("hydrationLevel")?.value || "good").trim(); // ✅ hydration level
-    const localLog = {
-      dateISO,
-      theme: $("logTheme")?.value || null,
-      injury: $("injuryFlag")?.value || "none",
-      wellness: numOrNull($("wellness")?.value),
-      energy: numOrNull($("energy")?.value),
-      hydration, // ✅ stored in local state
-      entries: []
-    };
-
-    state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
-    state.logs.push(localLog);
-    state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    saveState(state);
-
-    // ✅ cloud write (existing mapping supports hydration -> workout_logs.hydration)
-    window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
-
-    alert("Saved.");
-  });
-
-  const list = $("logList");
-  if (!list) return;
-
-  if (!logs.length) {
-    list.innerHTML = `<div class="small">No logs yet.</div>`;
-    return;
-  }
-
-  list.innerHTML = logs.slice(0, 10).map((l) => `
-    <div class="card" style="margin:10px 0">
-      <div style="display:flex;justify-content:space-between;gap:10px">
-        <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
-        <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}</div>
-      </div>
-      <div class="small">Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")}</div>
-    </div>
-  `).join("");
-};
-
-      state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
+      state.logs = (state.logs || []).filter((l) => l?.dateISO !== dateISO);
       state.logs.push(localLog);
-      state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      state.logs.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
       saveState();
 
       window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
@@ -835,7 +867,7 @@ function renderLog() {
           <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
           <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}</div>
         </div>
-        <div class="small">Injury: ${sanitizeHTML(l.injury || "none")}</div>
+        <div class="small">Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")}</div>
       </div>
     `).join("");
   }
@@ -844,7 +876,9 @@ function renderLog() {
     const el = $("tab-performance");
     if (!el) return;
 
-    const tests = Array.isArray(state.tests) ? state.tests.slice().sort((a,b)=>b.dateISO.localeCompare(a.dateISO)) : [];
+    const tests = Array.isArray(state.tests)
+      ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
+      : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Performance</h3>
@@ -902,9 +936,9 @@ function renderLog() {
         sleep: parseInputNumOrNull("sleep")
       };
 
-      state.tests = (state.tests || []).filter((t) => t.dateISO !== dateISO);
+      state.tests = (state.tests || []).filter((t) => t?.dateISO !== dateISO);
       state.tests.push(test);
-      state.tests.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      state.tests.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
       saveState();
 
       window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
@@ -931,108 +965,100 @@ function renderLog() {
   }
 
   function renderDashboard() {
-  const el = $("tab-dashboard");
-  if (!el) return;
+    const el = $("tab-dashboard");
+    if (!el) return;
 
-  el.innerHTML = `
-    <h3 style="margin-top:0">Dashboard</h3>
-    <div class="small">Trends from your logs and tests.</div>
-    <div class="hr"></div>
+    el.innerHTML = `
+      <h3 style="margin-top:0">Dashboard</h3>
+      <div class="small">Trends from your logs and tests.</div>
+      <div class="hr"></div>
 
-    <div class="card" style="margin:10px 0">
-      <div class="small"><b>Wellness trend (last 14)</b></div>
-      <canvas id="chartWellness" width="320" height="140" style="width:100%;max-width:640px"></canvas>
-    </div>
+      <div class="card" style="margin:10px 0">
+        <div class="small"><b>Wellness trend (last 14)</b></div>
+        <canvas id="chartWellness" width="320" height="140" style="width:100%;max-width:640px"></canvas>
+      </div>
 
-    <div class="card" style="margin:10px 0">
-      <div class="small"><b>Vertical trend (last 14)</b></div>
-      <canvas id="chartVert" width="320" height="140" style="width:100%;max-width:640px"></canvas>
-    </div>
-  `;
+      <div class="card" style="margin:10px 0">
+        <div class="small"><b>Vertical trend (last 14)</b></div>
+        <canvas id="chartVert" width="320" height="140" style="width:100%;max-width:640px"></canvas>
+      </div>
+    `;
 
-  // Simple line chart helper (no external libs)
-  function drawLine(canvasId, points) {
-    const c = $(canvasId);
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
+    function drawLine(canvasId, points) {
+      const c = $(canvasId);
+      if (!c) return;
+      const ctx = c.getContext("2d");
+      if (!ctx) return;
 
-    const w = c.width, h = c.height;
-    ctx.clearRect(0, 0, w, h);
+      const w = c.width, h = c.height;
+      ctx.clearRect(0, 0, w, h);
 
-    if (!points || points.length < 2) {
-      ctx.fillText("Not enough data yet.", 8, 18);
-      return;
+      if (!points || points.length < 2) {
+        ctx.fillText("Not enough data yet.", 8, 18);
+        return;
+      }
+
+      const ys = points.map((p) => p.y);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const pad = 10;
+
+      const scaleX = (i) => pad + (i / (points.length - 1)) * (w - pad * 2);
+      const scaleY = (y) => {
+        if (maxY === minY) return h / 2;
+        const t = (y - minY) / (maxY - minY);
+        return (h - pad) - t * (h - pad * 2);
+      };
+
+      ctx.beginPath();
+      ctx.moveTo(pad, h - pad);
+      ctx.lineTo(w - pad, h - pad);
+      ctx.stroke();
+
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        const x = scaleX(i);
+        const y = scaleY(p.y);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      ctx.fillText(String(minY), pad, h - pad - 2);
+      ctx.fillText(String(maxY), pad, pad + 10);
     }
 
-    const xs = points.map((p) => p.x);
-    const ys = points.map((p) => p.y);
+    const logs = (state.logs || [])
+      .filter((l) => l && l.dateISO)
+      .slice()
+      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
+      .slice(-14);
 
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const pad = 10;
+    const wellnessPts = logs
+      .map((l, i) => ({ x: i, y: Number(l.wellness) }))
+      .filter((p) => Number.isFinite(p.y));
 
-    const scaleX = (x) => pad + (x / (points.length - 1)) * (w - pad * 2);
-    const scaleY = (y) => {
-      if (maxY === minY) return h / 2;
-      const t = (y - minY) / (maxY - minY);
-      return (h - pad) - t * (h - pad * 2);
-    };
+    drawLine("chartWellness", wellnessPts);
 
-    // axis baseline
-    ctx.beginPath();
-    ctx.moveTo(pad, h - pad);
-    ctx.lineTo(w - pad, h - pad);
-    ctx.stroke();
+    const tests = (state.tests || [])
+      .filter((t) => t && t.dateISO)
+      .slice()
+      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
+      .slice(-14);
 
-    // line
-    ctx.beginPath();
-    points.forEach((p, i) => {
-      const x = scaleX(i);
-      const y = scaleY(p.y);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+    const vertPts = tests
+      .map((t, i) => ({ x: i, y: Number(t.vert) }))
+      .filter((p) => Number.isFinite(p.y));
 
-    // labels (min/max)
-    ctx.fillText(String(minY), pad, h - pad - 2);
-    ctx.fillText(String(maxY), pad, pad + 10);
+    drawLine("chartVert", vertPts);
   }
-
-  // wellness points
-  const logs = (state.logs || [])
-    .filter((l) => l && l.dateISO)
-    .slice()
-    .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
-    .slice(-14);
-
-  const wellnessPts = logs
-    .map((l, i) => ({ x: i, y: Number(l.wellness) }))
-    .filter((p) => Number.isFinite(p.y));
-
-  drawLine("chartWellness", wellnessPts);
-
-  // vert points
-  const tests = (state.tests || [])
-    .filter((t) => t && t.dateISO)
-    .slice()
-    .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
-    .slice(-14);
-
-  const vertPts = tests
-    .map((t, i) => ({ x: i, y: Number(t.vert) }))
-    .filter((p) => Number.isFinite(p.y));
-
-  drawLine("chartVert", vertPts);
-}
 
   function renderTeam() {
     const el = $("tab-team");
     if (!el) return;
     el.innerHTML = `
       <h3 style="margin-top:0">Team</h3>
-      <div class="small">Team features are stubbed for now (state is ready, UI can be built next).</div>
+      <div class="small">Team features are stubbed for now.</div>
     `;
   }
 
@@ -1041,7 +1067,7 @@ function renderLog() {
     if (!el) return;
     el.innerHTML = `
       <h3 style="margin-top:0">Parent</h3>
-      <div class="small">Parent view is stubbed for now (we can add read-only dashboards next).</div>
+      <div class="small">Parent view is stubbed for now.</div>
     `;
   }
 
@@ -1079,7 +1105,9 @@ function renderLog() {
       </div>
 
       <div class="small" style="margin-top:10px">Errors (latest first):</div>
-      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2))}</pre>
+      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(
+        JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2)
+      )}</pre>
     `;
 
     $("btnSettingsSignIn")?.addEventListener("click", async () => {
@@ -1142,7 +1170,7 @@ function renderLog() {
     }
   }
 
-  // ---- Public start hook (boot.js calls startApp if role exists) ----
+  // ---- Start hook ----
   window.startApp = function () {
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
     if (!role) {
@@ -1159,7 +1187,7 @@ function renderLog() {
     console.log("PerformanceIQ core started. Role:", state.role || role);
   };
 
-  // ---- Switch Role button support (boot.js also wires, but safe here too) ----
+  // ---- Switch Role button support ----
   $("btnSwitchRole")?.addEventListener("click", () => {
     try { localStorage.removeItem("role"); } catch {}
     try { localStorage.removeItem("selectedRole"); } catch {}
@@ -1170,7 +1198,6 @@ function renderLog() {
   // ---- Startup ----
   document.addEventListener("DOMContentLoaded", async () => {
     try {
-      // Optional: auto-pull if signed in and cloud newer
       if (await isSignedIn()) {
         await __pullCloudStateIfNewer();
       }
