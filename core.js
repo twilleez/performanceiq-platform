@@ -1,4 +1,4 @@
-// core.js — PRODUCTION-READY REPLACEMENT
+// core.js — PRODUCTION-READY REPLACEMENT (MERGED WITH UI/ROUTER FIX)
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 (function () {
   "use strict";
@@ -37,9 +37,7 @@
       ts: Date.now()
     };
     errorQueue.push(entry);
-    if (errorQueue.length > MAX_ERROR_QUEUE_SIZE) {
-      errorQueue.shift();
-    }
+    if (errorQueue.length > MAX_ERROR_QUEUE_SIZE) errorQueue.shift();
     console.warn(`[${context}]`, error);
   }
 
@@ -55,7 +53,7 @@
 
   function sanitizeHTML(str) {
     const div = document.createElement("div");
-    div.textContent = str;
+    div.textContent = String(str ?? "");
     return div.innerHTML;
   }
 
@@ -103,35 +101,14 @@
   }
 
   /**
-   * @typedef {Object} AppState
-   * @property {Object} meta
-   * @property {number} meta.updatedAtMs
-   * @property {number} meta.lastSyncedAtMs
-   * @property {number} meta.version
-   * @property {string} role
-   * @property {Object} profile
-   * @property {string} profile.sport
-   * @property {number} profile.days
-   * @property {Object} trial
-   * @property {number} trial.startedAtMs
-   * @property {boolean} trial.activated
-   * @property {string} trial.licenseKey
-   * @property {number} trial.licenseUntilMs
-   * @property {Object|null} week
-   * @property {Array} logs
-   * @property {Array} tests
-   * @property {Object} team
-   */
-
-  /**
-   * @returns {AppState}
+   * @returns {any}
    */
   function defaultState() {
     const now = Date.now();
     return {
       meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0 },
       role: "",
-      profile: { sport: SPORTS.BASKETBALL, days: 4 },
+      profile: { sport: SPORTS.BASKETBALL, days: 4, athleteName: "" },
       trial: {
         startedAtMs: now,
         activated: false,
@@ -147,14 +124,11 @@
         attendance: [],
         board: "",
         compliance: "off"
-      }
+      },
+      ui: { route: "profile" }
     };
   }
 
-  /**
-   * @param {any} s
-   * @returns {AppState}
-   */
   function normalizeState(s) {
     const d = defaultState();
     if (!s || typeof s !== "object") return d;
@@ -172,6 +146,7 @@
     s.profile = s.profile && typeof s.profile === "object" ? s.profile : d.profile;
     if (typeof s.profile.sport !== "string") s.profile.sport = d.profile.sport;
     if (!Number.isFinite(s.profile.days)) s.profile.days = d.profile.days;
+    if (typeof s.profile.athleteName !== "string") s.profile.athleteName = d.profile.athleteName;
 
     // trial
     s.trial = s.trial && typeof s.trial === "object" ? s.trial : d.trial;
@@ -191,6 +166,10 @@
     if (!Array.isArray(s.team.attendance)) s.team.attendance = [];
     if (typeof s.team.board !== "string") s.team.board = d.team.board;
     if (typeof s.team.compliance !== "string") s.team.compliance = d.team.compliance;
+
+    // ui
+    s.ui = s.ui && typeof s.ui === "object" ? s.ui : d.ui;
+    if (typeof s.ui.route !== "string") s.ui.route = "profile";
 
     return s;
   }
@@ -263,9 +242,7 @@
 
     async enqueue(operation) {
       this.queue.push(operation);
-      if (!this.processing) {
-        await this.process();
-      }
+      if (!this.processing) await this.process();
     }
 
     async process() {
@@ -276,13 +253,11 @@
           await op();
         } catch (e) {
           logError("cloudSyncQueue", e);
-          // Could implement exponential backoff retry here
         }
       }
       this.processing = false;
     }
   }
-
   const syncQueue = new CloudSyncQueue();
 
   // ---- Expose debug handles ----
@@ -332,18 +307,11 @@
       const u = await window.PIQ_AuthStore.getUser();
       if (!u) return false;
 
-      const version = state.meta.version || 0;
       await window.dataStore.pushState(state);
-      
       state.meta.lastSyncedAtMs = Date.now();
       __saveLocal(state);
       return true;
     } catch (error) {
-      if (error?.code === "VERSION_CONFLICT") {
-        logError("pushState", "Version conflict - will retry after pull");
-        await __piqTryPullCloudStateIfNewer();
-        throw new Error("State conflict - retrying after pull");
-      }
       logError("pushState", error);
       return false;
     }
@@ -358,10 +326,6 @@
     });
   }, CLOUD_PUSH_DEBOUNCE_MS);
 
-  // ---- Public saveState wrapper ----
-  /**
-   * @param {AppState} s
-   */
   function saveState(s) {
     stateManager.update(s);
     scheduleCloudPush();
@@ -382,28 +346,8 @@
     return vol;
   }
 
-  /**
-   * @typedef {Object} WorkoutLog
-   * @property {string} dateISO
-   * @property {string|null} theme
-   * @property {number|null} wellness
-   * @property {number|null} energy
-   * @property {string|null} hydration
-   * @property {string} injury
-   * @property {string|null} practice_intensity
-   * @property {number|null} practice_duration_min
-   * @property {boolean|null} extra_gym
-   * @property {number|null} extra_gym_duration_min
-   * @property {Array} entries
-   */
-
-  /**
-   * @param {WorkoutLog} localLog
-   * @returns {Object|null}
-   */
   function __piqLocalLogToWorkoutRow(localLog) {
     if (!localLog) return null;
-
     return {
       date: localLog.dateISO || null,
       program_day: localLog.theme || null,
@@ -420,23 +364,8 @@
     };
   }
 
-  /**
-   * @typedef {Object} PerformanceTest
-   * @property {string} dateISO
-   * @property {number|null} vert
-   * @property {number|null} sprint10
-   * @property {number|null} cod
-   * @property {number|null} bw
-   * @property {number|null} sleep
-   */
-
-  /**
-   * @param {PerformanceTest} test
-   * @returns {Object|null}
-   */
   function __piqLocalTestToMetricRow(test) {
     if (!test) return null;
-
     return {
       date: test.dateISO || null,
       vert_inches: numOrNull(test.vert),
@@ -447,10 +376,6 @@
     };
   }
 
-  /**
-   * @param {WorkoutLog} localLog
-   * @returns {Promise<boolean>}
-   */
   async function __piqTryUpsertWorkoutLog(localLog) {
     if (!window.dataStore || typeof window.dataStore.upsertWorkoutLog !== "function") return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
@@ -467,10 +392,6 @@
     }
   }
 
-  /**
-   * @param {PerformanceTest} localTest
-   * @returns {Promise<boolean>}
-   */
   async function __piqTryUpsertPerformanceMetric(localTest) {
     if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function")
       return false;
@@ -479,14 +400,12 @@
     const row = __piqLocalTestToMetricRow(localTest);
     if (!row || !row.date) return false;
 
-    // Don't write an all-null row
     const hasAny =
       row.vert_inches !== null ||
       row.sprint_seconds !== null ||
       row.cod_seconds !== null ||
       row.bw_lbs !== null ||
       row.sleep_hours !== null;
-
     if (!hasAny) return false;
 
     try {
@@ -521,7 +440,6 @@
     }
   }
 
-  // Expose cloud sync functions
   window.PIQ.cloud = window.PIQ.cloud || {};
   window.PIQ.cloud.upsertWorkoutLogFromLocal = function (localLog) {
     syncQueue.enqueue(() => __piqTryUpsertWorkoutLog(localLog));
@@ -530,14 +448,11 @@
     syncQueue.enqueue(() => __piqTryUpsertPerformanceMetric(localTest));
   };
 
-  // Pull once after sign-in if auth store supports onAuthChange
   (function wirePullOnAuth() {
     const auth = window.PIQ_AuthStore;
     if (!auth || typeof auth.onAuthChange !== "function") return;
     auth.onAuthChange((user) => {
-      if (user) {
-        syncQueue.enqueue(() => __piqTryPullCloudStateIfNewer());
-      }
+      if (user) syncQueue.enqueue(() => __piqTryPullCloudStateIfNewer());
     });
   })();
 
@@ -557,16 +472,8 @@
 
   function setRoleEverywhere(role) {
     state.role = role || "";
-    try {
-      localStorage.setItem("role", state.role);
-    } catch (e) {
-      logError("setRole", e);
-    }
-    try {
-      localStorage.setItem("selectedRole", state.role);
-    } catch (e) {
-      logError("setSelectedRole", e);
-    }
+    try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
+    try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
   }
 
   function setProfileBasics(sport, days) {
@@ -636,15 +543,9 @@
           <div class="small" id="piqSyncStatus"></div>
 
           <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="piqSignIn" type="button" ${
-              supaOk ? "" : "disabled"
-            }>Sign in to sync</button>
-            <button class="btn secondary" id="piqSignOut" type="button" ${
-              supaOk && signed ? "" : "disabled"
-            }>Sign out</button>
-            <button class="btn secondary" id="piqPull" type="button" ${
-              supaOk && signed ? "" : "disabled"
-            }>Pull cloud → device</button>
+            <button class="btn secondary" id="piqSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in to sync</button>
+            <button class="btn secondary" id="piqSignOut" type="button" ${supaOk && signed ? "" : "disabled"}>Sign out</button>
+            <button class="btn secondary" id="piqPull" type="button" ${supaOk && signed ? "" : "disabled"}>Pull cloud → device</button>
           </div>
 
           <div class="small" style="margin-top:8px">
@@ -655,17 +556,14 @@
     `;
 
     const elements = $$(["piqRole", "piqSport", "piqDays", "piqSyncStatus"]);
-
     if (elements.piqRole) elements.piqRole.value = currentRole || ROLES.ATHLETE;
     if (elements.piqSport) elements.piqSport.value = currentSport;
     if (elements.piqDays) elements.piqDays.value = currentDays;
 
     if (elements.piqSyncStatus) {
-      let status = "";
-      if (!supaOk) status = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
-      else if (!signed) status = "Cloud sync: <b>Available</b> — not signed in.";
-      else status = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
-      elements.piqSyncStatus.innerHTML = status;
+      if (!supaOk) elements.piqSyncStatus.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
+      else if (!signed) elements.piqSyncStatus.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
+      else elements.piqSyncStatus.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
     }
 
     $("piqSaveRole")?.addEventListener("click", () => {
@@ -678,165 +576,6 @@
 
       saveState(state);
 
-      try {
-        mount.style.display = "none";
-        mount.innerHTML = "";
-      } catch (e) {
-        logError("hideRoleChooser", e);
-      }
-
+      try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
       hideSplashNow();
-
-      if (typeof window.startApp === "function") window.startApp();
-    });
-
-    $("piqResetRole")?.addEventListener("click", () => {
-      if (!confirm("Clear ALL saved data on this device?")) return;
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch (e) {
-        logError("resetStorage", e);
-      }
-      try {
-        localStorage.removeItem("role");
-      } catch (e) {
-        logError("resetRole", e);
-      }
-      try {
-        localStorage.removeItem("selectedRole");
-      } catch (e) {
-        logError("resetSelectedRole", e);
-      }
-      location.reload();
-    });
-
-    $("piqSignIn")?.addEventListener("click", async () => {
-      try {
-        if (!window.PIQ_AuthStore) {
-          alert("Auth not available.");
-          return;
-        }
-        const email = prompt("Enter email for magic-link sign-in:");
-        if (!email) return;
-        await window.PIQ_AuthStore.signInWithOtp(email.trim());
-        alert("Check your email for the sign-in link, then return here.");
-      } catch (e) {
-        logError("signIn", e);
-        alert("Sign-in failed: " + (e?.message || e));
-      }
-    });
-
-    $("piqSignOut")?.addEventListener("click", async () => {
-      try {
-        await window.PIQ_AuthStore?.signOut?.();
-        alert("Signed out.");
-        location.reload();
-      } catch (e) {
-        logError("signOut", e);
-        alert("Sign-out failed: " + (e?.message || e));
-      }
-    });
-
-    $("piqPull")?.addEventListener("click", async () => {
-      try {
-        await __piqTryPullCloudStateIfNewer();
-        alert("Pulled cloud (if newer). Reloading.");
-        location.reload();
-      } catch (e) {
-        logError("pullCloud", e);
-        alert("Pull failed: " + (e?.message || e));
-      }
-    });
-  }
-
-  window.showRoleChooser = function () {
-    renderRoleChooser();
-  };
-
-  // =========================================================
-  // SAVE FUNCTIONS
-  // =========================================================
-
-  async function saveTestsMinimal() {
-    const dateISO = ($("testDate")?.value || todayISO()).trim();
-
-    const test = {
-      dateISO,
-      vert: parseInputNumOrNull("vert"),
-      sprint10: parseInputNumOrNull("sprint10"),
-      cod: parseInputNumOrNull("cod"),
-      bw: parseInputNumOrNull("bw"),
-      sleep: parseInputNumOrNull("sleep")
-    };
-
-    state.tests = (state.tests || []).filter((t) => t.dateISO !== dateISO);
-    state.tests.push(test);
-    state.tests.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    saveState(state);
-
-    window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
-  }
-
-  async function saveLogMinimal() {
-    const dateISO = ($("logDate")?.value || todayISO()).trim();
-
-    const localLog = {
-      dateISO,
-      theme: $("logTheme")?.value || null,
-      injury: $("injuryFlag")?.value || "none",
-      wellness: numOrNull($("wellness")?.value),
-      entries: []
-    };
-
-    state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
-    state.logs.push(localLog);
-    state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    saveState(state);
-
-    window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
-  }
-
-  window.PIQ.saveTests = window.PIQ.saveTests || saveTestsMinimal;
-  window.PIQ.saveLog = window.PIQ.saveLog || saveLogMinimal;
-
-  // =========================================================
-  // START APP
-  // =========================================================
-  window.startApp =
-    window.startApp ||
-    function () {
-      const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
-      if (!role) {
-        window.showRoleChooser();
-        return;
-      }
-      if (!state.role) setRoleEverywhere(role);
-
-      $("btnSaveTests")?.addEventListener("click", () => {
-        window.PIQ.saveTests().catch((e) => logError("saveTests", e));
-      });
-
-      $("btnSaveLog")?.addEventListener("click", () => {
-        window.PIQ.saveLog().catch((e) => logError("saveLog", e));
-      });
-
-      console.log("PerformanceIQ core started. Role:", state.role || role);
-    };
-
-  // =========================================================
-  // STARTUP
-  // =========================================================
-  document.addEventListener("DOMContentLoaded", async () => {
-    try {
-      if (await isSignedIn()) {
-        await syncQueue.enqueue(() => __piqTryPullCloudStateIfNewer());
-      }
-    } catch (e) {
-      logError("startupPull", e);
-    }
-
-    setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
-    window.addEventListener("click", hideSplashNow, { once: true });
-    window.addEventListener("touchstart", hideSplashNow, { once: true });
-  });
-})();
+      if (typeof
