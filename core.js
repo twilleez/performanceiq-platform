@@ -1,7 +1,9 @@
 // core.js — PRODUCTION-READY REPLACEMENT (FULL FILE)
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 // Includes: working tab system + working Profile + Program (structured) + Log (with hydration level) + Performance + Dashboard + Settings
-// NEW: Readiness engine (0–100) using Wellness + Energy + Sleep + Hydration + Injury (computed, not stored)
+// NEW: Readiness engine (0–100) + readiness guidance text
+// NEW: Auto program progression week 1–4 (week 2/3 load increases, week 4 deload)
+
 (function () {
   "use strict";
 
@@ -142,6 +144,9 @@
     s._ui = s._ui && typeof s._ui === "object" ? s._ui : d._ui;
     if (typeof s._ui.activeTab !== "string") s._ui.activeTab = "profile";
 
+    // Optional: allow manual program week override (1–4)
+    if (s._ui && !Number.isFinite(s._ui.programWeekOverride)) s._ui.programWeekOverride = null;
+
     return s;
   }
 
@@ -168,7 +173,7 @@
     bumpMeta();
     __saveLocal(state);
     scheduleCloudPush();
-    renderActiveTab(); // keep UI in sync
+    renderActiveTab();
   }
 
   // ---- Expose debug handles ----
@@ -243,7 +248,7 @@
       const u = await window.PIQ_AuthStore.getUser();
       if (!u) return false;
 
-      const cloud = await window.dataStore.pullState(); // {state, updated_at} or null
+      const cloud = await window.dataStore.pullState();
       if (!cloud || !cloud.state || typeof cloud.state !== "object") return false;
 
       const cloudUpdated = Number(cloud.state?.meta?.updatedAtMs || 0);
@@ -251,12 +256,8 @@
 
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
-        Object.keys(state).forEach((k) => {
-          delete state[k];
-        });
-        Object.keys(next).forEach((k) => {
-          state[k] = next[k];
-        });
+        Object.keys(state).forEach((k) => delete state[k]);
+        Object.keys(next).forEach((k) => (state[k] = next[k]));
         __saveLocal(state);
         renderActiveTab();
         return true;
@@ -346,26 +347,14 @@
   }
 
   window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => {
-    __tryUpsertWorkoutLog(localLog);
-  };
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => {
-    __tryUpsertMetric(localTest);
-  };
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => { __tryUpsertWorkoutLog(localLog); };
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => { __tryUpsertMetric(localTest); };
 
   // ---- Role helpers ----
   function setRoleEverywhere(role) {
     state.role = role || "";
-    try {
-      localStorage.setItem("role", state.role);
-    } catch (e) {
-      logError("setRole", e);
-    }
-    try {
-      localStorage.setItem("selectedRole", state.role);
-    } catch (e) {
-      logError("setSelectedRole", e);
-    }
+    try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
+    try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
   }
 
   function setProfileBasics(sport, days, name) {
@@ -475,34 +464,19 @@
 
     $("piqSaveRole")?.addEventListener("click", () => {
       setRoleEverywhere(roleSel ? roleSel.value : ROLES.ATHLETE);
-      setProfileBasics(
-        sportSel ? sportSel.value : SPORTS.BASKETBALL,
-        daysSel ? daysSel.value : 4,
-        state.profile?.name || ""
-      );
+      setProfileBasics(sportSel ? sportSel.value : SPORTS.BASKETBALL, daysSel ? daysSel.value : 4, state.profile?.name || "");
       saveState();
 
-      try {
-        mount.style.display = "none";
-        mount.innerHTML = "";
-      } catch (e) {
-        logError("hideRoleChooser", e);
-      }
+      try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
       hideSplashNow();
       window.startApp?.();
     });
 
     $("piqResetRole")?.addEventListener("click", () => {
       if (!confirm("Clear ALL saved data on this device?")) return;
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {}
-      try {
-        localStorage.removeItem("role");
-      } catch {}
-      try {
-        localStorage.removeItem("selectedRole");
-      } catch {}
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
       location.reload();
     });
 
@@ -542,10 +516,7 @@
     });
   }
 
-  // boot.js calls this when no role is stored
-  window.showRoleChooser = function () {
-    renderRoleChooser();
-  };
+  window.showRoleChooser = function () { renderRoleChooser(); };
 
   // ---- Tab system ----
   const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
@@ -554,11 +525,11 @@
     for (const t of TABS) {
       const el = $(`tab-${t}`);
       if (!el) continue;
-      el.style.display = t === tabName ? "block" : "none";
+      el.style.display = (t === tabName) ? "block" : "none";
     }
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
-    __saveLocal(state); // UI-only; don't bump meta/version
+    __saveLocal(state);
   }
 
   function activeTab() {
@@ -585,9 +556,8 @@
   }
 
   // =========================================================
-  // ✅ READINESS ENGINE (computed, not stored)
+  // ✅ READINESS ENGINE + GUIDANCE
   // =========================================================
-
   function clamp01(x) {
     if (!Number.isFinite(x)) return null;
     if (x < 0) return 0;
@@ -597,7 +567,6 @@
 
   function hydrationFactor(level) {
     const v = String(level || "").toLowerCase().trim();
-    // No fractions are displayed to the user; this is internal computation only.
     if (v === "low") return 0.60;
     if (v === "ok") return 0.75;
     if (v === "good") return 0.90;
@@ -617,20 +586,12 @@
   function sleepFactor(hours) {
     const h = Number(hours);
     if (!Number.isFinite(h)) return null;
-
-    // simple, transparent model:
-    // - target 8h -> 1.0
-    // - 6h -> 0.70
-    // - 9h -> 1.0 (cap)
-    // - <5h -> 0.45 floor
     if (h >= 8) return 1.0;
     if (h >= 6) {
-      // linear from 6->8 : 0.70 -> 1.00
       const t = (h - 6) / 2;
       return 0.70 + t * 0.30;
     }
     if (h >= 5) {
-      // linear from 5->6 : 0.45 -> 0.70
       const t = (h - 5) / 1;
       return 0.45 + t * 0.25;
     }
@@ -646,25 +607,32 @@
     const d = String(dateISO || "").trim();
     if (!d) return null;
     const logs = Array.isArray(state.logs) ? state.logs : [];
-    // exact match preferred
-    const exact = logs.find((l) => l && l.dateISO === d);
-    if (exact) return exact;
-    return null;
+    return logs.find((l) => l && l.dateISO === d) || null;
   }
 
   function findTestByDate(dateISO) {
     const d = String(dateISO || "").trim();
     if (!d) return null;
     const tests = Array.isArray(state.tests) ? state.tests : [];
-    const exact = tests.find((t) => t && t.dateISO === d);
-    if (exact) return exact;
-    return null;
+    return tests.find((t) => t && t.dateISO === d) || null;
+  }
+
+  function readinessGuidance(score, inputs) {
+    if (!Number.isFinite(score)) return "No readiness yet. Add Wellness/Energy (and Sleep for best accuracy).";
+
+    const injury = String(inputs?.injury || "").toLowerCase().trim();
+    if (injury === "out") return "Guidance: Recovery only. No hard training today.";
+    if (injury === "minor" && score < 70) return "Guidance: Reduce impact + avoid max effort. Do skill + mobility + light strength.";
+
+    if (score >= 85) return "Guidance: Green light — train hard. Hit your main lifts and speed work.";
+    if (score >= 70) return "Guidance: Solid — normal training. Push quality, stop 1–2 reps before failure.";
+    if (score >= 55) return "Guidance: Yellow — reduce volume. Keep intensity moderate and focus on technique.";
+    return "Guidance: Red — recovery day. Mobility, light cardio, and sleep/hydration focus.";
   }
 
   /**
    * Compute readiness 0-100 for a given date.
    * Uses available components and renormalizes weights if some are missing.
-   * Returns { score, breakdown, inputs } or null if no usable inputs.
    */
   function computeReadinessForDate(dateISO, overrides) {
     const d = String(dateISO || "").trim();
@@ -685,7 +653,6 @@
     const injury01 = injuryFactor(injury);
     const sleep01 = sleepFactor(sleep);
 
-    // Weights (industry-style: wellness/energy/sleep dominate)
     const components = [
       { key: "wellness", value: wellness01, w: 0.35 },
       { key: "energy", value: energy01, w: 0.25 },
@@ -707,7 +674,7 @@
       injury: score0100(injury01)
     };
 
-    return {
+    const result = {
       dateISO: d,
       score: score0100(readiness01),
       breakdown,
@@ -719,29 +686,95 @@
         injury: typeof injury === "string" ? injury : null
       }
     };
+
+    result.guidance = readinessGuidance(result.score, result.inputs);
+    return result;
   }
 
   function computeReadinessHistory(lastN) {
     const N = Math.max(1, Math.min(Number(lastN || 14), 60));
-
-    // Collect dates from logs/tests
     const dates = new Set();
     (state.logs || []).forEach((l) => l?.dateISO && dates.add(l.dateISO));
     (state.tests || []).forEach((t) => t?.dateISO && dates.add(t.dateISO));
 
     const ordered = Array.from(dates).sort((a, b) => String(a).localeCompare(String(b))).slice(-N);
-
-    const rows = ordered
-      .map((d) => computeReadinessForDate(d))
-      .filter((r) => r && Number.isFinite(r.score));
-
-    return rows;
+    return ordered.map((d) => computeReadinessForDate(d)).filter((r) => r && Number.isFinite(r.score));
   }
 
-  // Expose readiness functions for debugging
   window.PIQ.readiness = window.PIQ.readiness || {};
   window.PIQ.readiness.forDate = (dateISO) => computeReadinessForDate(dateISO);
   window.PIQ.readiness.history = (n) => computeReadinessHistory(n);
+
+  // =========================================================
+  // ✅ AUTO PROGRAM PROGRESSION (Week 1–4 wave)
+  // Week 1: Baseline
+  // Week 2: + load
+  // Week 3: + load again
+  // Week 4: Deload (reduce volume)
+  // =========================================================
+  function safeParseISODate(isoStr) {
+    const s = String(isoStr || "").trim();
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
+  function currentProgramWeek(program) {
+    if (!program || !program.createdAtISO) return 1;
+
+    // Optional manual override (1–4)
+    const ov = Number(state?._ui?.programWeekOverride);
+    if (Number.isFinite(ov) && ov >= 1 && ov <= 4) return Math.round(ov);
+
+    const created = safeParseISODate(program.createdAtISO);
+    if (!created) return 1;
+
+    const now = new Date();
+    const diffMs = now.getTime() - created.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const wk = Math.floor(diffDays / 7) + 1;
+    if (wk < 1) return 1;
+    if (wk > 4) return 4;
+    return wk;
+  }
+
+  function progressionPlanForWeek(weekNum) {
+    const w = Number(weekNum);
+    if (w === 1) {
+      return {
+        week: 1,
+        title: "Week 1 — Baseline",
+        loadNotePrimary: "Use comfortable working weights. Leave 1–2 reps in reserve.",
+        loadNoteSecondary: "Keep form perfect; smooth reps.",
+        volumeNote: "Normal volume."
+      };
+    }
+    if (w === 2) {
+      return {
+        week: 2,
+        title: "Week 2 — Increase Load",
+        loadNotePrimary: "Add a small amount of weight vs Week 1 (keep reps/sets the same).",
+        loadNoteSecondary: "Slightly heavier or add 1 rep per set if weight is fixed.",
+        volumeNote: "Normal volume."
+      };
+    }
+    if (w === 3) {
+      return {
+        week: 3,
+        title: "Week 3 — Increase Load Again",
+        loadNotePrimary: "Add a small amount of weight vs Week 2 (still controlled, no grinders).",
+        loadNoteSecondary: "Heavier or +1 rep if weight is fixed.",
+        volumeNote: "Normal volume."
+      };
+    }
+    // Week 4
+    return {
+      week: 4,
+      title: "Week 4 — Deload",
+      loadNotePrimary: "Reduce weight slightly and keep speed crisp.",
+      loadNoteSecondary: "Keep form sharp; avoid fatigue sets.",
+      volumeNote: "Reduce volume: cut 1 set on most accessories (or keep sets and stop earlier)."
+    };
+  }
 
   // =========================================================
   // ✅ PROGRAM GENERATOR (STRUCTURED, REAL EXERCISES)
@@ -751,7 +784,6 @@
     const d = Math.min(Math.max(Number(days || 4), 3), 5);
 
     const baseWarmup = ["5–8 min zone 2 cardio", "Dynamic mobility (hips, ankles, t-spine)", "Glute + core activation"];
-
     const baseFinisher = ["Cooldown walk 5 min", "Breathing reset 3–5 min", "Stretch major muscle groups"];
 
     function primaryLift(name) {
@@ -766,68 +798,22 @@
 
     const templates = {
       basketball: [
-        {
-          title: "Day 1 — Lower Strength",
-          exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Rear Foot Elevated Split Squat"), accessory("Hamstring Curl"), accessory("Core Anti-Rotation Press")]
-        },
-        {
-          title: "Day 2 — Speed + Plyo",
-          exercises: [
-            { tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" },
-            { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" },
-            accessory("Calf Raises"),
-            accessory("Hip Mobility Circuit")
-          ]
-        },
-        {
-          title: "Day 3 — Upper Strength",
-          exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Scapular Retraction Rows")]
-        },
-        {
-          title: "Day 4 — Reactive + Conditioning",
-          exercises: [
-            { tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" },
-            { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" },
-            accessory("Core Circuit"),
-            accessory("Zone 2 Bike 12–15 min")
-          ]
-        },
-        {
-          title: "Day 5 — Optional Recovery",
-          exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }, accessory("Mobility Flow"), accessory("Soft Tissue Work")]
-        }
+        { title: "Day 1 — Lower Strength", exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Rear Foot Elevated Split Squat"), accessory("Hamstring Curl"), accessory("Core Anti-Rotation Press")] },
+        { title: "Day 2 — Speed + Plyo", exercises: [{ tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" }, { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" }, accessory("Calf Raises"), accessory("Hip Mobility Circuit")] },
+        { title: "Day 3 — Upper Strength", exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Scapular Retraction Rows")] },
+        { title: "Day 4 — Reactive + Conditioning", exercises: [{ tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" }, { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" }, accessory("Core Circuit"), accessory("Zone 2 Bike 12–15 min")] },
+        { title: "Day 5 — Optional Recovery", exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }, accessory("Mobility Flow"), accessory("Soft Tissue Work")] }
       ],
       football: [
         { title: "Day 1 — Lower Strength", exercises: [primaryLift("Back Squat"), secondaryLift("RDL"), accessory("Split Squat"), accessory("Core Bracing")] },
-        {
-          title: "Day 2 — Speed/Agility",
-          exercises: [
-            { tier: "Speed", name: "10–30m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max" },
-            { tier: "Agility", name: "5-10-5 Shuttle", sets: 5, reps: "1", rest: "90 sec", rpe: "Sharp" },
-            accessory("Hip Mobility")
-          ]
-        },
+        { title: "Day 2 — Speed/Agility", exercises: [{ tier: "Speed", name: "10–30m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max" }, { tier: "Agility", name: "5-10-5 Shuttle", sets: 5, reps: "1", rest: "90 sec", rpe: "Sharp" }, accessory("Hip Mobility")] },
         { title: "Day 3 — Upper Strength", exercises: [primaryLift("Bench Press"), secondaryLift("Rows"), accessory("Incline DB Press"), accessory("Face Pulls")] },
-        {
-          title: "Day 4 — Power/Conditioning",
-          exercises: [
-            { tier: "Power", name: "Med Ball Throws", sets: 5, reps: "3", rest: "60 sec", rpe: "Explosive" },
-            { tier: "Conditioning", name: "Tempo Runs", sets: 8, reps: "100m", rest: "Walk back", rpe: "Moderate" },
-            accessory("Mobility")
-          ]
-        },
+        { title: "Day 4 — Power/Conditioning", exercises: [{ tier: "Power", name: "Med Ball Throws", sets: 5, reps: "3", rest: "60 sec", rpe: "Explosive" }, { tier: "Conditioning", name: "Tempo Runs", sets: 8, reps: "100m", rest: "Walk back", rpe: "Moderate" }, accessory("Mobility")] },
         { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
       ],
       soccer: [
         { title: "Day 1 — Strength", exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Bulgarian Split Squat"), accessory("Nordics (if able)"), accessory("Core")] },
-        {
-          title: "Day 2 — Speed",
-          exercises: [
-            { tier: "Speed", name: "Flying 10s", sets: 6, reps: "1", rest: "Full", rpe: "Max" },
-            { tier: "COD", name: "Cone COD", sets: 5, reps: "1", rest: "60–90 sec", rpe: "Sharp" },
-            accessory("Mobility")
-          ]
-        },
+        { title: "Day 2 — Speed", exercises: [{ tier: "Speed", name: "Flying 10s", sets: 6, reps: "1", rest: "Full", rpe: "Max" }, { tier: "COD", name: "Cone COD", sets: 5, reps: "1", rest: "60–90 sec", rpe: "Sharp" }, accessory("Mobility")] },
         { title: "Day 3 — Upper + Core", exercises: [primaryLift("Incline Bench"), secondaryLift("Pull-Ups"), accessory("Rows"), accessory("Core Anti-Rotation")] },
         { title: "Day 4 — Conditioning", exercises: [{ tier: "Conditioning", name: "Intervals (e.g., 4x4 min)", sets: 1, reps: "", rest: "", rpe: "Hard" }, accessory("Mobility")] },
         { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
@@ -841,7 +827,7 @@
       sport: s,
       days: d,
       createdAtISO: new Date().toISOString(),
-      progression: { model: "4-week wave", description: "Weeks 1–3 increase load slightly; Week 4 deload (~-15% volume)." },
+      progression: { model: "4-week wave", description: "Week 2 and 3 increase load; Week 4 deload volume." },
       warmup: baseWarmup,
       finisher: baseFinisher,
       daysPlan: picked
@@ -923,6 +909,11 @@
       const nextDays = $("profileDays")?.value || days;
       setProfileBasics(nextSport, nextDays, $("profileName")?.value || "");
       state.week = generateProgram(state.profile.sport, state.profile.days);
+
+      // Clear manual week override when generating fresh
+      state._ui = state._ui || {};
+      state._ui.programWeekOverride = null;
+
       saveState();
       showTab("program");
       renderActiveTab();
@@ -942,14 +933,24 @@
       return;
     }
 
-    const daysHtml = (p.daysPlan || [])
-      .map(
-        (day) => `
+    const wk = currentProgramWeek(p);
+    const prog = progressionPlanForWeek(wk);
+
+    const overrideVal = Number(state?._ui?.programWeekOverride);
+    const overrideDisplay = (Number.isFinite(overrideVal) && overrideVal >= 1 && overrideVal <= 4) ? String(Math.round(overrideVal)) : "";
+
+    const daysHtml = (p.daysPlan || []).map((day) => `
       <div class="card" style="margin:16px 0;padding:14px">
         <div style="font-weight:600;margin-bottom:8px">${sanitizeHTML(day.title)}</div>
-        ${(day.exercises || [])
-          .map(
-            (ex) => `
+
+        <div class="small" style="margin-bottom:10px">
+          <b>Progression notes:</b><br/>
+          Primary: ${sanitizeHTML(prog.loadNotePrimary)}<br/>
+          Secondary: ${sanitizeHTML(prog.loadNoteSecondary)}<br/>
+          Volume: ${sanitizeHTML(prog.volumeNote)}
+        </div>
+
+        ${(day.exercises || []).map(ex => `
           <div style="margin-bottom:10px">
             <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
             <div class="small">
@@ -959,46 +960,84 @@
               ${ex.rpe ? `RPE: ${sanitizeHTML(ex.rpe)}` : ""}
             </div>
           </div>
-        `
-          )
-          .join("")}
+        `).join("")}
       </div>
-    `
-      )
-      .join("");
+    `).join("");
 
     el.innerHTML = `
       <h3 style="margin-top:0">Program</h3>
+
       <div class="small">
         Sport: <b>${sanitizeHTML(p.sport)}</b> • Days/week: <b>${sanitizeHTML(p.days)}</b>
       </div>
 
-      <div class="small" style="margin-top:4px">
-        Progression Model: <b>${sanitizeHTML(p.progression?.model || "—")}</b>
+      <div class="card" style="margin:10px 0;padding:12px">
+        <div class="small"><b>${sanitizeHTML(prog.title)}</b></div>
+        <div class="small">Model: <b>${sanitizeHTML(p.progression?.model || "4-week wave")}</b></div>
+        <div class="small">${sanitizeHTML(p.progression?.description || "")}</div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div class="field">
+            <label for="programWeekOverride">Set Week (optional)</label>
+            <select id="programWeekOverride">
+              <option value="">Auto</option>
+              <option value="1">Week 1</option>
+              <option value="2">Week 2</option>
+              <option value="3">Week 3</option>
+              <option value="4">Week 4</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button class="btn secondary" id="btnClearWeekOverride" type="button">Clear Override</button>
+          </div>
+        </div>
       </div>
-      <div class="small">${sanitizeHTML(p.progression?.description || "")}</div>
 
       <div class="hr"></div>
 
       <div class="small"><b>Warmup</b></div>
       <ul style="margin:8px 0 16px 18px">
-        ${(p.warmup || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
 
       ${daysHtml}
 
       <div class="small"><b>Finisher</b></div>
       <ul style="margin:8px 0 0 18px">
-        ${(p.finisher || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
     `;
+
+    const sel = $("programWeekOverride");
+    if (sel) sel.value = overrideDisplay;
+
+    sel?.addEventListener("change", () => {
+      const v = (sel.value || "").trim();
+      state._ui = state._ui || {};
+      if (!v) state._ui.programWeekOverride = null;
+      else state._ui.programWeekOverride = Number(v);
+      __saveLocal(state);
+      renderProgram();
+    });
+
+    $("btnClearWeekOverride")?.addEventListener("click", () => {
+      state._ui = state._ui || {};
+      state._ui.programWeekOverride = null;
+      __saveLocal(state);
+      renderProgram();
+    });
   }
 
   function renderLog() {
     const el = $("tab-log");
     if (!el) return;
 
-    const logs = Array.isArray(state.logs) ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
+    const logs = Array.isArray(state.logs)
+      ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
+      : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
@@ -1047,7 +1086,8 @@
 
       <div class="card" style="margin-top:12px;padding:12px">
         <div class="small"><b>Readiness (preview)</b></div>
-        <div id="readinessPreview" class="small">Enter values to see today’s readiness score.</div>
+        <div id="readinessPreview" class="small">Enter values to see readiness score.</div>
+        <div id="readinessGuidance" class="small" style="margin-top:6px"></div>
       </div>
 
       <div class="btnRow" style="margin-top:12px">
@@ -1063,9 +1103,9 @@
     function updateReadinessPreview() {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
       const preview = $("readinessPreview");
-      if (!preview) return;
+      const guide = $("readinessGuidance");
+      if (!preview || !guide) return;
 
-      // Pull sleep from performance test for same date if available
       const t = findTestByDate(dateISO);
       const sleep = t ? numOrNull(t.sleep) : null;
 
@@ -1078,7 +1118,8 @@
       });
 
       if (!r || !Number.isFinite(r.score)) {
-        preview.textContent = "Enter values to see today’s readiness score.";
+        preview.textContent = "Enter values to see readiness score.";
+        guide.textContent = "";
         return;
       }
 
@@ -1090,9 +1131,9 @@
       if (Number.isFinite(r.breakdown.injury)) bits.push(`Injury ${r.breakdown.injury}`);
 
       preview.innerHTML = `Score: <b>${sanitizeHTML(r.score)}</b> / 100<br/><span class="small">${sanitizeHTML(bits.join(" • "))}</span>`;
+      guide.textContent = r.guidance || "";
     }
 
-    // live preview events
     ["logDate", "wellness", "energy", "hydrationLevel", "injuryFlag"].forEach((id) => {
       $(id)?.addEventListener("input", updateReadinessPreview);
       $(id)?.addEventListener("change", updateReadinessPreview);
@@ -1101,7 +1142,7 @@
 
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const hydration = ($("hydrationLevel")?.value || "good").trim(); // hydration level (categorical)
+      const hydration = ($("hydrationLevel")?.value || "good").trim();
 
       const localLog = {
         dateISO,
@@ -1109,7 +1150,7 @@
         injury: $("injuryFlag")?.value || "none",
         wellness: numOrNull($("wellness")?.value),
         energy: numOrNull($("energy")?.value),
-        hydration, // stored in local state
+        hydration,
         entries: []
       };
 
@@ -1119,7 +1160,6 @@
       saveState();
 
       window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
-
       alert("Saved.");
     });
 
@@ -1131,29 +1171,30 @@
       return;
     }
 
-    list.innerHTML = logs
-      .slice(0, 10)
-      .map((l) => {
-        const r = computeReadinessForDate(l.dateISO);
-        const rTxt = r && Number.isFinite(r.score) ? ` • Readiness: ${sanitizeHTML(r.score)}` : "";
-        return `
+    list.innerHTML = logs.slice(0, 10).map((l) => {
+      const r = computeReadinessForDate(l.dateISO);
+      const rTxt = r && Number.isFinite(r.score) ? ` • Readiness: ${sanitizeHTML(r.score)}` : "";
+      const gTxt = r && r.guidance ? `<div class="small" style="margin-top:6px">${sanitizeHTML(r.guidance)}</div>` : "";
+      return `
         <div class="card" style="margin:10px 0">
           <div style="display:flex;justify-content:space-between;gap:10px">
             <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
             <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}${rTxt}</div>
           </div>
           <div class="small">Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")}</div>
+          ${gTxt}
         </div>
       `;
-      })
-      .join("");
+    }).join("");
   }
 
   function renderPerformance() {
     const el = $("tab-performance");
     if (!el) return;
 
-    const tests = Array.isArray(state.tests) ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
+    const tests = Array.isArray(state.tests)
+      ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
+      : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Performance</h3>
@@ -1228,9 +1269,7 @@
       return;
     }
 
-    list.innerHTML = tests
-      .slice(0, 10)
-      .map((t) => `
+    list.innerHTML = tests.slice(0, 10).map((t) => `
       <div class="card" style="margin:10px 0">
         <div><b>${sanitizeHTML(t.dateISO)}</b></div>
         <div class="small">
@@ -1238,8 +1277,7 @@
           • BW: ${sanitizeHTML(t.bw ?? "—")} • Sleep: ${sanitizeHTML(t.sleep ?? "—")}
         </div>
       </div>
-    `)
-      .join("");
+    `).join("");
   }
 
   function renderDashboard() {
@@ -1254,6 +1292,7 @@
       <div class="card" style="margin:10px 0;padding:12px">
         <div class="small"><b>Latest Readiness</b></div>
         <div id="latestReadiness" class="small">No readiness yet.</div>
+        <div id="latestGuidance" class="small" style="margin-top:6px"></div>
       </div>
 
       <div class="card" style="margin:10px 0">
@@ -1278,8 +1317,7 @@
       const ctx = c.getContext("2d");
       if (!ctx) return;
 
-      const w = c.width,
-        h = c.height;
+      const w = c.width, h = c.height;
       ctx.clearRect(0, 0, w, h);
 
       if (!points || points.length < 2) {
@@ -1296,7 +1334,7 @@
       const scaleY = (y) => {
         if (maxY === minY) return h / 2;
         const t = (y - minY) / (maxY - minY);
-        return h - pad - t * (h - pad * 2);
+        return (h - pad) - t * (h - pad * 2);
       };
 
       ctx.beginPath();
@@ -1317,29 +1355,24 @@
       ctx.fillText(String(maxY), pad, pad + 10);
     }
 
-    // Latest readiness
     const readinessRows = computeReadinessHistory(14);
     const latestEl = $("latestReadiness");
-    if (latestEl) {
+    const guideEl = $("latestGuidance");
+
+    if (latestEl && guideEl) {
       if (!readinessRows.length) {
-        latestEl.textContent = "No readiness yet. Add a Log (and Sleep in Performance for better accuracy).";
+        latestEl.textContent = "No readiness yet. Add a Log (and Sleep in Performance for best accuracy).";
+        guideEl.textContent = "";
       } else {
         const last = readinessRows[readinessRows.length - 1];
-        const bits = [];
-        if (Number.isFinite(last.breakdown.wellness)) bits.push(`Wellness ${last.breakdown.wellness}`);
-        if (Number.isFinite(last.breakdown.energy)) bits.push(`Energy ${last.breakdown.energy}`);
-        if (Number.isFinite(last.breakdown.sleep)) bits.push(`Sleep ${last.breakdown.sleep}`);
-        if (Number.isFinite(last.breakdown.hydration)) bits.push(`Hydration ${last.breakdown.hydration}`);
-        if (Number.isFinite(last.breakdown.injury)) bits.push(`Injury ${last.breakdown.injury}`);
-        latestEl.innerHTML = `<b>${sanitizeHTML(last.score)}</b> / 100 • ${sanitizeHTML(last.dateISO)}<br/><span class="small">${sanitizeHTML(bits.join(" • "))}</span>`;
+        latestEl.innerHTML = `<b>${sanitizeHTML(last.score)}</b> / 100 • ${sanitizeHTML(last.dateISO)}`;
+        guideEl.textContent = last.guidance || "";
       }
     }
 
-    // Readiness trend points
     const readinessPts = readinessRows.map((r, i) => ({ x: i, y: Number(r.score) })).filter((p) => Number.isFinite(p.y));
     drawLine("chartReadiness", readinessPts);
 
-    // Wellness trend
     const logs = (state.logs || [])
       .filter((l) => l && l.dateISO)
       .slice()
@@ -1349,7 +1382,6 @@
     const wellnessPts = logs.map((l, i) => ({ x: i, y: Number(l.wellness) })).filter((p) => Number.isFinite(p.y));
     drawLine("chartWellness", wellnessPts);
 
-    // Vertical trend
     const tests = (state.tests || [])
       .filter((t) => t && t.dateISO)
       .slice()
@@ -1463,37 +1495,18 @@
   function renderActiveTab() {
     setPills();
     switch (activeTab()) {
-      case "profile":
-        renderProfile();
-        break;
-      case "program":
-        renderProgram();
-        break;
-      case "log":
-        renderLog();
-        break;
-      case "performance":
-        renderPerformance();
-        break;
-      case "dashboard":
-        renderDashboard();
-        break;
-      case "team":
-        renderTeam();
-        break;
-      case "parent":
-        renderParent();
-        break;
-      case "settings":
-        renderSettings();
-        break;
-      default:
-        renderProfile();
-        break;
+      case "profile": renderProfile(); break;
+      case "program": renderProgram(); break;
+      case "log": renderLog(); break;
+      case "performance": renderPerformance(); break;
+      case "dashboard": renderDashboard(); break;
+      case "team": renderTeam(); break;
+      case "parent": renderParent(); break;
+      case "settings": renderSettings(); break;
+      default: renderProfile(); break;
     }
   }
 
-  // ---- Public start hook (boot.js calls startApp if role exists) ----
   window.startApp = function () {
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
     if (!role) {
@@ -1510,23 +1523,15 @@
     console.log("PerformanceIQ core started. Role:", state.role || role);
   };
 
-  // ---- Switch Role button support (boot.js also wires, but safe here too) ----
   document.addEventListener("DOMContentLoaded", () => {
     $("btnSwitchRole")?.addEventListener("click", () => {
-      try {
-        localStorage.removeItem("role");
-      } catch {}
-      try {
-        localStorage.removeItem("selectedRole");
-      } catch {}
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {}
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
       location.reload();
     });
   });
 
-  // ---- Startup ----
   document.addEventListener("DOMContentLoaded", async () => {
     try {
       if (await isSignedIn()) {
