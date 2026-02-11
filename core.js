@@ -1,5 +1,6 @@
-// core.js — PRODUCTION-READY REPLACEMENT (MERGED WITH UI/ROUTER FIX)
+// core.js — PRODUCTION-READY REPLACEMENT (MERGED FIX)
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
+// FIX INCLUDED: auto-injects missing tab UI so "No information" no longer happens.
 (function () {
   "use strict";
 
@@ -53,7 +54,7 @@
 
   function sanitizeHTML(str) {
     const div = document.createElement("div");
-    div.textContent = String(str ?? "");
+    div.textContent = str == null ? "" : String(str);
     return div.innerHTML;
   }
 
@@ -100,15 +101,12 @@
     }
   }
 
-  /**
-   * @returns {any}
-   */
   function defaultState() {
     const now = Date.now();
     return {
       meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0 },
       role: "",
-      profile: { sport: SPORTS.BASKETBALL, days: 4, athleteName: "" },
+      profile: { sport: SPORTS.BASKETBALL, days: 4 },
       trial: {
         startedAtMs: now,
         activated: false,
@@ -124,8 +122,7 @@
         attendance: [],
         board: "",
         compliance: "off"
-      },
-      ui: { route: "profile" }
+      }
     };
   }
 
@@ -145,8 +142,7 @@
     // profile
     s.profile = s.profile && typeof s.profile === "object" ? s.profile : d.profile;
     if (typeof s.profile.sport !== "string") s.profile.sport = d.profile.sport;
-    if (!Number.isFinite(s.profile.days)) s.profile.days = d.profile.days;
-    if (typeof s.profile.athleteName !== "string") s.profile.athleteName = d.profile.athleteName;
+    if (!Number.isFinite(s.profile.days) || s.profile.days <= 0) s.profile.days = d.profile.days;
 
     // trial
     s.trial = s.trial && typeof s.trial === "object" ? s.trial : d.trial;
@@ -167,10 +163,6 @@
     if (typeof s.team.board !== "string") s.team.board = d.team.board;
     if (typeof s.team.compliance !== "string") s.team.compliance = d.team.compliance;
 
-    // ui
-    s.ui = s.ui && typeof s.ui === "object" ? s.ui : d.ui;
-    if (typeof s.ui.route !== "string") s.ui.route = "profile";
-
     return s;
   }
 
@@ -185,39 +177,34 @@
     }
   }
 
-  // ---- State Manager Class ----
+  // ---- State Manager ----
   class StateManager {
     constructor(initialState) {
       this._state = initialState;
       this._listeners = new Set();
     }
-
     get state() {
       return this._state;
     }
-
-    update(updater) {
-      const next = typeof updater === "function" ? updater(this._state) : updater;
-      this._state = normalizeState(next);
-      this._state.meta.updatedAtMs = Date.now();
-      this._state.meta.version = (this._state.meta.version || 0) + 1;
+    update(next) {
+      const normalized = normalizeState(next);
+      normalized.meta.updatedAtMs = Date.now();
+      normalized.meta.version = (normalized.meta.version || 0) + 1;
+      this._state = normalized;
       __saveLocal(this._state);
       this.notify();
       return this._state;
     }
-
     mergeFromCloud(cloudState) {
       const normalized = normalizeState(cloudState);
       Object.assign(this._state, normalized);
       __saveLocal(this._state);
       this.notify();
     }
-
     subscribe(listener) {
       this._listeners.add(listener);
       return () => this._listeners.delete(listener);
     }
-
     notify() {
       this._listeners.forEach((fn) => {
         try {
@@ -229,7 +216,6 @@
     }
   }
 
-  // Initialize state manager
   const stateManager = new StateManager(loadState() || defaultState());
   const state = stateManager.state;
 
@@ -239,12 +225,10 @@
       this.queue = [];
       this.processing = false;
     }
-
     async enqueue(operation) {
       this.queue.push(operation);
       if (!this.processing) await this.process();
     }
-
     async process() {
       this.processing = true;
       while (this.queue.length > 0) {
@@ -297,7 +281,7 @@
     }
   }
 
-  // ---- Cloud push (state) debounced ----
+  // ---- Cloud push (state) ----
   async function __pushStateNow() {
     if (!window.dataStore || typeof window.dataStore.pushState !== "function") return false;
     if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
@@ -320,7 +304,6 @@
   const scheduleCloudPush = debounce(async () => {
     if (!window.dataStore || typeof window.dataStore.pushState !== "function") return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-
     await syncQueue.enqueue(async () => {
       await __pushStateNow();
     });
@@ -329,13 +312,13 @@
   function saveState(s) {
     stateManager.update(s);
     scheduleCloudPush();
+    renderAll(); // <-- FIX: render after any save so UI updates
   }
   window.PIQ.saveState = window.PIQ.saveState || saveState;
 
   // =========================================================
   // CLOUD HELPERS (logs + metrics)
   // =========================================================
-
   function __piqComputeVolumeFromEntries(entries) {
     let vol = 0;
     (entries || []).forEach((e) => {
@@ -348,6 +331,7 @@
 
   function __piqLocalLogToWorkoutRow(localLog) {
     if (!localLog) return null;
+
     return {
       date: localLog.dateISO || null,
       program_day: localLog.theme || null,
@@ -366,6 +350,7 @@
 
   function __piqLocalTestToMetricRow(test) {
     if (!test) return null;
+
     return {
       date: test.dateISO || null,
       vert_inches: numOrNull(test.vert),
@@ -433,7 +418,7 @@
 
       if (cloudUpdated > localUpdated) {
         stateManager.mergeFromCloud(cloud.state);
-        console.log("[cloud] pulled newer state");
+        renderAll();
       }
     } catch (e) {
       logError("pullCloudState", e);
@@ -457,9 +442,200 @@
   })();
 
   // =========================================================
+  // UI INJECTION FIX (THIS IS WHY YOU HAD "NO INFORMATION")
+  // =========================================================
+  function ensureTabMarkup() {
+    const tabs = {
+      profile: $("tab-profile"),
+      program: $("tab-program"),
+      log: $("tab-log"),
+      performance: $("tab-performance"),
+      dashboard: $("tab-dashboard"),
+      team: $("tab-team"),
+      parent: $("tab-parent"),
+      settings: $("tab-settings")
+    };
+
+    // Profile UI
+    if (tabs.profile && tabs.profile.innerHTML.trim().length < 10) {
+      tabs.profile.innerHTML = `
+        <h2 style="margin-top:0">Profile</h2>
+        <div class="row">
+          <div class="field">
+            <label>Sport</label>
+            <select id="sport">
+              <option value="${SPORTS.BASKETBALL}">Basketball</option>
+              <option value="${SPORTS.FOOTBALL}">Football</option>
+              <option value="${SPORTS.BASEBALL}">Baseball</option>
+              <option value="${SPORTS.VOLLEYBALL}">Volleyball</option>
+              <option value="${SPORTS.SOCCER}">Soccer</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Days / week</label>
+            <select id="days">
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="field">
+            <label>Wellness (1–10)</label>
+            <input id="wellness" type="range" min="1" max="10" value="7" />
+            <div class="small">Value: <span id="wellnessNum">7</span></div>
+          </div>
+          <div class="field">
+            <label>Notes</label>
+            <textarea id="notes" rows="3" placeholder="Any notes…"></textarea>
+          </div>
+        </div>
+
+        <div class="btnRow" style="margin-top:10px">
+          <button class="btn" id="btnSaveProfile" type="button">Save Profile</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="small" id="profileSummary"></div>
+      `;
+    }
+
+    // Log UI
+    if (tabs.log && tabs.log.innerHTML.trim().length < 10) {
+      tabs.log.innerHTML = `
+        <h2 style="margin-top:0">Log</h2>
+
+        <div class="row">
+          <div class="field">
+            <label>Date</label>
+            <input id="logDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Theme</label>
+            <input id="logTheme" type="text" placeholder="e.g., Strength A" />
+          </div>
+          <div class="field">
+            <label>Injury flag</label>
+            <select id="injuryFlag">
+              <option value="none">none</option>
+              <option value="sore">sore</option>
+              <option value="pain">pain</option>
+              <option value="injured">injured</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="btnRow" style="margin-top:10px">
+          <button class="btn" id="btnSaveLog" type="button">Save Log</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="small" id="logSummary"></div>
+      `;
+    }
+
+    // Performance UI
+    if (tabs.performance && tabs.performance.innerHTML.trim().length < 10) {
+      tabs.performance.innerHTML = `
+        <h2 style="margin-top:0">Performance</h2>
+        <div class="row">
+          <div class="field">
+            <label>Date</label>
+            <input id="testDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Vertical (in)</label>
+            <input id="vert" inputmode="decimal" placeholder="e.g., 28.5" />
+          </div>
+          <div class="field">
+            <label>Sprint (sec)</label>
+            <input id="sprint10" inputmode="decimal" placeholder="e.g., 1.78" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="field">
+            <label>COD (sec)</label>
+            <input id="cod" inputmode="decimal" placeholder="e.g., 4.25" />
+          </div>
+          <div class="field">
+            <label>Bodyweight (lb)</label>
+            <input id="bw" inputmode="decimal" placeholder="e.g., 150" />
+          </div>
+          <div class="field">
+            <label>Sleep (hrs)</label>
+            <input id="sleep" inputmode="decimal" placeholder="e.g., 7.5" />
+          </div>
+        </div>
+
+        <div class="btnRow" style="margin-top:10px">
+          <button class="btn" id="btnSaveTests" type="button">Save Test</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="small" id="testsSummary"></div>
+      `;
+    }
+
+    // Dashboard UI (minimal)
+    if (tabs.dashboard && tabs.dashboard.innerHTML.trim().length < 10) {
+      tabs.dashboard.innerHTML = `
+        <h2 style="margin-top:0">Dashboard</h2>
+        <div class="small" id="dashSummary"></div>
+        <div class="hr"></div>
+        <div class="small" id="cloudSummary"></div>
+      `;
+    }
+
+    // Settings UI (minimal)
+    if (tabs.settings && tabs.settings.innerHTML.trim().length < 10) {
+      tabs.settings.innerHTML = `
+        <h2 style="margin-top:0">Settings</h2>
+        <div class="small">If you want cloud sync, use "Switch Role" then "Sign in to sync".</div>
+        <div class="btnRow" style="margin-top:10px">
+          <button class="btn secondary" id="btnExportAll" type="button">Export Local JSON</button>
+          <button class="btn secondary" id="btnClearLocal" type="button">Clear Local Data</button>
+        </div>
+        <div class="hr"></div>
+        <pre class="small" id="debugState" style="white-space:pre-wrap"></pre>
+      `;
+    }
+  }
+
+  // =========================================================
+  // NAV ROUTING
+  // =========================================================
+  function setActiveTab(tab) {
+    const tabs = ["profile","program","log","performance","dashboard","team","parent","settings"];
+    tabs.forEach((t) => {
+      const btn = $("nav-" + t);
+      const panel = $("tab-" + t);
+      if (btn) btn.classList.toggle("active", t === tab);
+      if (panel) panel.style.display = t === tab ? "block" : "none";
+    });
+  }
+
+  function routeFromHash() {
+    const raw = (location.hash || "#profile").replace("#", "");
+    const ok = new Set(["profile","program","log","performance","dashboard","team","parent","settings"]);
+    const tab = ok.has(raw) ? raw : "profile";
+    setActiveTab(tab);
+    renderAll();
+  }
+
+  function bindNav() {
+    const tabs = ["profile","program","log","performance","dashboard","team","parent","settings"];
+    tabs.forEach((t) => {
+      const btn = $("nav-" + t);
+      if (btn) btn.addEventListener("click", () => (location.hash = "#" + t));
+    });
+    window.addEventListener("hashchange", routeFromHash);
+  }
+
+  // =========================================================
   // ROLE CHOOSER
   // =========================================================
-
   function ensureOnboardMount() {
     let mount = $("onboard");
     if (!mount) {
@@ -474,6 +650,8 @@
     state.role = role || "";
     try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
     try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
+    const pill = $("rolePill");
+    if (pill) pill.textContent = "Role: " + (state.role || "—");
   }
 
   function setProfileBasics(sport, days) {
@@ -539,7 +717,6 @@
           </div>
 
           <div class="hr"></div>
-
           <div class="small" id="piqSyncStatus"></div>
 
           <div class="btnRow" style="margin-top:10px">
@@ -555,27 +732,344 @@
       </div>
     `;
 
-    const elements = $$(["piqRole", "piqSport", "piqDays", "piqSyncStatus"]);
-    if (elements.piqRole) elements.piqRole.value = currentRole || ROLES.ATHLETE;
-    if (elements.piqSport) elements.piqSport.value = currentSport;
-    if (elements.piqDays) elements.piqDays.value = currentDays;
+    const els = $$(["piqRole", "piqSport", "piqDays", "piqSyncStatus"]);
+    if (els.piqRole) els.piqRole.value = currentRole || ROLES.ATHLETE;
+    if (els.piqSport) els.piqSport.value = currentSport;
+    if (els.piqDays) els.piqDays.value = currentDays;
 
-    if (elements.piqSyncStatus) {
-      if (!supaOk) elements.piqSyncStatus.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
-      else if (!signed) elements.piqSyncStatus.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
-      else elements.piqSyncStatus.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
+    if (els.piqSyncStatus) {
+      if (!supaOk) els.piqSyncStatus.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
+      else if (!signed) els.piqSyncStatus.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
+      else els.piqSyncStatus.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
     }
 
     $("piqSaveRole")?.addEventListener("click", () => {
-      const role = elements.piqRole ? elements.piqRole.value : ROLES.ATHLETE;
-      const sport = elements.piqSport ? elements.piqSport.value : SPORTS.BASKETBALL;
-      const days = elements.piqDays ? elements.piqDays.value : "4";
+      const role = els.piqRole ? els.piqRole.value : ROLES.ATHLETE;
+      const sport = els.piqSport ? els.piqSport.value : SPORTS.BASKETBALL;
+      const days = els.piqDays ? els.piqDays.value : "4";
 
       setRoleEverywhere(role);
       setProfileBasics(sport, days);
-
       saveState(state);
 
       try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
       hideSplashNow();
-      if (typeof
+
+      if (typeof window.startApp === "function") window.startApp();
+    });
+
+    $("piqResetRole")?.addEventListener("click", () => {
+      if (!confirm("Clear ALL saved data on this device?")) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) { logError("resetStorage", e); }
+      try { localStorage.removeItem("role"); } catch (e) { logError("resetRole", e); }
+      try { localStorage.removeItem("selectedRole"); } catch (e) { logError("resetSelectedRole", e); }
+      location.reload();
+    });
+
+    $("piqSignIn")?.addEventListener("click", async () => {
+      try {
+        if (!window.PIQ_AuthStore) return alert("Auth not available.");
+        const email = prompt("Enter email for magic-link sign-in:");
+        if (!email) return;
+        await window.PIQ_AuthStore.signInWithOtp(email.trim());
+        alert("Check your email for the sign-in link, then return here.");
+      } catch (e) {
+        logError("signIn", e);
+        alert("Sign-in failed: " + (e?.message || e));
+      }
+    });
+
+    $("piqSignOut")?.addEventListener("click", async () => {
+      try {
+        await window.PIQ_AuthStore?.signOut?.();
+        alert("Signed out.");
+        location.reload();
+      } catch (e) {
+        logError("signOut", e);
+        alert("Sign-out failed: " + (e?.message || e));
+      }
+    });
+
+    $("piqPull")?.addEventListener("click", async () => {
+      try {
+        await __piqTryPullCloudStateIfNewer();
+        alert("Pulled cloud (if newer). Reloading.");
+        location.reload();
+      } catch (e) {
+        logError("pullCloud", e);
+        alert("Pull failed: " + (e?.message || e));
+      }
+    });
+  }
+
+  window.showRoleChooser = function () {
+    renderRoleChooser();
+  };
+
+  // =========================================================
+  // SAVE FUNCTIONS (EXIST + WIRED)
+  // =========================================================
+  async function saveTests() {
+    const dateISO = ($("testDate")?.value || todayISO()).trim();
+    const test = {
+      dateISO,
+      vert: parseInputNumOrNull("vert"),
+      sprint10: parseInputNumOrNull("sprint10"),
+      cod: parseInputNumOrNull("cod"),
+      bw: parseInputNumOrNull("bw"),
+      sleep: parseInputNumOrNull("sleep")
+    };
+
+    state.tests = (state.tests || []).filter((t) => t.dateISO !== dateISO);
+    state.tests.push(test);
+    state.tests.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    saveState(state);
+
+    // one-liner to cloud
+    window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
+    renderAll();
+  }
+
+  async function saveLog() {
+    const dateISO = ($("logDate")?.value || todayISO()).trim();
+    const localLog = {
+      dateISO,
+      theme: ($("logTheme")?.value || "").trim() || null,
+      injury: $("injuryFlag")?.value || "none",
+      wellness: numOrNull($("wellness")?.value),
+      entries: []
+    };
+
+    state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
+    state.logs.push(localLog);
+    state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    saveState(state);
+
+    // one-liner to cloud
+    window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
+    renderAll();
+  }
+
+  window.PIQ.saveTests = window.PIQ.saveTests || saveTests;
+  window.PIQ.saveLog = window.PIQ.saveLog || saveLog;
+
+  // =========================================================
+  // RENDERERS (so something shows up!)
+  // =========================================================
+  function syncProfileUIFromState() {
+    const sport = $("sport");
+    const days = $("days");
+    const wellness = $("wellness");
+    const wellnessNum = $("wellnessNum");
+    const notes = $("notes");
+
+    if (sport) sport.value = state.profile?.sport || SPORTS.BASKETBALL;
+    if (days) days.value = String(state.profile?.days || 4);
+
+    const w = Number.isFinite(Number(state.profile?.wellness)) ? Number(state.profile.wellness) : 7;
+    if (wellness) wellness.value = String(w);
+    if (wellnessNum) wellnessNum.textContent = String(w);
+
+    if (notes) notes.value = state.profile?.notes || "";
+  }
+
+  function renderProfileSummary() {
+    const el = $("profileSummary");
+    if (!el) return;
+    const sport = sanitizeHTML(state.profile?.sport || "—");
+    const days = sanitizeHTML(String(state.profile?.days || "—"));
+    const role = sanitizeHTML(state.role || "—");
+    el.innerHTML = `Saved: Role=<b>${role}</b>, Sport=<b>${sport}</b>, Days=<b>${days}</b>`;
+  }
+
+  function renderLogSummary() {
+    const el = $("logSummary");
+    if (!el) return;
+    const last = (state.logs || [])[state.logs.length - 1];
+    if (!last) {
+      el.innerHTML = "No logs yet.";
+      return;
+    }
+    el.innerHTML =
+      `Latest log: <b>${sanitizeHTML(last.dateISO)}</b> • Theme: <b>${sanitizeHTML(last.theme || "—")}</b> • Injury: <b>${sanitizeHTML(last.injury || "none")}</b>`;
+  }
+
+  function renderTestsSummary() {
+    const el = $("testsSummary");
+    if (!el) return;
+    const last = (state.tests || [])[state.tests.length - 1];
+    if (!last) {
+      el.innerHTML = "No tests yet.";
+      return;
+    }
+    el.innerHTML =
+      `Latest test: <b>${sanitizeHTML(last.dateISO)}</b> • Vert: <b>${sanitizeHTML(String(last.vert ?? "—"))}</b> • Sprint: <b>${sanitizeHTML(String(last.sprint10 ?? "—"))}</b>`;
+  }
+
+  async function renderCloudSummary() {
+    const el = $("cloudSummary");
+    if (!el) return;
+
+    const supaOk = isSupabaseReady();
+    const signed = supaOk ? await isSignedIn() : false;
+
+    if (!supaOk) {
+      el.innerHTML = "Cloud: <b>Unavailable</b> (Supabase not configured).";
+      return;
+    }
+    if (!signed) {
+      el.innerHTML = "Cloud: <b>Available</b> — not signed in.";
+      return;
+    }
+    el.innerHTML = `Cloud: <b>Signed in</b> • Last sync: ${
+      state.meta?.lastSyncedAtMs ? new Date(state.meta.lastSyncedAtMs).toLocaleString() : "—"
+    }`;
+  }
+
+  function renderDebugState() {
+    const el = $("debugState");
+    if (!el) return;
+    el.textContent = JSON.stringify(state, null, 2);
+  }
+
+  function renderDashboardSummary() {
+    const el = $("dashSummary");
+    if (!el) return;
+    el.innerHTML =
+      `Local totals: <b>${(state.logs || []).length}</b> logs • <b>${(state.tests || []).length}</b> tests`;
+  }
+
+  function renderAll() {
+    // only render if tabs exist
+    renderProfileSummary();
+    renderLogSummary();
+    renderTestsSummary();
+    renderDashboardSummary();
+    renderDebugState();
+    // cloud summary is async
+    renderCloudSummary().catch(() => {});
+  }
+
+  // =========================================================
+  // START APP (wires everything)
+  // =========================================================
+  function wireUIHandlers() {
+    $("btnSaveProfile")?.addEventListener("click", () => {
+      try {
+        const sport = $("sport")?.value || SPORTS.BASKETBALL;
+        const days = Number($("days")?.value || 4);
+        const w = Number($("wellness")?.value || 7);
+        const notes = $("notes")?.value || "";
+
+        state.profile = state.profile || {};
+        state.profile.sport = sport;
+        state.profile.days = Number.isFinite(days) ? days : 4;
+        state.profile.wellness = Number.isFinite(w) ? w : 7;
+        state.profile.notes = notes;
+
+        saveState(state);
+      } catch (e) {
+        logError("saveProfile", e);
+      }
+    });
+
+    $("wellness")?.addEventListener("input", () => {
+      const v = $("wellness")?.value || "7";
+      const wn = $("wellnessNum");
+      if (wn) wn.textContent = v;
+    });
+
+    $("btnSaveTests")?.addEventListener("click", () => {
+      window.PIQ.saveTests().catch((e) => logError("saveTests", e));
+    });
+
+    $("btnSaveLog")?.addEventListener("click", () => {
+      window.PIQ.saveLog().catch((e) => logError("saveLog", e));
+    });
+
+    $("btnExportAll")?.addEventListener("click", () => {
+      try {
+        const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "piq_all_data.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      } catch (e) {
+        logError("exportAll", e);
+      }
+    });
+
+    $("btnClearLocal")?.addEventListener("click", () => {
+      if (!confirm("Clear ALL local data on this device?")) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      location.reload();
+    });
+
+    $("btnSwitchRole")?.addEventListener("click", () => {
+      if (!confirm("Switch role? This will return you to role setup.")) return;
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      window.showRoleChooser();
+    });
+  }
+
+  window.startApp =
+    window.startApp ||
+    function () {
+      // FIX: inject UI first so tabs aren't empty
+      ensureTabMarkup();
+      bindNav();
+      wireUIHandlers();
+
+      // role gate
+      const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
+      if (!role) {
+        window.showRoleChooser();
+        return;
+      }
+      if (!state.role) setRoleEverywhere(role);
+
+      // initialize dates if present
+      if ($("logDate") && !$("logDate").value) $("logDate").value = todayISO();
+      if ($("testDate") && !$("testDate").value) $("testDate").value = todayISO();
+
+      // sync UI from state into injected markup
+      syncProfileUIFromState();
+
+      // default route
+      if (!location.hash) location.hash = "#profile";
+      routeFromHash();
+
+      renderAll();
+      console.log("PerformanceIQ core started. Role:", state.role);
+    };
+
+  // =========================================================
+  // STARTUP
+  // =========================================================
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      // ensure markup exists early so user sees something immediately
+      ensureTabMarkup();
+
+      // attempt cloud pull after sign-in (optional)
+      if (await isSignedIn()) await syncQueue.enqueue(() => __piqTryPullCloudStateIfNewer());
+    } catch (e) {
+      logError("startupPull", e);
+    }
+
+    // splash failsafe
+    setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
+    window.addEventListener("click", hideSplashNow, { once: true });
+    window.addEventListener("touchstart", hideSplashNow, { once: true });
+
+    // auto-start
+    try { window.startApp(); } catch (e) { logError("startApp", e); }
+  });
+})();
