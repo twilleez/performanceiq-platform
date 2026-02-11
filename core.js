@@ -1,9 +1,7 @@
 // core.js — PRODUCTION-READY REPLACEMENT (FULL FILE)
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
-// Includes: working tab system + working Profile + Program (structured) + Log (with hydration level) + Performance + Dashboard + Settings
-// NEW: Readiness engine (0–100) + readiness guidance text
-// NEW: Auto program progression week 1–4 (week 2/3 load increases, week 4 deload)
-
+// Includes: working tab system + Profile + Program (structured) + Log (hydration) + Performance + Dashboard + Settings
+// Adds: Readiness engine + guidance text color by readiness + Week 2/3/4 auto progression (A-model)
 (function () {
   "use strict";
 
@@ -144,9 +142,6 @@
     s._ui = s._ui && typeof s._ui === "object" ? s._ui : d._ui;
     if (typeof s._ui.activeTab !== "string") s._ui.activeTab = "profile";
 
-    // Optional: allow manual program week override (1–4)
-    if (s._ui && !Number.isFinite(s._ui.programWeekOverride)) s._ui.programWeekOverride = null;
-
     return s;
   }
 
@@ -214,6 +209,29 @@
     }
   }
 
+  // =========================================================
+  // ✅ MERGED HELPERS (cloud eligibility + guidance color)
+  // =========================================================
+  async function canUseCloud() {
+    try {
+      if (!isSupabaseReady()) return false;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+      const signed = await isSignedIn();
+      return !!signed;
+    } catch (e) {
+      logError("canUseCloud", e);
+      return false;
+    }
+  }
+
+  function guidanceColor(score) {
+    if (!Number.isFinite(score)) return "#9aa4b2"; // gray (no data)
+    if (score >= 85) return "#22c55e"; // green
+    if (score >= 70) return "#84cc16"; // lime
+    if (score >= 55) return "#f59e0b"; // amber
+    return "#ef4444"; // red
+  }
+
   // ---- Cloud push (state) ----
   async function __pushStateNow() {
     if (!window.dataStore || typeof window.dataStore.pushState !== "function") return false;
@@ -235,8 +253,7 @@
   }
 
   const scheduleCloudPush = debounce(async () => {
-    if (!isSupabaseReady()) return;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    if (!(await canUseCloud())) return;
     await __pushStateNow();
   }, CLOUD_PUSH_DEBOUNCE_MS);
 
@@ -256,8 +273,12 @@
 
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
-        Object.keys(state).forEach((k) => delete state[k]);
-        Object.keys(next).forEach((k) => (state[k] = next[k]));
+        Object.keys(state).forEach((k) => {
+          delete state[k];
+        });
+        Object.keys(next).forEach((k) => {
+          state[k] = next[k];
+        });
         __saveLocal(state);
         renderActiveTab();
         return true;
@@ -290,7 +311,8 @@
       energy: numOrNull(localLog.energy),
       hydration: typeof localLog.hydration === "string" ? localLog.hydration : null,
       injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none",
-      practice_intensity: typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
+      practice_intensity:
+        typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
       practice_duration_min: numOrNull(localLog.practice_duration_min),
       extra_gym: typeof localLog.extra_gym === "boolean" ? localLog.extra_gym : null,
       extra_gym_duration_min: numOrNull(localLog.extra_gym_duration_min)
@@ -310,22 +332,28 @@
   }
 
   async function __tryUpsertWorkoutLog(localLog) {
+    if (!(await canUseCloud())) return false;
     if (!window.dataStore || typeof window.dataStore.upsertWorkoutLog !== "function") return false;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
     const row = __localLogToWorkoutRow(localLog);
     if (!row || !row.date) return false;
+
     try {
       await window.dataStore.upsertWorkoutLog(row);
       return true;
     } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg.toLowerCase().includes("supabase not configured")) return false;
       logError("upsertWorkoutLog", e);
       return false;
     }
   }
 
   async function __tryUpsertMetric(localTest) {
-    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function") return false;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+    if (!(await canUseCloud())) return false;
+    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function")
+      return false;
+
     const row = __localTestToMetricRow(localTest);
     if (!row || !row.date) return false;
 
@@ -341,20 +369,34 @@
       await window.dataStore.upsertPerformanceMetric(row);
       return true;
     } catch (e) {
+      const msg = String(e?.message || e);
+      if (msg.toLowerCase().includes("supabase not configured")) return false;
       logError("upsertPerformanceMetric", e);
       return false;
     }
   }
 
   window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => { __tryUpsertWorkoutLog(localLog); };
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => { __tryUpsertMetric(localTest); };
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = async (localLog) => {
+    await __tryUpsertWorkoutLog(localLog);
+  };
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = async (localTest) => {
+    await __tryUpsertMetric(localTest);
+  };
 
   // ---- Role helpers ----
   function setRoleEverywhere(role) {
     state.role = role || "";
-    try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
-    try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
+    try {
+      localStorage.setItem("role", state.role);
+    } catch (e) {
+      logError("setRole", e);
+    }
+    try {
+      localStorage.setItem("selectedRole", state.role);
+    } catch (e) {
+      logError("setSelectedRole", e);
+    }
   }
 
   function setProfileBasics(sport, days, name) {
@@ -464,19 +506,34 @@
 
     $("piqSaveRole")?.addEventListener("click", () => {
       setRoleEverywhere(roleSel ? roleSel.value : ROLES.ATHLETE);
-      setProfileBasics(sportSel ? sportSel.value : SPORTS.BASKETBALL, daysSel ? daysSel.value : 4, state.profile?.name || "");
+      setProfileBasics(
+        sportSel ? sportSel.value : SPORTS.BASKETBALL,
+        daysSel ? daysSel.value : 4,
+        state.profile?.name || ""
+      );
       saveState();
 
-      try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
+      try {
+        mount.style.display = "none";
+        mount.innerHTML = "";
+      } catch (e) {
+        logError("hideRoleChooser", e);
+      }
       hideSplashNow();
       window.startApp?.();
     });
 
     $("piqResetRole")?.addEventListener("click", () => {
       if (!confirm("Clear ALL saved data on this device?")) return;
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+      try {
+        localStorage.removeItem("role");
+      } catch {}
+      try {
+        localStorage.removeItem("selectedRole");
+      } catch {}
       location.reload();
     });
 
@@ -516,7 +573,9 @@
     });
   }
 
-  window.showRoleChooser = function () { renderRoleChooser(); };
+  window.showRoleChooser = function () {
+    renderRoleChooser();
+  };
 
   // ---- Tab system ----
   const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
@@ -525,7 +584,7 @@
     for (const t of TABS) {
       const el = $(`tab-${t}`);
       if (!el) continue;
-      el.style.display = (t === tabName) ? "block" : "none";
+      el.style.display = t === tabName ? "block" : "none";
     }
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
@@ -556,234 +615,18 @@
   }
 
   // =========================================================
-  // ✅ READINESS ENGINE + GUIDANCE
-  // =========================================================
-  function clamp01(x) {
-    if (!Number.isFinite(x)) return null;
-    if (x < 0) return 0;
-    if (x > 1) return 1;
-    return x;
-  }
-
-  function hydrationFactor(level) {
-    const v = String(level || "").toLowerCase().trim();
-    if (v === "low") return 0.60;
-    if (v === "ok") return 0.75;
-    if (v === "good") return 0.90;
-    if (v === "great") return 1.0;
-    return null;
-  }
-
-  function injuryFactor(flag) {
-    const v = String(flag || "").toLowerCase().trim();
-    if (v === "none") return 1.0;
-    if (v === "sore") return 0.90;
-    if (v === "minor") return 0.75;
-    if (v === "out") return 0.40;
-    return null;
-  }
-
-  function sleepFactor(hours) {
-    const h = Number(hours);
-    if (!Number.isFinite(h)) return null;
-    if (h >= 8) return 1.0;
-    if (h >= 6) {
-      const t = (h - 6) / 2;
-      return 0.70 + t * 0.30;
-    }
-    if (h >= 5) {
-      const t = (h - 5) / 1;
-      return 0.45 + t * 0.25;
-    }
-    return 0.45;
-  }
-
-  function score0100(x01) {
-    if (!Number.isFinite(x01)) return null;
-    return Math.round(clamp01(x01) * 100);
-  }
-
-  function findLogByDate(dateISO) {
-    const d = String(dateISO || "").trim();
-    if (!d) return null;
-    const logs = Array.isArray(state.logs) ? state.logs : [];
-    return logs.find((l) => l && l.dateISO === d) || null;
-  }
-
-  function findTestByDate(dateISO) {
-    const d = String(dateISO || "").trim();
-    if (!d) return null;
-    const tests = Array.isArray(state.tests) ? state.tests : [];
-    return tests.find((t) => t && t.dateISO === d) || null;
-  }
-
-  function readinessGuidance(score, inputs) {
-    if (!Number.isFinite(score)) return "No readiness yet. Add Wellness/Energy (and Sleep for best accuracy).";
-
-    const injury = String(inputs?.injury || "").toLowerCase().trim();
-    if (injury === "out") return "Guidance: Recovery only. No hard training today.";
-    if (injury === "minor" && score < 70) return "Guidance: Reduce impact + avoid max effort. Do skill + mobility + light strength.";
-
-    if (score >= 85) return "Guidance: Green light — train hard. Hit your main lifts and speed work.";
-    if (score >= 70) return "Guidance: Solid — normal training. Push quality, stop 1–2 reps before failure.";
-    if (score >= 55) return "Guidance: Yellow — reduce volume. Keep intensity moderate and focus on technique.";
-    return "Guidance: Red — recovery day. Mobility, light cardio, and sleep/hydration focus.";
-  }
-
-  /**
-   * Compute readiness 0-100 for a given date.
-   * Uses available components and renormalizes weights if some are missing.
-   */
-  function computeReadinessForDate(dateISO, overrides) {
-    const d = String(dateISO || "").trim();
-    if (!d) return null;
-
-    const log = findLogByDate(d);
-    const test = findTestByDate(d);
-
-    const wellness = overrides?.wellness ?? (log ? numOrNull(log.wellness) : null);
-    const energy = overrides?.energy ?? (log ? numOrNull(log.energy) : null);
-    const hydration = overrides?.hydration ?? (log ? log.hydration : null);
-    const injury = overrides?.injury ?? (log ? log.injury : null);
-    const sleep = overrides?.sleep ?? (test ? numOrNull(test.sleep) : null);
-
-    const wellness01 = Number.isFinite(wellness) ? clamp01(wellness / 10) : null;
-    const energy01 = Number.isFinite(energy) ? clamp01(energy / 10) : null;
-    const hydration01 = hydrationFactor(hydration);
-    const injury01 = injuryFactor(injury);
-    const sleep01 = sleepFactor(sleep);
-
-    const components = [
-      { key: "wellness", value: wellness01, w: 0.35 },
-      { key: "energy", value: energy01, w: 0.25 },
-      { key: "sleep", value: sleep01, w: 0.25 },
-      { key: "hydration", value: hydration01, w: 0.10 },
-      { key: "injury", value: injury01, w: 0.05 }
-    ].filter((c) => Number.isFinite(c.value));
-
-    if (!components.length) return null;
-
-    const totalW = components.reduce((acc, c) => acc + c.w, 0);
-    const readiness01 = components.reduce((acc, c) => acc + (c.value * (c.w / totalW)), 0);
-
-    const breakdown = {
-      wellness: score0100(wellness01),
-      energy: score0100(energy01),
-      sleep: score0100(sleep01),
-      hydration: score0100(hydration01),
-      injury: score0100(injury01)
-    };
-
-    const result = {
-      dateISO: d,
-      score: score0100(readiness01),
-      breakdown,
-      inputs: {
-        wellness,
-        energy,
-        sleep,
-        hydration: typeof hydration === "string" ? hydration : null,
-        injury: typeof injury === "string" ? injury : null
-      }
-    };
-
-    result.guidance = readinessGuidance(result.score, result.inputs);
-    return result;
-  }
-
-  function computeReadinessHistory(lastN) {
-    const N = Math.max(1, Math.min(Number(lastN || 14), 60));
-    const dates = new Set();
-    (state.logs || []).forEach((l) => l?.dateISO && dates.add(l.dateISO));
-    (state.tests || []).forEach((t) => t?.dateISO && dates.add(t.dateISO));
-
-    const ordered = Array.from(dates).sort((a, b) => String(a).localeCompare(String(b))).slice(-N);
-    return ordered.map((d) => computeReadinessForDate(d)).filter((r) => r && Number.isFinite(r.score));
-  }
-
-  window.PIQ.readiness = window.PIQ.readiness || {};
-  window.PIQ.readiness.forDate = (dateISO) => computeReadinessForDate(dateISO);
-  window.PIQ.readiness.history = (n) => computeReadinessHistory(n);
-
-  // =========================================================
-  // ✅ AUTO PROGRAM PROGRESSION (Week 1–4 wave)
-  // Week 1: Baseline
-  // Week 2: + load
-  // Week 3: + load again
-  // Week 4: Deload (reduce volume)
-  // =========================================================
-  function safeParseISODate(isoStr) {
-    const s = String(isoStr || "").trim();
-    const d = new Date(s);
-    return Number.isFinite(d.getTime()) ? d : null;
-  }
-
-  function currentProgramWeek(program) {
-    if (!program || !program.createdAtISO) return 1;
-
-    // Optional manual override (1–4)
-    const ov = Number(state?._ui?.programWeekOverride);
-    if (Number.isFinite(ov) && ov >= 1 && ov <= 4) return Math.round(ov);
-
-    const created = safeParseISODate(program.createdAtISO);
-    if (!created) return 1;
-
-    const now = new Date();
-    const diffMs = now.getTime() - created.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const wk = Math.floor(diffDays / 7) + 1;
-    if (wk < 1) return 1;
-    if (wk > 4) return 4;
-    return wk;
-  }
-
-  function progressionPlanForWeek(weekNum) {
-    const w = Number(weekNum);
-    if (w === 1) {
-      return {
-        week: 1,
-        title: "Week 1 — Baseline",
-        loadNotePrimary: "Use comfortable working weights. Leave 1–2 reps in reserve.",
-        loadNoteSecondary: "Keep form perfect; smooth reps.",
-        volumeNote: "Normal volume."
-      };
-    }
-    if (w === 2) {
-      return {
-        week: 2,
-        title: "Week 2 — Increase Load",
-        loadNotePrimary: "Add a small amount of weight vs Week 1 (keep reps/sets the same).",
-        loadNoteSecondary: "Slightly heavier or add 1 rep per set if weight is fixed.",
-        volumeNote: "Normal volume."
-      };
-    }
-    if (w === 3) {
-      return {
-        week: 3,
-        title: "Week 3 — Increase Load Again",
-        loadNotePrimary: "Add a small amount of weight vs Week 2 (still controlled, no grinders).",
-        loadNoteSecondary: "Heavier or +1 rep if weight is fixed.",
-        volumeNote: "Normal volume."
-      };
-    }
-    // Week 4
-    return {
-      week: 4,
-      title: "Week 4 — Deload",
-      loadNotePrimary: "Reduce weight slightly and keep speed crisp.",
-      loadNoteSecondary: "Keep form sharp; avoid fatigue sets.",
-      volumeNote: "Reduce volume: cut 1 set on most accessories (or keep sets and stop earlier)."
-    };
-  }
-
-  // =========================================================
-  // ✅ PROGRAM GENERATOR (STRUCTURED, REAL EXERCISES)
+  // PROGRAM GENERATOR + A-PROGRESSION (Week 1–4)
   // =========================================================
   function generateProgram(sport, days) {
     const s = (sport || SPORTS.BASKETBALL).toLowerCase();
     const d = Math.min(Math.max(Number(days || 4), 3), 5);
 
-    const baseWarmup = ["5–8 min zone 2 cardio", "Dynamic mobility (hips, ankles, t-spine)", "Glute + core activation"];
+    const baseWarmup = [
+      "5–8 min zone 2 cardio",
+      "Dynamic mobility (hips, ankles, t-spine)",
+      "Glute + core activation"
+    ];
+
     const baseFinisher = ["Cooldown walk 5 min", "Breathing reset 3–5 min", "Stretch major muscle groups"];
 
     function primaryLift(name) {
@@ -798,41 +641,167 @@
 
     const templates = {
       basketball: [
-        { title: "Day 1 — Lower Strength", exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Rear Foot Elevated Split Squat"), accessory("Hamstring Curl"), accessory("Core Anti-Rotation Press")] },
-        { title: "Day 2 — Speed + Plyo", exercises: [{ tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" }, { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" }, accessory("Calf Raises"), accessory("Hip Mobility Circuit")] },
-        { title: "Day 3 — Upper Strength", exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Scapular Retraction Rows")] },
-        { title: "Day 4 — Reactive + Conditioning", exercises: [{ tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" }, { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" }, accessory("Core Circuit"), accessory("Zone 2 Bike 12–15 min")] },
-        { title: "Day 5 — Optional Recovery", exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }, accessory("Mobility Flow"), accessory("Soft Tissue Work")] }
-      ],
-      football: [
-        { title: "Day 1 — Lower Strength", exercises: [primaryLift("Back Squat"), secondaryLift("RDL"), accessory("Split Squat"), accessory("Core Bracing")] },
-        { title: "Day 2 — Speed/Agility", exercises: [{ tier: "Speed", name: "10–30m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max" }, { tier: "Agility", name: "5-10-5 Shuttle", sets: 5, reps: "1", rest: "90 sec", rpe: "Sharp" }, accessory("Hip Mobility")] },
-        { title: "Day 3 — Upper Strength", exercises: [primaryLift("Bench Press"), secondaryLift("Rows"), accessory("Incline DB Press"), accessory("Face Pulls")] },
-        { title: "Day 4 — Power/Conditioning", exercises: [{ tier: "Power", name: "Med Ball Throws", sets: 5, reps: "3", rest: "60 sec", rpe: "Explosive" }, { tier: "Conditioning", name: "Tempo Runs", sets: 8, reps: "100m", rest: "Walk back", rpe: "Moderate" }, accessory("Mobility")] },
-        { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
-      ],
-      soccer: [
-        { title: "Day 1 — Strength", exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Bulgarian Split Squat"), accessory("Nordics (if able)"), accessory("Core")] },
-        { title: "Day 2 — Speed", exercises: [{ tier: "Speed", name: "Flying 10s", sets: 6, reps: "1", rest: "Full", rpe: "Max" }, { tier: "COD", name: "Cone COD", sets: 5, reps: "1", rest: "60–90 sec", rpe: "Sharp" }, accessory("Mobility")] },
-        { title: "Day 3 — Upper + Core", exercises: [primaryLift("Incline Bench"), secondaryLift("Pull-Ups"), accessory("Rows"), accessory("Core Anti-Rotation")] },
-        { title: "Day 4 — Conditioning", exercises: [{ tier: "Conditioning", name: "Intervals (e.g., 4x4 min)", sets: 1, reps: "", rest: "", rpe: "Hard" }, accessory("Mobility")] },
-        { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
+        {
+          title: "Day 1 — Lower Strength",
+          exercises: [
+            primaryLift("Trap Bar Deadlift"),
+            secondaryLift("Rear Foot Elevated Split Squat"),
+            accessory("Hamstring Curl"),
+            accessory("Core Anti-Rotation Press")
+          ]
+        },
+        {
+          title: "Day 2 — Speed + Plyo",
+          exercises: [
+            { tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" },
+            { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" },
+            accessory("Calf Raises"),
+            accessory("Hip Mobility Circuit")
+          ]
+        },
+        {
+          title: "Day 3 — Upper Strength",
+          exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Face Pulls")]
+        },
+        {
+          title: "Day 4 — Reactive + Conditioning",
+          exercises: [
+            { tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" },
+            { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" },
+            accessory("Core Circuit"),
+            accessory("Zone 2 Bike 12–15 min")
+          ]
+        },
+        {
+          title: "Day 5 — Optional Recovery",
+          exercises: [
+            { tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" },
+            accessory("Mobility Flow"),
+            accessory("Soft Tissue Work")
+          ]
+        }
       ]
     };
 
     const template = templates[s] || templates.basketball;
     const picked = template.slice(0, d);
 
+    // A progression model: W2/W3 increase load, W4 deload
+    const progression = {
+      model: "A: 4-week wave",
+      weeks: [
+        { week: 1, label: "Week 1 (Base)", liftLoad: "Baseline", accessoryLoad: "Baseline", volume: "Baseline" },
+        { week: 2, label: "Week 2 (+Load)", liftLoad: "+2.5–5%", accessoryLoad: "+1 set OR +2 reps", volume: "Slight ↑" },
+        { week: 3, label: "Week 3 (+Load)", liftLoad: "+2.5–5% again", accessoryLoad: "+1 set OR +2 reps", volume: "Slight ↑" },
+        { week: 4, label: "Week 4 (Deload)", liftLoad: "-5–10%", accessoryLoad: "-1 set", volume: "~15% ↓" }
+      ],
+      description:
+        "Week 2 and 3: add 2.5–5% load on primary lifts if reps/RPE were achieved. Week 4 deload: reduce volume ~15% and load 5–10%."
+    };
+
     return {
       sport: s,
       days: d,
       createdAtISO: new Date().toISOString(),
-      progression: { model: "4-week wave", description: "Week 2 and 3 increase load; Week 4 deload volume." },
+      progression,
       warmup: baseWarmup,
       finisher: baseFinisher,
       daysPlan: picked
     };
   }
+
+  // =========================================================
+  // READINESS ENGINE
+  // =========================================================
+  function hydrationScore(h) {
+    const v = String(h || "").toLowerCase().trim();
+    if (v === "great") return 100;
+    if (v === "good") return 85;
+    if (v === "ok") return 70;
+    if (v === "low") return 50;
+    return null;
+  }
+
+  function latestLogOnOrBefore(dateISO) {
+    const logs = Array.isArray(state.logs) ? state.logs : [];
+    const candidates = logs.filter((l) => l && l.dateISO && l.dateISO <= dateISO);
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""));
+    return candidates[0] || null;
+  }
+
+  function latestTestOnOrBefore(dateISO) {
+    const tests = Array.isArray(state.tests) ? state.tests : [];
+    const candidates = tests.filter((t) => t && t.dateISO && t.dateISO <= dateISO);
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""));
+    return candidates[0] || null;
+  }
+
+  function computeReadinessForDate(dateISO) {
+    const log = latestLogOnOrBefore(dateISO);
+    const test = latestTestOnOrBefore(dateISO);
+
+    const w = numOrNull(log?.wellness);
+    const e = numOrNull(log?.energy);
+    const h = hydrationScore(log?.hydration);
+    const sleep = numOrNull(test?.sleep);
+
+    // If no data, return "unknown"
+    if (w === null && e === null && h === null && sleep === null) {
+      return { score: null, level: "no-data", guidance: "Add a log (wellness/energy/hydration) and optionally sleep to get readiness." };
+    }
+
+    // Weighted average (normalized to 0–100)
+    // wellness (40%), energy (30%), hydration (20%), sleep (10%)
+    let totalW = 0;
+    let sum = 0;
+
+    function add(val, weight) {
+      if (!Number.isFinite(val)) return;
+      sum += val * weight;
+      totalW += weight;
+    }
+
+    // map wellness/energy 1–10 => 10–100
+    add(w !== null ? Math.min(Math.max(w, 1), 10) * 10 : null, 0.4);
+    add(e !== null ? Math.min(Math.max(e, 1), 10) * 10 : null, 0.3);
+    add(h, 0.2);
+
+    // sleep: 8+ = 100, 7=85, 6=70, 5=55, <=4=40 (simple)
+    let sleepScore = null;
+    if (sleep !== null) {
+      if (sleep >= 8) sleepScore = 100;
+      else if (sleep >= 7) sleepScore = 85;
+      else if (sleep >= 6) sleepScore = 70;
+      else if (sleep >= 5) sleepScore = 55;
+      else sleepScore = 40;
+    }
+    add(sleepScore, 0.1);
+
+    const score = totalW ? Math.round(sum / totalW) : null;
+
+    let level = "no-data";
+    if (Number.isFinite(score)) {
+      if (score >= 85) level = "green";
+      else if (score >= 70) level = "lime";
+      else if (score >= 55) level = "amber";
+      else level = "red";
+    }
+
+    const guidanceByLevel = {
+      green: "Go: full session. If bar speed/reps are strong, add load (Week 2/3 rules).",
+      lime: "Go (smart): keep main work, reduce accessory volume 10–20% if needed.",
+      amber: "Caution: keep intensity moderate. Cut plyos/conditioning volume ~20–30%. Focus technique.",
+      red: "Recover: reduce intensity/volume significantly. Mobility + light skill only.",
+      "no-data": "Add a log (wellness/energy/hydration) and optionally sleep to get readiness."
+    };
+
+    return { score, level, guidance: guidanceByLevel[level] || guidanceByLevel["no-data"] };
+  }
+
+  window.PIQ.readiness = window.PIQ.readiness || {};
+  window.PIQ.readiness.forDate = (dateISO) => computeReadinessForDate(dateISO || todayISO());
 
   // ---- Renderers ----
   function renderProfile() {
@@ -909,11 +878,6 @@
       const nextDays = $("profileDays")?.value || days;
       setProfileBasics(nextSport, nextDays, $("profileName")?.value || "");
       state.week = generateProgram(state.profile.sport, state.profile.days);
-
-      // Clear manual week override when generating fresh
-      state._ui = state._ui || {};
-      state._ui.programWeekOverride = null;
-
       saveState();
       showTab("program");
       renderActiveTab();
@@ -933,24 +897,26 @@
       return;
     }
 
-    const wk = currentProgramWeek(p);
-    const prog = progressionPlanForWeek(wk);
+    const progWeeks = (p.progression?.weeks || [])
+      .map(
+        (w) => `
+      <div class="small" style="margin-top:6px">
+        <b>${sanitizeHTML(w.label)}</b>: Primary load <b>${sanitizeHTML(w.liftLoad || "")}</b>, Accessory <b>${sanitizeHTML(
+          w.accessoryLoad || ""
+        )}</b>, Volume <b>${sanitizeHTML(w.volume || "")}</b>
+      </div>
+    `
+      )
+      .join("");
 
-    const overrideVal = Number(state?._ui?.programWeekOverride);
-    const overrideDisplay = (Number.isFinite(overrideVal) && overrideVal >= 1 && overrideVal <= 4) ? String(Math.round(overrideVal)) : "";
-
-    const daysHtml = (p.daysPlan || []).map((day) => `
+    const daysHtml = (p.daysPlan || [])
+      .map(
+        (day) => `
       <div class="card" style="margin:16px 0;padding:14px">
         <div style="font-weight:600;margin-bottom:8px">${sanitizeHTML(day.title)}</div>
-
-        <div class="small" style="margin-bottom:10px">
-          <b>Progression notes:</b><br/>
-          Primary: ${sanitizeHTML(prog.loadNotePrimary)}<br/>
-          Secondary: ${sanitizeHTML(prog.loadNoteSecondary)}<br/>
-          Volume: ${sanitizeHTML(prog.volumeNote)}
-        </div>
-
-        ${(day.exercises || []).map(ex => `
+        ${(day.exercises || [])
+          .map(
+            (ex) => `
           <div style="margin-bottom:10px">
             <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
             <div class="small">
@@ -960,75 +926,39 @@
               ${ex.rpe ? `RPE: ${sanitizeHTML(ex.rpe)}` : ""}
             </div>
           </div>
-        `).join("")}
+        `
+          )
+          .join("")}
       </div>
-    `).join("");
+    `
+      )
+      .join("");
 
     el.innerHTML = `
       <h3 style="margin-top:0">Program</h3>
-
       <div class="small">
         Sport: <b>${sanitizeHTML(p.sport)}</b> • Days/week: <b>${sanitizeHTML(p.days)}</b>
       </div>
 
-      <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>${sanitizeHTML(prog.title)}</b></div>
-        <div class="small">Model: <b>${sanitizeHTML(p.progression?.model || "4-week wave")}</b></div>
-        <div class="small">${sanitizeHTML(p.progression?.description || "")}</div>
-
-        <div class="hr"></div>
-
-        <div class="row">
-          <div class="field">
-            <label for="programWeekOverride">Set Week (optional)</label>
-            <select id="programWeekOverride">
-              <option value="">Auto</option>
-              <option value="1">Week 1</option>
-              <option value="2">Week 2</option>
-              <option value="3">Week 3</option>
-              <option value="4">Week 4</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>&nbsp;</label>
-            <button class="btn secondary" id="btnClearWeekOverride" type="button">Clear Override</button>
-          </div>
-        </div>
-      </div>
+      <div class="hr"></div>
+      <div class="small"><b>Progression (Auto)</b></div>
+      <div class="small">${sanitizeHTML(p.progression?.description || "")}</div>
+      ${progWeeks}
 
       <div class="hr"></div>
 
       <div class="small"><b>Warmup</b></div>
       <ul style="margin:8px 0 16px 18px">
-        ${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.warmup || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
 
       ${daysHtml}
 
       <div class="small"><b>Finisher</b></div>
       <ul style="margin:8px 0 0 18px">
-        ${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.finisher || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
     `;
-
-    const sel = $("programWeekOverride");
-    if (sel) sel.value = overrideDisplay;
-
-    sel?.addEventListener("change", () => {
-      const v = (sel.value || "").trim();
-      state._ui = state._ui || {};
-      if (!v) state._ui.programWeekOverride = null;
-      else state._ui.programWeekOverride = Number(v);
-      __saveLocal(state);
-      renderProgram();
-    });
-
-    $("btnClearWeekOverride")?.addEventListener("click", () => {
-      state._ui = state._ui || {};
-      state._ui.programWeekOverride = null;
-      __saveLocal(state);
-      renderProgram();
-    });
   }
 
   function renderLog() {
@@ -1039,10 +969,23 @@
       ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
       : [];
 
+    const r0 = computeReadinessForDate(todayISO());
+    const rColor = guidanceColor(r0.score);
+
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
       <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
       <div class="hr"></div>
+
+      <div class="card" style="margin:10px 0;padding:12px">
+        <div class="small"><b>Readiness (today)</b></div>
+        <div id="readinessScore" style="font-weight:700;margin-top:4px;color:${sanitizeHTML(rColor)}">
+          ${Number.isFinite(r0.score) ? `${sanitizeHTML(r0.score)} / 100` : "—"}
+        </div>
+        <div id="readinessGuide" class="small" style="margin-top:6px;color:${sanitizeHTML(rColor)}">
+          ${sanitizeHTML(r0.guidance || "")}
+        </div>
+      </div>
 
       <div class="row">
         <div class="field">
@@ -1084,12 +1027,6 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:12px;padding:12px">
-        <div class="small"><b>Readiness (preview)</b></div>
-        <div id="readinessPreview" class="small">Enter values to see readiness score.</div>
-        <div id="readinessGuidance" class="small" style="margin-top:6px"></div>
-      </div>
-
       <div class="btnRow" style="margin-top:12px">
         <button class="btn" id="btnSaveLog" type="button">Save Log</button>
       </div>
@@ -1101,44 +1038,64 @@
     `;
 
     function updateReadinessPreview() {
-      const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const preview = $("readinessPreview");
-      const guide = $("readinessGuidance");
-      if (!preview || !guide) return;
-
-      const t = findTestByDate(dateISO);
-      const sleep = t ? numOrNull(t.sleep) : null;
-
-      const r = computeReadinessForDate(dateISO, {
+      const dISO = ($("logDate")?.value || todayISO()).trim();
+      const local = {
+        dateISO: dISO,
         wellness: numOrNull($("wellness")?.value),
         energy: numOrNull($("energy")?.value),
-        hydration: ($("hydrationLevel")?.value || "good").trim(),
-        injury: ($("injuryFlag")?.value || "none").trim(),
-        sleep
-      });
+        hydration: ($("hydrationLevel")?.value || "good").trim()
+      };
 
-      if (!r || !Number.isFinite(r.score)) {
-        preview.textContent = "Enter values to see readiness score.";
-        guide.textContent = "";
-        return;
+      // Temporarily compute with "today" using latest entries, but we can preview off the inputs:
+      // We'll compute by cloning data in a safe way: treat local as the latest log for that date.
+      const prev = computeReadinessForDate(dISO);
+      const tmpScore = (() => {
+        // quick compute using same weights (inputs override)
+        const w = local.wellness;
+        const e = local.energy;
+        const h = hydrationScore(local.hydration);
+
+        let sum = 0, totalW = 0;
+        const add = (val, weight) => {
+          if (!Number.isFinite(val)) return;
+          sum += val * weight;
+          totalW += weight;
+        };
+        add(w !== null ? Math.min(Math.max(w, 1), 10) * 10 : null, 0.4);
+        add(e !== null ? Math.min(Math.max(e, 1), 10) * 10 : null, 0.3);
+        add(h, 0.2);
+        // sleep is not included in log preview (sleep is in tests)
+        return totalW ? Math.round(sum / totalW) : prev.score;
+      })();
+
+      const scoreEl = $("readinessScore");
+      const guideEl = $("readinessGuide");
+
+      const c = guidanceColor(tmpScore);
+      if (scoreEl) {
+        scoreEl.textContent = Number.isFinite(tmpScore) ? `${tmpScore} / 100` : "—";
+        scoreEl.style.color = c;
       }
-
-      const bits = [];
-      if (Number.isFinite(r.breakdown.wellness)) bits.push(`Wellness ${r.breakdown.wellness}`);
-      if (Number.isFinite(r.breakdown.energy)) bits.push(`Energy ${r.breakdown.energy}`);
-      if (Number.isFinite(r.breakdown.sleep)) bits.push(`Sleep ${r.breakdown.sleep}`);
-      if (Number.isFinite(r.breakdown.hydration)) bits.push(`Hydration ${r.breakdown.hydration}`);
-      if (Number.isFinite(r.breakdown.injury)) bits.push(`Injury ${r.breakdown.injury}`);
-
-      preview.innerHTML = `Score: <b>${sanitizeHTML(r.score)}</b> / 100<br/><span class="small">${sanitizeHTML(bits.join(" • "))}</span>`;
-      guide.textContent = r.guidance || "";
+      if (guideEl) {
+        const levelText =
+          Number.isFinite(tmpScore) && tmpScore >= 85
+            ? "Go: full session. If reps/RPE are strong, add load."
+            : Number.isFinite(tmpScore) && tmpScore >= 70
+            ? "Go (smart): keep main work, reduce accessory volume 10–20% if needed."
+            : Number.isFinite(tmpScore) && tmpScore >= 55
+            ? "Caution: moderate intensity. Cut plyos/conditioning volume ~20–30%."
+            : Number.isFinite(tmpScore)
+            ? "Recover: reduce volume/intensity. Mobility + light skill."
+            : prev.guidance || "";
+        guideEl.textContent = levelText;
+        guideEl.style.color = c;
+      }
     }
 
-    ["logDate", "wellness", "energy", "hydrationLevel", "injuryFlag"].forEach((id) => {
+    ["logDate", "wellness", "energy", "hydrationLevel"].forEach((id) => {
       $(id)?.addEventListener("input", updateReadinessPreview);
       $(id)?.addEventListener("change", updateReadinessPreview);
     });
-    updateReadinessPreview();
 
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
@@ -1172,17 +1129,17 @@
     }
 
     list.innerHTML = logs.slice(0, 10).map((l) => {
-      const r = computeReadinessForDate(l.dateISO);
-      const rTxt = r && Number.isFinite(r.score) ? ` • Readiness: ${sanitizeHTML(r.score)}` : "";
-      const gTxt = r && r.guidance ? `<div class="small" style="margin-top:6px">${sanitizeHTML(r.guidance)}</div>` : "";
+      const rr = computeReadinessForDate(l.dateISO);
+      const c = guidanceColor(rr.score);
+      const guide = rr.guidance ? `<div class="small" style="margin-top:6px;color:${sanitizeHTML(c)}">${sanitizeHTML(rr.guidance)}</div>` : "";
       return `
         <div class="card" style="margin:10px 0">
           <div style="display:flex;justify-content:space-between;gap:10px">
             <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
-            <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}${rTxt}</div>
+            <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}</div>
           </div>
           <div class="small">Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")}</div>
-          ${gTxt}
+          ${guide}
         </div>
       `;
     }).join("");
@@ -1284,20 +1241,22 @@
     const el = $("tab-dashboard");
     if (!el) return;
 
+    const r = computeReadinessForDate(todayISO());
+    const c = guidanceColor(r.score);
+
     el.innerHTML = `
       <h3 style="margin-top:0">Dashboard</h3>
-      <div class="small">Trends from your logs, tests, and readiness.</div>
+      <div class="small">Trends from your logs and tests.</div>
       <div class="hr"></div>
 
       <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>Latest Readiness</b></div>
-        <div id="latestReadiness" class="small">No readiness yet.</div>
-        <div id="latestGuidance" class="small" style="margin-top:6px"></div>
-      </div>
-
-      <div class="card" style="margin:10px 0">
-        <div class="small"><b>Readiness trend (last 14)</b></div>
-        <canvas id="chartReadiness" width="320" height="140" style="width:100%;max-width:640px"></canvas>
+        <div class="small"><b>Readiness (today)</b></div>
+        <div id="dashReadinessScore" style="font-weight:700;margin-top:4px;color:${sanitizeHTML(c)}">
+          ${Number.isFinite(r.score) ? `${sanitizeHTML(r.score)} / 100` : "—"}
+        </div>
+        <div id="dashReadinessGuide" class="small" style="margin-top:6px;color:${sanitizeHTML(c)}">
+          ${sanitizeHTML(r.guidance || "")}
+        </div>
       </div>
 
       <div class="card" style="margin:10px 0">
@@ -1312,12 +1271,12 @@
     `;
 
     function drawLine(canvasId, points) {
-      const c = $(canvasId);
-      if (!c) return;
-      const ctx = c.getContext("2d");
+      const canvas = $(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const w = c.width, h = c.height;
+      const w = canvas.width, h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
       if (!points || points.length < 2) {
@@ -1355,31 +1314,16 @@
       ctx.fillText(String(maxY), pad, pad + 10);
     }
 
-    const readinessRows = computeReadinessHistory(14);
-    const latestEl = $("latestReadiness");
-    const guideEl = $("latestGuidance");
-
-    if (latestEl && guideEl) {
-      if (!readinessRows.length) {
-        latestEl.textContent = "No readiness yet. Add a Log (and Sleep in Performance for best accuracy).";
-        guideEl.textContent = "";
-      } else {
-        const last = readinessRows[readinessRows.length - 1];
-        latestEl.innerHTML = `<b>${sanitizeHTML(last.score)}</b> / 100 • ${sanitizeHTML(last.dateISO)}`;
-        guideEl.textContent = last.guidance || "";
-      }
-    }
-
-    const readinessPts = readinessRows.map((r, i) => ({ x: i, y: Number(r.score) })).filter((p) => Number.isFinite(p.y));
-    drawLine("chartReadiness", readinessPts);
-
     const logs = (state.logs || [])
       .filter((l) => l && l.dateISO)
       .slice()
       .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
-    const wellnessPts = logs.map((l, i) => ({ x: i, y: Number(l.wellness) })).filter((p) => Number.isFinite(p.y));
+    const wellnessPts = logs
+      .map((l, i) => ({ x: i, y: Number(l.wellness) }))
+      .filter((p) => Number.isFinite(p.y));
+
     drawLine("chartWellness", wellnessPts);
 
     const tests = (state.tests || [])
@@ -1388,7 +1332,10 @@
       .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
-    const vertPts = tests.map((t, i) => ({ x: i, y: Number(t.vert) })).filter((p) => Number.isFinite(p.y));
+    const vertPts = tests
+      .map((t, i) => ({ x: i, y: Number(t.vert) }))
+      .filter((p) => Number.isFinite(p.y));
+
     drawLine("chartVert", vertPts);
   }
 
@@ -1444,7 +1391,9 @@
       </div>
 
       <div class="small" style="margin-top:10px">Errors (latest first):</div>
-      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2))}</pre>
+      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(
+        JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2)
+      )}</pre>
     `;
 
     $("btnSettingsSignIn")?.addEventListener("click", async () => {
@@ -1495,18 +1444,37 @@
   function renderActiveTab() {
     setPills();
     switch (activeTab()) {
-      case "profile": renderProfile(); break;
-      case "program": renderProgram(); break;
-      case "log": renderLog(); break;
-      case "performance": renderPerformance(); break;
-      case "dashboard": renderDashboard(); break;
-      case "team": renderTeam(); break;
-      case "parent": renderParent(); break;
-      case "settings": renderSettings(); break;
-      default: renderProfile(); break;
+      case "profile":
+        renderProfile();
+        break;
+      case "program":
+        renderProgram();
+        break;
+      case "log":
+        renderLog();
+        break;
+      case "performance":
+        renderPerformance();
+        break;
+      case "dashboard":
+        renderDashboard();
+        break;
+      case "team":
+        renderTeam();
+        break;
+      case "parent":
+        renderParent();
+        break;
+      case "settings":
+        renderSettings();
+        break;
+      default:
+        renderProfile();
+        break;
     }
   }
 
+  // ---- Public start hook ----
   window.startApp = function () {
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
     if (!role) {
@@ -1523,15 +1491,23 @@
     console.log("PerformanceIQ core started. Role:", state.role || role);
   };
 
+  // ---- Switch Role button support ----
   document.addEventListener("DOMContentLoaded", () => {
     $("btnSwitchRole")?.addEventListener("click", () => {
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try {
+        localStorage.removeItem("role");
+      } catch {}
+      try {
+        localStorage.removeItem("selectedRole");
+      } catch {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
       location.reload();
     });
   });
 
+  // ---- Startup ----
   document.addEventListener("DOMContentLoaded", async () => {
     try {
       if (await isSignedIn()) {
@@ -1546,3 +1522,4 @@
     window.addEventListener("touchstart", hideSplashNow, { once: true });
   });
 })();
+```0
