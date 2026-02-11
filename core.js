@@ -707,68 +707,110 @@
     `;
   }
 
-  function renderLog() {
-    const el = $("tab-log");
-    if (!el) return;
+function renderLog() {
+  const el = $("tab-log");
+  if (!el) return;
 
-    const logs = Array.isArray(state.logs) ? state.logs.slice().sort((a,b)=>b.dateISO.localeCompare(a.dateISO)) : [];
+  const logs = Array.isArray(state.logs) ? state.logs.slice().sort((a,b)=>b.dateISO.localeCompare(a.dateISO)) : [];
 
-    el.innerHTML = `
-      <h3 style="margin-top:0">Log</h3>
-      <div class="small">Save a quick daily log. This is stored locally and can optionally sync when signed in.</div>
-      <div class="hr"></div>
+  el.innerHTML = `
+    <h3 style="margin-top:0">Log</h3>
+    <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
+    <div class="hr"></div>
 
-      <div class="row">
-        <div class="field">
-          <label for="logDate">Date</label>
-          <input id="logDate" type="date" value="${todayISO()}"/>
-        </div>
-        <div class="field">
-          <label for="logTheme">Program day / theme</label>
-          <input id="logTheme" placeholder="e.g., Day 1 — Strength + Skill"/>
-        </div>
+    <div class="row">
+      <div class="field">
+        <label for="logDate">Date</label>
+        <input id="logDate" type="date" value="${todayISO()}"/>
       </div>
-
-      <div class="row" style="margin-top:10px">
-        <div class="field">
-          <label for="wellness">Wellness (1–10)</label>
-          <input id="wellness" inputmode="numeric" placeholder="7"/>
-        </div>
-        <div class="field">
-          <label for="energy">Energy (1–10)</label>
-          <input id="energy" inputmode="numeric" placeholder="7"/>
-        </div>
-        <div class="field">
-          <label for="injuryFlag">Injury</label>
-          <select id="injuryFlag">
-            <option value="none">None</option>
-            <option value="sore">Sore</option>
-            <option value="minor">Minor</option>
-            <option value="out">Out</option>
-          </select>
-        </div>
+      <div class="field">
+        <label for="logTheme">Program day / theme</label>
+        <input id="logTheme" placeholder="e.g., Day 1 — Strength + Skill"/>
       </div>
+    </div>
 
-      <div class="btnRow" style="margin-top:12px">
-        <button class="btn" id="btnSaveLog" type="button">Save Log</button>
+    <div class="row" style="margin-top:10px">
+      <div class="field">
+        <label for="wellness">Wellness (1–10)</label>
+        <input id="wellness" inputmode="numeric" placeholder="7"/>
       </div>
+      <div class="field">
+        <label for="energy">Energy (1–10)</label>
+        <input id="energy" inputmode="numeric" placeholder="7"/>
+      </div>
+      <div class="field">
+        <label for="hydrationLevel">Hydration level</label>
+        <select id="hydrationLevel">
+          <option value="low">Low</option>
+          <option value="ok">OK</option>
+          <option value="good" selected>Good</option>
+          <option value="great">Great</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="injuryFlag">Injury</label>
+        <select id="injuryFlag">
+          <option value="none">None</option>
+          <option value="sore">Sore</option>
+          <option value="minor">Minor</option>
+          <option value="out">Out</option>
+        </select>
+      </div>
+    </div>
 
-      <div class="hr"></div>
+    <div class="btnRow" style="margin-top:12px">
+      <button class="btn" id="btnSaveLog" type="button">Save Log</button>
+    </div>
 
-      <div class="small"><b>Recent logs</b></div>
-      <div id="logList"></div>
-    `;
+    <div class="hr"></div>
 
-    $("btnSaveLog")?.addEventListener("click", () => {
-      const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const localLog = {
-        dateISO,
-        theme: $("logTheme")?.value || null,
-        injury: $("injuryFlag")?.value || "none",
-        wellness: numOrNull($("wellness")?.value),
-        energy: numOrNull($("energy")?.value),
-        entries: []
-      };
+    <div class="small"><b>Recent logs</b></div>
+    <div id="logList"></div>
+  `;
+
+  $("btnSaveLog")?.addEventListener("click", () => {
+    const dateISO = ($("logDate")?.value || todayISO()).trim();
+
+    const hydration = ($("hydrationLevel")?.value || "good").trim(); // ✅ hydration level
+    const localLog = {
+      dateISO,
+      theme: $("logTheme")?.value || null,
+      injury: $("injuryFlag")?.value || "none",
+      wellness: numOrNull($("wellness")?.value),
+      energy: numOrNull($("energy")?.value),
+      hydration, // ✅ stored in local state
+      entries: []
+    };
+
+    state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
+    state.logs.push(localLog);
+    state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    saveState(state);
+
+    // ✅ cloud write (existing mapping supports hydration -> workout_logs.hydration)
+    window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
+
+    alert("Saved.");
+  });
+
+  const list = $("logList");
+  if (!list) return;
+
+  if (!logs.length) {
+    list.innerHTML = `<div class="small">No logs yet.</div>`;
+    return;
+  }
+
+  list.innerHTML = logs.slice(0, 10).map((l) => `
+    <div class="card" style="margin:10px 0">
+      <div style="display:flex;justify-content:space-between;gap:10px">
+        <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
+        <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}</div>
+      </div>
+      <div class="small">Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")}</div>
+    </div>
+  `).join("");
+};
 
       state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
       state.logs.push(localLog);
