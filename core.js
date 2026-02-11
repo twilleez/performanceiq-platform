@@ -1,4 +1,6 @@
-// core.js — FULL REPLACEMENT (OFFLINE-FIRST + PULL/RECONCILE + OPTIONAL SYNC)
+// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE)
+// Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
+// Includes: working tab system + working Profile + Program (structured) + Log (with hydration level) + Performance + Dashboard + Settings
 (function () {
   "use strict";
 
@@ -26,8 +28,6 @@
     VOLLEYBALL: "volleyball",
     SOCCER: "soccer"
   });
-
-  const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
 
   // ---- Error Queue ----
   const errorQueue = [];
@@ -116,7 +116,7 @@
     s.profile = s.profile && typeof s.profile === "object" ? s.profile : d.profile;
     if (typeof s.profile.sport !== "string") s.profile.sport = d.profile.sport;
     if (!Number.isFinite(s.profile.days)) s.profile.days = d.profile.days;
-    if (typeof s.profile.name !== "string") s.profile.name = "";
+    if (typeof s.profile.name !== "string") s.profile.name = d.profile.name;
 
     s.trial = s.trial && typeof s.trial === "object" ? s.trial : d.trial;
     if (!Number.isFinite(s.trial.startedAtMs)) s.trial.startedAtMs = d.trial.startedAtMs;
@@ -147,7 +147,7 @@
     catch (e) { logError("loadState", e); return null; }
   }
 
-  // ---- State ----
+  // ---- State (simple, mutable, saved) ----
   const state = loadState() || defaultState();
 
   function bumpMeta() {
@@ -198,17 +198,17 @@
 
   // ---- Cloud push (state) ----
   async function __pushStateNow() {
-    if (!isSupabaseReady()) return false;
+    if (!window.dataStore || typeof window.dataStore.pushState !== "function") return false;
+    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
 
     try {
-      const signed = await isSignedIn();
-      if (!signed) return false;
+      const u = await window.PIQ_AuthStore.getUser();
+      if (!u) return false;
 
       await window.dataStore.pushState(state);
       state.meta.lastSyncedAtMs = Date.now();
       __saveLocal(state);
-      setPills();
       return true;
     } catch (e) {
       logError("pushState", e);
@@ -217,22 +217,18 @@
   }
 
   const scheduleCloudPush = debounce(async () => {
-    // Only push when signed in. This avoids “not signed in” console noise.
     if (!isSupabaseReady()) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-
-    const signed = await isSignedIn();
-    if (!signed) return;
-
     await __pushStateNow();
   }, CLOUD_PUSH_DEBOUNCE_MS);
 
   async function __pullCloudStateIfNewer() {
-    if (!isSupabaseReady()) return false;
+    if (!window.dataStore || typeof window.dataStore.pullState !== "function") return false;
+    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
 
     try {
-      const signed = await isSignedIn();
-      if (!signed) return false;
+      const u = await window.PIQ_AuthStore.getUser();
+      if (!u) return false;
 
       const cloud = await window.dataStore.pullState(); // {state, updated_at} or null
       if (!cloud || !cloud.state || typeof cloud.state !== "object") return false;
@@ -245,81 +241,12 @@
         Object.keys(state).forEach((k) => { delete state[k]; });
         Object.keys(next).forEach((k) => { state[k] = next[k]; });
         __saveLocal(state);
+        renderActiveTab();
         return true;
       }
       return false;
     } catch (e) {
       logError("pullState", e);
-      return false;
-    }
-  }
-
-  // ---- Pull logs + metrics and reconcile into local state ----
-  function __cloudWorkoutRowToLocalLog(row) {
-    // row.date is date (YYYY-MM-DD)
-    return {
-      dateISO: row?.date ? String(row.date) : null,
-      theme: row?.program_day ?? null,
-      wellness: row?.wellness ?? null,
-      energy: row?.energy ?? null,
-      hydration: row?.hydration ?? null,     // ✅ hydration level
-      injury: row?.injury_flag ?? "none",
-      entries: [] // keeping v1 simple
-    };
-  }
-
-  function __cloudMetricRowToLocalTest(row) {
-    return {
-      dateISO: row?.date ? String(row.date) : null,
-      vert: row?.vert_inches ?? null,
-      sprint10: row?.sprint_seconds ?? null,
-      cod: row?.cod_seconds ?? null,
-      bw: row?.bw_lbs ?? null,
-      sleep: row?.sleep_hours ?? null
-    };
-  }
-
-  function __mergeByDateISO(localArr, incomingArr) {
-    const map = new Map();
-    (localArr || []).forEach((x) => {
-      if (x && x.dateISO) map.set(String(x.dateISO), x);
-    });
-    (incomingArr || []).forEach((x) => {
-      if (x && x.dateISO) map.set(String(x.dateISO), x);
-    });
-    return Array.from(map.values()).sort((a, b) => String(a.dateISO).localeCompare(String(b.dateISO)));
-  }
-
-  async function pullCloudLogsAndMetrics() {
-    if (!isSupabaseReady()) return false;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
-
-    const signed = await isSignedIn();
-    if (!signed) return false;
-
-    try {
-      const [logsRows, metricsRows] = await Promise.all([
-        window.dataStore.listWorkoutLogs(60),
-        window.dataStore.listPerformanceMetrics(60)
-      ]);
-
-      const incomingLogs = (logsRows || [])
-        .map(__cloudWorkoutRowToLocalLog)
-        .filter((x) => x && x.dateISO);
-
-      const incomingTests = (metricsRows || [])
-        .map(__cloudMetricRowToLocalTest)
-        .filter((x) => x && x.dateISO);
-
-      state.logs = __mergeByDateISO(state.logs || [], incomingLogs);
-      state.tests = __mergeByDateISO(state.tests || [], incomingTests);
-
-      // Don’t bump version just to reconcile view-data; but we DO want local persistence.
-      __saveLocal(state);
-      renderActiveTab();
-      return true;
-    } catch (e) {
-      logError("pullLogsAndMetrics", e);
       return false;
     }
   }
@@ -343,8 +270,12 @@
       volume: __piqComputeVolumeFromEntries(localLog.entries || []),
       wellness: numOrNull(localLog.wellness),
       energy: numOrNull(localLog.energy),
-      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null, // ✅ hydration
-      injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none"
+      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null,
+      injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none",
+      practice_intensity: typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
+      practice_duration_min: numOrNull(localLog.practice_duration_min),
+      extra_gym: typeof localLog.extra_gym === "boolean" ? localLog.extra_gym : null,
+      extra_gym_duration_min: numOrNull(localLog.extra_gym_duration_min)
     };
   }
 
@@ -361,26 +292,17 @@
   }
 
   async function __tryUpsertWorkoutLog(localLog) {
-    if (!isSupabaseReady()) return false;
+    if (!window.dataStore || typeof window.dataStore.upsertWorkoutLog !== "function") return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
-
-    const signed = await isSignedIn();
-    if (!signed) return false;
-
     const row = __localLogToWorkoutRow(localLog);
     if (!row || !row.date) return false;
-
     try { await window.dataStore.upsertWorkoutLog(row); return true; }
     catch (e) { logError("upsertWorkoutLog", e); return false; }
   }
 
   async function __tryUpsertMetric(localTest) {
-    if (!isSupabaseReady()) return false;
+    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function") return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
-
-    const signed = await isSignedIn();
-    if (!signed) return false;
-
     const row = __localTestToMetricRow(localTest);
     if (!row || !row.date) return false;
 
@@ -390,7 +312,6 @@
       row.cod_seconds !== null ||
       row.bw_lbs !== null ||
       row.sleep_hours !== null;
-
     if (!hasAny) return false;
 
     try { await window.dataStore.upsertPerformanceMetric(row); return true; }
@@ -416,7 +337,7 @@
     if (typeof name === "string") state.profile.name = name;
   }
 
-  // ---- Role chooser UI ----
+  // ---- Minimal, real role chooser UI ----
   function ensureOnboardMount() {
     let mount = $("onboard");
     if (!mount) {
@@ -488,6 +409,7 @@
           <div class="btnRow" style="margin-top:10px">
             <button class="btn secondary" id="piqSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in to sync</button>
             <button class="btn secondary" id="piqSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
+            <button class="btn secondary" id="piqPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
           </div>
 
           <div class="small" style="margin-top:8px">
@@ -509,12 +431,12 @@
     if (syncEl) {
       if (!supaOk) syncEl.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
       else if (!signed) syncEl.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
-      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — will pull on start.";
+      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
     }
 
     $("piqSaveRole")?.addEventListener("click", () => {
       setRoleEverywhere(roleSel ? roleSel.value : ROLES.ATHLETE);
-      setProfileBasics(sportSel ? sportSel.value : SPORTS.BASKETBALL, daysSel ? daysSel.value : 4);
+      setProfileBasics(sportSel ? sportSel.value : SPORTS.BASKETBALL, daysSel ? daysSel.value : 4, state.profile?.name || "");
       saveState();
 
       try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
@@ -553,11 +475,25 @@
         alert("Sign-out failed: " + (e?.message || e));
       }
     });
+
+    $("piqPull")?.addEventListener("click", async () => {
+      try {
+        const pulled = await __pullCloudStateIfNewer();
+        alert(pulled ? "Pulled newer cloud state." : "No newer cloud state found.");
+        location.reload();
+      } catch (e) {
+        logError("pullCloud", e);
+        alert("Pull failed: " + (e?.message || e));
+      }
+    });
   }
 
+  // boot.js calls this when no role is stored
   window.showRoleChooser = function () { renderRoleChooser(); };
 
-  // ---- Tabs ----
+  // ---- Tab system ----
+  const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
+
   function showTab(tabName) {
     for (const t of TABS) {
       const el = $(`tab-${t}`);
@@ -566,7 +502,7 @@
     }
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
-    __saveLocal(state); // UI-only
+    __saveLocal(state); // UI-only; don't bump meta/version
   }
 
   function activeTab() {
@@ -588,77 +524,154 @@
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim() || "—";
     const rolePill = $("rolePill");
     if (rolePill) rolePill.textContent = `Role: ${role}`;
-
-    const syncPill = $("syncPill");
-    if (!syncPill) return;
-
-    const configured = isSupabaseReady();
-    if (!configured) {
-      syncPill.textContent = "Offline-first";
-      return;
-    }
-
-    // Don’t block UI waiting for async; show “Sync available” then update later in settings.
-    syncPill.textContent = state.meta.lastSyncedAtMs ? "Offline-first + Sync" : "Offline-first + Sync";
+    const trialPill = $("trialPill");
+    if (trialPill) trialPill.textContent = isSupabaseReady() ? "Offline-first + Sync" : "Offline-first";
   }
 
-  // ---- Program generator ----
+  // =========================================================
+  // ✅ PROGRAM GENERATOR (STRUCTURED, REAL EXERCISES)
+  // =========================================================
   function generateProgram(sport, days) {
-    const d = Number(days || 4);
     const s = (sport || SPORTS.BASKETBALL).toLowerCase();
+    const d = Math.min(Math.max(Number(days || 4), 3), 5);
 
-    const base = {
-      warmup: ["5–8 min easy cardio", "Dynamic mobility", "Activation (glutes/core)"],
-      finisher: ["Cooldown walk 5 min", "Stretch hips/ankles/hamstrings 8–10 min"]
-    };
+    const baseWarmup = [
+      "5–8 min zone 2 cardio",
+      "Dynamic mobility (hips, ankles, t-spine)",
+      "Glute + core activation"
+    ];
 
-    const sportBlocks = {
+    const baseFinisher = [
+      "Cooldown walk 5 min",
+      "Breathing reset 3–5 min",
+      "Stretch major muscle groups"
+    ];
+
+    function primaryLift(name) {
+      return { tier: "Primary", name, sets: 4, reps: "4–6", rest: "2–3 min", rpe: "7–8" };
+    }
+    function secondaryLift(name) {
+      return { tier: "Secondary", name, sets: 3, reps: "6–8", rest: "90 sec", rpe: "7" };
+    }
+    function accessory(name) {
+      return { tier: "Accessory", name, sets: 3, reps: "8–12", rest: "60 sec", rpe: "6–7" };
+    }
+
+    const templates = {
       basketball: [
-        { title: "Day 1 — Strength + Skill", blocks: ["Lower strength (squat/hinge)", "Core", "Shooting: form + spot ups"] },
-        { title: "Day 2 — Speed + Conditioning", blocks: ["Acceleration 10–20m", "COD (cones)", "Tempo conditioning"] },
-        { title: "Day 3 — Upper + Skill", blocks: ["Upper push/pull", "Shoulders + scap", "Ball handling + finishing"] },
-        { title: "Day 4 — Plyos + Game Prep", blocks: ["Plyos (low volume)", "Reactive jumps", "Film + light skill"] },
-        { title: "Day 5 — Optional Recovery", blocks: ["Zone 2 20–30m", "Mobility", "Soft tissue"] }
+        {
+          title: "Day 1 — Lower Strength",
+          exercises: [
+            primaryLift("Trap Bar Deadlift"),
+            secondaryLift("Rear Foot Elevated Split Squat"),
+            accessory("Hamstring Curl"),
+            accessory("Core Anti-Rotation Press")
+          ]
+        },
+        {
+          title: "Day 2 — Speed + Plyo",
+          exercises: [
+            { tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" },
+            { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" },
+            accessory("Calf Raises"),
+            accessory("Hip Mobility Circuit")
+          ]
+        },
+        {
+          title: "Day 3 — Upper Strength",
+          exercises: [
+            primaryLift("Bench Press"),
+            secondaryLift("Pull-Ups"),
+            accessory("DB Shoulder Press"),
+            accessory("Scapular Retraction Rows")
+          ]
+        },
+        {
+          title: "Day 4 — Reactive + Conditioning",
+          exercises: [
+            { tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" },
+            { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" },
+            accessory("Core Circuit"),
+            accessory("Zone 2 Bike 12–15 min")
+          ]
+        },
+        {
+          title: "Day 5 — Optional Recovery",
+          exercises: [
+            { tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" },
+            accessory("Mobility Flow"),
+            accessory("Soft Tissue Work")
+          ]
+        }
       ],
       football: [
-        { title: "Day 1 — Lower Strength", blocks: ["Squat pattern", "Posterior chain", "Core"] },
-        { title: "Day 2 — Speed/Agility", blocks: ["Acceleration", "Top speed mechanics", "COD"] },
-        { title: "Day 3 — Upper Strength", blocks: ["Bench/push", "Rows/pull", "Neck/shoulders"] },
-        { title: "Day 4 — Power/Conditioning", blocks: ["Jumps/throws", "Sled/tempo", "Mobility"] },
-        { title: "Day 5 — Optional", blocks: ["Recovery", "Mobility", "Light tempo"] }
-      ],
-      baseball: [
-        { title: "Day 1 — Full Body Strength", blocks: ["Hinge", "Single-leg", "Core/rotation"] },
-        { title: "Day 2 — Speed + Mobility", blocks: ["Sprints", "Hip/shoulder mobility", "Throwing prep"] },
-        { title: "Day 3 — Upper + Scap", blocks: ["Pull focus", "Scap stability", "Core/rotation"] },
-        { title: "Day 4 — Power", blocks: ["Jumps/med ball", "Short sprints", "Recovery"] },
-        { title: "Day 5 — Optional", blocks: ["Mobility", "Zone 2", "Soft tissue"] }
-      ],
-      volleyball: [
-        { title: "Day 1 — Lower Strength", blocks: ["Squat/hinge", "Knee health", "Core"] },
-        { title: "Day 2 — Plyos + COD", blocks: ["Jump technique", "Reactive plyos", "COD"] },
-        { title: "Day 3 — Upper + Shoulder", blocks: ["Push/pull", "Scap", "Core"] },
-        { title: "Day 4 — Power + Conditioning", blocks: ["Jumps/throws", "Tempo", "Mobility"] },
-        { title: "Day 5 — Optional", blocks: ["Recovery", "Mobility", "Zone 2"] }
+        {
+          title: "Day 1 — Lower Strength",
+          exercises: [primaryLift("Back Squat"), secondaryLift("RDL"), accessory("Split Squat"), accessory("Core Bracing")]
+        },
+        {
+          title: "Day 2 — Speed/Agility",
+          exercises: [
+            { tier: "Speed", name: "10–30m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max" },
+            { tier: "Agility", name: "5-10-5 Shuttle", sets: 5, reps: "1", rest: "90 sec", rpe: "Sharp" },
+            accessory("Hip Mobility")
+          ]
+        },
+        {
+          title: "Day 3 — Upper Strength",
+          exercises: [primaryLift("Bench Press"), secondaryLift("Rows"), accessory("Incline DB Press"), accessory("Face Pulls")]
+        },
+        {
+          title: "Day 4 — Power/Conditioning",
+          exercises: [
+            { tier: "Power", name: "Med Ball Throws", sets: 5, reps: "3", rest: "60 sec", rpe: "Explosive" },
+            { tier: "Conditioning", name: "Tempo Runs", sets: 8, reps: "100m", rest: "Walk back", rpe: "Moderate" },
+            accessory("Mobility")
+          ]
+        },
+        { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
       ],
       soccer: [
-        { title: "Day 1 — Strength", blocks: ["Lower strength", "Core", "Nordics (if able)"] },
-        { title: "Day 2 — Speed", blocks: ["Acceleration", "Top speed", "COD"] },
-        { title: "Day 3 — Upper + Core", blocks: ["Upper push/pull", "Core", "Mobility"] },
-        { title: "Day 4 — Conditioning", blocks: ["Intervals", "Tempo", "Recovery"] },
-        { title: "Day 5 — Optional", blocks: ["Recovery", "Mobility", "Zone 2"] }
+        {
+          title: "Day 1 — Strength",
+          exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Bulgarian Split Squat"), accessory("Nordics (if able)"), accessory("Core")]
+        },
+        {
+          title: "Day 2 — Speed",
+          exercises: [
+            { tier: "Speed", name: "Flying 10s", sets: 6, reps: "1", rest: "Full", rpe: "Max" },
+            { tier: "COD", name: "Cone COD", sets: 5, reps: "1", rest: "60–90 sec", rpe: "Sharp" },
+            accessory("Mobility")
+          ]
+        },
+        {
+          title: "Day 3 — Upper + Core",
+          exercises: [primaryLift("Incline Bench"), secondaryLift("Pull-Ups"), accessory("Rows"), accessory("Core Anti-Rotation")]
+        },
+        {
+          title: "Day 4 — Conditioning",
+          exercises: [
+            { tier: "Conditioning", name: "Intervals (e.g., 4x4 min)", sets: 1, reps: "", rest: "", rpe: "Hard" },
+            accessory("Mobility")
+          ]
+        },
+        { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
       ]
     };
 
-    const template = sportBlocks[s] || sportBlocks.basketball;
-    const picked = template.slice(0, Math.min(Math.max(d, 3), 5));
+    const template = templates[s] || templates.basketball;
+    const picked = template.slice(0, d);
 
     return {
       sport: s,
       days: d,
       createdAtISO: new Date().toISOString(),
-      warmup: base.warmup,
-      finisher: base.finisher,
+      progression: {
+        model: "4-week wave",
+        description: "Weeks 1–3 increase load slightly; Week 4 deload (~-15% volume)."
+      },
+      warmup: baseWarmup,
+      finisher: baseFinisher,
       daysPlan: picked
     };
   }
@@ -675,7 +688,7 @@
 
     el.innerHTML = `
       <h3 style="margin-top:0">Profile</h3>
-      <div class="small">Offline-first. Save locally. Sign in only if you want sync.</div>
+      <div class="small">Offline-first. Your profile saves to this device. Sign in only if you want sync.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -744,6 +757,7 @@
     });
   }
 
+  // ✅ Updated Program renderer (structured)
   function renderProgram() {
     const el = $("tab-program");
     if (!el) return;
@@ -757,27 +771,47 @@
       return;
     }
 
-    const daysHtml = (p.daysPlan || []).map((d) => `
-      <div class="card" style="margin:10px 0">
-        <div style="font-weight:600">${sanitizeHTML(d.title)}</div>
-        <ul style="margin:8px 0 0 18px">
-          ${(d.blocks || []).map((b) => `<li>${sanitizeHTML(b)}</li>`).join("")}
-        </ul>
+    const daysHtml = (p.daysPlan || []).map((day) => `
+      <div class="card" style="margin:16px 0;padding:14px">
+        <div style="font-weight:600;margin-bottom:8px">${sanitizeHTML(day.title)}</div>
+        ${(day.exercises || []).map(ex => `
+          <div style="margin-bottom:10px">
+            <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
+            <div class="small">
+              ${ex.sets ? `Sets: ${sanitizeHTML(ex.sets)} • ` : ""}
+              ${ex.reps ? `Reps: ${sanitizeHTML(ex.reps)} • ` : ""}
+              ${ex.rest ? `Rest: ${sanitizeHTML(ex.rest)} • ` : ""}
+              ${ex.rpe ? `RPE: ${sanitizeHTML(ex.rpe)}` : ""}
+            </div>
+          </div>
+        `).join("")}
       </div>
     `).join("");
 
     el.innerHTML = `
       <h3 style="margin-top:0">Program</h3>
-      <div class="small">Sport: <b>${sanitizeHTML(p.sport)}</b> • Days/week: <b>${sanitizeHTML(p.days)}</b></div>
+      <div class="small">
+        Sport: <b>${sanitizeHTML(p.sport)}</b> • Days/week: <b>${sanitizeHTML(p.days)}</b>
+      </div>
+
+      <div class="small" style="margin-top:4px">
+        Progression Model: <b>${sanitizeHTML(p.progression?.model || "—")}</b>
+      </div>
+      <div class="small">${sanitizeHTML(p.progression?.description || "")}</div>
+
       <div class="hr"></div>
 
       <div class="small"><b>Warmup</b></div>
-      <ul style="margin:8px 0 12px 18px">${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
+      <ul style="margin:8px 0 16px 18px">
+        ${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+      </ul>
 
       ${daysHtml}
 
-      <div class="small" style="margin-top:8px"><b>Finisher</b></div>
-      <ul style="margin:8px 0 0 18px">${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
+      <div class="small"><b>Finisher</b></div>
+      <ul style="margin:8px 0 0 18px">
+        ${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+      </ul>
     `;
   }
 
@@ -786,12 +820,12 @@
     if (!el) return;
 
     const logs = Array.isArray(state.logs)
-      ? state.logs.slice().filter(x => x && x.dateISO).sort((a,b)=>b.dateISO.localeCompare(a.dateISO))
+      ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
       : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
-      <div class="small">Save a quick daily log. Stored locally; syncs only when signed in.</div>
+      <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -801,7 +835,7 @@
         </div>
         <div class="field">
           <label for="logTheme">Program day / theme</label>
-          <input id="logTheme" placeholder="e.g., Day 1 — Strength + Skill"/>
+          <input id="logTheme" placeholder="e.g., Day 1 — Lower Strength"/>
         </div>
       </div>
 
@@ -846,7 +880,7 @@
 
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const hydration = ($("hydrationLevel")?.value || "good").trim();
+      const hydration = ($("hydrationLevel")?.value || "good").trim(); // hydration level
 
       const localLog = {
         dateISO,
@@ -854,16 +888,16 @@
         injury: $("injuryFlag")?.value || "none",
         wellness: numOrNull($("wellness")?.value),
         energy: numOrNull($("energy")?.value),
-        hydration, // ✅ hydration level
+        hydration, // stored in local state
         entries: []
       };
 
       state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
       state.logs.push(localLog);
-      state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      state.logs.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
       saveState();
 
-      // only upserts if signed in (handled inside)
+      // cloud write (mapping supports hydration -> workout_logs.hydration)
       window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
 
       alert("Saved.");
@@ -893,12 +927,12 @@
     if (!el) return;
 
     const tests = Array.isArray(state.tests)
-      ? state.tests.slice().filter(x => x && x.dateISO).sort((a,b)=>b.dateISO.localeCompare(a.dateISO))
+      ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
       : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Performance</h3>
-      <div class="small">Track key metrics. Stored locally; syncs only when signed in.</div>
+      <div class="small">Track key metrics. Saves locally; syncs when signed in.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -954,7 +988,7 @@
 
       state.tests = (state.tests || []).filter((t) => t.dateISO !== dateISO);
       state.tests.push(test);
-      state.tests.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+      state.tests.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
       saveState();
 
       window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
@@ -1047,7 +1081,7 @@
     const logs = (state.logs || [])
       .filter((l) => l && l.dateISO)
       .slice()
-      .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
     const wellnessPts = logs
@@ -1059,7 +1093,7 @@
     const tests = (state.tests || [])
       .filter((t) => t && t.dateISO)
       .slice()
-      .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
+      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
     const vertPts = tests
@@ -1074,7 +1108,7 @@
     if (!el) return;
     el.innerHTML = `
       <h3 style="margin-top:0">Team</h3>
-      <div class="small">Team features are stubbed for now (UI comes after sync is solid).</div>
+      <div class="small">Team features are stubbed for now (state is ready, UI can be built next).</div>
     `;
   }
 
@@ -1083,7 +1117,7 @@
     if (!el) return;
     el.innerHTML = `
       <h3 style="margin-top:0">Parent</h3>
-      <div class="small">Parent view is stubbed for now.</div>
+      <div class="small">Parent view is stubbed for now (we can add read-only dashboards next).</div>
     `;
   }
 
@@ -1110,7 +1144,7 @@
       <div class="btnRow" style="margin-top:12px">
         <button class="btn secondary" id="btnSettingsSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in</button>
         <button class="btn secondary" id="btnSettingsSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
-        <button class="btn secondary" id="btnSettingsPullAll" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull (state + logs + metrics)</button>
+        <button class="btn secondary" id="btnSettingsPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
         <button class="btn secondary" id="btnSettingsPush" type="button" ${(supaOk && signed) ? "" : "disabled"}>Push device → cloud</button>
       </div>
 
@@ -1147,16 +1181,15 @@
       }
     });
 
-    $("btnSettingsPullAll")?.addEventListener("click", async () => {
-      const ok1 = await __pullCloudStateIfNewer();
-      const ok2 = await pullCloudLogsAndMetrics();
-      alert((ok1 || ok2) ? "Pulled cloud data (if available/newer)." : "No cloud updates found.");
+    $("btnSettingsPull")?.addEventListener("click", async () => {
+      const pulled = await __pullCloudStateIfNewer();
+      alert(pulled ? "Pulled newer cloud state." : "No newer cloud state found.");
       renderActiveTab();
     });
 
     $("btnSettingsPush")?.addEventListener("click", async () => {
       const ok = await __pushStateNow();
-      alert(ok ? "Pushed device state to cloud." : "Push skipped (signed out / offline / error).");
+      alert(ok ? "Pushed current device state to cloud." : "Push skipped (not signed in / offline / error).");
       renderActiveTab();
     });
 
@@ -1185,7 +1218,7 @@
     }
   }
 
-  // ---- Public start hook ----
+  // ---- Public start hook (boot.js calls startApp if role exists) ----
   window.startApp = function () {
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
     if (!role) {
@@ -1202,47 +1235,26 @@
     console.log("PerformanceIQ core started. Role:", state.role || role);
   };
 
-  // ---- Switch Role button ----
-  $("btnSwitchRole")?.addEventListener("click", () => {
-    try { localStorage.removeItem("role"); } catch {}
-    try { localStorage.removeItem("selectedRole"); } catch {}
-    location.reload();
-  });
-
-  // ---- Auth change: when user signs in, pull everything once ----
-  (function wireAuthPull() {
-    const auth = window.PIQ_AuthStore;
-    if (!auth || typeof auth.onAuthChange !== "function") return;
-
-    auth.onAuthChange(async (user) => {
-      try {
-        if (!user) {
-          setPills();
-          return;
-        }
-        await __pullCloudStateIfNewer();
-        await pullCloudLogsAndMetrics();
-        setPills();
-        renderActiveTab();
-      } catch (e) {
-        logError("authPull", e);
-      }
+  // ---- Switch Role button support (boot.js also wires, but safe here too) ----
+  document.addEventListener("DOMContentLoaded", () => {
+    $("btnSwitchRole")?.addEventListener("click", () => {
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      location.reload();
     });
-  })();
+  });
 
   // ---- Startup ----
   document.addEventListener("DOMContentLoaded", async () => {
     try {
-      // Optional: auto-pull at start if signed in
       if (await isSignedIn()) {
         await __pullCloudStateIfNewer();
-        await pullCloudLogsAndMetrics();
       }
     } catch (e) {
       logError("startupPull", e);
     }
 
-    setPills();
     setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
     window.addEventListener("click", hideSplashNow, { once: true });
     window.addEventListener("touchstart", hideSplashNow, { once: true });
