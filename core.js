@@ -1,6 +1,7 @@
 // core.js — PRODUCTION-READY REPLACEMENT (FULL FILE)
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 // Includes: working tab system + working Profile + Program (structured) + Log (with hydration level) + Performance + Dashboard + Settings
+// NEW: Readiness engine (0–100) using Wellness + Energy + Sleep + Hydration + Injury (computed, not stored)
 (function () {
   "use strict";
 
@@ -73,8 +74,12 @@
 
   // ---- Local persistence ----
   function __loadLocalRaw() {
-    try { return localStorage.getItem(STORAGE_KEY); }
-    catch (e) { logError("loadLocalRaw", e); return null; }
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      logError("loadLocalRaw", e);
+      return null;
+    }
   }
 
   function __saveLocal(stateObj) {
@@ -143,8 +148,12 @@
   function loadState() {
     const raw = __loadLocalRaw();
     if (!raw) return null;
-    try { return normalizeState(JSON.parse(raw)); }
-    catch (e) { logError("loadState", e); return null; }
+    try {
+      return normalizeState(JSON.parse(raw));
+    } catch (e) {
+      logError("loadState", e);
+      return null;
+    }
   }
 
   // ---- State (simple, mutable, saved) ----
@@ -176,7 +185,11 @@
     s.style.display = "none";
     s.style.visibility = "hidden";
     s.style.opacity = "0";
-    try { s.remove(); } catch (e) { logError("hideSplash", e); }
+    try {
+      s.remove();
+    } catch (e) {
+      logError("hideSplash", e);
+    }
   }
   window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
@@ -238,8 +251,12 @@
 
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
-        Object.keys(state).forEach((k) => { delete state[k]; });
-        Object.keys(next).forEach((k) => { state[k] = next[k]; });
+        Object.keys(state).forEach((k) => {
+          delete state[k];
+        });
+        Object.keys(next).forEach((k) => {
+          state[k] = next[k];
+        });
         __saveLocal(state);
         renderActiveTab();
         return true;
@@ -296,8 +313,13 @@
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
     const row = __localLogToWorkoutRow(localLog);
     if (!row || !row.date) return false;
-    try { await window.dataStore.upsertWorkoutLog(row); return true; }
-    catch (e) { logError("upsertWorkoutLog", e); return false; }
+    try {
+      await window.dataStore.upsertWorkoutLog(row);
+      return true;
+    } catch (e) {
+      logError("upsertWorkoutLog", e);
+      return false;
+    }
   }
 
   async function __tryUpsertMetric(localTest) {
@@ -314,19 +336,36 @@
       row.sleep_hours !== null;
     if (!hasAny) return false;
 
-    try { await window.dataStore.upsertPerformanceMetric(row); return true; }
-    catch (e) { logError("upsertPerformanceMetric", e); return false; }
+    try {
+      await window.dataStore.upsertPerformanceMetric(row);
+      return true;
+    } catch (e) {
+      logError("upsertPerformanceMetric", e);
+      return false;
+    }
   }
 
   window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => { __tryUpsertWorkoutLog(localLog); };
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => { __tryUpsertMetric(localTest); };
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => {
+    __tryUpsertWorkoutLog(localLog);
+  };
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => {
+    __tryUpsertMetric(localTest);
+  };
 
   // ---- Role helpers ----
   function setRoleEverywhere(role) {
     state.role = role || "";
-    try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
-    try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
+    try {
+      localStorage.setItem("role", state.role);
+    } catch (e) {
+      logError("setRole", e);
+    }
+    try {
+      localStorage.setItem("selectedRole", state.role);
+    } catch (e) {
+      logError("setSelectedRole", e);
+    }
   }
 
   function setProfileBasics(sport, days, name) {
@@ -443,16 +482,27 @@
       );
       saveState();
 
-      try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
+      try {
+        mount.style.display = "none";
+        mount.innerHTML = "";
+      } catch (e) {
+        logError("hideRoleChooser", e);
+      }
       hideSplashNow();
       window.startApp?.();
     });
 
     $("piqResetRole")?.addEventListener("click", () => {
       if (!confirm("Clear ALL saved data on this device?")) return;
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+      try {
+        localStorage.removeItem("role");
+      } catch {}
+      try {
+        localStorage.removeItem("selectedRole");
+      } catch {}
       location.reload();
     });
 
@@ -493,27 +543,22 @@
   }
 
   // boot.js calls this when no role is stored
-  window.showRoleChooser = function () { renderRoleChooser(); };
+  window.showRoleChooser = function () {
+    renderRoleChooser();
+  };
 
   // ---- Tab system ----
   const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
 
-  // ✅ REPLACEMENT MERGED: showTab now renders immediately and owns the lifecycle (fixes "tab visible but empty")
   function showTab(tabName) {
-    if (!TABS.includes(tabName)) tabName = "profile";
-
     for (const t of TABS) {
       const el = $(`tab-${t}`);
       if (!el) continue;
-      el.style.display = (t === tabName) ? "block" : "none";
+      el.style.display = t === tabName ? "block" : "none";
     }
-
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
     __saveLocal(state); // UI-only; don't bump meta/version
-
-    // 🔥 critical: always render after the tab becomes active
-    renderActiveTab();
   }
 
   function activeTab() {
@@ -522,11 +567,11 @@
     return "profile";
   }
 
-  // ✅ REPLACEMENT MERGED: wireNav no longer calls renderActiveTab separately (showTab handles it)
   function wireNav() {
     for (const t of TABS) {
       $(`nav-${t}`)?.addEventListener("click", () => {
         showTab(t);
+        renderActiveTab();
       });
     }
   }
@@ -540,23 +585,174 @@
   }
 
   // =========================================================
+  // ✅ READINESS ENGINE (computed, not stored)
+  // =========================================================
+
+  function clamp01(x) {
+    if (!Number.isFinite(x)) return null;
+    if (x < 0) return 0;
+    if (x > 1) return 1;
+    return x;
+  }
+
+  function hydrationFactor(level) {
+    const v = String(level || "").toLowerCase().trim();
+    // No fractions are displayed to the user; this is internal computation only.
+    if (v === "low") return 0.60;
+    if (v === "ok") return 0.75;
+    if (v === "good") return 0.90;
+    if (v === "great") return 1.0;
+    return null;
+  }
+
+  function injuryFactor(flag) {
+    const v = String(flag || "").toLowerCase().trim();
+    if (v === "none") return 1.0;
+    if (v === "sore") return 0.90;
+    if (v === "minor") return 0.75;
+    if (v === "out") return 0.40;
+    return null;
+  }
+
+  function sleepFactor(hours) {
+    const h = Number(hours);
+    if (!Number.isFinite(h)) return null;
+
+    // simple, transparent model:
+    // - target 8h -> 1.0
+    // - 6h -> 0.70
+    // - 9h -> 1.0 (cap)
+    // - <5h -> 0.45 floor
+    if (h >= 8) return 1.0;
+    if (h >= 6) {
+      // linear from 6->8 : 0.70 -> 1.00
+      const t = (h - 6) / 2;
+      return 0.70 + t * 0.30;
+    }
+    if (h >= 5) {
+      // linear from 5->6 : 0.45 -> 0.70
+      const t = (h - 5) / 1;
+      return 0.45 + t * 0.25;
+    }
+    return 0.45;
+  }
+
+  function score0100(x01) {
+    if (!Number.isFinite(x01)) return null;
+    return Math.round(clamp01(x01) * 100);
+  }
+
+  function findLogByDate(dateISO) {
+    const d = String(dateISO || "").trim();
+    if (!d) return null;
+    const logs = Array.isArray(state.logs) ? state.logs : [];
+    // exact match preferred
+    const exact = logs.find((l) => l && l.dateISO === d);
+    if (exact) return exact;
+    return null;
+  }
+
+  function findTestByDate(dateISO) {
+    const d = String(dateISO || "").trim();
+    if (!d) return null;
+    const tests = Array.isArray(state.tests) ? state.tests : [];
+    const exact = tests.find((t) => t && t.dateISO === d);
+    if (exact) return exact;
+    return null;
+  }
+
+  /**
+   * Compute readiness 0-100 for a given date.
+   * Uses available components and renormalizes weights if some are missing.
+   * Returns { score, breakdown, inputs } or null if no usable inputs.
+   */
+  function computeReadinessForDate(dateISO, overrides) {
+    const d = String(dateISO || "").trim();
+    if (!d) return null;
+
+    const log = findLogByDate(d);
+    const test = findTestByDate(d);
+
+    const wellness = overrides?.wellness ?? (log ? numOrNull(log.wellness) : null);
+    const energy = overrides?.energy ?? (log ? numOrNull(log.energy) : null);
+    const hydration = overrides?.hydration ?? (log ? log.hydration : null);
+    const injury = overrides?.injury ?? (log ? log.injury : null);
+    const sleep = overrides?.sleep ?? (test ? numOrNull(test.sleep) : null);
+
+    const wellness01 = Number.isFinite(wellness) ? clamp01(wellness / 10) : null;
+    const energy01 = Number.isFinite(energy) ? clamp01(energy / 10) : null;
+    const hydration01 = hydrationFactor(hydration);
+    const injury01 = injuryFactor(injury);
+    const sleep01 = sleepFactor(sleep);
+
+    // Weights (industry-style: wellness/energy/sleep dominate)
+    const components = [
+      { key: "wellness", value: wellness01, w: 0.35 },
+      { key: "energy", value: energy01, w: 0.25 },
+      { key: "sleep", value: sleep01, w: 0.25 },
+      { key: "hydration", value: hydration01, w: 0.10 },
+      { key: "injury", value: injury01, w: 0.05 }
+    ].filter((c) => Number.isFinite(c.value));
+
+    if (!components.length) return null;
+
+    const totalW = components.reduce((acc, c) => acc + c.w, 0);
+    const readiness01 = components.reduce((acc, c) => acc + (c.value * (c.w / totalW)), 0);
+
+    const breakdown = {
+      wellness: score0100(wellness01),
+      energy: score0100(energy01),
+      sleep: score0100(sleep01),
+      hydration: score0100(hydration01),
+      injury: score0100(injury01)
+    };
+
+    return {
+      dateISO: d,
+      score: score0100(readiness01),
+      breakdown,
+      inputs: {
+        wellness,
+        energy,
+        sleep,
+        hydration: typeof hydration === "string" ? hydration : null,
+        injury: typeof injury === "string" ? injury : null
+      }
+    };
+  }
+
+  function computeReadinessHistory(lastN) {
+    const N = Math.max(1, Math.min(Number(lastN || 14), 60));
+
+    // Collect dates from logs/tests
+    const dates = new Set();
+    (state.logs || []).forEach((l) => l?.dateISO && dates.add(l.dateISO));
+    (state.tests || []).forEach((t) => t?.dateISO && dates.add(t.dateISO));
+
+    const ordered = Array.from(dates).sort((a, b) => String(a).localeCompare(String(b))).slice(-N);
+
+    const rows = ordered
+      .map((d) => computeReadinessForDate(d))
+      .filter((r) => r && Number.isFinite(r.score));
+
+    return rows;
+  }
+
+  // Expose readiness functions for debugging
+  window.PIQ.readiness = window.PIQ.readiness || {};
+  window.PIQ.readiness.forDate = (dateISO) => computeReadinessForDate(dateISO);
+  window.PIQ.readiness.history = (n) => computeReadinessHistory(n);
+
+  // =========================================================
   // ✅ PROGRAM GENERATOR (STRUCTURED, REAL EXERCISES)
   // =========================================================
   function generateProgram(sport, days) {
     const s = (sport || SPORTS.BASKETBALL).toLowerCase();
     const d = Math.min(Math.max(Number(days || 4), 3), 5);
 
-    const baseWarmup = [
-      "5–8 min zone 2 cardio",
-      "Dynamic mobility (hips, ankles, t-spine)",
-      "Glute + core activation"
-    ];
+    const baseWarmup = ["5–8 min zone 2 cardio", "Dynamic mobility (hips, ankles, t-spine)", "Glute + core activation"];
 
-    const baseFinisher = [
-      "Cooldown walk 5 min",
-      "Breathing reset 3–5 min",
-      "Stretch major muscle groups"
-    ];
+    const baseFinisher = ["Cooldown walk 5 min", "Breathing reset 3–5 min", "Stretch major muscle groups"];
 
     function primaryLift(name) {
       return { tier: "Primary", name, sets: 4, reps: "4–6", rest: "2–3 min", rpe: "7–8" };
@@ -572,12 +768,7 @@
       basketball: [
         {
           title: "Day 1 — Lower Strength",
-          exercises: [
-            primaryLift("Trap Bar Deadlift"),
-            secondaryLift("Rear Foot Elevated Split Squat"),
-            accessory("Hamstring Curl"),
-            accessory("Core Anti-Rotation Press")
-          ]
+          exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Rear Foot Elevated Split Squat"), accessory("Hamstring Curl"), accessory("Core Anti-Rotation Press")]
         },
         {
           title: "Day 2 — Speed + Plyo",
@@ -590,12 +781,7 @@
         },
         {
           title: "Day 3 — Upper Strength",
-          exercises: [
-            primaryLift("Bench Press"),
-            secondaryLift("Pull-Ups"),
-            accessory("DB Shoulder Press"),
-            accessory("Scapular Retraction Rows")
-          ]
+          exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Scapular Retraction Rows")]
         },
         {
           title: "Day 4 — Reactive + Conditioning",
@@ -608,18 +794,11 @@
         },
         {
           title: "Day 5 — Optional Recovery",
-          exercises: [
-            { tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" },
-            accessory("Mobility Flow"),
-            accessory("Soft Tissue Work")
-          ]
+          exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }, accessory("Mobility Flow"), accessory("Soft Tissue Work")]
         }
       ],
       football: [
-        {
-          title: "Day 1 — Lower Strength",
-          exercises: [primaryLift("Back Squat"), secondaryLift("RDL"), accessory("Split Squat"), accessory("Core Bracing")]
-        },
+        { title: "Day 1 — Lower Strength", exercises: [primaryLift("Back Squat"), secondaryLift("RDL"), accessory("Split Squat"), accessory("Core Bracing")] },
         {
           title: "Day 2 — Speed/Agility",
           exercises: [
@@ -628,10 +807,7 @@
             accessory("Hip Mobility")
           ]
         },
-        {
-          title: "Day 3 — Upper Strength",
-          exercises: [primaryLift("Bench Press"), secondaryLift("Rows"), accessory("Incline DB Press"), accessory("Face Pulls")]
-        },
+        { title: "Day 3 — Upper Strength", exercises: [primaryLift("Bench Press"), secondaryLift("Rows"), accessory("Incline DB Press"), accessory("Face Pulls")] },
         {
           title: "Day 4 — Power/Conditioning",
           exercises: [
@@ -643,10 +819,7 @@
         { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
       ],
       soccer: [
-        {
-          title: "Day 1 — Strength",
-          exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Bulgarian Split Squat"), accessory("Nordics (if able)"), accessory("Core")]
-        },
+        { title: "Day 1 — Strength", exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Bulgarian Split Squat"), accessory("Nordics (if able)"), accessory("Core")] },
         {
           title: "Day 2 — Speed",
           exercises: [
@@ -655,17 +828,8 @@
             accessory("Mobility")
           ]
         },
-        {
-          title: "Day 3 — Upper + Core",
-          exercises: [primaryLift("Incline Bench"), secondaryLift("Pull-Ups"), accessory("Rows"), accessory("Core Anti-Rotation")]
-        },
-        {
-          title: "Day 4 — Conditioning",
-          exercises: [
-            { tier: "Conditioning", name: "Intervals (e.g., 4x4 min)", sets: 1, reps: "", rest: "", rpe: "Hard" },
-            accessory("Mobility")
-          ]
-        },
+        { title: "Day 3 — Upper + Core", exercises: [primaryLift("Incline Bench"), secondaryLift("Pull-Ups"), accessory("Rows"), accessory("Core Anti-Rotation")] },
+        { title: "Day 4 — Conditioning", exercises: [{ tier: "Conditioning", name: "Intervals (e.g., 4x4 min)", sets: 1, reps: "", rest: "", rpe: "Hard" }, accessory("Mobility")] },
         { title: "Day 5 — Optional", exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }] }
       ]
     };
@@ -677,10 +841,7 @@
       sport: s,
       days: d,
       createdAtISO: new Date().toISOString(),
-      progression: {
-        model: "4-week wave",
-        description: "Weeks 1–3 increase load slightly; Week 4 deload (~-15% volume)."
-      },
+      progression: { model: "4-week wave", description: "Weeks 1–3 increase load slightly; Week 4 deload (~-15% volume)." },
       warmup: baseWarmup,
       finisher: baseFinisher,
       daysPlan: picked
@@ -763,7 +924,8 @@
       setProfileBasics(nextSport, nextDays, $("profileName")?.value || "");
       state.week = generateProgram(state.profile.sport, state.profile.days);
       saveState();
-      showTab("program"); // showTab already renders now
+      showTab("program");
+      renderActiveTab();
     });
   }
 
@@ -780,10 +942,14 @@
       return;
     }
 
-    const daysHtml = (p.daysPlan || []).map((day) => `
+    const daysHtml = (p.daysPlan || [])
+      .map(
+        (day) => `
       <div class="card" style="margin:16px 0;padding:14px">
         <div style="font-weight:600;margin-bottom:8px">${sanitizeHTML(day.title)}</div>
-        ${(day.exercises || []).map(ex => `
+        ${(day.exercises || [])
+          .map(
+            (ex) => `
           <div style="margin-bottom:10px">
             <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
             <div class="small">
@@ -793,9 +959,13 @@
               ${ex.rpe ? `RPE: ${sanitizeHTML(ex.rpe)}` : ""}
             </div>
           </div>
-        `).join("")}
+        `
+          )
+          .join("")}
       </div>
-    `).join("");
+    `
+      )
+      .join("");
 
     el.innerHTML = `
       <h3 style="margin-top:0">Program</h3>
@@ -812,14 +982,14 @@
 
       <div class="small"><b>Warmup</b></div>
       <ul style="margin:8px 0 16px 18px">
-        ${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.warmup || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
 
       ${daysHtml}
 
       <div class="small"><b>Finisher</b></div>
       <ul style="margin:8px 0 0 18px">
-        ${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.finisher || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
     `;
   }
@@ -828,9 +998,7 @@
     const el = $("tab-log");
     if (!el) return;
 
-    const logs = Array.isArray(state.logs)
-      ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
-      : [];
+    const logs = Array.isArray(state.logs) ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
@@ -877,6 +1045,11 @@
         </div>
       </div>
 
+      <div class="card" style="margin-top:12px;padding:12px">
+        <div class="small"><b>Readiness (preview)</b></div>
+        <div id="readinessPreview" class="small">Enter values to see today’s readiness score.</div>
+      </div>
+
       <div class="btnRow" style="margin-top:12px">
         <button class="btn" id="btnSaveLog" type="button">Save Log</button>
       </div>
@@ -887,9 +1060,48 @@
       <div id="logList"></div>
     `;
 
+    function updateReadinessPreview() {
+      const dateISO = ($("logDate")?.value || todayISO()).trim();
+      const preview = $("readinessPreview");
+      if (!preview) return;
+
+      // Pull sleep from performance test for same date if available
+      const t = findTestByDate(dateISO);
+      const sleep = t ? numOrNull(t.sleep) : null;
+
+      const r = computeReadinessForDate(dateISO, {
+        wellness: numOrNull($("wellness")?.value),
+        energy: numOrNull($("energy")?.value),
+        hydration: ($("hydrationLevel")?.value || "good").trim(),
+        injury: ($("injuryFlag")?.value || "none").trim(),
+        sleep
+      });
+
+      if (!r || !Number.isFinite(r.score)) {
+        preview.textContent = "Enter values to see today’s readiness score.";
+        return;
+      }
+
+      const bits = [];
+      if (Number.isFinite(r.breakdown.wellness)) bits.push(`Wellness ${r.breakdown.wellness}`);
+      if (Number.isFinite(r.breakdown.energy)) bits.push(`Energy ${r.breakdown.energy}`);
+      if (Number.isFinite(r.breakdown.sleep)) bits.push(`Sleep ${r.breakdown.sleep}`);
+      if (Number.isFinite(r.breakdown.hydration)) bits.push(`Hydration ${r.breakdown.hydration}`);
+      if (Number.isFinite(r.breakdown.injury)) bits.push(`Injury ${r.breakdown.injury}`);
+
+      preview.innerHTML = `Score: <b>${sanitizeHTML(r.score)}</b> / 100<br/><span class="small">${sanitizeHTML(bits.join(" • "))}</span>`;
+    }
+
+    // live preview events
+    ["logDate", "wellness", "energy", "hydrationLevel", "injuryFlag"].forEach((id) => {
+      $(id)?.addEventListener("input", updateReadinessPreview);
+      $(id)?.addEventListener("change", updateReadinessPreview);
+    });
+    updateReadinessPreview();
+
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const hydration = ($("hydrationLevel")?.value || "good").trim();
+      const hydration = ($("hydrationLevel")?.value || "good").trim(); // hydration level (categorical)
 
       const localLog = {
         dateISO,
@@ -897,7 +1109,7 @@
         injury: $("injuryFlag")?.value || "none",
         wellness: numOrNull($("wellness")?.value),
         energy: numOrNull($("energy")?.value),
-        hydration, // hydration level (no fractions added)
+        hydration, // stored in local state
         entries: []
       };
 
@@ -907,6 +1119,7 @@
       saveState();
 
       window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
+
       alert("Saved.");
     });
 
@@ -918,24 +1131,29 @@
       return;
     }
 
-    list.innerHTML = logs.slice(0, 10).map((l) => `
-      <div class="card" style="margin:10px 0">
-        <div style="display:flex;justify-content:space-between;gap:10px">
-          <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
-          <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}</div>
+    list.innerHTML = logs
+      .slice(0, 10)
+      .map((l) => {
+        const r = computeReadinessForDate(l.dateISO);
+        const rTxt = r && Number.isFinite(r.score) ? ` • Readiness: ${sanitizeHTML(r.score)}` : "";
+        return `
+        <div class="card" style="margin:10px 0">
+          <div style="display:flex;justify-content:space-between;gap:10px">
+            <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
+            <div class="small">Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")}${rTxt}</div>
+          </div>
+          <div class="small">Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")}</div>
         </div>
-        <div class="small">Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")}</div>
-      </div>
-    `).join("");
+      `;
+      })
+      .join("");
   }
 
   function renderPerformance() {
     const el = $("tab-performance");
     if (!el) return;
 
-    const tests = Array.isArray(state.tests)
-      ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
-      : [];
+    const tests = Array.isArray(state.tests) ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Performance</h3>
@@ -1010,7 +1228,9 @@
       return;
     }
 
-    list.innerHTML = tests.slice(0, 10).map((t) => `
+    list.innerHTML = tests
+      .slice(0, 10)
+      .map((t) => `
       <div class="card" style="margin:10px 0">
         <div><b>${sanitizeHTML(t.dateISO)}</b></div>
         <div class="small">
@@ -1018,7 +1238,8 @@
           • BW: ${sanitizeHTML(t.bw ?? "—")} • Sleep: ${sanitizeHTML(t.sleep ?? "—")}
         </div>
       </div>
-    `).join("");
+    `)
+      .join("");
   }
 
   function renderDashboard() {
@@ -1027,8 +1248,18 @@
 
     el.innerHTML = `
       <h3 style="margin-top:0">Dashboard</h3>
-      <div class="small">Trends from your logs and tests.</div>
+      <div class="small">Trends from your logs, tests, and readiness.</div>
       <div class="hr"></div>
+
+      <div class="card" style="margin:10px 0;padding:12px">
+        <div class="small"><b>Latest Readiness</b></div>
+        <div id="latestReadiness" class="small">No readiness yet.</div>
+      </div>
+
+      <div class="card" style="margin:10px 0">
+        <div class="small"><b>Readiness trend (last 14)</b></div>
+        <canvas id="chartReadiness" width="320" height="140" style="width:100%;max-width:640px"></canvas>
+      </div>
 
       <div class="card" style="margin:10px 0">
         <div class="small"><b>Wellness trend (last 14)</b></div>
@@ -1047,7 +1278,8 @@
       const ctx = c.getContext("2d");
       if (!ctx) return;
 
-      const w = c.width, h = c.height;
+      const w = c.width,
+        h = c.height;
       ctx.clearRect(0, 0, w, h);
 
       if (!points || points.length < 2) {
@@ -1064,7 +1296,7 @@
       const scaleY = (y) => {
         if (maxY === minY) return h / 2;
         const t = (y - minY) / (maxY - minY);
-        return (h - pad) - t * (h - pad * 2);
+        return h - pad - t * (h - pad * 2);
       };
 
       ctx.beginPath();
@@ -1085,28 +1317,46 @@
       ctx.fillText(String(maxY), pad, pad + 10);
     }
 
+    // Latest readiness
+    const readinessRows = computeReadinessHistory(14);
+    const latestEl = $("latestReadiness");
+    if (latestEl) {
+      if (!readinessRows.length) {
+        latestEl.textContent = "No readiness yet. Add a Log (and Sleep in Performance for better accuracy).";
+      } else {
+        const last = readinessRows[readinessRows.length - 1];
+        const bits = [];
+        if (Number.isFinite(last.breakdown.wellness)) bits.push(`Wellness ${last.breakdown.wellness}`);
+        if (Number.isFinite(last.breakdown.energy)) bits.push(`Energy ${last.breakdown.energy}`);
+        if (Number.isFinite(last.breakdown.sleep)) bits.push(`Sleep ${last.breakdown.sleep}`);
+        if (Number.isFinite(last.breakdown.hydration)) bits.push(`Hydration ${last.breakdown.hydration}`);
+        if (Number.isFinite(last.breakdown.injury)) bits.push(`Injury ${last.breakdown.injury}`);
+        latestEl.innerHTML = `<b>${sanitizeHTML(last.score)}</b> / 100 • ${sanitizeHTML(last.dateISO)}<br/><span class="small">${sanitizeHTML(bits.join(" • "))}</span>`;
+      }
+    }
+
+    // Readiness trend points
+    const readinessPts = readinessRows.map((r, i) => ({ x: i, y: Number(r.score) })).filter((p) => Number.isFinite(p.y));
+    drawLine("chartReadiness", readinessPts);
+
+    // Wellness trend
     const logs = (state.logs || [])
       .filter((l) => l && l.dateISO)
       .slice()
       .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
-    const wellnessPts = logs
-      .map((l, i) => ({ x: i, y: Number(l.wellness) }))
-      .filter((p) => Number.isFinite(p.y));
-
+    const wellnessPts = logs.map((l, i) => ({ x: i, y: Number(l.wellness) })).filter((p) => Number.isFinite(p.y));
     drawLine("chartWellness", wellnessPts);
 
+    // Vertical trend
     const tests = (state.tests || [])
       .filter((t) => t && t.dateISO)
       .slice()
       .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
-    const vertPts = tests
-      .map((t, i) => ({ x: i, y: Number(t.vert) }))
-      .filter((p) => Number.isFinite(p.y));
-
+    const vertPts = tests.map((t, i) => ({ x: i, y: Number(t.vert) })).filter((p) => Number.isFinite(p.y));
     drawLine("chartVert", vertPts);
   }
 
@@ -1213,15 +1463,33 @@
   function renderActiveTab() {
     setPills();
     switch (activeTab()) {
-      case "profile": renderProfile(); break;
-      case "program": renderProgram(); break;
-      case "log": renderLog(); break;
-      case "performance": renderPerformance(); break;
-      case "dashboard": renderDashboard(); break;
-      case "team": renderTeam(); break;
-      case "parent": renderParent(); break;
-      case "settings": renderSettings(); break;
-      default: renderProfile(); break;
+      case "profile":
+        renderProfile();
+        break;
+      case "program":
+        renderProgram();
+        break;
+      case "log":
+        renderLog();
+        break;
+      case "performance":
+        renderPerformance();
+        break;
+      case "dashboard":
+        renderDashboard();
+        break;
+      case "team":
+        renderTeam();
+        break;
+      case "parent":
+        renderParent();
+        break;
+      case "settings":
+        renderSettings();
+        break;
+      default:
+        renderProfile();
+        break;
     }
   }
 
@@ -1235,7 +1503,8 @@
     if (!state.role) setRoleEverywhere(role);
 
     wireNav();
-    showTab(activeTab()); // showTab renders now
+    showTab(activeTab());
+    renderActiveTab();
     hideSplashNow();
 
     console.log("PerformanceIQ core started. Role:", state.role || role);
@@ -1244,9 +1513,15 @@
   // ---- Switch Role button support (boot.js also wires, but safe here too) ----
   document.addEventListener("DOMContentLoaded", () => {
     $("btnSwitchRole")?.addEventListener("click", () => {
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try {
+        localStorage.removeItem("role");
+      } catch {}
+      try {
+        localStorage.removeItem("selectedRole");
+      } catch {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
       location.reload();
     });
   });
