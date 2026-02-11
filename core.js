@@ -1,4 +1,4 @@
-// core.js — FULL REPLACEMENT (PLAIN SCRIPT)
+// core.js — PRODUCTION-READY REPLACEMENT
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 (function () {
   "use strict";
@@ -11,9 +11,53 @@
   const STORAGE_KEY = "piq_state_v1";
   const CLOUD_PUSH_DEBOUNCE_MS = 800;
   const SPLASH_FAILSAFE_MS = 2000;
+  const MAX_ERROR_QUEUE_SIZE = 50;
+
+  const ROLES = Object.freeze({
+    ATHLETE: "athlete",
+    COACH: "coach",
+    PARENT: "parent",
+    ADMIN: "admin"
+  });
+
+  const SPORTS = Object.freeze({
+    BASKETBALL: "basketball",
+    FOOTBALL: "football",
+    BASEBALL: "baseball",
+    VOLLEYBALL: "volleyball",
+    SOCCER: "soccer"
+  });
+
+  // ---- Error Queue ----
+  const errorQueue = [];
+  function logError(context, error) {
+    const entry = {
+      context,
+      message: error?.message || String(error),
+      ts: Date.now()
+    };
+    errorQueue.push(entry);
+    if (errorQueue.length > MAX_ERROR_QUEUE_SIZE) {
+      errorQueue.shift();
+    }
+    console.warn(`[${context}]`, error);
+  }
 
   // ---- Helpers ----
   const $ = (id) => document.getElementById(id) || null;
+
+  function $$(ids) {
+    return ids.reduce((acc, id) => {
+      acc[id] = document.getElementById(id);
+      return acc;
+    }, {});
+  }
+
+  function sanitizeHTML(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
 
   const numOrNull = (v) => {
     const n = Number(v);
@@ -30,10 +74,20 @@
 
   const todayISO = () => new Date().toISOString().slice(0, 10);
 
+  function debounce(fn, delay) {
+    let timer = null;
+    return function debounced(...args) {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+      return timer;
+    };
+  }
+
   function __loadLocalRaw() {
     try {
       return localStorage.getItem(STORAGE_KEY);
-    } catch {
+    } catch (e) {
+      logError("loadLocalRaw", e);
       return null;
     }
   }
@@ -42,17 +96,42 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stateObj));
       return true;
-    } catch {
+    } catch (e) {
+      logError("saveLocal", e);
       return false;
     }
   }
 
+  /**
+   * @typedef {Object} AppState
+   * @property {Object} meta
+   * @property {number} meta.updatedAtMs
+   * @property {number} meta.lastSyncedAtMs
+   * @property {number} meta.version
+   * @property {string} role
+   * @property {Object} profile
+   * @property {string} profile.sport
+   * @property {number} profile.days
+   * @property {Object} trial
+   * @property {number} trial.startedAtMs
+   * @property {boolean} trial.activated
+   * @property {string} trial.licenseKey
+   * @property {number} trial.licenseUntilMs
+   * @property {Object|null} week
+   * @property {Array} logs
+   * @property {Array} tests
+   * @property {Object} team
+   */
+
+  /**
+   * @returns {AppState}
+   */
   function defaultState() {
     const now = Date.now();
     return {
-      meta: { updatedAtMs: now, lastSyncedAtMs: 0 },
+      meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0 },
       role: "",
-      profile: { sport: "basketball", days: 4 },
+      profile: { sport: SPORTS.BASKETBALL, days: 4 },
       trial: {
         startedAtMs: now,
         activated: false,
@@ -72,6 +151,10 @@
     };
   }
 
+  /**
+   * @param {any} s
+   * @returns {AppState}
+   */
   function normalizeState(s) {
     const d = defaultState();
     if (!s || typeof s !== "object") return d;
@@ -80,6 +163,7 @@
     s.meta = s.meta && typeof s.meta === "object" ? s.meta : d.meta;
     if (!Number.isFinite(s.meta.updatedAtMs)) s.meta.updatedAtMs = Date.now();
     if (!Number.isFinite(s.meta.lastSyncedAtMs)) s.meta.lastSyncedAtMs = 0;
+    if (!Number.isFinite(s.meta.version)) s.meta.version = 0;
 
     // role
     if (typeof s.role !== "string") s.role = d.role;
@@ -108,7 +192,6 @@
     if (typeof s.team.board !== "string") s.team.board = d.team.board;
     if (typeof s.team.compliance !== "string") s.team.compliance = d.team.compliance;
 
-    // week can be null or object; leave unchanged
     return s;
   }
 
@@ -117,17 +200,95 @@
     if (!raw) return null;
     try {
       return normalizeState(JSON.parse(raw));
-    } catch {
+    } catch (e) {
+      logError("loadState", e);
       return null;
     }
   }
 
-  // IMPORTANT: state must live in this IIFE scope
-  const state = loadState() || defaultState();
+  // ---- State Manager Class ----
+  class StateManager {
+    constructor(initialState) {
+      this._state = initialState;
+      this._listeners = new Set();
+    }
+
+    get state() {
+      return this._state;
+    }
+
+    update(updater) {
+      const next = typeof updater === "function" ? updater(this._state) : updater;
+      this._state = normalizeState(next);
+      this._state.meta.updatedAtMs = Date.now();
+      this._state.meta.version = (this._state.meta.version || 0) + 1;
+      __saveLocal(this._state);
+      this.notify();
+      return this._state;
+    }
+
+    mergeFromCloud(cloudState) {
+      const normalized = normalizeState(cloudState);
+      Object.assign(this._state, normalized);
+      __saveLocal(this._state);
+      this.notify();
+    }
+
+    subscribe(listener) {
+      this._listeners.add(listener);
+      return () => this._listeners.delete(listener);
+    }
+
+    notify() {
+      this._listeners.forEach((fn) => {
+        try {
+          fn(this._state);
+        } catch (e) {
+          logError("stateListener", e);
+        }
+      });
+    }
+  }
+
+  // Initialize state manager
+  const stateManager = new StateManager(loadState() || defaultState());
+  const state = stateManager.state;
+
+  // ---- Cloud Sync Queue ----
+  class CloudSyncQueue {
+    constructor() {
+      this.queue = [];
+      this.processing = false;
+    }
+
+    async enqueue(operation) {
+      this.queue.push(operation);
+      if (!this.processing) {
+        await this.process();
+      }
+    }
+
+    async process() {
+      this.processing = true;
+      while (this.queue.length > 0) {
+        const op = this.queue.shift();
+        try {
+          await op();
+        } catch (e) {
+          logError("cloudSyncQueue", e);
+          // Could implement exponential backoff retry here
+        }
+      }
+      this.processing = false;
+    }
+  }
+
+  const syncQueue = new CloudSyncQueue();
 
   // ---- Expose debug handles ----
   window.PIQ = window.PIQ || {};
   window.PIQ.getState = () => state;
+  window.PIQ.getErrors = () => [...errorQueue];
 
   // ---- Splash safe hide ----
   function hideSplashNow() {
@@ -139,13 +300,14 @@
     s.style.opacity = "0";
     try {
       s.remove();
-    } catch {}
+    } catch (e) {
+      logError("hideSplash", e);
+    }
   }
   window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
   // ---- Supabase readiness helpers ----
   function isSupabaseReady() {
-    // Must have: supabaseClient + auth store + data store
     return !!(window.supabaseClient && window.PIQ_AuthStore && window.dataStore);
   }
 
@@ -154,56 +316,60 @@
       if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
       const u = await window.PIQ_AuthStore.getUser();
       return !!u;
-    } catch {
+    } catch (e) {
+      logError("isSignedIn", e);
       return false;
     }
   }
 
   // ---- Cloud push (state) debounced ----
-  let __pushTimer = null;
-
   async function __pushStateNow() {
     if (!window.dataStore || typeof window.dataStore.pushState !== "function") return false;
     if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
 
-    const u = await window.PIQ_AuthStore.getUser();
-    if (!u) return false;
+    try {
+      const u = await window.PIQ_AuthStore.getUser();
+      if (!u) return false;
 
-    await window.dataStore.pushState(state);
-    state.meta.lastSyncedAtMs = Date.now();
-    __saveLocal(state);
-    return true;
+      const version = state.meta.version || 0;
+      await window.dataStore.pushState(state);
+      
+      state.meta.lastSyncedAtMs = Date.now();
+      __saveLocal(state);
+      return true;
+    } catch (error) {
+      if (error?.code === "VERSION_CONFLICT") {
+        logError("pushState", "Version conflict - will retry after pull");
+        await __piqTryPullCloudStateIfNewer();
+        throw new Error("State conflict - retrying after pull");
+      }
+      logError("pushState", error);
+      return false;
+    }
   }
 
-  function scheduleCloudPush() {
-    // Do not break offline mode
+  const scheduleCloudPush = debounce(async () => {
     if (!window.dataStore || typeof window.dataStore.pushState !== "function") return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
-    if (__pushTimer) clearTimeout(__pushTimer);
-    __pushTimer = setTimeout(async () => {
-      try {
-        await __pushStateNow();
-      } catch (e) {
-        console.warn("[cloud] state push skipped:", e?.message || e);
-      }
-    }, CLOUD_PUSH_DEBOUNCE_MS);
-  }
+    await syncQueue.enqueue(async () => {
+      await __pushStateNow();
+    });
+  }, CLOUD_PUSH_DEBOUNCE_MS);
 
   // ---- Public saveState wrapper ----
+  /**
+   * @param {AppState} s
+   */
   function saveState(s) {
-    try {
-      s.meta = s.meta || {};
-      s.meta.updatedAtMs = Date.now();
-    } catch {}
-    __saveLocal(s);
+    stateManager.update(s);
     scheduleCloudPush();
   }
   window.PIQ.saveState = window.PIQ.saveState || saveState;
 
   // =========================================================
-  // CLOUD HELPERS (logs + metrics) — match YOUR Supabase schema
+  // CLOUD HELPERS (logs + metrics)
   // =========================================================
 
   function __piqComputeVolumeFromEntries(entries) {
@@ -216,40 +382,62 @@
     return vol;
   }
 
-  // workout_logs columns you listed:
-  // date, program_day, volume, wellness, energy, hydration, injury_flag, practice_intensity,
-  // practice_duration_min, extra_gym, extra_gym_duration_min
+  /**
+   * @typedef {Object} WorkoutLog
+   * @property {string} dateISO
+   * @property {string|null} theme
+   * @property {number|null} wellness
+   * @property {number|null} energy
+   * @property {string|null} hydration
+   * @property {string} injury
+   * @property {string|null} practice_intensity
+   * @property {number|null} practice_duration_min
+   * @property {boolean|null} extra_gym
+   * @property {number|null} extra_gym_duration_min
+   * @property {Array} entries
+   */
+
+  /**
+   * @param {WorkoutLog} localLog
+   * @returns {Object|null}
+   */
   function __piqLocalLogToWorkoutRow(localLog) {
     if (!localLog) return null;
 
     return {
-      // dataStore injects athlete_id = auth.uid()
       date: localLog.dateISO || null,
       program_day: localLog.theme || null,
       volume: __piqComputeVolumeFromEntries(localLog.entries || []),
-
       wellness: numOrNull(localLog.wellness),
       energy: numOrNull(localLog.energy),
-
       hydration: typeof localLog.hydration === "string" ? localLog.hydration : null,
       injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none",
-
       practice_intensity:
         typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
       practice_duration_min: numOrNull(localLog.practice_duration_min),
-
       extra_gym: typeof localLog.extra_gym === "boolean" ? localLog.extra_gym : null,
       extra_gym_duration_min: numOrNull(localLog.extra_gym_duration_min)
     };
   }
 
-  // performance_metrics columns you listed:
-  // date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours
+  /**
+   * @typedef {Object} PerformanceTest
+   * @property {string} dateISO
+   * @property {number|null} vert
+   * @property {number|null} sprint10
+   * @property {number|null} cod
+   * @property {number|null} bw
+   * @property {number|null} sleep
+   */
+
+  /**
+   * @param {PerformanceTest} test
+   * @returns {Object|null}
+   */
   function __piqLocalTestToMetricRow(test) {
     if (!test) return null;
 
     return {
-      // dataStore injects athlete_id = auth.uid()
       date: test.dateISO || null,
       vert_inches: numOrNull(test.vert),
       sprint_seconds: numOrNull(test.sprint10),
@@ -259,6 +447,10 @@
     };
   }
 
+  /**
+   * @param {WorkoutLog} localLog
+   * @returns {Promise<boolean>}
+   */
   async function __piqTryUpsertWorkoutLog(localLog) {
     if (!window.dataStore || typeof window.dataStore.upsertWorkoutLog !== "function") return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
@@ -270,19 +462,24 @@
       await window.dataStore.upsertWorkoutLog(row);
       return true;
     } catch (e) {
-      console.warn("[cloud] workout_logs upsert skipped:", e?.message || e);
+      logError("upsertWorkoutLog", e);
       return false;
     }
   }
 
+  /**
+   * @param {PerformanceTest} localTest
+   * @returns {Promise<boolean>}
+   */
   async function __piqTryUpsertPerformanceMetric(localTest) {
-    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function") return false;
+    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function")
+      return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
 
     const row = __piqLocalTestToMetricRow(localTest);
     if (!row || !row.date) return false;
 
-    // Don’t write an all-null row
+    // Don't write an all-null row
     const hasAny =
       row.vert_inches !== null ||
       row.sprint_seconds !== null ||
@@ -296,7 +493,7 @@
       await window.dataStore.upsertPerformanceMetric(row);
       return true;
     } catch (e) {
-      console.warn("[cloud] performance_metrics upsert skipped:", e?.message || e);
+      logError("upsertPerformanceMetric", e);
       return false;
     }
   }
@@ -309,34 +506,28 @@
       const u = await window.PIQ_AuthStore.getUser();
       if (!u) return;
 
-      const cloud = await window.dataStore.pullState(); // {state, updated_at} or null
+      const cloud = await window.dataStore.pullState();
       if (!cloud || !cloud.state || typeof cloud.state !== "object") return;
 
       const cloudUpdated = Number(cloud.state?.meta?.updatedAtMs || 0);
       const localUpdated = Number(state?.meta?.updatedAtMs || 0);
 
       if (cloudUpdated > localUpdated) {
-        const next = normalizeState(cloud.state);
-
-        // mutate in place so references remain stable
-        Object.keys(state).forEach((k) => delete state[k]);
-        Object.keys(next).forEach((k) => (state[k] = next[k]));
-
-        __saveLocal(state);
+        stateManager.mergeFromCloud(cloud.state);
         console.log("[cloud] pulled newer state");
       }
     } catch (e) {
-      console.warn("[cloud] pull skipped:", e?.message || e);
+      logError("pullCloudState", e);
     }
   }
 
-  // Expose the two “one-liners” you wanted
+  // Expose cloud sync functions
   window.PIQ.cloud = window.PIQ.cloud || {};
   window.PIQ.cloud.upsertWorkoutLogFromLocal = function (localLog) {
-    __piqTryUpsertWorkoutLog(localLog);
+    syncQueue.enqueue(() => __piqTryUpsertWorkoutLog(localLog));
   };
   window.PIQ.cloud.upsertPerformanceMetricFromLocal = function (localTest) {
-    __piqTryUpsertPerformanceMetric(localTest);
+    syncQueue.enqueue(() => __piqTryUpsertPerformanceMetric(localTest));
   };
 
   // Pull once after sign-in if auth store supports onAuthChange
@@ -344,12 +535,14 @@
     const auth = window.PIQ_AuthStore;
     if (!auth || typeof auth.onAuthChange !== "function") return;
     auth.onAuthChange((user) => {
-      if (user) __piqTryPullCloudStateIfNewer();
+      if (user) {
+        syncQueue.enqueue(() => __piqTryPullCloudStateIfNewer());
+      }
     });
   })();
 
   // =========================================================
-  // ROLE CHOOSER (replaces alert stub)
+  // ROLE CHOOSER
   // =========================================================
 
   function ensureOnboardMount() {
@@ -364,14 +557,21 @@
 
   function setRoleEverywhere(role) {
     state.role = role || "";
-    // boot.js gate reads these keys
-    try { localStorage.setItem("role", state.role); } catch {}
-    try { localStorage.setItem("selectedRole", state.role); } catch {}
+    try {
+      localStorage.setItem("role", state.role);
+    } catch (e) {
+      logError("setRole", e);
+    }
+    try {
+      localStorage.setItem("selectedRole", state.role);
+    } catch (e) {
+      logError("setSelectedRole", e);
+    }
   }
 
   function setProfileBasics(sport, days) {
     state.profile = state.profile || {};
-    state.profile.sport = sport || state.profile.sport || "basketball";
+    state.profile.sport = sport || state.profile.sport || SPORTS.BASKETBALL;
     state.profile.days = Number(days || state.profile.days || 4);
     if (!Number.isFinite(state.profile.days) || state.profile.days <= 0) state.profile.days = 4;
   }
@@ -384,7 +584,7 @@
     const signed = supaOk ? await isSignedIn() : false;
 
     const currentRole = (state.role || "").trim();
-    const currentSport = state.profile?.sport || "basketball";
+    const currentSport = state.profile?.sport || SPORTS.BASKETBALL;
     const currentDays = Number.isFinite(state.profile?.days) ? String(state.profile.days) : "4";
 
     mount.innerHTML = `
@@ -398,21 +598,21 @@
             <div class="field">
               <label for="piqRole">Role (required)</label>
               <select id="piqRole">
-                <option value="athlete">Athlete</option>
-                <option value="coach">Coach</option>
-                <option value="parent">Parent</option>
-                <option value="admin">Administrator</option>
+                <option value="${ROLES.ATHLETE}">Athlete</option>
+                <option value="${ROLES.COACH}">Coach</option>
+                <option value="${ROLES.PARENT}">Parent</option>
+                <option value="${ROLES.ADMIN}">Administrator</option>
               </select>
             </div>
 
             <div class="field">
               <label for="piqSport">Sport</label>
               <select id="piqSport">
-                <option value="basketball">Basketball</option>
-                <option value="football">Football</option>
-                <option value="baseball">Baseball</option>
-                <option value="volleyball">Volleyball</option>
-                <option value="soccer">Soccer</option>
+                <option value="${SPORTS.BASKETBALL}">Basketball</option>
+                <option value="${SPORTS.FOOTBALL}">Football</option>
+                <option value="${SPORTS.BASEBALL}">Baseball</option>
+                <option value="${SPORTS.VOLLEYBALL}">Volleyball</option>
+                <option value="${SPORTS.SOCCER}">Soccer</option>
               </select>
             </div>
 
@@ -436,9 +636,15 @@
           <div class="small" id="piqSyncStatus"></div>
 
           <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="piqSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in to sync</button>
-            <button class="btn secondary" id="piqSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
-            <button class="btn secondary" id="piqPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
+            <button class="btn secondary" id="piqSignIn" type="button" ${
+              supaOk ? "" : "disabled"
+            }>Sign in to sync</button>
+            <button class="btn secondary" id="piqSignOut" type="button" ${
+              supaOk && signed ? "" : "disabled"
+            }>Sign out</button>
+            <button class="btn secondary" id="piqPull" type="button" ${
+              supaOk && signed ? "" : "disabled"
+            }>Pull cloud → device</button>
           </div>
 
           <div class="small" style="margin-top:8px">
@@ -448,25 +654,24 @@
       </div>
     `;
 
-    const roleSel = $("piqRole");
-    const sportSel = $("piqSport");
-    const daysSel = $("piqDays");
-    const syncEl = $("piqSyncStatus");
+    const elements = $$(["piqRole", "piqSport", "piqDays", "piqSyncStatus"]);
 
-    if (roleSel) roleSel.value = currentRole || "athlete";
-    if (sportSel) sportSel.value = currentSport;
-    if (daysSel) daysSel.value = currentDays;
+    if (elements.piqRole) elements.piqRole.value = currentRole || ROLES.ATHLETE;
+    if (elements.piqSport) elements.piqSport.value = currentSport;
+    if (elements.piqDays) elements.piqDays.value = currentDays;
 
-    if (syncEl) {
-      if (!supaOk) syncEl.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
-      else if (!signed) syncEl.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
-      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
+    if (elements.piqSyncStatus) {
+      let status = "";
+      if (!supaOk) status = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
+      else if (!signed) status = "Cloud sync: <b>Available</b> — not signed in.";
+      else status = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
+      elements.piqSyncStatus.innerHTML = status;
     }
 
     $("piqSaveRole")?.addEventListener("click", () => {
-      const role = roleSel ? roleSel.value : "athlete";
-      const sport = sportSel ? sportSel.value : "basketball";
-      const days = daysSel ? daysSel.value : "4";
+      const role = elements.piqRole ? elements.piqRole.value : ROLES.ATHLETE;
+      const sport = elements.piqSport ? elements.piqSport.value : SPORTS.BASKETBALL;
+      const days = elements.piqDays ? elements.piqDays.value : "4";
 
       setRoleEverywhere(role);
       setProfileBasics(sport, days);
@@ -476,7 +681,9 @@
       try {
         mount.style.display = "none";
         mount.innerHTML = "";
-      } catch {}
+      } catch (e) {
+        logError("hideRoleChooser", e);
+      }
 
       hideSplashNow();
 
@@ -485,20 +692,36 @@
 
     $("piqResetRole")?.addEventListener("click", () => {
       if (!confirm("Clear ALL saved data on this device?")) return;
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        logError("resetStorage", e);
+      }
+      try {
+        localStorage.removeItem("role");
+      } catch (e) {
+        logError("resetRole", e);
+      }
+      try {
+        localStorage.removeItem("selectedRole");
+      } catch (e) {
+        logError("resetSelectedRole", e);
+      }
       location.reload();
     });
 
     $("piqSignIn")?.addEventListener("click", async () => {
       try {
-        if (!window.PIQ_AuthStore) return alert("Auth not available.");
+        if (!window.PIQ_AuthStore) {
+          alert("Auth not available.");
+          return;
+        }
         const email = prompt("Enter email for magic-link sign-in:");
         if (!email) return;
         await window.PIQ_AuthStore.signInWithOtp(email.trim());
         alert("Check your email for the sign-in link, then return here.");
       } catch (e) {
+        logError("signIn", e);
         alert("Sign-in failed: " + (e?.message || e));
       }
     });
@@ -509,6 +732,7 @@
         alert("Signed out.");
         location.reload();
       } catch (e) {
+        logError("signOut", e);
         alert("Sign-out failed: " + (e?.message || e));
       }
     });
@@ -519,19 +743,18 @@
         alert("Pulled cloud (if newer). Reloading.");
         location.reload();
       } catch (e) {
+        logError("pullCloud", e);
         alert("Pull failed: " + (e?.message || e));
       }
     });
   }
 
-  // boot.js calls this when no role is stored
   window.showRoleChooser = function () {
     renderRoleChooser();
   };
 
   // =========================================================
-  // OPTIONAL: Minimal saveTests + saveLog implementations
-  // (Safe even if your UI doesn't have these fields/buttons yet)
+  // SAVE FUNCTIONS
   // =========================================================
 
   async function saveTestsMinimal() {
@@ -551,20 +774,18 @@
     state.tests.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
     saveState(state);
 
-    // one-liner cloud sync
     window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
   }
 
   async function saveLogMinimal() {
     const dateISO = ($("logDate")?.value || todayISO()).trim();
 
-    // If you have a richer log builder elsewhere, keep it; this is a safe fallback.
     const localLog = {
       dateISO,
       theme: $("logTheme")?.value || null,
       injury: $("injuryFlag")?.value || "none",
       wellness: numOrNull($("wellness")?.value),
-      entries: [] // you can populate this from your log table inputs later
+      entries: []
     };
 
     state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
@@ -572,21 +793,18 @@
     state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
     saveState(state);
 
-    // one-liner cloud sync
     window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
   }
 
-  // Expose so buttons/other files can call them
   window.PIQ.saveTests = window.PIQ.saveTests || saveTestsMinimal;
   window.PIQ.saveLog = window.PIQ.saveLog || saveLogMinimal;
 
   // =========================================================
-  // startApp — safe init: ensures role gate + wires optional buttons
+  // START APP
   // =========================================================
   window.startApp =
     window.startApp ||
     function () {
-      // Ensure role is present; if not, show chooser.
       const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
       if (!role) {
         window.showRoleChooser();
@@ -594,28 +812,29 @@
       }
       if (!state.role) setRoleEverywhere(role);
 
-      // Wire optional buttons if present in your HTML
       $("btnSaveTests")?.addEventListener("click", () => {
-        window.PIQ.saveTests().catch((e) => console.warn("[saveTests]", e?.message || e));
+        window.PIQ.saveTests().catch((e) => logError("saveTests", e));
       });
 
       $("btnSaveLog")?.addEventListener("click", () => {
-        window.PIQ.saveLog().catch((e) => console.warn("[saveLog]", e?.message || e));
+        window.PIQ.saveLog().catch((e) => logError("saveLog", e));
       });
 
       console.log("PerformanceIQ core started. Role:", state.role || role);
     };
 
   // =========================================================
-  // Startup: optional pull + splash failsafe
+  // STARTUP
   // =========================================================
   document.addEventListener("DOMContentLoaded", async () => {
-    // Pull once at startup if signed in & cloud is newer
     try {
-      if (await isSignedIn()) await __piqTryPullCloudStateIfNewer();
-    } catch {}
+      if (await isSignedIn()) {
+        await syncQueue.enqueue(() => __piqTryPullCloudStateIfNewer());
+      }
+    } catch (e) {
+      logError("startupPull", e);
+    }
 
-    // Splash failsafe
     setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
     window.addEventListener("click", hideSplashNow, { once: true });
     window.addEventListener("touchstart", hideSplashNow, { once: true });
