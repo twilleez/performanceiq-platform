@@ -1,11 +1,11 @@
-// dataStore.js (PLAIN SCRIPT)
+// dataStore.js — FULL REPLACEMENT (plain script)
 (function () {
   "use strict";
 
   if (window.dataStore) return;
 
   function requireClient() {
-    const c = typeof window.sb === "function" ? window.sb() : null;
+    const c = window.supabaseClient || null;
     if (!c) throw new Error("Supabase not configured (offline mode).");
     return c;
   }
@@ -18,6 +18,7 @@
     return user.id;
   }
 
+  // --- App state sync (whole blob) ---
   async function pullState() {
     const client = requireClient();
     const userId = await requireUserId();
@@ -29,7 +30,7 @@
       .maybeSingle();
 
     if (error) throw error;
-    return data || null;
+    return data || null; // {state, updated_at} or null
   }
 
   async function pushState(stateObj) {
@@ -50,10 +51,12 @@
     return true;
   }
 
+  // --- Performance metrics ---
   async function upsertPerformanceMetric(metric) {
     const client = requireClient();
     const userId = await requireUserId();
 
+    // Force ownership
     const row = { ...metric, athlete_id: userId };
 
     const { data, error } = await client
@@ -81,20 +84,29 @@
     return data || [];
   }
 
+  // --- Workout logs ---
   async function upsertWorkoutLog(logRow) {
     const client = requireClient();
     const userId = await requireUserId();
 
+    // Map to your real table columns
     const row = {
       athlete_id: userId,
-      date: logRow.date,
-      day_index: logRow.day_index ?? null,
-      theme: logRow.theme ?? null,
-      injury: logRow.injury ?? null,
+      date: logRow.date, // required
+      program_day: logRow.program_day ?? null,
+      volume: logRow.volume ?? null,
       wellness: logRow.wellness ?? null,
-      entries: logRow.entries ?? []
+      energy: logRow.energy ?? null,
+      hydration: logRow.hydration ?? null,
+      injury_flag: logRow.injury_flag ?? null,
+      practice_intensity: logRow.practice_intensity ?? null,
+      practice_duration_min: logRow.practice_duration_min ?? null,
+      extra_gym: logRow.extra_gym ?? null,
+      extra_gym_duration_min: logRow.extra_gym_duration_min ?? null,
+      updated_at: new Date().toISOString()
     };
 
+    // Upsert by (athlete_id, date) — you must have a unique index for this
     const { data, error } = await client
       .from("workout_logs")
       .upsert(row, { onConflict: "athlete_id,date" })
