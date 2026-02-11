@@ -1,108 +1,73 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b0f14" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0f14">
   <title>PerformanceIQ</title>
 
-  <link rel="icon" href="./icon-192.png" />
-  <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./app.css?v=1.0.6" />
+  <link rel="icon" href="./icon-192.png">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./app.css?v=1.0.7">
 </head>
-
 <body>
-  <!-- Splash (removed by boot.js/core.js failsafe) -->
-  <div id="splash" aria-label="Loading" role="status">
+  <div id="splash">
     <div id="splashCard">
-      <img src="./logo.png" alt="PerformanceIQ logo" />
+      <img src="./logo.png" alt="Logo">
       <div class="small">Loading…</div>
     </div>
   </div>
 
-  <!-- Onboarding modal mount (core.js uses this) -->
+  <!-- Onboarding modal mount -->
   <div id="onboard" style="display:none"></div>
 
-  <!-- Header / Topbar -->
-  <header class="topbar">
-    <div class="brand" aria-label="Brand">
-      <img src="./logo.png" alt="PerformanceIQ logo" />
+  <div class="topbar">
+    <div class="brand">
+      <img src="./logo.png" alt="Logo">
       <div class="brandTitle">PerformanceIQ</div>
       <div class="pill" id="rolePill">Role: —</div>
-      <div class="pill" id="trialPill">—</div>
+      <div class="pill" id="trialPill">Offline-first</div>
     </div>
 
-    <!-- Tabs navigation (industry-standard semantics) -->
-    <nav class="nav" role="navigation" aria-label="Primary">
-      <div role="tablist" aria-label="Sections">
-        <button id="nav-profile" type="button" role="tab" aria-controls="tab-profile" aria-selected="true">Profile</button>
-        <button id="nav-program" type="button" role="tab" aria-controls="tab-program" aria-selected="false">Program</button>
-        <button id="nav-log" type="button" role="tab" aria-controls="tab-log" aria-selected="false">Log</button>
-        <button id="nav-performance" type="button" role="tab" aria-controls="tab-performance" aria-selected="false">Performance</button>
-        <button id="nav-dashboard" type="button" role="tab" aria-controls="tab-dashboard" aria-selected="false">Dashboard</button>
-        <button id="nav-team" type="button" role="tab" aria-controls="tab-team" aria-selected="false">Team</button>
-        <button id="nav-parent" type="button" role="tab" aria-controls="tab-parent" aria-selected="false">Parent</button>
-        <button id="nav-settings" type="button" role="tab" aria-controls="tab-settings" aria-selected="false">Settings</button>
+    <div class="nav" role="navigation" aria-label="Primary">
+      <button id="nav-profile" type="button">Profile</button>
+      <button id="nav-program" type="button">Program</button>
+      <button id="nav-log" type="button">Log</button>
+      <button id="nav-performance" type="button">Performance</button>
+      <button id="nav-dashboard" type="button">Dashboard</button>
+      <button id="nav-team" type="button">Team</button>
+      <button id="nav-parent" type="button">Parent</button>
+      <button id="nav-settings" type="button">Settings</button>
+      <button id="btnSwitchRole" type="button">Switch Role</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="grid">
+      <!-- Left column -->
+      <div class="card" id="tab-profile" role="region" aria-label="Profile"></div>
+
+      <!-- Right column -->
+      <div>
+        <div class="card" id="tab-program" style="display:none" role="region" aria-label="Program"></div>
+        <div class="card" id="tab-log" style="display:none" role="region" aria-label="Log"></div>
+        <div class="card" id="tab-performance" style="display:none" role="region" aria-label="Performance"></div>
+        <div class="card" id="tab-dashboard" style="display:none" role="region" aria-label="Dashboard"></div>
+        <div class="card" id="tab-team" style="display:none" role="region" aria-label="Team"></div>
+        <div class="card" id="tab-parent" style="display:none" role="region" aria-label="Parent"></div>
+        <div class="card" id="tab-settings" style="display:none" role="region" aria-label="Settings"></div>
       </div>
+    </div>
+  </div>
 
-      <button id="btnSwitchRole" type="button" class="secondary">Switch Role</button>
-    </nav>
-  </header>
+  <!-- Scripts (order matters) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 
-  <!-- Main content -->
-  <main class="container" id="content" role="main">
-    <!--
-      Industry standard: each section is a tabpanel.
-      core.js can inject markup into these containers.
-      Only one should be visible at a time (core.js controls display).
-    -->
-    <section class="grid" id="tab-panels" aria-label="App panels">
-
-      <section class="card" id="tab-profile" role="tabpanel" aria-labelledby="nav-profile">
-        <!-- Optional placeholder (core.js can replace this) -->
-        <div class="small">Profile will load here.</div>
-      </section>
-
-      <section class="card" id="tab-program" role="tabpanel" aria-labelledby="nav-program" style="display:none">
-        <div class="small">Program will load here.</div>
-      </section>
-
-      <section class="card" id="tab-log" role="tabpanel" aria-labelledby="nav-log" style="display:none">
-        <div class="small">Log will load here.</div>
-      </section>
-
-      <section class="card" id="tab-performance" role="tabpanel" aria-labelledby="nav-performance" style="display:none">
-        <div class="small">Performance will load here.</div>
-      </section>
-
-      <section class="card" id="tab-dashboard" role="tabpanel" aria-labelledby="nav-dashboard" style="display:none">
-        <div class="small">Dashboard will load here.</div>
-      </section>
-
-      <section class="card" id="tab-team" role="tabpanel" aria-labelledby="nav-team" style="display:none">
-        <div class="small">Team will load here.</div>
-      </section>
-
-      <section class="card" id="tab-parent" role="tabpanel" aria-labelledby="nav-parent" style="display:none">
-        <div class="small">Parent will load here.</div>
-      </section>
-
-      <section class="card" id="tab-settings" role="tabpanel" aria-labelledby="nav-settings" style="display:none">
-        <div class="small">Settings will load here.</div>
-      </section>
-
-    </section>
-  </main>
-
-  <!-- Scripts (single, correct order; cache-busted) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <script src="./config.js?v=1.0.6"></script>
-  <script src="./supabaseClient.js?v=1.0.6"></script>
-  <script src="./authStore.js?v=1.0.6"></script>
-  <script src="./dataStore.js?v=1.0.6"></script>
-
-  <script src="./core.js?v=1.0.6"></script>
-  <script src="./boot.js?v=1.0.6"></script>
+  <script src="./config.js?v=1.0.7" defer></script>
+  <script src="./supabaseClient.js?v=1.0.7" defer></script>
+  <script src="./authStore.js?v=1.0.7" defer></script>
+  <script src="./dataStore.js?v=1.0.7" defer></script>
+  <script src="./core.js?v=1.0.7" defer></script>
+  <script src="./boot.js?v=1.0.7" defer></script>
 </body>
 </html>
