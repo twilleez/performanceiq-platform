@@ -1,5 +1,4 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FIXED)
-// Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
+// core.js — FULL REPLACEMENT (OFFLINE-FIRST + PULL/RECONCILE + OPTIONAL SYNC)
 (function () {
   "use strict";
 
@@ -27,6 +26,8 @@
     VOLLEYBALL: "volleyball",
     SOCCER: "soccer"
   });
+
+  const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
 
   // ---- Error Queue ----
   const errorQueue = [];
@@ -72,12 +73,8 @@
 
   // ---- Local persistence ----
   function __loadLocalRaw() {
-    try {
-      return localStorage.getItem(STORAGE_KEY);
-    } catch (e) {
-      logError("loadLocalRaw", e);
-      return null;
-    }
+    try { return localStorage.getItem(STORAGE_KEY); }
+    catch (e) { logError("loadLocalRaw", e); return null; }
   }
 
   function __saveLocal(stateObj) {
@@ -137,7 +134,7 @@
     if (typeof s.team.board !== "string") s.team.board = d.team.board;
     if (typeof s.team.compliance !== "string") s.team.compliance = d.team.compliance;
 
-    s._ui = s._ui && typeof s._ui === "object" ? s._ui : { activeTab: "profile" };
+    s._ui = s._ui && typeof s._ui === "object" ? s._ui : d._ui;
     if (typeof s._ui.activeTab !== "string") s._ui.activeTab = "profile";
 
     return s;
@@ -146,12 +143,8 @@
   function loadState() {
     const raw = __loadLocalRaw();
     if (!raw) return null;
-    try {
-      return normalizeState(JSON.parse(raw));
-    } catch (e) {
-      logError("loadState", e);
-      return null;
-    }
+    try { return normalizeState(JSON.parse(raw)); }
+    catch (e) { logError("loadState", e); return null; }
   }
 
   // ---- State ----
@@ -161,6 +154,31 @@
     state.meta.updatedAtMs = Date.now();
     state.meta.version = (state.meta.version || 0) + 1;
   }
+
+  function saveState() {
+    bumpMeta();
+    __saveLocal(state);
+    scheduleCloudPush();
+    renderActiveTab(); // keep UI in sync
+  }
+
+  // ---- Expose debug handles ----
+  window.PIQ = window.PIQ || {};
+  window.PIQ.getState = () => state;
+  window.PIQ.getErrors = () => [...errorQueue];
+  window.PIQ.saveState = window.PIQ.saveState || (() => saveState());
+
+  // ---- Splash hide ----
+  function hideSplashNow() {
+    const s = $("splash");
+    if (!s) return;
+    s.classList.add("hidden");
+    s.style.display = "none";
+    s.style.visibility = "hidden";
+    s.style.opacity = "0";
+    try { s.remove(); } catch (e) { logError("hideSplash", e); }
+  }
+  window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
   // ---- Supabase readiness ----
   function isSupabaseReady() {
@@ -178,35 +196,19 @@
     }
   }
 
-  // ---- Splash hide ----
-  function hideSplashNow() {
-    const s = $("splash");
-    if (!s) return;
-    s.classList.add("hidden");
-    s.style.display = "none";
-    s.style.visibility = "hidden";
-    s.style.opacity = "0";
-    try {
-      s.remove();
-    } catch (e) {
-      logError("hideSplash", e);
-    }
-  }
-  window.hideSplashNow = window.hideSplashNow || hideSplashNow;
-
   // ---- Cloud push (state) ----
   async function __pushStateNow() {
-    if (!window.dataStore || typeof window.dataStore.pushState !== "function") return false;
-    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
+    if (!isSupabaseReady()) return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
 
     try {
-      const u = await window.PIQ_AuthStore.getUser();
-      if (!u) return false;
+      const signed = await isSignedIn();
+      if (!signed) return false;
 
       await window.dataStore.pushState(state);
       state.meta.lastSyncedAtMs = Date.now();
       __saveLocal(state);
+      setPills();
       return true;
     } catch (e) {
       logError("pushState", e);
@@ -215,18 +217,22 @@
   }
 
   const scheduleCloudPush = debounce(async () => {
+    // Only push when signed in. This avoids “not signed in” console noise.
     if (!isSupabaseReady()) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+    const signed = await isSignedIn();
+    if (!signed) return;
+
     await __pushStateNow();
   }, CLOUD_PUSH_DEBOUNCE_MS);
 
   async function __pullCloudStateIfNewer() {
-    if (!window.dataStore || typeof window.dataStore.pullState !== "function") return false;
-    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
+    if (!isSupabaseReady()) return false;
 
     try {
-      const u = await window.PIQ_AuthStore.getUser();
-      if (!u) return false;
+      const signed = await isSignedIn();
+      if (!signed) return false;
 
       const cloud = await window.dataStore.pullState(); // {state, updated_at} or null
       if (!cloud || !cloud.state || typeof cloud.state !== "object") return false;
@@ -236,8 +242,8 @@
 
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
-        Object.keys(state).forEach((k) => delete state[k]);
-        Object.keys(next).forEach((k) => (state[k] = next[k]));
+        Object.keys(state).forEach((k) => { delete state[k]; });
+        Object.keys(next).forEach((k) => { state[k] = next[k]; });
         __saveLocal(state);
         return true;
       }
@@ -248,19 +254,75 @@
     }
   }
 
-  // ---- saveState (no args) ----
-  function saveState() {
-    bumpMeta();
-    __saveLocal(state);
-    scheduleCloudPush();
-    renderActiveTab(); // keep UI in sync
+  // ---- Pull logs + metrics and reconcile into local state ----
+  function __cloudWorkoutRowToLocalLog(row) {
+    // row.date is date (YYYY-MM-DD)
+    return {
+      dateISO: row?.date ? String(row.date) : null,
+      theme: row?.program_day ?? null,
+      wellness: row?.wellness ?? null,
+      energy: row?.energy ?? null,
+      hydration: row?.hydration ?? null,     // ✅ hydration level
+      injury: row?.injury_flag ?? "none",
+      entries: [] // keeping v1 simple
+    };
   }
 
-  // ---- Expose debug handles ----
-  window.PIQ = window.PIQ || {};
-  window.PIQ.getState = () => state;
-  window.PIQ.getErrors = () => [...errorQueue];
-  window.PIQ.saveState = window.PIQ.saveState || saveState;
+  function __cloudMetricRowToLocalTest(row) {
+    return {
+      dateISO: row?.date ? String(row.date) : null,
+      vert: row?.vert_inches ?? null,
+      sprint10: row?.sprint_seconds ?? null,
+      cod: row?.cod_seconds ?? null,
+      bw: row?.bw_lbs ?? null,
+      sleep: row?.sleep_hours ?? null
+    };
+  }
+
+  function __mergeByDateISO(localArr, incomingArr) {
+    const map = new Map();
+    (localArr || []).forEach((x) => {
+      if (x && x.dateISO) map.set(String(x.dateISO), x);
+    });
+    (incomingArr || []).forEach((x) => {
+      if (x && x.dateISO) map.set(String(x.dateISO), x);
+    });
+    return Array.from(map.values()).sort((a, b) => String(a.dateISO).localeCompare(String(b.dateISO)));
+  }
+
+  async function pullCloudLogsAndMetrics() {
+    if (!isSupabaseReady()) return false;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
+    const signed = await isSignedIn();
+    if (!signed) return false;
+
+    try {
+      const [logsRows, metricsRows] = await Promise.all([
+        window.dataStore.listWorkoutLogs(60),
+        window.dataStore.listPerformanceMetrics(60)
+      ]);
+
+      const incomingLogs = (logsRows || [])
+        .map(__cloudWorkoutRowToLocalLog)
+        .filter((x) => x && x.dateISO);
+
+      const incomingTests = (metricsRows || [])
+        .map(__cloudMetricRowToLocalTest)
+        .filter((x) => x && x.dateISO);
+
+      state.logs = __mergeByDateISO(state.logs || [], incomingLogs);
+      state.tests = __mergeByDateISO(state.tests || [], incomingTests);
+
+      // Don’t bump version just to reconcile view-data; but we DO want local persistence.
+      __saveLocal(state);
+      renderActiveTab();
+      return true;
+    } catch (e) {
+      logError("pullLogsAndMetrics", e);
+      return false;
+    }
+  }
 
   // ---- Logs + Metrics cloud helpers (optional) ----
   function __piqComputeVolumeFromEntries(entries) {
@@ -281,13 +343,8 @@
       volume: __piqComputeVolumeFromEntries(localLog.entries || []),
       wellness: numOrNull(localLog.wellness),
       energy: numOrNull(localLog.energy),
-      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null, // ✅ hydration level
-      injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none",
-      practice_intensity:
-        typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
-      practice_duration_min: numOrNull(localLog.practice_duration_min),
-      extra_gym: typeof localLog.extra_gym === "boolean" ? localLog.extra_gym : null,
-      extra_gym_duration_min: numOrNull(localLog.extra_gym_duration_min)
+      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null, // ✅ hydration
+      injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none"
     };
   }
 
@@ -304,23 +361,25 @@
   }
 
   async function __tryUpsertWorkoutLog(localLog) {
-    if (!window.dataStore || typeof window.dataStore.upsertWorkoutLog !== "function") return false;
+    if (!isSupabaseReady()) return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
+    const signed = await isSignedIn();
+    if (!signed) return false;
+
     const row = __localLogToWorkoutRow(localLog);
     if (!row || !row.date) return false;
-    try {
-      await window.dataStore.upsertWorkoutLog(row);
-      return true;
-    } catch (e) {
-      logError("upsertWorkoutLog", e);
-      return false;
-    }
+
+    try { await window.dataStore.upsertWorkoutLog(row); return true; }
+    catch (e) { logError("upsertWorkoutLog", e); return false; }
   }
 
   async function __tryUpsertMetric(localTest) {
-    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function")
-      return false;
+    if (!isSupabaseReady()) return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+
+    const signed = await isSignedIn();
+    if (!signed) return false;
 
     const row = __localTestToMetricRow(localTest);
     if (!row || !row.date) return false;
@@ -334,36 +393,19 @@
 
     if (!hasAny) return false;
 
-    try {
-      await window.dataStore.upsertPerformanceMetric(row);
-      return true;
-    } catch (e) {
-      logError("upsertPerformanceMetric", e);
-      return false;
-    }
+    try { await window.dataStore.upsertPerformanceMetric(row); return true; }
+    catch (e) { logError("upsertPerformanceMetric", e); return false; }
   }
 
   window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => {
-    __tryUpsertWorkoutLog(localLog);
-  };
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => {
-    __tryUpsertMetric(localTest);
-  };
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => { __tryUpsertWorkoutLog(localLog); };
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => { __tryUpsertMetric(localTest); };
 
   // ---- Role helpers ----
   function setRoleEverywhere(role) {
     state.role = role || "";
-    try {
-      localStorage.setItem("role", state.role);
-    } catch (e) {
-      logError("setRole", e);
-    }
-    try {
-      localStorage.setItem("selectedRole", state.role);
-    } catch (e) {
-      logError("setSelectedRole", e);
-    }
+    try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
+    try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
   }
 
   function setProfileBasics(sport, days, name) {
@@ -446,7 +488,6 @@
           <div class="btnRow" style="margin-top:10px">
             <button class="btn secondary" id="piqSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in to sync</button>
             <button class="btn secondary" id="piqSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
-            <button class="btn secondary" id="piqPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
           </div>
 
           <div class="small" style="margin-top:8px">
@@ -468,41 +509,24 @@
     if (syncEl) {
       if (!supaOk) syncEl.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
       else if (!signed) syncEl.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
-      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
+      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — will pull on start.";
     }
 
     $("piqSaveRole")?.addEventListener("click", () => {
       setRoleEverywhere(roleSel ? roleSel.value : ROLES.ATHLETE);
-      setProfileBasics(
-        sportSel ? sportSel.value : SPORTS.BASKETBALL,
-        daysSel ? daysSel.value : 4,
-        ""
-      );
-
+      setProfileBasics(sportSel ? sportSel.value : SPORTS.BASKETBALL, daysSel ? daysSel.value : 4);
       saveState();
 
-      try {
-        mount.style.display = "none";
-        mount.innerHTML = "";
-      } catch (e) {
-        logError("hideRoleChooser", e);
-      }
-
+      try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
       hideSplashNow();
       window.startApp?.();
     });
 
     $("piqResetRole")?.addEventListener("click", () => {
       if (!confirm("Clear ALL saved data on this device?")) return;
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {}
-      try {
-        localStorage.removeItem("role");
-      } catch {}
-      try {
-        localStorage.removeItem("selectedRole");
-      } catch {}
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try { localStorage.removeItem("role"); } catch {}
+      try { localStorage.removeItem("selectedRole"); } catch {}
       location.reload();
     });
 
@@ -529,31 +553,16 @@
         alert("Sign-out failed: " + (e?.message || e));
       }
     });
-
-    $("piqPull")?.addEventListener("click", async () => {
-      try {
-        const pulled = await __pullCloudStateIfNewer();
-        alert(pulled ? "Pulled newer cloud state." : "No newer cloud state found.");
-        location.reload();
-      } catch (e) {
-        logError("pullCloud", e);
-        alert("Pull failed: " + (e?.message || e));
-      }
-    });
   }
 
-  window.showRoleChooser = function () {
-    renderRoleChooser();
-  };
+  window.showRoleChooser = function () { renderRoleChooser(); };
 
-  // ---- Tab system ----
-  const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
-
+  // ---- Tabs ----
   function showTab(tabName) {
     for (const t of TABS) {
       const el = $(`tab-${t}`);
       if (!el) continue;
-      el.style.display = t === tabName ? "block" : "none";
+      el.style.display = (t === tabName) ? "block" : "none";
     }
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
@@ -579,8 +588,18 @@
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim() || "—";
     const rolePill = $("rolePill");
     if (rolePill) rolePill.textContent = `Role: ${role}`;
-    const trialPill = $("trialPill");
-    if (trialPill) trialPill.textContent = isSupabaseReady() ? "Offline-first + Sync" : "Offline-first";
+
+    const syncPill = $("syncPill");
+    if (!syncPill) return;
+
+    const configured = isSupabaseReady();
+    if (!configured) {
+      syncPill.textContent = "Offline-first";
+      return;
+    }
+
+    // Don’t block UI waiting for async; show “Sync available” then update later in settings.
+    syncPill.textContent = state.meta.lastSyncedAtMs ? "Offline-first + Sync" : "Offline-first + Sync";
   }
 
   // ---- Program generator ----
@@ -656,7 +675,7 @@
 
     el.innerHTML = `
       <h3 style="margin-top:0">Profile</h3>
-      <div class="small">Offline-first. Your profile saves to this device. Sign in only if you want sync.</div>
+      <div class="small">Offline-first. Save locally. Sign in only if you want sync.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -701,14 +720,12 @@
       <div class="small">Tip: After generating a program, open the <b>Program</b> tab.</div>
     `;
 
-    const sportEl = $("profileSport");
-    const daysEl = $("profileDays");
-    if (sportEl) sportEl.value = sport;
-    if (daysEl) daysEl.value = String(days);
+    $("profileSport").value = sport;
+    $("profileDays").value = String(days);
 
     $("btnSaveProfile")?.addEventListener("click", () => {
-      const nextSport = sportEl?.value || sport;
-      const nextDays = daysEl?.value || days;
+      const nextSport = $("profileSport")?.value || sport;
+      const nextDays = $("profileDays")?.value || days;
       const nextName = $("profileName")?.value || "";
       setProfileBasics(nextSport, nextDays, nextName);
       saveState();
@@ -717,8 +734,8 @@
     });
 
     $("btnGenProgram")?.addEventListener("click", () => {
-      const nextSport = sportEl?.value || sport;
-      const nextDays = daysEl?.value || days;
+      const nextSport = $("profileSport")?.value || sport;
+      const nextDays = $("profileDays")?.value || days;
       setProfileBasics(nextSport, nextDays, $("profileName")?.value || "");
       state.week = generateProgram(state.profile.sport, state.profile.days);
       saveState();
@@ -740,18 +757,14 @@
       return;
     }
 
-    const daysHtml = (p.daysPlan || [])
-      .map(
-        (d) => `
+    const daysHtml = (p.daysPlan || []).map((d) => `
       <div class="card" style="margin:10px 0">
         <div style="font-weight:600">${sanitizeHTML(d.title)}</div>
         <ul style="margin:8px 0 0 18px">
           ${(d.blocks || []).map((b) => `<li>${sanitizeHTML(b)}</li>`).join("")}
         </ul>
       </div>
-    `
-      )
-      .join("");
+    `).join("");
 
     el.innerHTML = `
       <h3 style="margin-top:0">Program</h3>
@@ -759,12 +772,12 @@
       <div class="hr"></div>
 
       <div class="small"><b>Warmup</b></div>
-      <ul style="margin:8px 0 12px 18px">${(p.warmup || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
+      <ul style="margin:8px 0 12px 18px">${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
 
       ${daysHtml}
 
       <div class="small" style="margin-top:8px"><b>Finisher</b></div>
-      <ul style="margin:8px 0 0 18px">${(p.finisher || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
+      <ul style="margin:8px 0 0 18px">${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}</ul>
     `;
   }
 
@@ -773,12 +786,12 @@
     if (!el) return;
 
     const logs = Array.isArray(state.logs)
-      ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
+      ? state.logs.slice().filter(x => x && x.dateISO).sort((a,b)=>b.dateISO.localeCompare(a.dateISO))
       : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
-      <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
+      <div class="small">Save a quick daily log. Stored locally; syncs only when signed in.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -833,6 +846,7 @@
 
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
+      const hydration = ($("hydrationLevel")?.value || "good").trim();
 
       const localLog = {
         dateISO,
@@ -840,16 +854,18 @@
         injury: $("injuryFlag")?.value || "none",
         wellness: numOrNull($("wellness")?.value),
         energy: numOrNull($("energy")?.value),
-        hydration: String($("hydrationLevel")?.value || "good"), // ✅ hydration level
+        hydration, // ✅ hydration level
         entries: []
       };
 
-      state.logs = (state.logs || []).filter((l) => l?.dateISO !== dateISO);
+      state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
       state.logs.push(localLog);
-      state.logs.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+      state.logs.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
       saveState();
 
+      // only upserts if signed in (handled inside)
       window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
+
       alert("Saved.");
     });
 
@@ -877,12 +893,12 @@
     if (!el) return;
 
     const tests = Array.isArray(state.tests)
-      ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
+      ? state.tests.slice().filter(x => x && x.dateISO).sort((a,b)=>b.dateISO.localeCompare(a.dateISO))
       : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Performance</h3>
-      <div class="small">Track key metrics. Saves locally; syncs when signed in.</div>
+      <div class="small">Track key metrics. Stored locally; syncs only when signed in.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -936,9 +952,9 @@
         sleep: parseInputNumOrNull("sleep")
       };
 
-      state.tests = (state.tests || []).filter((t) => t?.dateISO !== dateISO);
+      state.tests = (state.tests || []).filter((t) => t.dateISO !== dateISO);
       state.tests.push(test);
-      state.tests.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+      state.tests.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
       saveState();
 
       window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
@@ -1031,7 +1047,7 @@
     const logs = (state.logs || [])
       .filter((l) => l && l.dateISO)
       .slice()
-      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
+      .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
       .slice(-14);
 
     const wellnessPts = logs
@@ -1043,7 +1059,7 @@
     const tests = (state.tests || [])
       .filter((t) => t && t.dateISO)
       .slice()
-      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
+      .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
       .slice(-14);
 
     const vertPts = tests
@@ -1058,7 +1074,7 @@
     if (!el) return;
     el.innerHTML = `
       <h3 style="margin-top:0">Team</h3>
-      <div class="small">Team features are stubbed for now.</div>
+      <div class="small">Team features are stubbed for now (UI comes after sync is solid).</div>
     `;
   }
 
@@ -1094,7 +1110,7 @@
       <div class="btnRow" style="margin-top:12px">
         <button class="btn secondary" id="btnSettingsSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in</button>
         <button class="btn secondary" id="btnSettingsSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
-        <button class="btn secondary" id="btnSettingsPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
+        <button class="btn secondary" id="btnSettingsPullAll" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull (state + logs + metrics)</button>
         <button class="btn secondary" id="btnSettingsPush" type="button" ${(supaOk && signed) ? "" : "disabled"}>Push device → cloud</button>
       </div>
 
@@ -1105,9 +1121,7 @@
       </div>
 
       <div class="small" style="margin-top:10px">Errors (latest first):</div>
-      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(
-        JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2)
-      )}</pre>
+      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2))}</pre>
     `;
 
     $("btnSettingsSignIn")?.addEventListener("click", async () => {
@@ -1133,15 +1147,16 @@
       }
     });
 
-    $("btnSettingsPull")?.addEventListener("click", async () => {
-      const pulled = await __pullCloudStateIfNewer();
-      alert(pulled ? "Pulled newer cloud state." : "No newer cloud state found.");
+    $("btnSettingsPullAll")?.addEventListener("click", async () => {
+      const ok1 = await __pullCloudStateIfNewer();
+      const ok2 = await pullCloudLogsAndMetrics();
+      alert((ok1 || ok2) ? "Pulled cloud data (if available/newer)." : "No cloud updates found.");
       renderActiveTab();
     });
 
     $("btnSettingsPush")?.addEventListener("click", async () => {
       const ok = await __pushStateNow();
-      alert(ok ? "Pushed current device state to cloud." : "Push skipped (not signed in / offline / error).");
+      alert(ok ? "Pushed device state to cloud." : "Push skipped (signed out / offline / error).");
       renderActiveTab();
     });
 
@@ -1170,7 +1185,7 @@
     }
   }
 
-  // ---- Start hook ----
+  // ---- Public start hook ----
   window.startApp = function () {
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
     if (!role) {
@@ -1187,24 +1202,47 @@
     console.log("PerformanceIQ core started. Role:", state.role || role);
   };
 
-  // ---- Switch Role button support ----
+  // ---- Switch Role button ----
   $("btnSwitchRole")?.addEventListener("click", () => {
     try { localStorage.removeItem("role"); } catch {}
     try { localStorage.removeItem("selectedRole"); } catch {}
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
     location.reload();
   });
+
+  // ---- Auth change: when user signs in, pull everything once ----
+  (function wireAuthPull() {
+    const auth = window.PIQ_AuthStore;
+    if (!auth || typeof auth.onAuthChange !== "function") return;
+
+    auth.onAuthChange(async (user) => {
+      try {
+        if (!user) {
+          setPills();
+          return;
+        }
+        await __pullCloudStateIfNewer();
+        await pullCloudLogsAndMetrics();
+        setPills();
+        renderActiveTab();
+      } catch (e) {
+        logError("authPull", e);
+      }
+    });
+  })();
 
   // ---- Startup ----
   document.addEventListener("DOMContentLoaded", async () => {
     try {
+      // Optional: auto-pull at start if signed in
       if (await isSignedIn()) {
         await __pullCloudStateIfNewer();
+        await pullCloudLogsAndMetrics();
       }
     } catch (e) {
       logError("startupPull", e);
     }
 
+    setPills();
     setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
     window.addEventListener("click", hideSplashNow, { once: true });
     window.addEventListener("touchstart", hideSplashNow, { once: true });
