@@ -1,4 +1,4 @@
-// authStore.js (PLAIN SCRIPT)
+// authStore.js — FULL REPLACEMENT (plain script)
 (function () {
   "use strict";
 
@@ -11,14 +11,20 @@
   async function getUser() {
     const c = client();
     if (!c) return null;
-    const { data, error } = await c.auth.getUser();
-    if (error) return null;
-    return data?.user || null;
+
+    try {
+      const { data, error } = await c.auth.getUser();
+      if (error) return null;
+      return data?.user || null;
+    } catch {
+      return null;
+    }
   }
 
   async function signInWithOtp(email) {
     const c = client();
     if (!c) throw new Error("Supabase not configured.");
+
     const { error } = await c.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.href }
@@ -36,9 +42,11 @@
   function onAuthChange(cb) {
     const c = client();
     if (!c) return () => {};
+
     const { data } = c.auth.onAuthStateChange((_event, session) => {
       cb(session?.user || null);
     });
+
     return () => {
       try { data?.subscription?.unsubscribe(); } catch {}
     };
