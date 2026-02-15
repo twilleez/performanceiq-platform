@@ -1,143 +1,97 @@
-// dataStore.js — FULL REPLACEMENT (plain script)
+// datastore.js
 (function () {
   "use strict";
 
-  if (window.dataStore) return;
+  // Tables used (you must create these in Supabase if you enable sync):
+  // - piq_states
+  // - piq_workout_logs
+  // - piq_performance_metrics
 
-  function requireClient() {
-    const c = window.supabaseClient || null;
-    if (!c) throw new Error("Supabase not configured (offline mode).");
-    return c;
+  function sb() {
+    return window.supabaseClient || null;
   }
 
-  async function requireUserId() {
-    const auth = window.PIQ_AuthStore;
-    if (!auth) throw new Error("Auth store not loaded.");
-    const user = await auth.getUser();
-    if (!user) throw new Error("Not signed in.");
-    return user.id;
+  async function requireUser() {
+    if (!window.PIQ_AuthStore) return null;
+    return await window.PIQ_AuthStore.getUser();
   }
 
-  // --- App state sync (whole blob) ---
-  async function pullState() {
-    const client = requireClient();
-    const userId = await requireUserId();
+  const dataStore = {
+    async pushState(stateObj) {
+      const client = sb();
+      if (!client) throw new Error("Supabase not configured.");
+      const user = await requireUser();
+      if (!user) throw new Error("Not signed in.");
 
-    const { data, error } = await client
-      .from("piq_state")
-      .select("state, updated_at")
-      .eq("user_id", userId)
-      .maybeSingle();
+      const payload = {
+        user_id: user.id,
+        state: stateObj,
+        updated_at: new Date().toISOString()
+      };
 
-    if (error) throw error;
-    return data || null; // {state, updated_at} or null
-  }
+      // Upsert by user_id
+      const { error } = await client
+        .from("piq_states")
+        .upsert(payload, { onConflict: "user_id" });
 
-  async function pushState(stateObj) {
-    const client = requireClient();
-    const userId = await requireUserId();
+      if (error) throw error;
+      return true;
+    },
 
-    const payload = {
-      user_id: userId,
-      state: stateObj,
-      updated_at: new Date().toISOString()
-    };
+    async pullState() {
+      const client = sb();
+      if (!client) return null;
+      const user = await requireUser();
+      if (!user) return null;
 
-    const { error } = await client
-      .from("piq_state")
-      .upsert(payload, { onConflict: "user_id" });
+      const { data, error } = await client
+        .from("piq_states")
+        .select("state, updated_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-    if (error) throw error;
-    return true;
-  }
+      if (error) throw error;
+      if (!data?.state) return null;
 
-  // --- Performance metrics ---
-  async function upsertPerformanceMetric(metric) {
-    const client = requireClient();
-    const userId = await requireUserId();
+      return { state: data.state, updated_at: data.updated_at };
+    },
 
-    // Force ownership
-    const row = { ...metric, athlete_id: userId };
+    async upsertWorkoutLog(row) {
+      const client = sb();
+      if (!client) throw new Error("Supabase not configured.");
+      const user = await requireUser();
+      if (!user) throw new Error("Not signed in.");
+      if (!row || !row.date) throw new Error("Row.date required.");
 
-    const { data, error } = await client
-      .from("performance_metrics")
-      .insert(row)
-      .select()
-      .single();
+      const payload = { ...row, user_id: user.id, updated_at: new Date().toISOString() };
 
-    if (error) throw error;
-    return data;
-  }
+      // Unique constraint should be (user_id, date)
+      const { error } = await client
+        .from("piq_workout_logs")
+        .upsert(payload, { onConflict: "user_id,date" });
 
-  async function listPerformanceMetrics(limit = 60) {
-    const client = requireClient();
-    const userId = await requireUserId();
+      if (error) throw error;
+      return true;
+    },
 
-    const { data, error } = await client
-      .from("performance_metrics")
-      .select("*")
-      .eq("athlete_id", userId)
-      .order("date", { ascending: false })
-      .limit(limit);
+    async upsertPerformanceMetric(row) {
+      const client = sb();
+      if (!client) throw new Error("Supabase not configured.");
+      const user = await requireUser();
+      if (!user) throw new Error("Not signed in.");
+      if (!row || !row.date) throw new Error("Row.date required.");
 
-    if (error) throw error;
-    return data || [];
-  }
+      const payload = { ...row, user_id: user.id, updated_at: new Date().toISOString() };
 
-  // --- Workout logs ---
-  async function upsertWorkoutLog(logRow) {
-    const client = requireClient();
-    const userId = await requireUserId();
+      // Unique constraint should be (user_id, date)
+      const { error } = await client
+        .from("piq_performance_metrics")
+        .upsert(payload, { onConflict: "user_id,date" });
 
-    // Map to your real table columns
-    const row = {
-      athlete_id: userId,
-      date: logRow.date, // required
-      program_day: logRow.program_day ?? null,
-      volume: logRow.volume ?? null,
-      wellness: logRow.wellness ?? null,
-      energy: logRow.energy ?? null,
-      hydration: logRow.hydration ?? null,
-      injury_flag: logRow.injury_flag ?? null,
-      practice_intensity: logRow.practice_intensity ?? null,
-      practice_duration_min: logRow.practice_duration_min ?? null,
-      extra_gym: logRow.extra_gym ?? null,
-      extra_gym_duration_min: logRow.extra_gym_duration_min ?? null,
-      updated_at: new Date().toISOString()
-    };
-
-    // Upsert by (athlete_id, date) — you must have a unique index for this
-    const { data, error } = await client
-      .from("workout_logs")
-      .upsert(row, { onConflict: "athlete_id,date" })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  }
-
-  async function listWorkoutLogs(limit = 60) {
-    const client = requireClient();
-    const userId = await requireUserId();
-
-    const { data, error } = await client
-      .from("workout_logs")
-      .select("*")
-      .eq("athlete_id", userId)
-      .order("date", { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
-    return data || [];
-  }
-
-  window.dataStore = {
-    pullState,
-    pushState,
-    upsertPerformanceMetric,
-    listPerformanceMetrics,
-    upsertWorkoutLog,
-    listWorkoutLogs
+      if (error) throw error;
+      return true;
+    }
   };
+
+  window.dataStore = dataStore;
 })();
