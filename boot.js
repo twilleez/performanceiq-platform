@@ -1,32 +1,20 @@
-// boot.js — FULL REPLACEMENT
+// boot.js
 (function () {
   "use strict";
 
-  function safeHideSplash() {
+  function safeStart() {
     try {
-      if (typeof window.hideSplashNow === "function") window.hideSplashNow();
-    } catch {}
+      if (typeof window.startApp === "function") window.startApp();
+    } catch (e) {
+      console.warn("[boot.startApp]", e);
+      try { window.hideSplashNow?.(); } catch {}
+    }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    // If core isn't ready, don't crash the page.
-    if (typeof window.startApp !== "function" || typeof window.showRoleChooser !== "function") {
-      console.warn("[boot] core not ready.");
-      safeHideSplash();
-      return;
-    }
-
-    try {
-      // Start app (core handles role gating + rendering)
-      window.startApp();
-    } catch (e) {
-      console.warn("[boot] startApp failed:", e?.message || e);
-      safeHideSplash();
-    }
-
-    // Failsafe splash
-    setTimeout(safeHideSplash, 2000);
-    window.addEventListener("click", safeHideSplash, { once: true });
-    window.addEventListener("touchstart", safeHideSplash, { once: true });
-  });
+  // Start after everything is loaded
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", safeStart);
+  } else {
+    safeStart();
+  }
 })();
