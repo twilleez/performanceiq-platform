@@ -1,56 +1,55 @@
-// authStore.js — FULL REPLACEMENT (plain script)
+// auth.js
 (function () {
   "use strict";
 
-  if (window.PIQ_AuthStore) return;
+  function noopFalse() { return false; }
 
-  function client() {
-    return window.supabaseClient || null;
-  }
+  const AuthStore = {
+    async getUser() {
+      try {
+        if (!window.supabaseClient) return null;
+        const { data, error } = await window.supabaseClient.auth.getUser();
+        if (error) return null;
+        return data?.user || null;
+      } catch (e) {
+        console.warn("[auth.getUser]", e);
+        return null;
+      }
+    },
 
-  async function getUser() {
-    const c = client();
-    if (!c) return null;
+    async signInWithOtp(email) {
+      if (!window.supabaseClient) throw new Error("Supabase not configured.");
+      const clean = String(email || "").trim();
+      if (!clean) throw new Error("Email required.");
+      const { error } = await window.supabaseClient.auth.signInWithOtp({
+        email: clean,
+        options: {
+          // For static hosting (GitHub Pages), this should be your deployed URL.
+          // If omitted, Supabase uses its defaults.
+        }
+      });
+      if (error) throw error;
+      return true;
+    },
 
-    try {
-      const { data, error } = await c.auth.getUser();
-      if (error) return null;
-      return data?.user || null;
-    } catch {
-      return null;
+    async signOut() {
+      try {
+        if (!window.supabaseClient) return true;
+        const { error } = await window.supabaseClient.auth.signOut();
+        if (error) throw error;
+        return true;
+      } catch (e) {
+        console.warn("[auth.signOut]", e);
+        return false;
+      }
     }
-  }
+  };
 
-  async function signInWithOtp(email) {
-    const c = client();
-    if (!c) throw new Error("Supabase not configured.");
+  window.PIQ_AuthStore = AuthStore;
 
-    const { error } = await c.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.href }
-    });
-    if (error) throw error;
-    return true;
-  }
-
-  async function signOut() {
-    const c = client();
-    if (!c) return;
-    await c.auth.signOut();
-  }
-
-  function onAuthChange(cb) {
-    const c = client();
-    if (!c) return () => {};
-
-    const { data } = c.auth.onAuthStateChange((_event, session) => {
-      cb(session?.user || null);
-    });
-
-    return () => {
-      try { data?.subscription?.unsubscribe(); } catch {}
-    };
-  }
-
-  window.PIQ_AuthStore = { getUser, signInWithOtp, signOut, onAuthChange };
+  // Optional: basic online/offline logging
+  try {
+    window.addEventListener("offline", () => console.log("Offline"));
+    window.addEventListener("online", () => console.log("Online"));
+  } catch {}
 })();
