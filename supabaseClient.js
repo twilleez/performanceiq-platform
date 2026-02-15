@@ -1,45 +1,36 @@
-// supabaseClient.js — FULL REPLACEMENT
+// supabase-config.js
+// Leave values as empty strings to keep sync disabled.
+// When you paste real values, cloud sync becomes available.
+
 (function () {
   "use strict";
 
-  // Provide a consistent global for other scripts:
-  // window.supabaseClient (Supabase v2 client) or null if not configured.
+  // ✅ YOU must fill these from your Supabase project settings.
+  // I cannot confirm your URL/keys.
+  window.PIQ_SUPABASE_URL = "";     // e.g. https://xxxx.supabase.co
+  window.PIQ_SUPABASE_ANON_KEY = ""; // anon public key
 
-  function getCfg() {
-    return window.PIQ_CONFIG || {};
-  }
-
-  function hasConfig(cfg) {
-    return !!(cfg && typeof cfg.SUPABASE_URL === "string" && cfg.SUPABASE_URL.trim()
-      && typeof cfg.SUPABASE_ANON_KEY === "string" && cfg.SUPABASE_ANON_KEY.trim());
+  function canInit() {
+    return (
+      typeof window.supabase !== "undefined" &&
+      typeof window.PIQ_SUPABASE_URL === "string" &&
+      window.PIQ_SUPABASE_URL.trim() &&
+      typeof window.PIQ_SUPABASE_ANON_KEY === "string" &&
+      window.PIQ_SUPABASE_ANON_KEY.trim()
+    );
   }
 
   try {
-    const cfg = getCfg();
-    if (!hasConfig(cfg)) {
-      window.supabaseClient = null;
-      return;
+    if (canInit()) {
+      window.supabaseClient = window.supabase.createClient(
+        window.PIQ_SUPABASE_URL.trim(),
+        window.PIQ_SUPABASE_ANON_KEY.trim()
+      );
+    } else {
+      window.supabaseClient = null; // keeps app offline-first
     }
-
-    if (!window.supabase || !window.supabase.createClient) {
-      console.warn("[supabaseClient] Supabase library not loaded.");
-      window.supabaseClient = null;
-      return;
-    }
-
-    window.supabaseClient = window.supabase.createClient(
-      cfg.SUPABASE_URL.trim(),
-      cfg.SUPABASE_ANON_KEY.trim(),
-      {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true
-        }
-      }
-    );
   } catch (e) {
-    console.warn("[supabaseClient] init failed:", e?.message || e);
+    console.warn("[supabase-init]", e);
     window.supabaseClient = null;
   }
 })();
