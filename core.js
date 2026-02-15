@@ -1,9 +1,12 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE)
-// Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
-// Includes: working tab system + working Profile + Program (structured) + Log (hydration) + Performance + Dashboard + Settings
-// Upgrades: Readiness Engine v2 (trend velocity + individual baselines + injury severity tiers + sleep quality 60/40 + red-flag overrides)
-// Upgrades: Auto program progression multipliers (Week 2/3/4 load increases) + Readiness→Progression modifier
-// UI Update (requested): Log tab now captures Sleep Quality (1–10) + Injury Pain (0–10). Hydration remains categorical (no fractions).
+// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.2.0
+// Offline-first + Boot-safe + Splash-safe + Optional Supabase sync
+// Phase 2 upgrades (ALL):
+// A) ACWR tracking + load-based readiness caps
+// B) Expanded Log inputs (practice intensity/duration + extra gym + notes)
+// C) Explain-this-score breakdown panel + diagnostics
+// D) Baseline window (28-day) + baseline-building mode (min samples)
+// UI: readiness text color matches grade color (already), plus “Explain” panel
+
 (function () {
   "use strict";
 
@@ -120,12 +123,13 @@
   function defaultState() {
     const now = Date.now();
     return {
-      meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0 },
+      meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0, coreVersion: "1.2.0" },
       role: "",
       profile: {
         sport: SPORTS.BASKETBALL,
         days: 4,
         name: "",
+        baselineConfig: { windowDays: 28, minSamples: 5 },
         baselines: {
           wellnessAvg: null,
           energyAvg: null,
@@ -133,7 +137,8 @@
           sprint10Avg: null,
           codAvg: null,
           sleepHoursAvg: null,
-          sleepQualityAvg: null
+          sleepQualityAvg: null,
+          _meta: { lastBuiltAtMs: 0, windowDays: 28, minSamples: 5, logSamples: 0, testSamples: 0 }
         }
       },
       trial: { startedAtMs: now, activated: false, licenseKey: "", licenseUntilMs: 0 },
@@ -141,7 +146,7 @@
       logs: [],
       tests: [],
       team: { name: "", roster: [], attendance: [], board: "", compliance: "off" },
-      _ui: { activeTab: "profile" }
+      _ui: { activeTab: "profile", explainOpen: false }
     };
   }
 
@@ -153,6 +158,7 @@
     if (!Number.isFinite(s.meta.updatedAtMs)) s.meta.updatedAtMs = Date.now();
     if (!Number.isFinite(s.meta.lastSyncedAtMs)) s.meta.lastSyncedAtMs = 0;
     if (!Number.isFinite(s.meta.version)) s.meta.version = 0;
+    if (typeof s.meta.coreVersion !== "string") s.meta.coreVersion = d.meta.coreVersion;
 
     if (typeof s.role !== "string") s.role = d.role;
 
@@ -161,9 +167,16 @@
     if (!Number.isFinite(s.profile.days)) s.profile.days = d.profile.days;
     if (typeof s.profile.name !== "string") s.profile.name = d.profile.name;
 
+    s.profile.baselineConfig = s.profile.baselineConfig && typeof s.profile.baselineConfig === "object"
+      ? s.profile.baselineConfig
+      : d.profile.baselineConfig;
+    if (!Number.isFinite(s.profile.baselineConfig.windowDays)) s.profile.baselineConfig.windowDays = d.profile.baselineConfig.windowDays;
+    if (!Number.isFinite(s.profile.baselineConfig.minSamples)) s.profile.baselineConfig.minSamples = d.profile.baselineConfig.minSamples;
+
     s.profile.baselines = s.profile.baselines && typeof s.profile.baselines === "object" ? s.profile.baselines : d.profile.baselines;
     const b = s.profile.baselines;
     const bd = d.profile.baselines;
+
     if (!Number.isFinite(b.wellnessAvg)) b.wellnessAvg = bd.wellnessAvg;
     if (!Number.isFinite(b.energyAvg)) b.energyAvg = bd.energyAvg;
     if (!Number.isFinite(b.vertAvg)) b.vertAvg = bd.vertAvg;
@@ -171,6 +184,13 @@
     if (!Number.isFinite(b.codAvg)) b.codAvg = bd.codAvg;
     if (!Number.isFinite(b.sleepHoursAvg)) b.sleepHoursAvg = bd.sleepHoursAvg;
     if (!Number.isFinite(b.sleepQualityAvg)) b.sleepQualityAvg = bd.sleepQualityAvg;
+
+    b._meta = b._meta && typeof b._meta === "object" ? b._meta : bd._meta;
+    if (!Number.isFinite(b._meta.lastBuiltAtMs)) b._meta.lastBuiltAtMs = 0;
+    if (!Number.isFinite(b._meta.windowDays)) b._meta.windowDays = s.profile.baselineConfig.windowDays;
+    if (!Number.isFinite(b._meta.minSamples)) b._meta.minSamples = s.profile.baselineConfig.minSamples;
+    if (!Number.isFinite(b._meta.logSamples)) b._meta.logSamples = 0;
+    if (!Number.isFinite(b._meta.testSamples)) b._meta.testSamples = 0;
 
     s.trial = s.trial && typeof s.trial === "object" ? s.trial : d.trial;
     if (!Number.isFinite(s.trial.startedAtMs)) s.trial.startedAtMs = d.trial.startedAtMs;
@@ -190,6 +210,7 @@
 
     s._ui = s._ui && typeof s._ui === "object" ? s._ui : d._ui;
     if (typeof s._ui.activeTab !== "string") s._ui.activeTab = "profile";
+    if (typeof s._ui.explainOpen !== "boolean") s._ui.explainOpen = false;
 
     return s;
   }
@@ -210,13 +231,14 @@
   function bumpMeta() {
     state.meta.updatedAtMs = Date.now();
     state.meta.version = (state.meta.version || 0) + 1;
+    state.meta.coreVersion = "1.2.0";
   }
 
   function saveState() {
     bumpMeta();
     __saveLocal(state);
     scheduleCloudPush();
-    try { PIQ_Readiness.updateBaselinesFromHistory(); } catch (e) { logError("baselineUpdate", e); }
+    try { PIQ_Readiness.updateBaselinesFromHistory(todayISO()); } catch (e) { logError("baselineUpdate", e); }
     renderActiveTab();
   }
 
@@ -401,6 +423,11 @@
     state.profile.days = Number(days || state.profile.days || 4);
     if (!Number.isFinite(state.profile.days) || state.profile.days <= 0) state.profile.days = 4;
     if (typeof name === "string") state.profile.name = name;
+
+    // ensure baseline config exists
+    state.profile.baselineConfig = state.profile.baselineConfig || { windowDays: 28, minSamples: 5 };
+    if (!Number.isFinite(state.profile.baselineConfig.windowDays)) state.profile.baselineConfig.windowDays = 28;
+    if (!Number.isFinite(state.profile.baselineConfig.minSamples)) state.profile.baselineConfig.minSamples = 5;
   }
 
   function ensureOnboardMount() {
@@ -591,8 +618,10 @@
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim() || "—";
     const rolePill = $("rolePill");
     if (rolePill) rolePill.textContent = `Role: ${role}`;
-    const trialPill = $("trialPill");
-    if (trialPill) trialPill.textContent = isSupabaseReady() ? "Offline-first + Sync" : "Offline-first";
+
+    // Your index.html uses id="syncPill" (not trialPill)
+    const syncPill = $("syncPill");
+    if (syncPill) syncPill.textContent = isSupabaseReady() ? "Offline-first + Sync" : "Offline-first";
   }
 
   function generateProgram(sport, days) {
@@ -676,8 +705,7 @@
     const progression = {
       model: "4-week wave (auto load)",
       weekMultipliers: [1.0, 1.03, 1.06, 1.09],
-      guidance:
-        "Auto progression: Week 2/3/4 gradually increase load. Readiness can override this (reduce or hold load)."
+      guidance: "Auto progression: Week 2/3/4 gradually increase load. Readiness + ACWR can override (reduce or hold load)."
     };
 
     return {
@@ -710,6 +738,10 @@
     return [1.0, 1.03, 1.06, 1.09][w - 1] || 1.0;
   }
 
+  // =========================
+  // Readiness Engine v2.1
+  // Adds: Baseline windows, Baseline-building mode, ACWR, Explain breakdown
+  // =========================
   const PIQ_Readiness = (function () {
     const COLORS = Object.freeze({
       A: "#2ecc71",
@@ -760,28 +792,60 @@
       return tests.slice(-n);
     }
 
-    function updateBaselinesFromHistory() {
-      const logs5 = lastNLogs(5, todayISO());
-      const tests5 = lastNTests(5, todayISO());
+    function withinWindowISO(items, upToISO, windowDays) {
+      const cut = safeDateISO(upToISO) || todayISO();
+      const w = Number.isFinite(windowDays) ? windowDays : 28;
+      const cutMs = isoToMs(cut);
+      if (!Number.isFinite(cutMs)) return [];
+
+      return (items || [])
+        .filter((x) => x && safeDateISO(x.dateISO) && x.dateISO <= cut)
+        .filter((x) => {
+          const ms = isoToMs(x.dateISO);
+          if (!Number.isFinite(ms)) return false;
+          const ageDays = (cutMs - ms) / (1000 * 60 * 60 * 24);
+          return ageDays >= 0 && ageDays <= w;
+        })
+        .slice()
+        .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+    }
+
+    function updateBaselinesFromHistory(asOfISO) {
+      const asOf = safeDateISO(asOfISO) || todayISO();
+      const cfg = state.profile?.baselineConfig || { windowDays: 28, minSamples: 5 };
+      const windowDays = Number.isFinite(cfg.windowDays) ? cfg.windowDays : 28;
+      const minSamples = Number.isFinite(cfg.minSamples) ? cfg.minSamples : 5;
+
+      const logsWin = withinWindowISO(state.logs || [], asOf, windowDays);
+      const testsWin = withinWindowISO(state.tests || [], asOf, windowDays);
 
       const b = state.profile.baselines || (state.profile.baselines = {});
+      b._meta = b._meta || {};
+      b._meta.windowDays = windowDays;
+      b._meta.minSamples = minSamples;
 
-      const wellnessAvg = mean(logs5.map((l) => numOrNull(l.wellness)));
-      const energyAvg = mean(logs5.map((l) => numOrNull(l.energy)));
-      const sleepQualityAvg = mean(logs5.map((l) => numOrNull(l.sleep_quality)));
+      const wellnessVals = logsWin.map((l) => numOrNull(l.wellness)).filter((x) => Number.isFinite(x));
+      const energyVals = logsWin.map((l) => numOrNull(l.energy)).filter((x) => Number.isFinite(x));
+      const sleepQVals = logsWin.map((l) => numOrNull(l.sleep_quality)).filter((x) => Number.isFinite(x));
 
-      const vertAvg = mean(tests5.map((t) => numOrNull(t.vert)));
-      const sprint10Avg = mean(tests5.map((t) => numOrNull(t.sprint10)));
-      const codAvg = mean(tests5.map((t) => numOrNull(t.cod)));
-      const sleepHoursAvg = mean(tests5.map((t) => numOrNull(t.sleep)));
+      const vertVals = testsWin.map((t) => numOrNull(t.vert)).filter((x) => Number.isFinite(x));
+      const sprintVals = testsWin.map((t) => numOrNull(t.sprint10)).filter((x) => Number.isFinite(x));
+      const codVals = testsWin.map((t) => numOrNull(t.cod)).filter((x) => Number.isFinite(x));
+      const sleepHVals = testsWin.map((t) => numOrNull(t.sleep)).filter((x) => Number.isFinite(x));
 
-      if (Number.isFinite(wellnessAvg)) b.wellnessAvg = wellnessAvg;
-      if (Number.isFinite(energyAvg)) b.energyAvg = energyAvg;
-      if (Number.isFinite(vertAvg)) b.vertAvg = vertAvg;
-      if (Number.isFinite(sprint10Avg)) b.sprint10Avg = sprint10Avg;
-      if (Number.isFinite(codAvg)) b.codAvg = codAvg;
-      if (Number.isFinite(sleepHoursAvg)) b.sleepHoursAvg = sleepHoursAvg;
-      if (Number.isFinite(sleepQualityAvg)) b.sleepQualityAvg = sleepQualityAvg;
+      b._meta.logSamples = Math.max(wellnessVals.length, energyVals.length, sleepQVals.length);
+      b._meta.testSamples = Math.max(vertVals.length, sprintVals.length, codVals.length, sleepHVals.length);
+      b._meta.lastBuiltAtMs = Date.now();
+
+      // Only set baseline values when we have enough samples for that signal.
+      if (wellnessVals.length >= minSamples) b.wellnessAvg = mean(wellnessVals);
+      if (energyVals.length >= minSamples) b.energyAvg = mean(energyVals);
+      if (sleepQVals.length >= minSamples) b.sleepQualityAvg = mean(sleepQVals);
+
+      if (vertVals.length >= minSamples) b.vertAvg = mean(vertVals);
+      if (sprintVals.length >= minSamples) b.sprint10Avg = mean(sprintVals);
+      if (codVals.length >= minSamples) b.codAvg = mean(codVals);
+      if (sleepHVals.length >= minSamples) b.sleepHoursAvg = mean(sleepHVals);
 
       state.profile.baselines = b;
       __saveLocal(state);
@@ -857,28 +921,106 @@
       return 1.0;
     }
 
-    function guidanceForGrade(grade, reasons) {
+    // Training suggestion generator (coach-usable)
+    function planForGrade(grade) {
       const g = String(grade || "").toUpperCase();
+      if (g === "A") return { type: "Full", volumeDelta: 0, intensityCap: "RPE ≤ 8", avoid: "None (keep technique clean)", recovery: "Normal" };
+      if (g === "B") return { type: "Normal", volumeDelta: 0, intensityCap: "RPE ≤ 8", avoid: "None", recovery: "Normal" };
+      if (g === "C") return { type: "Reduced", volumeDelta: -15, intensityCap: "RPE ≤ 7", avoid: "Max jumps/sprints + heavy eccentrics", recovery: "Extra sleep + hydration focus" };
+      if (g === "D") return { type: "Recovery", volumeDelta: -40, intensityCap: "RPE ≤ 6", avoid: "High impact + max strength", recovery: "Mobility + easy skill + sleep priority" };
+      return { type: "Off", volumeDelta: -100, intensityCap: "N/A", avoid: "Training", recovery: "Return-to-play / medical guidance" };
+    }
+
+    function guidanceForGrade(grade, payload) {
+      const p = planForGrade(grade);
       const base = {
-        A: "Green light. Progress load if technique is solid.",
-        B: "Normal training. Maintain planned load.",
-        C: "Caution. Reduce volume 10–20% and keep intensity controlled.",
-        D: "Recovery focus. Reduce load significantly or switch to mobility/skill-only.",
-        OUT: "No training. Follow return-to-play plan / medical guidance."
-      }[g] || "Normal training.";
+        A: "Green light.",
+        B: "Normal training.",
+        C: "Caution.",
+        D: "Recovery focus.",
+        OUT: "No training."
+      }[String(grade || "").toUpperCase()] || "Normal training.";
 
-      const extra = (reasons && reasons.length)
-        ? (" " + reasons.slice(0, 4).join(" "))
-        : "";
+      const parts = [];
+      parts.push(`${base} Today: ${p.type}.`);
+      if (p.volumeDelta !== 0 && p.volumeDelta !== -100) parts.push(`Volume ${p.volumeDelta}% (approx).`);
+      if (p.volumeDelta === -100) parts.push(`Training locked.`);
+      if (p.intensityCap) parts.push(`Cap: ${p.intensityCap}.`);
+      if (p.avoid) parts.push(`Avoid: ${p.avoid}.`);
+      if (p.recovery) parts.push(`Recovery: ${p.recovery}.`);
 
-      return base + extra;
+      if (payload && payload.length) parts.push(payload.join(" "));
+
+      return parts.join(" ");
+    }
+
+    // Session load + ACWR
+    // Session load = practiceRPE (1-10) * durationMin
+    function sessionLoadFromLog(l) {
+      const rpe = numOrNull(l?.practice_intensity);
+      const dur = numOrNull(l?.practice_duration_min);
+      if (!Number.isFinite(rpe) || !Number.isFinite(dur)) return 0;
+      return clamp(rpe, 1, 10) * clamp(dur, 0, 600);
+    }
+
+    function acwrForDate(dateISO) {
+      const date = safeDateISO(dateISO) || todayISO();
+      const cutMs = isoToMs(date);
+      if (!Number.isFinite(cutMs)) return { acute: null, chronic: null, acwr: null, note: "Bad date" };
+
+      const logs = (state.logs || [])
+        .filter((l) => l && safeDateISO(l.dateISO) && l.dateISO <= date)
+        .slice()
+        .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+      const loadByDay = logs.map((l) => ({ dateISO: l.dateISO, load: sessionLoadFromLog(l) }))
+        .filter((x) => Number.isFinite(x.load) && x.load > 0);
+
+      if (!loadByDay.length) return { acute: 0, chronic: 0, acwr: null, note: "No load data" };
+
+      // Acute: last 7 days sum
+      const acute = loadByDay
+        .filter((x) => {
+          const ms = isoToMs(x.dateISO);
+          if (!Number.isFinite(ms)) return false;
+          const age = (cutMs - ms) / (1000 * 60 * 60 * 24);
+          return age >= 0 && age <= 6.999; // inclusive-ish
+        })
+        .reduce((a, b) => a + b.load, 0);
+
+      // Chronic: last 28 days average weekly load
+      const chronic28 = loadByDay
+        .filter((x) => {
+          const ms = isoToMs(x.dateISO);
+          if (!Number.isFinite(ms)) return false;
+          const age = (cutMs - ms) / (1000 * 60 * 60 * 24);
+          return age >= 0 && age <= 27.999;
+        })
+        .reduce((a, b) => a + b.load, 0);
+
+      // weekly average over 4 weeks
+      const chronic = chronic28 / 4;
+
+      const acwr = (chronic > 0) ? (acute / chronic) : null;
+      return { acute: Math.round(acute), chronic: Math.round(chronic), acwr: acwr !== null ? Number(acwr.toFixed(2)) : null, note: "" };
     }
 
     function computeForDate(dateISO) {
       const date = safeDateISO(dateISO) || todayISO();
-      updateBaselinesFromHistory();
+
+      // build baselines using configured window
+      updateBaselinesFromHistory(date);
 
       const b = state.profile?.baselines || {};
+      const cfg = state.profile?.baselineConfig || { windowDays: 28, minSamples: 5 };
+      const windowDays = Number.isFinite(cfg.windowDays) ? cfg.windowDays : 28;
+      const minSamples = Number.isFinite(cfg.minSamples) ? cfg.minSamples : 5;
+      const baseMeta = b._meta || { logSamples: 0, testSamples: 0 };
+
+      const baselineBuilding =
+        (Number(baseMeta.logSamples) < minSamples) ||
+        (Number(baseMeta.testSamples) < minSamples);
+
       const logs7 = lastNLogs(7, date);
       const tests7 = lastNTests(7, date);
 
@@ -904,6 +1046,14 @@
 
       const redFlags = [];
       const cautions = [];
+      const explain = {
+        points: { neuromuscular: 0, sleep: 0, subjective: 0, hydration: 0, trend: 0 },
+        deltas: {},
+        modifiers: { injuryMultiplier: 1, readinessModifier: 1, acwrCap: 1 },
+        overrides: [],
+        baseline: { building: baselineBuilding, windowDays, minSamples, logSamples: baseMeta.logSamples || 0, testSamples: baseMeta.testSamples || 0 },
+        acwr: { acute: null, chronic: null, acwr: null }
+      };
 
       if (Number.isFinite(wSlope) && wSlope <= -0.75) redFlags.push("Wellness trend dropping fast.");
       if (Number.isFinite(eSlope) && eSlope <= -0.75) redFlags.push("Energy trend dropping fast.");
@@ -912,9 +1062,14 @@
       const lowW = last2.filter((l) => Number.isFinite(numOrNull(l.wellness)) && numOrNull(l.wellness) <= 4).length;
       if (lowW >= 2) redFlags.push("Consecutive low wellness (≤4).");
 
-      const vertDrop = percentDropFromBaseline(todaysTest?.vert, b.vertAvg);
-      const sprintWorse = percentWorseFromBaseline_time(todaysTest?.sprint10, b.sprint10Avg);
-      const codWorse = percentWorseFromBaseline_time(todaysTest?.cod, b.codAvg);
+      // neuromuscular deltas only if baseline exists AND we're not baseline-building for tests
+      const vertDrop = (!baselineBuilding) ? percentDropFromBaseline(todaysTest?.vert, b.vertAvg) : null;
+      const sprintWorse = (!baselineBuilding) ? percentWorseFromBaseline_time(todaysTest?.sprint10, b.sprint10Avg) : null;
+      const codWorse = (!baselineBuilding) ? percentWorseFromBaseline_time(todaysTest?.cod, b.codAvg) : null;
+
+      explain.deltas.vertDrop = vertDrop;
+      explain.deltas.sprintWorse = sprintWorse;
+      explain.deltas.codWorse = codWorse;
 
       if (Number.isFinite(vertDrop) && vertDrop >= 0.05) redFlags.push("Vertical drop ≥5% vs baseline.");
       else if (Number.isFinite(vertDrop) && vertDrop >= 0.03) cautions.push("Vertical drop ≥3% vs baseline.");
@@ -926,14 +1081,20 @@
       else if (Number.isFinite(codWorse) && codWorse >= 0.03) cautions.push("COD time worse ≥3% vs baseline.");
 
       const sleepComp = sleepComposite(sleepHours, sleepQuality);
+      explain.deltas.sleepComposite = sleepComp;
+
       if (sleepComp !== null && sleepComp < 0.35) redFlags.push("Sleep quality/duration low.");
       else if (sleepComp !== null && sleepComp < 0.5) cautions.push("Sleep could be better.");
 
       const hydScore = hydrationScore(hydration);
       if (hydration === HYDRATION_LEVELS.LOW) cautions.push("Hydration low.");
 
+      // injury modifier
       const injury = injuryTierPenalty(injuryFlag, injuryPain);
+      explain.modifiers.injuryMultiplier = injury.multiplier;
+
       if (injury.lock) {
+        const baseProg = programBaseMultiplier(date);
         return {
           dateISO: date,
           score: 0,
@@ -941,40 +1102,65 @@
           color: COLORS.OUT,
           readinessModifier: 0,
           programWeek: programWeekIndex(date),
-          baseProgressionMultiplier: programBaseMultiplier(date),
+          baseProgressionMultiplier: baseProg,
           finalProgressionMultiplier: 0,
           guidance: guidanceForGrade("OUT", [injury.label]),
-          reasons: [injury.label]
+          reasons: [injury.label],
+          explain,
+          acwr: { acute: null, chronic: null, acwr: null }
         };
       }
       if (injury.multiplier === 0) redFlags.push("Severe pain tier.");
       else if (injury.multiplier < 1) cautions.push(injury.label);
 
-      let score = 0;
-      const reasons = [];
+      // ACWR
+      const acwrObj = acwrForDate(date);
+      explain.acwr = acwrObj;
 
+      // ACWR rules:
+      // - If ACWR > 1.5 => caution + cap progression multiplier (acwrCap 0.90)
+      // - If ACWR < 0.8 => underload flag (no cap; coach note)
+      let acwrCap = 1.0;
+      if (Number.isFinite(acwrObj.acwr) && acwrObj.acwr > 1.5) {
+        cautions.push(`ACWR high (${acwrObj.acwr}).`);
+        acwrCap = 0.90;
+      } else if (Number.isFinite(acwrObj.acwr) && acwrObj.acwr < 0.8 && acwrObj.acwr > 0) {
+        cautions.push(`ACWR low (${acwrObj.acwr}) — possible underload.`);
+      }
+      explain.modifiers.acwrCap = acwrCap;
+
+      // ===== Score build (0–100) =====
+      let score = 0;
+
+      // Neuromuscular (0–40)
       let nm = 40;
       if (Number.isFinite(vertDrop)) nm -= clamp((vertDrop / 0.10) * 20, 0, 20);
       if (Number.isFinite(sprintWorse)) nm -= clamp((sprintWorse / 0.10) * 10, 0, 10);
       if (Number.isFinite(codWorse)) nm -= clamp((codWorse / 0.10) * 10, 0, 10);
       nm = clamp(nm, 0, 40);
       score += nm;
+      explain.points.neuromuscular = Math.round(nm);
 
-      if (sleepComp === null) score += 12;
-      else score += clamp(sleepComp * 20, 0, 20);
+      // Sleep (0–20)
+      let sl = 0;
+      if (sleepComp === null) sl = 12; // neutral-ish when missing
+      else sl = clamp(sleepComp * 20, 0, 20);
+      score += sl;
+      explain.points.sleep = Math.round(sl);
 
+      // Subjective vs baseline (0–20)
       const wBase = numOrNull(b.wellnessAvg);
       const eBase = numOrNull(b.energyAvg);
 
       let sub = 20;
-      if (Number.isFinite(wellnessToday) && Number.isFinite(wBase)) {
+      if (!baselineBuilding && Number.isFinite(wellnessToday) && Number.isFinite(wBase)) {
         const delta = wellnessToday - wBase;
         sub += clamp(delta * 2, -12, 4);
       } else if (Number.isFinite(wellnessToday)) {
         sub += clamp((wellnessToday - 6) * 1.5, -9, 6);
       }
 
-      if (Number.isFinite(energyToday) && Number.isFinite(eBase)) {
+      if (!baselineBuilding && Number.isFinite(energyToday) && Number.isFinite(eBase)) {
         const delta = energyToday - eBase;
         sub += clamp(delta * 2, -12, 4);
       } else if (Number.isFinite(energyToday)) {
@@ -983,49 +1169,74 @@
 
       sub = clamp(sub, 0, 20);
       score += sub;
+      explain.points.subjective = Math.round(sub);
 
-      score += clamp(hydScore * 10, 0, 10);
+      // Hydration (0–10)
+      const hydPts = clamp(hydScore * 10, 0, 10);
+      score += hydPts;
+      explain.points.hydration = Math.round(hydPts);
 
+      // Trend velocity (0–10)
       let tv = 10;
       if (Number.isFinite(wSlope) && wSlope < 0) tv -= clamp(Math.abs(wSlope) * 6, 0, 6);
       if (Number.isFinite(eSlope) && eSlope < 0) tv -= clamp(Math.abs(eSlope) * 4, 0, 4);
       tv = clamp(tv, 0, 10);
       score += tv;
+      explain.points.trend = Math.round(tv);
 
+      // apply injury multiplier
       score = score * injury.multiplier;
 
+      // grade
       let grade = gradeFromScore(score);
 
+      // overrides
+      if (baselineBuilding) {
+        // soften grading while baseline is building (avoid overreacting without baselines)
+        cautions.push(`Baseline building (${Math.max(baseMeta.logSamples || 0, baseMeta.testSamples || 0)}/${minSamples} samples).`);
+      }
+
       if (redFlags.length >= 2) {
-        if (grade === "A" || grade === "B") grade = "C";
+        if (grade === "A" || grade === "B") { grade = "C"; explain.overrides.push("2+ red flags → capped to C"); }
       } else if (redFlags.length === 1) {
-        if (grade === "A") grade = "B";
-        else if (grade === "B") grade = "C";
-        else if (grade === "C") grade = "D";
+        if (grade === "A") { grade = "B"; explain.overrides.push("1 red flag → A→B"); }
+        else if (grade === "B") { grade = "C"; explain.overrides.push("1 red flag → B→C"); }
+        else if (grade === "C") { grade = "D"; explain.overrides.push("1 red flag → C→D"); }
       }
 
       if (sleepComp !== null && sleepComp < 0.25) {
-        if (grade === "A" || grade === "B") grade = "C";
+        if (grade === "A" || grade === "B") { grade = "C"; explain.overrides.push("Very low sleep → capped to C"); }
       }
 
       if (hydration === HYDRATION_LEVELS.LOW && Number.isFinite(wellnessToday) && wellnessToday <= 5) {
-        if (grade === "A" || grade === "B") grade = "C";
+        if (grade === "A" || grade === "B") { grade = "C"; explain.overrides.push("Low hydration + low wellness → capped to C"); }
       }
 
+      // reasons list
+      const reasons = [];
       if (redFlags.length) reasons.push(...redFlags.map((x) => `⚠️ ${x}`));
       if (cautions.length) reasons.push(...cautions.map((x) => `• ${x}`));
       if (injury.label && injury.label !== "None") reasons.push(`• Injury: ${injury.label}`);
 
       const readinessModifier = readinessToModifier(grade);
+      explain.modifiers.readinessModifier = readinessModifier;
+
       const baseProg = programBaseMultiplier(date);
-      const finalProg = clamp(baseProg * readinessModifier, 0, 2);
+
+      // final progression multiplier: base * readiness * acwrCap
+      let finalProg = clamp(baseProg * readinessModifier * acwrCap, 0, 2);
+
+      // If severe pain tier (multiplier 0) already handled; if moderate, reduce further by readiness already.
+      // Provide load text
+      const w = programWeekIndex(date);
+      const basePct = Math.round(baseProg * 100);
+      const finalPct = Math.round(finalProg * 100);
 
       const loadText = (function () {
-        const w = programWeekIndex(date);
-        const basePct = Math.round(baseProg * 100);
-        const finalPct = Math.round(finalProg * 100);
-        if (grade === "OUT") return `Training locked.`;
-        return `Week ${w} base load: ${basePct}%. Readiness-adjusted: ${finalPct}%.`;
+        if (grade === "OUT") return "Training locked.";
+        const bits = [`Week ${w} base: ${basePct}%.`, `Adjusted: ${finalPct}%.`];
+        if (Number.isFinite(acwrObj.acwr) && acwrObj.acwr > 1.5) bits.push(`ACWR cap applied.`);
+        return bits.join(" ");
       })();
 
       const guidance = guidanceForGrade(grade, [loadText]);
@@ -1036,11 +1247,13 @@
         grade,
         color: COLORS[grade] || COLORS.B,
         readinessModifier,
-        programWeek: programWeekIndex(date),
+        programWeek: w,
         baseProgressionMultiplier: baseProg,
         finalProgressionMultiplier: finalProg,
         guidance,
-        reasons
+        reasons,
+        explain,
+        acwr: acwrObj
       };
     }
 
@@ -1049,7 +1262,7 @@
 
   window.PIQ.readiness = window.PIQ.readiness || {};
   window.PIQ.readiness.forDate = (iso) => PIQ_Readiness.computeForDate(iso);
-  window.PIQ.readiness.updateBaselines = () => PIQ_Readiness.updateBaselinesFromHistory();
+  window.PIQ.readiness.updateBaselines = (asOfISO) => PIQ_Readiness.updateBaselinesFromHistory(asOfISO || todayISO());
 
   // ---- Renderers ----
   function renderProfile() {
@@ -1061,7 +1274,9 @@
     const days = Number.isFinite(state.profile?.days) ? state.profile.days : 4;
     const name = state.profile?.name || "";
 
+    const cfg = state.profile?.baselineConfig || { windowDays: 28, minSamples: 5 };
     const b = state.profile?.baselines || {};
+    const bm = b._meta || {};
     const baselineText = `
       Wellness avg: ${Number.isFinite(b.wellnessAvg) ? b.wellnessAvg.toFixed(1) : "—"} •
       Energy avg: ${Number.isFinite(b.energyAvg) ? b.energyAvg.toFixed(1) : "—"} •
@@ -1107,14 +1322,26 @@
         </div>
       </div>
 
+      <div class="row" style="margin-top:10px">
+        <div class="field">
+          <label for="baselineWindowDays">Baseline window (days)</label>
+          <input id="baselineWindowDays" inputmode="numeric" placeholder="28" value="${sanitizeHTML(cfg.windowDays)}"/>
+        </div>
+        <div class="field">
+          <label for="baselineMinSamples">Min samples per signal</label>
+          <input id="baselineMinSamples" inputmode="numeric" placeholder="5" value="${sanitizeHTML(cfg.minSamples)}"/>
+        </div>
+      </div>
+
       <div class="btnRow" style="margin-top:12px">
         <button class="btn" id="btnSaveProfile" type="button">Save Profile</button>
         <button class="btn secondary" id="btnGenProgram" type="button">Generate / Update Program</button>
       </div>
 
       <div class="hr"></div>
-      <div class="small"><b>Baselines (auto from last 3–5 entries)</b></div>
+      <div class="small"><b>Baselines</b> (window: ${sanitizeHTML(cfg.windowDays)}d • min samples: ${sanitizeHTML(cfg.minSamples)})</div>
       <div class="small">${sanitizeHTML(baselineText)}</div>
+      <div class="small">Samples — logs: ${sanitizeHTML(bm.logSamples ?? 0)} • tests: ${sanitizeHTML(bm.testSamples ?? 0)} • last built: ${bm.lastBuiltAtMs ? sanitizeHTML(new Date(bm.lastBuiltAtMs).toLocaleString()) : "—"}</div>
     `;
 
     $("profileSport").value = sport;
@@ -1124,7 +1351,15 @@
       const nextSport = $("profileSport")?.value || sport;
       const nextDays = $("profileDays")?.value || days;
       const nextName = $("profileName")?.value || "";
+
+      const wDays = numOrNull($("baselineWindowDays")?.value);
+      const minS = numOrNull($("baselineMinSamples")?.value);
+
       setProfileBasics(nextSport, nextDays, nextName);
+
+      state.profile.baselineConfig.windowDays = Number.isFinite(wDays) ? clamp(wDays, 7, 90) : 28;
+      state.profile.baselineConfig.minSamples = Number.isFinite(minS) ? clamp(minS, 3, 15) : 5;
+
       saveState();
       setPills();
       alert("Saved.");
@@ -1166,9 +1401,15 @@
         </div>`
       : "";
 
+    const acwrLine = (r && r.acwr && Number.isFinite(r.acwr.acwr))
+      ? `<div class="small" style="margin-top:6px">
+          Load: Acute ${sanitizeHTML(r.acwr.acute)} • Chronic ${sanitizeHTML(r.acwr.chronic)} • ACWR <b>${sanitizeHTML(r.acwr.acwr)}</b>
+        </div>`
+      : `<div class="small" style="margin-top:6px">Load: add Practice intensity + duration in Log to enable ACWR.</div>`;
+
     const progLine = `
       <div class="small" style="margin-top:6px">
-        Auto progression: <b>Week ${wk}</b> base multiplier <b>${baseProg.toFixed(2)}x</b> • readiness-adjusted <b>${finalProg.toFixed(2)}x</b>
+        Auto progression: <b>Week ${wk}</b> base multiplier <b>${baseProg.toFixed(2)}x</b> • final <b>${finalProg.toFixed(2)}x</b>
       </div>
     `;
 
@@ -1195,6 +1436,7 @@
         Sport: <b>${sanitizeHTML(p.sport)}</b> • Days/week: <b>${sanitizeHTML(p.days)}</b>
       </div>
       ${progLine}
+      ${acwrLine}
       ${readinessLine}
 
       <div class="hr"></div>
@@ -1213,9 +1455,7 @@
     `;
   }
 
-  // =========================================================
-  // ✅ LOG TAB UPDATED (Sleep Quality + Injury Pain)
-  // =========================================================
+  // LOG TAB — expanded inputs (practice intensity/duration + extra gym + notes)
   function renderLog() {
     const el = $("tab-log");
     if (!el) return;
@@ -1226,7 +1466,7 @@
 
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
-      <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
+      <div class="small">Daily log drives readiness + load (ACWR). Stored locally; can sync when signed in.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -1280,6 +1520,37 @@
         </div>
       </div>
 
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="field">
+          <label for="practiceIntensity">Practice intensity (RPE 1–10)</label>
+          <input id="practiceIntensity" inputmode="numeric" placeholder="7" />
+        </div>
+        <div class="field">
+          <label for="practiceDuration">Practice duration (minutes)</label>
+          <input id="practiceDuration" inputmode="numeric" placeholder="90" />
+        </div>
+        <div class="field">
+          <label for="extraGym">Extra gym?</label>
+          <select id="extraGym">
+            <option value="false" selected>No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="extraGymDuration">Extra gym minutes</label>
+          <input id="extraGymDuration" inputmode="numeric" placeholder="30" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <div class="field" style="flex:1">
+          <label for="logNotes">Notes (optional)</label>
+          <input id="logNotes" placeholder="Any soreness location, game, travel, etc." />
+        </div>
+      </div>
+
       <div class="btnRow" style="margin-top:12px">
         <button class="btn" id="btnSaveLog" type="button">Save Log</button>
       </div>
@@ -1290,33 +1561,45 @@
       <div id="logList"></div>
     `;
 
-    function clampIntOrNull(n, min, max) {
+    function clampNumOrNull(n, min, max) {
       const x = numOrNull(n);
       if (x === null) return null;
-      // allow decimals typed, but store as number; clamp
       return clamp(x, min, max);
     }
 
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const hydration = ($("hydrationLevel")?.value || "good").trim(); // categorical only
+      const hydration = ($("hydrationLevel")?.value || "good").trim();
 
-      const wellness = clampIntOrNull($("wellness")?.value, 1, 10);
-      const energy = clampIntOrNull($("energy")?.value, 1, 10);
-      const sleep_quality = clampIntOrNull($("sleepQuality")?.value, 1, 10);
+      const wellness = clampNumOrNull($("wellness")?.value, 1, 10);
+      const energy = clampNumOrNull($("energy")?.value, 1, 10);
+      const sleep_quality = clampNumOrNull($("sleepQuality")?.value, 1, 10);
 
       const injury = ($("injuryFlag")?.value || "none").trim();
-      const injury_pain = clampIntOrNull($("injuryPain")?.value, 0, 10);
+      const injury_pain = clampNumOrNull($("injuryPain")?.value, 0, 10);
+
+      const practice_intensity = clampNumOrNull($("practiceIntensity")?.value, 1, 10);
+      const practice_duration_min = clampNumOrNull($("practiceDuration")?.value, 0, 600);
+
+      const extra_gym = ($("extraGym")?.value || "false") === "true";
+      const extra_gym_duration_min = extra_gym ? clampNumOrNull($("extraGymDuration")?.value, 0, 240) : null;
+
+      const notes = ($("logNotes")?.value || "").trim();
 
       const localLog = {
         dateISO,
         theme: $("logTheme")?.value || null,
         injury,
-        injury_pain,      // ✅ stored (0–10)
-        wellness,         // ✅ clamped 1–10
-        energy,           // ✅ clamped 1–10
-        sleep_quality,    // ✅ stored (1–10)
-        hydration,        // ✅ stored categorical
+        injury_pain,
+        wellness,
+        energy,
+        sleep_quality,
+        hydration,
+        practice_intensity: practice_intensity !== null ? String(practice_intensity) : null, // keep as string for DB mapping compatibility
+        practice_duration_min,
+        extra_gym,
+        extra_gym_duration_min,
+        notes: notes || null,
         entries: []
       };
 
@@ -1337,19 +1620,33 @@
       return;
     }
 
-    list.innerHTML = logs.slice(0, 10).map((l) => `
-      <div class="card" style="margin:10px 0">
-        <div style="display:flex;justify-content:space-between;gap:10px">
-          <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
-          <div class="small">
-            Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")} • SleepQ: ${sanitizeHTML(l.sleep_quality ?? "—")}
+    list.innerHTML = logs.slice(0, 10).map((l) => {
+      const load = (function () {
+        const rpe = numOrNull(l.practice_intensity);
+        const dur = numOrNull(l.practice_duration_min);
+        if (!Number.isFinite(rpe) || !Number.isFinite(dur)) return "—";
+        return String(Math.round(clamp(rpe, 1, 10) * clamp(dur, 0, 600)));
+      })();
+
+      return `
+        <div class="card" style="margin:10px 0">
+          <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
+            <div class="small">
+              Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")} • SleepQ: ${sanitizeHTML(l.sleep_quality ?? "—")}
+            </div>
           </div>
+          <div class="small">
+            Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")} • Pain: ${sanitizeHTML(l.injury_pain ?? "—")}
+          </div>
+          <div class="small">
+            Practice RPE: ${sanitizeHTML(l.practice_intensity ?? "—")} • Minutes: ${sanitizeHTML(l.practice_duration_min ?? "—")} • Session load: <b>${sanitizeHTML(load)}</b>
+            • Extra gym: ${sanitizeHTML(l.extra_gym ? "Yes" : "No")} ${l.extra_gym ? `(${sanitizeHTML(l.extra_gym_duration_min ?? "—")} min)` : ""}
+          </div>
+          ${l.notes ? `<div class="small">Notes: ${sanitizeHTML(l.notes)}</div>` : ``}
         </div>
-        <div class="small">
-          Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")} • Pain: ${sanitizeHTML(l.injury_pain ?? "—")}
-        </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
   }
 
   function renderPerformance() {
@@ -1450,6 +1747,8 @@
 
     const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
 
+    const explainOpen = !!state._ui?.explainOpen;
+
     const readinessCard = r ? `
       <div class="card" style="margin:10px 0;padding:12px">
         <div class="small"><b>Readiness today</b></div>
@@ -1459,10 +1758,63 @@
         <div class="small" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
           ${sanitizeHTML(r.guidance)}
         </div>
+
+        ${r.acwr && Number.isFinite(r.acwr.acwr) ? `
+          <div class="small" style="margin-top:8px">
+            Load: Acute ${sanitizeHTML(r.acwr.acute)} • Chronic ${sanitizeHTML(r.acwr.chronic)} • ACWR <b>${sanitizeHTML(r.acwr.acwr)}</b>
+          </div>
+        ` : `
+          <div class="small" style="margin-top:8px">
+            Load: add Practice intensity + duration in Log to enable ACWR.
+          </div>
+        `}
+
         ${r.reasons && r.reasons.length ? `
           <div class="small" style="margin-top:8px">
             ${r.reasons.map(x => sanitizeHTML(x)).join("<br/>")}
           </div>
+        ` : ``}
+
+        <div class="btnRow" style="margin-top:10px">
+          <button class="btn secondary" id="btnToggleExplain" type="button">${explainOpen ? "Hide" : "Explain this score"}</button>
+        </div>
+
+        ${explainOpen ? `
+          <div class="hr"></div>
+          <div class="small"><b>Explain</b></div>
+          <div class="small">
+            Points — Neuromuscular: <b>${sanitizeHTML(r.explain?.points?.neuromuscular ?? "—")}</b>/40 •
+            Sleep: <b>${sanitizeHTML(r.explain?.points?.sleep ?? "—")}</b>/20 •
+            Subjective: <b>${sanitizeHTML(r.explain?.points?.subjective ?? "—")}</b>/20 •
+            Hydration: <b>${sanitizeHTML(r.explain?.points?.hydration ?? "—")}</b>/10 •
+            Trend: <b>${sanitizeHTML(r.explain?.points?.trend ?? "—")}</b>/10
+          </div>
+          <div class="small" style="margin-top:6px">
+            Modifiers — Injury: <b>${sanitizeHTML(r.explain?.modifiers?.injuryMultiplier ?? "—")}</b> •
+            Readiness: <b>${sanitizeHTML(r.explain?.modifiers?.readinessModifier ?? "—")}</b> •
+            ACWR cap: <b>${sanitizeHTML(r.explain?.modifiers?.acwrCap ?? "—")}</b>
+          </div>
+          <div class="small" style="margin-top:6px">
+            Baseline — window: ${sanitizeHTML(r.explain?.baseline?.windowDays ?? "—")}d •
+            min samples: ${sanitizeHTML(r.explain?.baseline?.minSamples ?? "—")} •
+            logs: ${sanitizeHTML(r.explain?.baseline?.logSamples ?? "—")} • tests: ${sanitizeHTML(r.explain?.baseline?.testSamples ?? "—")}
+            ${r.explain?.baseline?.building ? " • <b>building</b>" : ""}
+          </div>
+
+          ${(r.explain?.deltas && (r.explain.deltas.vertDrop !== null || r.explain.deltas.sprintWorse !== null || r.explain.deltas.codWorse !== null)) ? `
+            <div class="small" style="margin-top:6px">
+              Deltas vs baseline —
+              Vert drop: ${Number.isFinite(r.explain.deltas.vertDrop) ? sanitizeHTML((r.explain.deltas.vertDrop * 100).toFixed(1) + "%") : "—"} •
+              Sprint worse: ${Number.isFinite(r.explain.deltas.sprintWorse) ? sanitizeHTML((r.explain.deltas.sprintWorse * 100).toFixed(1) + "%") : "—"} •
+              COD worse: ${Number.isFinite(r.explain.deltas.codWorse) ? sanitizeHTML((r.explain.deltas.codWorse * 100).toFixed(1) + "%") : "—"}
+            </div>
+          ` : ``}
+
+          ${(r.explain?.overrides && r.explain.overrides.length) ? `
+            <div class="small" style="margin-top:6px">
+              Overrides:<br/>${r.explain.overrides.map(x => sanitizeHTML("• " + x)).join("<br/>")}
+            </div>
+          ` : ``}
         ` : ``}
       </div>
     ` : "";
@@ -1484,6 +1836,12 @@
         <canvas id="chartVert" width="320" height="140" style="width:100%;max-width:640px"></canvas>
       </div>
     `;
+
+    $("btnToggleExplain")?.addEventListener("click", () => {
+      state._ui.explainOpen = !state._ui.explainOpen;
+      __saveLocal(state);
+      renderDashboard();
+    });
 
     function drawLine(canvasId, points) {
       const c = $(canvasId);
@@ -1579,6 +1937,8 @@
     const supaOk = isSupabaseReady();
     const signed = supaOk ? await isSignedIn() : false;
 
+    const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
+
     el.innerHTML = `
       <h3 style="margin-top:0">Settings</h3>
       <div class="small">Status</div>
@@ -1586,9 +1946,10 @@
 
       <div class="card" style="margin:10px 0">
         <div class="small">
+          Core: <b>${sanitizeHTML(state.meta.coreVersion || "—")}</b><br/>
           Supabase: <b>${supaOk ? "Configured" : "Not configured"}</b><br/>
           Auth: <b>${signed ? "Signed in" : "Signed out"}</b><br/>
-          Last synced: <b>${state.meta.lastSyncedAtMs ? new Date(state.meta.lastSyncedAtMs).toLocaleString() : "—"}</b>
+          Last synced: <b>${state.meta.lastSyncedAtMs ? sanitizeHTML(new Date(state.meta.lastSyncedAtMs).toLocaleString()) : "—"}</b>
         </div>
       </div>
 
@@ -1604,7 +1965,22 @@
       <div class="btnRow">
         <button class="btn secondary" id="btnDumpState" type="button">Copy state JSON</button>
         <button class="btn secondary" id="btnRecalcBaselines" type="button">Rebuild baselines</button>
+        <button class="btn secondary" id="btnCopyReadiness" type="button">Copy readiness JSON</button>
       </div>
+
+      <div class="small" style="margin-top:10px"><b>Diagnostics</b></div>
+      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify({
+        now: new Date().toISOString(),
+        coreVersion: state.meta.coreVersion,
+        stateVersion: state.meta.version,
+        activeTab: state._ui.activeTab,
+        readiness: r ? {
+          dateISO: r.dateISO, grade: r.grade, score: r.score,
+          baseProgressionMultiplier: r.baseProgressionMultiplier,
+          finalProgressionMultiplier: r.finalProgressionMultiplier,
+          acwr: r.acwr
+        } : null
+      }, null, 2))}</pre>
 
       <div class="small" style="margin-top:10px">Errors (latest first):</div>
       <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2))}</pre>
@@ -1656,12 +2032,22 @@
 
     $("btnRecalcBaselines")?.addEventListener("click", () => {
       try {
-        window.PIQ?.readiness?.updateBaselines?.();
-        alert("Baselines rebuilt from recent history.");
+        window.PIQ?.readiness?.updateBaselines?.(todayISO());
+        alert("Baselines rebuilt from configured window.");
         renderActiveTab();
       } catch (e) {
         logError("recalcBaselines", e);
         alert("Baseline rebuild failed.");
+      }
+    });
+
+    $("btnCopyReadiness")?.addEventListener("click", async () => {
+      try {
+        const rr = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
+        await navigator.clipboard.writeText(JSON.stringify(rr, null, 2));
+        alert("Copied readiness JSON.");
+      } catch {
+        alert("Copy failed. (Clipboard permissions)");
       }
     });
   }
@@ -1692,12 +2078,12 @@
     wireNav();
     showTab(activeTab());
 
-    try { PIQ_Readiness.updateBaselinesFromHistory(); } catch (e) { logError("baselineInit", e); }
+    try { PIQ_Readiness.updateBaselinesFromHistory(todayISO()); } catch (e) { logError("baselineInit", e); }
 
     renderActiveTab();
     hideSplashNow();
 
-    console.log("PerformanceIQ core started. Role:", state.role || role);
+    console.log("PerformanceIQ core started. Role:", state.role || role, "core:", state.meta.coreVersion);
   };
 
   document.addEventListener("DOMContentLoaded", () => {
