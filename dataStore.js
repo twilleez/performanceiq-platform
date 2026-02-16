@@ -295,7 +295,58 @@
     if (error) throw normalizeErr(error);
     return true;
   }
+async function listWorkoutLogsForAthlete(athleteId, upToDateISO, limit = 7) {
+  ensureReadyOrThrow();
+  const u = await getUser();
+  if (!u) throw new Error("Not signed in");
 
+  const T = tables();
+  const aid = String(athleteId || "").trim();
+  const d = String(upToDateISO || "").trim();
+  if (!aid) throw new Error("athleteId required");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error("upToDateISO must be YYYY-MM-DD");
+
+  const lim = Number(limit);
+  const safeLim = Number.isFinite(lim) ? Math.max(1, Math.min(lim, 30)) : 7;
+
+  const { data, error } = await window.supabaseClient
+    .from(T.workout_logs)
+    .select("athlete_id,date,program_day,volume,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,created_at,updated_at")
+    .eq("athlete_id", aid)
+    .lte("date", d)
+    .order("date", { ascending: true })   // ascending so "last" is latest
+    .limit(safeLim);
+
+  if (error) throw normalizeErr(error);
+  return data || [];
+}
+
+async function listMetricsForAthlete(athleteId, upToDateISO, limit = 7) {
+  ensureReadyOrThrow();
+  const u = await getUser();
+  if (!u) throw new Error("Not signed in");
+
+  const T = tables();
+  const aid = String(athleteId || "").trim();
+  const d = String(upToDateISO || "").trim();
+  if (!aid) throw new Error("athleteId required");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error("upToDateISO must be YYYY-MM-DD");
+
+  const lim = Number(limit);
+  const safeLim = Number.isFinite(lim) ? Math.max(1, Math.min(lim, 30)) : 7;
+
+  const { data, error } = await window.supabaseClient
+    .from(T.performance_metrics)
+    .select("athlete_id,date,vert_inches,sprint_seconds,cod_seconds,bw_lbs,sleep_hours,created_at")
+    .eq("athlete_id", aid)
+    .lte("date", d)
+    .order("date", { ascending: true })
+    .limit(safeLim);
+
+  if (error) throw normalizeErr(error);
+  return data || [];
+}
+  
   // =========================================================
   // Public API
   // =========================================================
@@ -304,6 +355,11 @@
     pullState,
     upsertWorkoutLog,
     upsertPerformanceMetric,
+    window.dataStore = {
+  // ...existing
+  listWorkoutLogsForAthlete,
+  listMetricsForAthlete
+};
 
     // team
     createTeam,
