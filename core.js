@@ -1868,20 +1868,428 @@
   // Phase 4 — Team tab UI (Coach role)
   // =========================================================
   async function renderTeam() {
-    const el = $("tab-team");
-    if (!el) return;
+  const el = $("tab-team");
+  if (!el) return;
 
-    const isCoach = (state.role || "").trim() === ROLES.COACH;
-    const supaOk = isSupabaseReady();
-    const signed = supaOk ? await isSignedIn() : false;
+  const supaOk = isSupabaseReady();
+  const signed = supaOk ? await isSignedIn().catch(() => false) : false;
 
-    if (!isCoach) {
-      el.innerHTML = `
-        <h3 style="margin-top:0">Team</h3>
-        <div class="small">Team tools are available in <b>Coach</b> role.</div>
-      `;
+  // UI: team selector + date selector (default = today)
+  el.innerHTML = `
+    <h3 style="margin-top:0">Team</h3>
+    <div class="small">Team readiness uses cloud logs/metrics. Sign in required.</div>
+    <div class="hr"></div>
+
+    <div class="row">
+      <div class="field">
+        <label for="teamPick">Team</label>
+        <select id="teamPick" ${(!supaOk || !signed) ? "disabled" : ""}>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="teamDate">Date</label>
+        <input id="teamDate" type="date" value="${todayISO()}" ${(!supaOk || !signed) ? "disabled" : ""}/>
+      </div>
+    </div>
+
+    <div class="btnRow" style="margin-top:12px">
+      <button class="btn" id="btnTeamRefresh" type="button" ${(!supaOk || !signed) ? "disabled" : ""}>Refresh</button>
+    </div>
+
+    <div class="hr"></div>
+    <div id="teamStatus" class="small"></div>
+    <div id="teamRoster" style="margin-top:10px"></div>
+  `;
+
+  const statusEl = $("teamStatus");
+  const rosterEl = $("teamRoster");
+  const teamPick = $("teamPick");
+  const teamDate = $("teamDate");
+
+  if (!supaOk) {
+    if (statusEl) statusEl.innerHTML = `Supabase not configured.`;
+    return;
+  }
+  if (!signed) {
+    if (statusEl) statusEl.innerHTML = `Sign in to view team readiness.`;
+    return;
+  }
+  if (!window.dataStore) {
+    if (statusEl) statusEl.innerHTML = `dataStore not available.`;
+    return;
+  }
+
+  // ---- Helpers (local to Team tab) ----
+  const COLORS = { A: "#2ecc71", B: "#f1c40f", C: "#e67e22", D: "#e74c3c", OUT: "#bdc3c7" };
+
+  const clampLocal = (n, a, b) => Math.min(Math.max(n, a), b);
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const mean = (arr) => {
+    const v = (arr || []).map(num).filter((x) => Number.isFinite(x));
+    if (!v.length) return null;
+    return v.reduce((a, b) => a + b, 0) / v.length;
+  };
+  const slope = (vals) => {
+    const y = (vals || []).map(num).filter((x) => Number.isFinite(x));
+    const n = y.length;
+    if (n < 2) return null;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (let i = 0; i < n; i++) {
+      sumX += i;
+      sumY += y[i];
+      sumXY += i * y[i];
+      sumXX += i * i;
+    }
+    const denom = (n * sumXX - sumX * sumX);
+    if (denom === 0) return null;
+    return (n * sumXY - sumX * sumY) / denom;
+  };
+
+  const hydrationScore = (h) => {
+    const x = String(h || "").toLowerCase().trim();
+    if (x === "great") return 1.0;
+    if (x === "good") return 0.85;
+    if (x === "ok") return 0.7;
+    if (x === "low") return 0.4;
+    return 0.75;
+  };
+
+  // sleep quality 60/40 with hours (same as your readiness engine)
+  const sleepComposite = (hours, quality) => {
+    const h = num(hours);
+    const q = num(quality);
+    const hs = Number.isFinite(h) ? clampLocal((h - 4) / (9 - 4), 0, 1) : null;
+    const qs = Number.isFinite(q) ? clampLocal((q - 1) / (10 - 1), 0, 1) : null;
+    if (qs !== null && hs !== null) return (qs * 0.6) + (hs * 0.4);
+    if (qs !== null) return qs;
+    if (hs !== null) return hs;
+    return null;
+  };
+
+  const pctDrop = (current, baseline) => {
+    const c = num(current);
+    const b = num(baseline);
+    if (!Number.isFinite(c) || !Number.isFinite(b) || b === 0) return null;
+    return (b - c) / b;
+  };
+  const pctWorseTime = (current, baseline) => {
+    const c = num(current);
+    const b = num(baseline);
+    if (!Number.isFinite(c) || !Number.isFinite(b) || b === 0) return null;
+    return (c - b) / b;
+  };
+
+  const injuryTier = (injuryFlag, painScore) => {
+    const f = String(injuryFlag || "none").toLowerCase().trim();
+    if (f === "out") return { lock: true, multiplier: 0, label: "Out (no training)" };
+
+    const p = num(painScore);
+    if (Number.isFinite(p)) {
+      if (p >= 7) return { lock: false, multiplier: 0.0, label: "Severe pain (D-grade override)" };
+      if (p >= 5) return { lock: false, multiplier: 0.75, label: "Moderate pain (-25%)" };
+      if (p >= 3) return { lock: false, multiplier: 0.9, label: "Minor soreness (-10%)" };
+      return { lock: false, multiplier: 1.0, label: "No meaningful pain" };
+    }
+
+    if (f === "minor") return { lock: false, multiplier: 0.9, label: "Minor (flag) (-10%)" };
+    if (f === "sore") return { lock: false, multiplier: 0.93, label: "Sore (flag) (-7%)" };
+    if (f === "none") return { lock: false, multiplier: 1.0, label: "None" };
+    return { lock: false, multiplier: 0.9, label: "Injury (flag) (-10%)" };
+  };
+
+  const gradeFromScore = (score) => {
+    const s = Number(score);
+    if (!Number.isFinite(s)) return "B";
+    if (s >= 85) return "A";
+    if (s >= 70) return "B";
+    if (s >= 55) return "C";
+    return "D";
+  };
+
+  const readinessToGuidance = (grade) => ({
+    A: "Green light. Progress load if technique is solid.",
+    B: "Normal training. Maintain planned load.",
+    C: "Caution. Reduce volume 10–20% and keep intensity controlled.",
+    D: "Recovery focus. Reduce load significantly or switch to mobility/skill-only.",
+    OUT: "No training. Follow return-to-play plan / medical guidance."
+  }[grade] || "Normal training.");
+
+  // Compute baselines from last 5 entries (team athlete history)
+  const computeBaselines = (logs, metrics) => ({
+    wellnessAvg: mean((logs || []).map((l) => l.wellness)),
+    energyAvg: mean((logs || []).map((l) => l.energy)),
+    sleepQualityAvg: mean((logs || []).map((l) => l.sleep_quality)),
+    vertAvg: mean((metrics || []).map((m) => m.vert_inches)),
+    sprint10Avg: mean((metrics || []).map((m) => m.sprint_seconds)),
+    codAvg: mean((metrics || []).map((m) => m.cod_seconds)),
+    sleepHoursAvg: mean((metrics || []).map((m) => m.sleep_hours))
+  });
+
+  // Readiness using the same structure as your engine, but from supplied arrays
+  const computeReadinessFromData = (dateISO, logsUpTo, metricsUpTo) => {
+    const logs = (logsUpTo || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    const metrics = (metricsUpTo || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+
+    const lastLog = logs.length ? logs[logs.length - 1] : null;
+    const lastMet = metrics.length ? metrics[metrics.length - 1] : null;
+
+    // baselines from last 5
+    const b = computeBaselines(logs.slice(-5), metrics.slice(-5));
+
+    const wellnessToday = num(lastLog?.wellness);
+    const energyToday = num(lastLog?.energy);
+
+    const sleepHours = num(lastMet?.sleep_hours);
+    const sleepQuality = num(lastLog?.sleep_quality);
+
+    const hydration = String(lastLog?.hydration || "").toLowerCase().trim();
+    const injuryFlag = String(lastLog?.injury_flag || "none").toLowerCase().trim();
+    const injuryPain = num(lastLog?.injury_pain);
+
+    // trend velocity (last 3)
+    const w3 = logs.slice(-3).map((l) => num(l.wellness)).filter((x)=>Number.isFinite(x));
+    const e3 = logs.slice(-3).map((l) => num(l.energy)).filter((x)=>Number.isFinite(x));
+    const wSlope = slope(w3);
+    const eSlope = slope(e3);
+
+    const redFlags = [];
+    const cautions = [];
+
+    if (Number.isFinite(wSlope) && wSlope <= -0.75) redFlags.push("Wellness trend dropping fast.");
+    if (Number.isFinite(eSlope) && eSlope <= -0.75) redFlags.push("Energy trend dropping fast.");
+
+    // consecutive low wellness (last 2)
+    const last2 = logs.slice(-2);
+    const lowW = last2.filter((l) => Number.isFinite(num(l.wellness)) && num(l.wellness) <= 4).length;
+    if (lowW >= 2) redFlags.push("Consecutive low wellness (≤4).");
+
+    const vertDrop = pctDrop(lastMet?.vert_inches, b.vertAvg);
+    const sprintWorse = pctWorseTime(lastMet?.sprint_seconds, b.sprint10Avg);
+    const codWorse = pctWorseTime(lastMet?.cod_seconds, b.codAvg);
+
+    if (Number.isFinite(vertDrop) && vertDrop >= 0.05) redFlags.push("Vertical drop ≥5% vs baseline.");
+    else if (Number.isFinite(vertDrop) && vertDrop >= 0.03) cautions.push("Vertical drop ≥3% vs baseline.");
+
+    if (Number.isFinite(sprintWorse) && sprintWorse >= 0.05) redFlags.push("Sprint time worse ≥5% vs baseline.");
+    else if (Number.isFinite(sprintWorse) && sprintWorse >= 0.03) cautions.push("Sprint time worse ≥3% vs baseline.");
+
+    if (Number.isFinite(codWorse) && codWorse >= 0.05) redFlags.push("COD time worse ≥5% vs baseline.");
+    else if (Number.isFinite(codWorse) && codWorse >= 0.03) cautions.push("COD time worse ≥3% vs baseline.");
+
+    const sleepComp = sleepComposite(sleepHours, sleepQuality);
+    if (sleepComp !== null && sleepComp < 0.35) redFlags.push("Sleep quality/duration low.");
+    else if (sleepComp !== null && sleepComp < 0.5) cautions.push("Sleep could be better.");
+
+    if (hydration === "low") cautions.push("Hydration low.");
+
+    const injury = injuryTier(injuryFlag, injuryPain);
+    if (injury.lock) {
+      return {
+        grade: "OUT",
+        score: 0,
+        color: COLORS.OUT,
+        guidance: readinessToGuidance("OUT"),
+        reasons: [injury.label]
+      };
+    }
+    if (injury.multiplier === 0) redFlags.push("Severe pain tier.");
+    else if (injury.multiplier < 1) cautions.push(injury.label);
+
+    // scoring (mirrors your weights)
+    let score = 0;
+
+    // neuromuscular (40)
+    let nm = 40;
+    if (Number.isFinite(vertDrop)) nm -= clampLocal((vertDrop / 0.10) * 20, 0, 20);
+    if (Number.isFinite(sprintWorse)) nm -= clampLocal((sprintWorse / 0.10) * 10, 0, 10);
+    if (Number.isFinite(codWorse)) nm -= clampLocal((codWorse / 0.10) * 10, 0, 10);
+    nm = clampLocal(nm, 0, 40);
+    score += nm;
+
+    // sleep (20) with fallback
+    score += (sleepComp === null) ? 12 : clampLocal(sleepComp * 20, 0, 20);
+
+    // subjective (20) vs baseline
+    const wBase = num(b.wellnessAvg);
+    const eBase = num(b.energyAvg);
+    let sub = 20;
+
+    if (Number.isFinite(wellnessToday) && Number.isFinite(wBase)) {
+      sub += clampLocal((wellnessToday - wBase) * 2, -12, 4);
+    } else if (Number.isFinite(wellnessToday)) {
+      sub += clampLocal((wellnessToday - 6) * 1.5, -9, 6);
+    }
+
+    if (Number.isFinite(energyToday) && Number.isFinite(eBase)) {
+      sub += clampLocal((energyToday - eBase) * 2, -12, 4);
+    } else if (Number.isFinite(energyToday)) {
+      sub += clampLocal((energyToday - 6) * 1.5, -9, 6);
+    }
+
+    sub = clampLocal(sub, 0, 20);
+    score += sub;
+
+    // hydration (10)
+    score += clampLocal(hydrationScore(hydration) * 10, 0, 10);
+
+    // trend velocity (10)
+    let tv = 10;
+    if (Number.isFinite(wSlope) && wSlope < 0) tv -= clampLocal(Math.abs(wSlope) * 6, 0, 6);
+    if (Number.isFinite(eSlope) && eSlope < 0) tv -= clampLocal(Math.abs(eSlope) * 4, 0, 4);
+    tv = clampLocal(tv, 0, 10);
+    score += tv;
+
+    // injury multiplier
+    score = score * injury.multiplier;
+
+    let grade = gradeFromScore(score);
+
+    // red-flag overrides (same logic)
+    if (redFlags.length >= 2) {
+      if (grade === "A" || grade === "B") grade = "C";
+    } else if (redFlags.length === 1) {
+      if (grade === "A") grade = "B";
+      else if (grade === "B") grade = "C";
+      else if (grade === "C") grade = "D";
+    }
+
+    if (sleepComp !== null && sleepComp < 0.25) {
+      if (grade === "A" || grade === "B") grade = "C";
+    }
+    if (hydration === "low" && Number.isFinite(wellnessToday) && wellnessToday <= 5) {
+      if (grade === "A" || grade === "B") grade = "C";
+    }
+
+    const reasons = [
+      ...redFlags.map((x) => `⚠️ ${x}`),
+      ...cautions.map((x) => `• ${x}`),
+      ...(injury.label && injury.label !== "None" ? [`• Injury: ${injury.label}`] : [])
+    ];
+
+    return {
+      grade,
+      score: Math.round(score),
+      color: COLORS[grade] || COLORS.B,
+      guidance: readinessToGuidance(grade),
+      reasons
+    };
+  };
+
+  // Fetch helpers from dataStore (expects your updated schema: athlete_id, injury_flag, etc.)
+  async function fetchAthleteSeries(athleteId, dateISO) {
+    // pull last 7 logs/metrics up to selected date
+    const logs = await window.dataStore.listWorkoutLogsForAthlete?.(athleteId, dateISO, 7);
+    const metrics = await window.dataStore.listMetricsForAthlete?.(athleteId, dateISO, 7);
+    return { logs: logs || [], metrics: metrics || [] };
+  }
+
+  async function loadTeamsIntoSelect() {
+    try {
+      if (statusEl) statusEl.textContent = "Loading teams…";
+      const teams = await window.dataStore.listMyTeams();
+      if (!teamPick) return;
+
+      teamPick.innerHTML = (teams || []).length
+        ? `<option value="">Select a team…</option>` + teams.map((t) =>
+            `<option value="${sanitizeHTML(t.id)}">${sanitizeHTML(t.name || "Team")}</option>`
+          ).join("")
+        : `<option value="">No teams found</option>`;
+
+      if (statusEl) statusEl.textContent = (teams || []).length ? "" : "No teams found for your account.";
+    } catch (e) {
+      if (statusEl) statusEl.textContent = "Failed to load teams.";
+      logError("teamLoadTeams", e);
+    }
+  }
+
+  async function renderRoster() {
+    if (!teamPick || !teamDate || !rosterEl) return;
+
+    const teamId = String(teamPick.value || "").trim();
+    const dateISO = String(teamDate.value || todayISO()).trim();
+
+    if (!teamId) {
+      rosterEl.innerHTML = `<div class="small">Select a team.</div>`;
       return;
     }
+
+    try {
+      rosterEl.innerHTML = `<div class="small">Loading roster + readiness…</div>`;
+
+      // Pull team members; your schema includes linked_athlete_id
+      const members = await window.dataStore.listTeamMembers(teamId);
+
+      // Athlete ids: prefer linked_athlete_id, else user_id (cannot confirm this is your exact intent)
+      const athletes = (members || [])
+        .filter((m) => String(m.role_in_team || "").toLowerCase() === "athlete")
+        .map((m) => ({
+          athlete_id: m.linked_athlete_id || m.user_id,
+          label: m.display_name || "Athlete", // may not exist; safe fallback
+          raw: m
+        }))
+        .filter((a) => !!a.athlete_id);
+
+      if (!athletes.length) {
+        rosterEl.innerHTML = `<div class="small">No athletes found on this team.</div>`;
+        return;
+      }
+
+      // For each athlete: fetch last 7 logs/metrics and compute readiness for selected date
+      const rows = [];
+      for (const a of athletes) {
+        const series = await fetchAthleteSeries(a.athlete_id, dateISO);
+        const r = computeReadinessFromData(dateISO, series.logs, series.metrics);
+        rows.push({ athlete: a, r, lastLog: series.logs?.slice?.(-1)?.[0] || null, lastMet: series.metrics?.slice?.(-1)?.[0] || null });
+      }
+
+      rosterEl.innerHTML = rows.map(({ athlete, r, lastLog, lastMet }) => {
+        const name = athlete.label || "Athlete";
+        const lastLogDate = lastLog?.date ? String(lastLog.date) : "—";
+        const lastMetDate = lastMet?.date ? String(lastMet.date) : "—";
+        const reasonsHtml = (r.reasons && r.reasons.length)
+          ? `<div class="small" style="margin-top:8px">${r.reasons.map(x => sanitizeHTML(x)).join("<br/>")}</div>`
+          : "";
+
+        return `
+          <div class="card" style="margin:10px 0;padding:12px">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+              <div>
+                <div style="font-weight:700">${sanitizeHTML(name)}</div>
+                <div class="small">Last log: ${sanitizeHTML(lastLogDate)} • Last metric: ${sanitizeHTML(lastMetDate)}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-weight:800;color:${sanitizeHTML(r.color)};font-size:18px">
+                  ${sanitizeHTML(r.grade)} (${sanitizeHTML(r.score)})
+                </div>
+                <div class="small" style="color:${sanitizeHTML(r.color)}">${sanitizeHTML(r.guidance)}</div>
+              </div>
+            </div>
+            ${reasonsHtml}
+          </div>
+        `;
+      }).join("");
+
+      if (statusEl) statusEl.textContent = `Showing readiness for ${dateISO}.`;
+    } catch (e) {
+      logError("teamRenderRoster", e);
+      rosterEl.innerHTML = `<div class="small">Failed to load roster/readiness. Check RLS + table names.</div>`;
+    }
+  }
+
+  // Wire events
+  $("btnTeamRefresh")?.addEventListener("click", renderRoster);
+  teamPick?.addEventListener("change", renderRoster);
+  teamDate?.addEventListener("change", renderRoster);
+
+  // Initial load
+  await loadTeamsIntoSelect();
+  await renderRoster();
+}
 
     const selectedTeamId = String(state.team.selectedTeamId || "").trim();
     const cache = state.team.cache || {};
