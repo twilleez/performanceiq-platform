@@ -1,21 +1,21 @@
 // dataStore.js — PRODUCTION-READY (FULL FILE REPLACEMENT)
-// Offline-first app: this module only runs if Supabase is configured + user is signed in.
+// Aligned to your CURRENT Supabase schema (per your CSV):
+// - workout_logs: athlete_id, date, program_day, volume, wellness, energy, hydration, injury_flag, ...
+// - performance_metrics: athlete_id, date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours
+// - teams: id, name, sport, coach_id, created_at
+// - team_members: id, team_id, user_id, role_in_team, linked_athlete_id, joined_at
+//
+// This module only runs if Supabase is configured + user is signed in.
+//
 // Provides:
 // - pushState(state), pullState()
 // - upsertWorkoutLog(row), upsertPerformanceMetric(row)
-//
-// - Phase 3 Team APIs:
-//   createTeam, listMyTeams, listTeamMembers, addTeamMember, removeTeamMember,
-//   getTeamRosterSummary, createTeamSession, listTeamSessions, upsertAttendance
-//
-// - Phase 4 Readiness helpers (coach/team intelligence):
-//   listWorkoutLogsForUsers(userIds, dateFromISO, dateToISO)
-//   listPerformanceMetricsForUsers(userIds, dateFromISO, dateToISO)
+// - Team APIs: createTeam, listMyTeams, listTeamMembers, addTeamMember, removeTeamMember
 //
 // IMPORTANT:
-// I cannot confirm your Supabase RLS policies.
-// Coach/team reads require RLS that allows authorized coaches to read team-athlete data.
-// If RLS blocks reads, these functions will throw.
+// - This file maps "current auth user id" => athlete_id/coach_id where appropriate.
+// - Your "state" table is still configurable via window.PIQ_CONFIG.tables.state (not included in your CSV).
+// - If your unique constraints differ, update the onConflict strings to match your DB.
 
 (function () {
   "use strict";
@@ -24,14 +24,15 @@
   window.__PIQ_DATASTORE_LOADED__ = true;
 
   const DEFAULT_TABLES = Object.freeze({
+    // Cloud snapshot table (not in your CSV, keep configurable)
+    // Expected: user_id uuid (pk), state jsonb
     state: "piq_user_state",
+
+    // From your CSV
     workout_logs: "workout_logs",
     performance_metrics: "performance_metrics",
     teams: "teams",
-    team_members: "team_members",
-    user_profiles: "user_profiles",
-    team_sessions: "team_sessions",
-    team_attendance: "team_attendance"
+    team_members: "team_members"
   });
 
   function tables() {
@@ -41,10 +42,7 @@
       workout_logs: cfg?.workout_logs || DEFAULT_TABLES.workout_logs,
       performance_metrics: cfg?.performance_metrics || DEFAULT_TABLES.performance_metrics,
       teams: cfg?.teams || DEFAULT_TABLES.teams,
-      team_members: cfg?.team_members || DEFAULT_TABLES.team_members,
-      user_profiles: cfg?.user_profiles || DEFAULT_TABLES.user_profiles,
-      team_sessions: cfg?.team_sessions || DEFAULT_TABLES.team_sessions,
-      team_attendance: cfg?.team_attendance || DEFAULT_TABLES.team_attendance
+      team_members: cfg?.team_members || DEFAULT_TABLES.team_members
     };
   }
 
@@ -79,12 +77,8 @@
     return new Error(msg);
   }
 
-  function isISODate(d) {
-    return /^\d{4}-\d{2}-\d{2}$/.test(String(d || "").trim());
-  }
-
   // =========================================================
-  // State sync
+  // State sync (device <-> cloud)
   // =========================================================
   async function pushState(stateObj) {
     ensureReadyOrThrow();
@@ -116,11 +110,13 @@
       .maybeSingle();
 
     if (error) throw normalizeErr(error);
-    return data || null;
+    return data || null; // { state: {...} } or null
   }
 
   // =========================================================
-  // Logs/Metrics upserts
+  // Workout logs upsert
+  // core.js passes: { date, program_day, volume, wellness, energy, hydration, injury_flag, ... }
+  // Your table expects athlete_id instead of user_id.
   // =========================================================
   async function upsertWorkoutLog(row) {
     ensureReadyOrThrow();
@@ -128,40 +124,54 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
+
     if (!row || !row.date) throw new Error("Missing row.date");
 
-    const payload = { ...row, user_id: u.id };
+    // Map auth user -> athlete_id
+    const payload = { ...row, athlete_id: u.id };
 
+    // IMPORTANT: your DB must have a UNIQUE constraint matching this onConflict.
+    // Recommended: UNIQUE(athlete_id, date)
     const { error } = await window.supabaseClient
       .from(T.workout_logs)
-      .upsert(payload, { onConflict: "user_id,date" });
+      .upsert(payload, { onConflict: "athlete_id,date" });
 
     if (error) throw normalizeErr(error);
     return true;
   }
 
+  // =========================================================
+  // Performance metrics upsert
+  // core.js passes: { date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours }
+  // Your table expects athlete_id instead of user_id.
+  // =========================================================
   async function upsertPerformanceMetric(row) {
     ensureReadyOrThrow();
     const u = await getUser();
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
+
     if (!row || !row.date) throw new Error("Missing row.date");
 
-    const payload = { ...row, user_id: u.id };
+    const payload = { ...row, athlete_id: u.id };
 
+    // IMPORTANT: your DB must have a UNIQUE constraint matching this onConflict.
+    // Recommended: UNIQUE(athlete_id, date)
     const { error } = await window.supabaseClient
       .from(T.performance_metrics)
-      .upsert(payload, { onConflict: "user_id,date" });
+      .upsert(payload, { onConflict: "athlete_id,date" });
 
     if (error) throw normalizeErr(error);
     return true;
   }
 
   // =========================================================
-  // Phase 3 — Team APIs
+  // Team APIs (Aligned to your schema)
+  // teams: coach_id, name, sport
+  // team_members: team_id, user_id, role_in_team, linked_athlete_id
   // =========================================================
-  async function createTeam(name) {
+  async function createTeam(name, sport) {
     ensureReadyOrThrow();
     const u = await getUser();
     if (!u) throw new Error("Not signed in");
@@ -170,19 +180,29 @@
     const teamName = String(name || "").trim();
     if (!teamName) throw new Error("Team name required");
 
+    const teamSport = String(sport || "").trim() || null;
+
     const { data: team, error } = await window.supabaseClient
       .from(T.teams)
-      .insert({ name: teamName, created_by: u.id })
+      .insert({ name: teamName, sport: teamSport, coach_id: u.id })
       .select("*")
       .single();
 
     if (error) throw normalizeErr(error);
 
+    // Add creator as coach member row too (common pattern)
     const { error: e2 } = await window.supabaseClient
       .from(T.team_members)
-      .insert({ team_id: team.id, user_id: u.id, role: "coach" });
+      .insert({
+        team_id: team.id,
+        user_id: u.id,
+        role_in_team: "coach",
+        linked_athlete_id: null
+      });
 
+    // If you already auto-insert via trigger, you can ignore duplicate errors here.
     if (e2) throw normalizeErr(e2);
+
     return team;
   }
 
@@ -193,10 +213,11 @@
 
     const T = tables();
 
-    // NOTE: This returns all teams; if you want "my teams only", you can swap to a view or join.
+    // Your teams table includes coach_id; simplest: list teams where coach_id = current user
     const { data, error } = await window.supabaseClient
       .from(T.teams)
-      .select("id,name,created_at,created_by")
+      .select("id,name,sport,created_at,coach_id")
+      .eq("coach_id", u.id)
       .order("created_at", { ascending: false });
 
     if (error) throw normalizeErr(error);
@@ -209,20 +230,22 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
-    const id = String(teamId || "").trim();
-    if (!id) throw new Error("teamId required");
+    const tid = String(teamId || "").trim();
+    if (!tid) throw new Error("teamId required");
 
     const { data, error } = await window.supabaseClient
       .from(T.team_members)
-      .select("user_id,role,created_at")
-      .eq("team_id", id)
-      .order("created_at", { ascending: true });
+      .select("id,team_id,user_id,role_in_team,linked_athlete_id,joined_at")
+      .eq("team_id", tid)
+      .order("joined_at", { ascending: true });
 
     if (error) throw normalizeErr(error);
     return data || [];
   }
 
-  async function addTeamMember(teamId, userId, role) {
+  // roleInTeam examples: "coach" | "athlete" | "parent" | "manager"
+  // linkedAthleteId is optional and supports a "parent user" linking to an athlete user.
+  async function addTeamMember(teamId, userId, roleInTeam, linkedAthleteId) {
     ensureReadyOrThrow();
     const u = await getUser();
     if (!u) throw new Error("Not signed in");
@@ -230,235 +253,55 @@
     const T = tables();
     const tid = String(teamId || "").trim();
     const uid = String(userId || "").trim();
-    const r = String(role || "athlete").trim();
+    const r = String(roleInTeam || "athlete").trim();
+
+    const lid = linkedAthleteId ? String(linkedAthleteId).trim() : null;
 
     if (!tid) throw new Error("teamId required");
     if (!uid) throw new Error("userId required");
 
     const { error } = await window.supabaseClient
       .from(T.team_members)
-      .insert({ team_id: tid, user_id: uid, role: r });
+      .insert({
+        team_id: tid,
+        user_id: uid,
+        role_in_team: r,
+        linked_athlete_id: lid
+      });
 
     if (error) throw normalizeErr(error);
     return true;
   }
 
-  async function removeTeamMember(teamId, userId) {
+  async function removeTeamMember(teamId, memberRowId) {
     ensureReadyOrThrow();
     const u = await getUser();
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
     const tid = String(teamId || "").trim();
-    const uid = String(userId || "").trim();
+    const mid = String(memberRowId || "").trim();
 
     if (!tid) throw new Error("teamId required");
-    if (!uid) throw new Error("userId required");
+    if (!mid) throw new Error("memberRowId required");
 
+    // Because your table has an 'id' column, safest delete is by id + team_id.
     const { error } = await window.supabaseClient
       .from(T.team_members)
       .delete()
       .eq("team_id", tid)
-      .eq("user_id", uid);
+      .eq("id", mid);
 
     if (error) throw normalizeErr(error);
     return true;
-  }
-
-  async function getTeamRosterSummary(teamId) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId required");
-
-    const members = await listTeamMembers(tid);
-    const athleteIds = members.filter(m => m.role === "athlete").map(m => m.user_id);
-
-    if (!athleteIds.length) return { members, athletes: [] };
-
-    const { data: profiles, error: e1 } = await window.supabaseClient
-      .from(T.user_profiles)
-      .select("user_id,display_name,sport,days_per_week,updated_at")
-      .in("user_id", athleteIds);
-
-    if (e1) throw normalizeErr(e1);
-
-    const { data: logs, error: e2 } = await window.supabaseClient
-      .from(T.workout_logs)
-      .select("user_id,date")
-      .in("user_id", athleteIds)
-      .order("date", { ascending: false });
-
-    if (e2) throw normalizeErr(e2);
-
-    const lastLogByUser = {};
-    (logs || []).forEach((row) => {
-      if (!lastLogByUser[row.user_id]) lastLogByUser[row.user_id] = row.date;
-    });
-
-    const athletes = athleteIds.map((uid) => {
-      const p = (profiles || []).find(x => x.user_id === uid) || {};
-      return {
-        user_id: uid,
-        display_name: p.display_name || "Athlete",
-        sport: p.sport || "",
-        days_per_week: p.days_per_week ?? null,
-        last_log_date: lastLogByUser[uid] || null
-      };
-    });
-
-    return { members, athletes };
-  }
-
-  async function createTeamSession(teamId, sessionDate, title) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const tid = String(teamId || "").trim();
-    const d = String(sessionDate || "").trim();
-
-    if (!tid) throw new Error("teamId required");
-    if (!isISODate(d)) throw new Error("sessionDate must be YYYY-MM-DD");
-
-    const { data, error } = await window.supabaseClient
-      .from(T.team_sessions)
-      .insert({
-        team_id: tid,
-        session_date: d,
-        title: title ? String(title) : null,
-        created_by: u.id
-      })
-      .select("*")
-      .single();
-
-    if (error) throw normalizeErr(error);
-    return data;
-  }
-
-  async function listTeamSessions(teamId, limit = 20) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId required");
-
-    const lim = Number(limit);
-    const safeLim = Number.isFinite(lim) ? Math.max(1, Math.min(lim, 100)) : 20;
-
-    const { data, error } = await window.supabaseClient
-      .from(T.team_sessions)
-      .select("id,team_id,session_date,title,created_at")
-      .eq("team_id", tid)
-      .order("session_date", { ascending: false })
-      .limit(safeLim);
-
-    if (error) throw normalizeErr(error);
-    return data || [];
-  }
-
-  async function upsertAttendance(sessionId, athleteUserId, status, notes) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const sid = String(sessionId || "").trim();
-    const aid = String(athleteUserId || "").trim();
-    const st = String(status || "").trim();
-
-    if (!sid) throw new Error("sessionId required");
-    if (!aid) throw new Error("athleteUserId required");
-    if (!["present", "absent", "excused"].includes(st)) throw new Error("status must be present|absent|excused");
-
-    const { error } = await window.supabaseClient
-      .from(T.team_attendance)
-      .upsert(
-        {
-          session_id: sid,
-          athlete_user_id: aid,
-          status: st,
-          notes: notes ? String(notes) : null
-        },
-        { onConflict: "session_id,athlete_user_id" }
-      );
-
-    if (error) throw normalizeErr(error);
-    return true;
-  }
-
-  // =========================================================
-  // Phase 4 — Readiness data helpers (coach/team intelligence)
-  // =========================================================
-  async function listWorkoutLogsForUsers(userIds, dateFromISO, dateToISO) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const ids = Array.isArray(userIds) ? userIds.filter(Boolean).map(String) : [];
-    if (!ids.length) return [];
-
-    const from = String(dateFromISO || "").trim();
-    const to = String(dateToISO || "").trim();
-    if (from && !isISODate(from)) throw new Error("dateFromISO must be YYYY-MM-DD");
-    if (to && !isISODate(to)) throw new Error("dateToISO must be YYYY-MM-DD");
-
-    let q = window.supabaseClient
-      .from(T.workout_logs)
-      .select("user_id,date,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,program_day,volume")
-      .in("user_id", ids);
-
-    if (from) q = q.gte("date", from);
-    if (to) q = q.lte("date", to);
-
-    const { data, error } = await q.order("date", { ascending: true });
-    if (error) throw normalizeErr(error);
-    return data || [];
-  }
-
-  async function listPerformanceMetricsForUsers(userIds, dateFromISO, dateToISO) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const ids = Array.isArray(userIds) ? userIds.filter(Boolean).map(String) : [];
-    if (!ids.length) return [];
-
-    const from = String(dateFromISO || "").trim();
-    const to = String(dateToISO || "").trim();
-    if (from && !isISODate(from)) throw new Error("dateFromISO must be YYYY-MM-DD");
-    if (to && !isISODate(to)) throw new Error("dateToISO must be YYYY-MM-DD");
-
-    let q = window.supabaseClient
-      .from(T.performance_metrics)
-      .select("user_id,date,vert_inches,sprint_seconds,cod_seconds,bw_lbs,sleep_hours")
-      .in("user_id", ids);
-
-    if (from) q = q.gte("date", from);
-    if (to) q = q.lte("date", to);
-
-    const { data, error } = await q.order("date", { ascending: true });
-    if (error) throw normalizeErr(error);
-    return data || [];
   }
 
   // =========================================================
   // Public API
   // =========================================================
   window.dataStore = {
-    // state sync
     pushState,
     pullState,
-
-    // logs/metrics
     upsertWorkoutLog,
     upsertPerformanceMetric,
 
@@ -467,14 +310,6 @@
     listMyTeams,
     listTeamMembers,
     addTeamMember,
-    removeTeamMember,
-    getTeamRosterSummary,
-    createTeamSession,
-    listTeamSessions,
-    upsertAttendance,
-
-    // readiness helpers
-    listWorkoutLogsForUsers,
-    listPerformanceMetricsForUsers
+    removeTeamMember
   };
 })();
