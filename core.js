@@ -1,11 +1,7 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.2.0
-// Offline-first + Boot-safe + Splash-safe + Optional Supabase sync
-// Phase 2 upgrades (ALL):
-// A) ACWR tracking + load-based readiness caps
-// B) Expanded Log inputs (practice intensity/duration + extra gym + notes)
-// C) Explain-this-score breakdown panel + diagnostics
-// D) Baseline window (28-day) + baseline-building mode (min samples)
-// UI: readiness text color matches grade color (already), plus “Explain” panel
+// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) v1.2.0
+// Phase 4: Coach + Team Workflow + Team Dashboard + Readiness Prescriptions + Offline Queue + CSV Export
+// Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics + team ops if supported)
+// NOTE: Update your index.html cache-buster to core.js?v=1.2.0 (recommended).
 
 (function () {
   "use strict";
@@ -13,6 +9,7 @@
   if (window.__PIQ_CORE_LOADED__) return;
   window.__PIQ_CORE_LOADED__ = true;
 
+  const APP_VERSION = "1.2.0";
   const STORAGE_KEY = "piq_state_v1";
   const CLOUD_PUSH_DEBOUNCE_MS = 800;
   const SPLASH_FAILSAFE_MS = 2000;
@@ -40,6 +37,15 @@
     GREAT: "great"
   });
 
+  const ATTENDANCE = Object.freeze({
+    PRESENT: "present",
+    ABSENT: "absent",
+    EXCUSED: "excused"
+  });
+
+  // =========================================================
+  // Errors
+  // =========================================================
   const errorQueue = [];
   function logError(context, error) {
     const entry = { context, message: error?.message || String(error), ts: Date.now() };
@@ -101,6 +107,18 @@
     return (b - a) / (1000 * 60 * 60 * 24);
   }
 
+  function uuid() {
+    // fast, collision-resistant enough for local ids
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  // =========================================================
+  // Local persistence
+  // =========================================================
   function __loadLocalRaw() {
     try {
       return localStorage.getItem(STORAGE_KEY);
@@ -123,13 +141,12 @@
   function defaultState() {
     const now = Date.now();
     return {
-      meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0, coreVersion: "1.2.0" },
+      meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0, appVersion: APP_VERSION },
       role: "",
       profile: {
         sport: SPORTS.BASKETBALL,
         days: 4,
         name: "",
-        baselineConfig: { windowDays: 28, minSamples: 5 },
         baselines: {
           wellnessAvg: null,
           energyAvg: null,
@@ -137,16 +154,23 @@
           sprint10Avg: null,
           codAvg: null,
           sleepHoursAvg: null,
-          sleepQualityAvg: null,
-          _meta: { lastBuiltAtMs: 0, windowDays: 28, minSamples: 5, logSamples: 0, testSamples: 0 }
+          sleepQualityAvg: null
         }
       },
       trial: { startedAtMs: now, activated: false, licenseKey: "", licenseUntilMs: 0 },
       week: null,
       logs: [],
       tests: [],
-      team: { name: "", roster: [], attendance: [], board: "", compliance: "off" },
-      _ui: { activeTab: "profile", explainOpen: false }
+      // Phase 4: Team workflow (offline-first)
+      team: {
+        activeTeamId: "",
+        teams: [],          // [{id, name, createdAtMs}]
+        roster: [],         // [{id, teamId, name, email, role, createdAtMs}]
+        sessions: [],       // [{id, teamId, dateISO, title, notes, createdAtMs}]
+        attendance: [],     // [{id, teamId, sessionId, athleteId, status, note, updatedAtMs}]
+        opsQueue: []        // offline ops to flush to cloud when available
+      },
+      _ui: { activeTab: "profile" }
     };
   }
 
@@ -158,7 +182,7 @@
     if (!Number.isFinite(s.meta.updatedAtMs)) s.meta.updatedAtMs = Date.now();
     if (!Number.isFinite(s.meta.lastSyncedAtMs)) s.meta.lastSyncedAtMs = 0;
     if (!Number.isFinite(s.meta.version)) s.meta.version = 0;
-    if (typeof s.meta.coreVersion !== "string") s.meta.coreVersion = d.meta.coreVersion;
+    if (typeof s.meta.appVersion !== "string") s.meta.appVersion = APP_VERSION;
 
     if (typeof s.role !== "string") s.role = d.role;
 
@@ -167,16 +191,9 @@
     if (!Number.isFinite(s.profile.days)) s.profile.days = d.profile.days;
     if (typeof s.profile.name !== "string") s.profile.name = d.profile.name;
 
-    s.profile.baselineConfig = s.profile.baselineConfig && typeof s.profile.baselineConfig === "object"
-      ? s.profile.baselineConfig
-      : d.profile.baselineConfig;
-    if (!Number.isFinite(s.profile.baselineConfig.windowDays)) s.profile.baselineConfig.windowDays = d.profile.baselineConfig.windowDays;
-    if (!Number.isFinite(s.profile.baselineConfig.minSamples)) s.profile.baselineConfig.minSamples = d.profile.baselineConfig.minSamples;
-
     s.profile.baselines = s.profile.baselines && typeof s.profile.baselines === "object" ? s.profile.baselines : d.profile.baselines;
     const b = s.profile.baselines;
     const bd = d.profile.baselines;
-
     if (!Number.isFinite(b.wellnessAvg)) b.wellnessAvg = bd.wellnessAvg;
     if (!Number.isFinite(b.energyAvg)) b.energyAvg = bd.energyAvg;
     if (!Number.isFinite(b.vertAvg)) b.vertAvg = bd.vertAvg;
@@ -184,13 +201,6 @@
     if (!Number.isFinite(b.codAvg)) b.codAvg = bd.codAvg;
     if (!Number.isFinite(b.sleepHoursAvg)) b.sleepHoursAvg = bd.sleepHoursAvg;
     if (!Number.isFinite(b.sleepQualityAvg)) b.sleepQualityAvg = bd.sleepQualityAvg;
-
-    b._meta = b._meta && typeof b._meta === "object" ? b._meta : bd._meta;
-    if (!Number.isFinite(b._meta.lastBuiltAtMs)) b._meta.lastBuiltAtMs = 0;
-    if (!Number.isFinite(b._meta.windowDays)) b._meta.windowDays = s.profile.baselineConfig.windowDays;
-    if (!Number.isFinite(b._meta.minSamples)) b._meta.minSamples = s.profile.baselineConfig.minSamples;
-    if (!Number.isFinite(b._meta.logSamples)) b._meta.logSamples = 0;
-    if (!Number.isFinite(b._meta.testSamples)) b._meta.testSamples = 0;
 
     s.trial = s.trial && typeof s.trial === "object" ? s.trial : d.trial;
     if (!Number.isFinite(s.trial.startedAtMs)) s.trial.startedAtMs = d.trial.startedAtMs;
@@ -201,16 +211,17 @@
     if (!Array.isArray(s.logs)) s.logs = [];
     if (!Array.isArray(s.tests)) s.tests = [];
 
+    // Team
     s.team = s.team && typeof s.team === "object" ? s.team : d.team;
-    if (typeof s.team.name !== "string") s.team.name = d.team.name;
+    if (typeof s.team.activeTeamId !== "string") s.team.activeTeamId = "";
+    if (!Array.isArray(s.team.teams)) s.team.teams = [];
     if (!Array.isArray(s.team.roster)) s.team.roster = [];
+    if (!Array.isArray(s.team.sessions)) s.team.sessions = [];
     if (!Array.isArray(s.team.attendance)) s.team.attendance = [];
-    if (typeof s.team.board !== "string") s.team.board = d.team.board;
-    if (typeof s.team.compliance !== "string") s.team.compliance = d.team.compliance;
+    if (!Array.isArray(s.team.opsQueue)) s.team.opsQueue = [];
 
     s._ui = s._ui && typeof s._ui === "object" ? s._ui : d._ui;
     if (typeof s._ui.activeTab !== "string") s._ui.activeTab = "profile";
-    if (typeof s._ui.explainOpen !== "boolean") s._ui.explainOpen = false;
 
     return s;
   }
@@ -231,22 +242,30 @@
   function bumpMeta() {
     state.meta.updatedAtMs = Date.now();
     state.meta.version = (state.meta.version || 0) + 1;
-    state.meta.coreVersion = "1.2.0";
+    state.meta.appVersion = APP_VERSION;
   }
 
   function saveState() {
     bumpMeta();
     __saveLocal(state);
     scheduleCloudPush();
-    try { PIQ_Readiness.updateBaselinesFromHistory(todayISO()); } catch (e) { logError("baselineUpdate", e); }
+    try { PIQ_Readiness.updateBaselinesFromHistory(); } catch (e) { logError("baselineUpdate", e); }
+    flushTeamOpsQueue(); // best-effort
     renderActiveTab();
   }
 
+  // =========================================================
+  // Expose minimal API
+  // =========================================================
   window.PIQ = window.PIQ || {};
   window.PIQ.getState = () => state;
   window.PIQ.getErrors = () => [...errorQueue];
   window.PIQ.saveState = window.PIQ.saveState || (() => saveState());
+  window.PIQ.version = APP_VERSION;
 
+  // =========================================================
+  // Splash
+  // =========================================================
   function hideSplashNow() {
     const s = $("splash");
     if (!s) return;
@@ -258,6 +277,9 @@
   }
   window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
+  // =========================================================
+  // Cloud readiness (optional)
+  // =========================================================
   function isSupabaseReady() {
     return !!(window.supabaseClient && window.PIQ_AuthStore && window.dataStore);
   }
@@ -331,6 +353,9 @@
     }
   }
 
+  // =========================================================
+  // Cloud row helpers (logs/tests) (optional)
+  // =========================================================
   function __piqComputeVolumeFromEntries(entries) {
     let vol = 0;
     (entries || []).forEach((e) => {
@@ -411,6 +436,77 @@
   window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => { __tryUpsertWorkoutLog(localLog); };
   window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => { __tryUpsertMetric(localTest); };
 
+  // =========================================================
+  // Team Ops Queue (offline-first; cloud optional)
+  // =========================================================
+  function enqueueTeamOp(op) {
+    try {
+      if (!op || typeof op !== "object") return;
+      const item = { id: uuid(), ts: Date.now(), ...op };
+      state.team.opsQueue = state.team.opsQueue || [];
+      state.team.opsQueue.push(item);
+      // cap
+      if (state.team.opsQueue.length > 200) state.team.opsQueue.shift();
+      __saveLocal(state);
+    } catch (e) {
+      logError("enqueueTeamOp", e);
+    }
+  }
+
+  function dataStoreHasTeamOps() {
+    // Non-breaking: only flush if these exist
+    return !!(
+      window.dataStore &&
+      typeof window.dataStore.upsertTeam === "function" &&
+      typeof window.dataStore.upsertRosterMember === "function" &&
+      typeof window.dataStore.upsertSession === "function" &&
+      typeof window.dataStore.upsertAttendance === "function"
+    );
+  }
+
+  async function flushTeamOpsQueue() {
+    try {
+      if (!isSupabaseReady()) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      const signed = await isSignedIn().catch(() => false);
+      if (!signed) return;
+      if (!dataStoreHasTeamOps()) return;
+
+      const q = Array.isArray(state.team.opsQueue) ? state.team.opsQueue.slice() : [];
+      if (!q.length) return;
+
+      // process FIFO
+      const remaining = [];
+      for (const item of q) {
+        try {
+          const type = String(item.type || "");
+          const payload = item.payload || {};
+          if (type === "upsertTeam") await window.dataStore.upsertTeam(payload);
+          else if (type === "upsertRosterMember") await window.dataStore.upsertRosterMember(payload);
+          else if (type === "removeRosterMember" && typeof window.dataStore.removeRosterMember === "function") await window.dataStore.removeRosterMember(payload);
+          else if (type === "upsertSession") await window.dataStore.upsertSession(payload);
+          else if (type === "upsertAttendance") await window.dataStore.upsertAttendance(payload);
+          else {
+            // unknown or unsupported op
+            remaining.push(item);
+          }
+        } catch (e) {
+          // keep it for next time
+          remaining.push(item);
+          logError("flushTeamOpsQueue.item", e);
+        }
+      }
+
+      state.team.opsQueue = remaining;
+      __saveLocal(state);
+    } catch (e) {
+      logError("flushTeamOpsQueue", e);
+    }
+  }
+
+  // =========================================================
+  // Role + profile basics
+  // =========================================================
   function setRoleEverywhere(role) {
     state.role = role || "";
     try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
@@ -423,13 +519,11 @@
     state.profile.days = Number(days || state.profile.days || 4);
     if (!Number.isFinite(state.profile.days) || state.profile.days <= 0) state.profile.days = 4;
     if (typeof name === "string") state.profile.name = name;
-
-    // ensure baseline config exists
-    state.profile.baselineConfig = state.profile.baselineConfig || { windowDays: 28, minSamples: 5 };
-    if (!Number.isFinite(state.profile.baselineConfig.windowDays)) state.profile.baselineConfig.windowDays = 28;
-    if (!Number.isFinite(state.profile.baselineConfig.minSamples)) state.profile.baselineConfig.minSamples = 5;
   }
 
+  // =========================================================
+  // Onboard
+  // =========================================================
   function ensureOnboardMount() {
     let mount = $("onboard");
     if (!mount) {
@@ -586,6 +680,9 @@
 
   window.showRoleChooser = function () { renderRoleChooser(); };
 
+  // =========================================================
+  // Tabs
+  // =========================================================
   const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
 
   function showTab(tabName) {
@@ -618,12 +715,13 @@
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim() || "—";
     const rolePill = $("rolePill");
     if (rolePill) rolePill.textContent = `Role: ${role}`;
-
-    // Your index.html uses id="syncPill" (not trialPill)
-    const syncPill = $("syncPill");
+    const syncPill = $("syncPill") || $("trialPill");
     if (syncPill) syncPill.textContent = isSupabaseReady() ? "Offline-first + Sync" : "Offline-first";
   }
 
+  // =========================================================
+  // Program generation + progression
+  // =========================================================
   function generateProgram(sport, days) {
     const s = (sport || SPORTS.BASKETBALL).toLowerCase();
     const d = Math.min(Math.max(Number(days || 4), 3), 5);
@@ -641,13 +739,13 @@
     ];
 
     function primaryLift(name) {
-      return { tier: "Primary", name, sets: 4, reps: "4–6", rest: "2–3 min", rpe: "7–8" };
+      return { tier: "Primary", name, sets: 4, reps: "4–6", rest: "2–3 min", rpe: "7–8", type: "lift_primary" };
     }
     function secondaryLift(name) {
-      return { tier: "Secondary", name, sets: 3, reps: "6–8", rest: "90 sec", rpe: "7" };
+      return { tier: "Secondary", name, sets: 3, reps: "6–8", rest: "90 sec", rpe: "7", type: "lift_secondary" };
     }
     function accessory(name) {
-      return { tier: "Accessory", name, sets: 3, reps: "8–12", rest: "60 sec", rpe: "6–7" };
+      return { tier: "Accessory", name, sets: 3, reps: "8–12", rest: "60 sec", rpe: "6–7", type: "accessory" };
     }
 
     const templates = {
@@ -664,8 +762,8 @@
         {
           title: "Day 2 — Speed + Plyo",
           exercises: [
-            { tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" },
-            { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" },
+            { tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp", type: "jump" },
+            { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort", type: "sprint" },
             accessory("Calf Raises"),
             accessory("Hip Mobility Circuit")
           ]
@@ -682,8 +780,8 @@
         {
           title: "Day 4 — Reactive + Conditioning",
           exercises: [
-            { tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" },
-            { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" },
+            { tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive", type: "jump" },
+            { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp", type: "cod" },
             accessory("Core Circuit"),
             accessory("Zone 2 Bike 12–15 min")
           ]
@@ -691,7 +789,7 @@
         {
           title: "Day 5 — Optional Recovery",
           exercises: [
-            { tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" },
+            { tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy", type: "recovery" },
             accessory("Mobility Flow"),
             accessory("Soft Tissue Work")
           ]
@@ -704,8 +802,9 @@
 
     const progression = {
       model: "4-week wave (auto load)",
+      // Week 1 baseline; Week 2/3/4 increases
       weekMultipliers: [1.0, 1.03, 1.06, 1.09],
-      guidance: "Auto progression: Week 2/3/4 gradually increase load. Readiness + ACWR can override (reduce or hold load)."
+      guidance: "Auto progression increases load in Weeks 2–4. Readiness may hold/reduce load."
     };
 
     return {
@@ -738,10 +837,9 @@
     return [1.0, 1.03, 1.06, 1.09][w - 1] || 1.0;
   }
 
-  // =========================
-  // Readiness Engine v2.1
-  // Adds: Baseline windows, Baseline-building mode, ACWR, Explain breakdown
-  // =========================
+  // =========================================================
+  // Readiness Engine v2 + Prescriptions (Phase 4)
+  // =========================================================
   const PIQ_Readiness = (function () {
     const COLORS = Object.freeze({
       A: "#2ecc71",
@@ -792,60 +890,29 @@
       return tests.slice(-n);
     }
 
-    function withinWindowISO(items, upToISO, windowDays) {
-      const cut = safeDateISO(upToISO) || todayISO();
-      const w = Number.isFinite(windowDays) ? windowDays : 28;
-      const cutMs = isoToMs(cut);
-      if (!Number.isFinite(cutMs)) return [];
-
-      return (items || [])
-        .filter((x) => x && safeDateISO(x.dateISO) && x.dateISO <= cut)
-        .filter((x) => {
-          const ms = isoToMs(x.dateISO);
-          if (!Number.isFinite(ms)) return false;
-          const ageDays = (cutMs - ms) / (1000 * 60 * 60 * 24);
-          return ageDays >= 0 && ageDays <= w;
-        })
-        .slice()
-        .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-    }
-
-    function updateBaselinesFromHistory(asOfISO) {
-      const asOf = safeDateISO(asOfISO) || todayISO();
-      const cfg = state.profile?.baselineConfig || { windowDays: 28, minSamples: 5 };
-      const windowDays = Number.isFinite(cfg.windowDays) ? cfg.windowDays : 28;
-      const minSamples = Number.isFinite(cfg.minSamples) ? cfg.minSamples : 5;
-
-      const logsWin = withinWindowISO(state.logs || [], asOf, windowDays);
-      const testsWin = withinWindowISO(state.tests || [], asOf, windowDays);
+    function updateBaselinesFromHistory() {
+      // Uses last 5 to approximate baseline
+      const logs5 = lastNLogs(5, todayISO());
+      const tests5 = lastNTests(5, todayISO());
 
       const b = state.profile.baselines || (state.profile.baselines = {});
-      b._meta = b._meta || {};
-      b._meta.windowDays = windowDays;
-      b._meta.minSamples = minSamples;
 
-      const wellnessVals = logsWin.map((l) => numOrNull(l.wellness)).filter((x) => Number.isFinite(x));
-      const energyVals = logsWin.map((l) => numOrNull(l.energy)).filter((x) => Number.isFinite(x));
-      const sleepQVals = logsWin.map((l) => numOrNull(l.sleep_quality)).filter((x) => Number.isFinite(x));
+      const wellnessAvg = mean(logs5.map((l) => numOrNull(l.wellness)));
+      const energyAvg = mean(logs5.map((l) => numOrNull(l.energy)));
+      const sleepQualityAvg = mean(logs5.map((l) => numOrNull(l.sleep_quality)));
 
-      const vertVals = testsWin.map((t) => numOrNull(t.vert)).filter((x) => Number.isFinite(x));
-      const sprintVals = testsWin.map((t) => numOrNull(t.sprint10)).filter((x) => Number.isFinite(x));
-      const codVals = testsWin.map((t) => numOrNull(t.cod)).filter((x) => Number.isFinite(x));
-      const sleepHVals = testsWin.map((t) => numOrNull(t.sleep)).filter((x) => Number.isFinite(x));
+      const vertAvg = mean(tests5.map((t) => numOrNull(t.vert)));
+      const sprint10Avg = mean(tests5.map((t) => numOrNull(t.sprint10)));
+      const codAvg = mean(tests5.map((t) => numOrNull(t.cod)));
+      const sleepHoursAvg = mean(tests5.map((t) => numOrNull(t.sleep)));
 
-      b._meta.logSamples = Math.max(wellnessVals.length, energyVals.length, sleepQVals.length);
-      b._meta.testSamples = Math.max(vertVals.length, sprintVals.length, codVals.length, sleepHVals.length);
-      b._meta.lastBuiltAtMs = Date.now();
-
-      // Only set baseline values when we have enough samples for that signal.
-      if (wellnessVals.length >= minSamples) b.wellnessAvg = mean(wellnessVals);
-      if (energyVals.length >= minSamples) b.energyAvg = mean(energyVals);
-      if (sleepQVals.length >= minSamples) b.sleepQualityAvg = mean(sleepQVals);
-
-      if (vertVals.length >= minSamples) b.vertAvg = mean(vertVals);
-      if (sprintVals.length >= minSamples) b.sprint10Avg = mean(sprintVals);
-      if (codVals.length >= minSamples) b.codAvg = mean(codVals);
-      if (sleepHVals.length >= minSamples) b.sleepHoursAvg = mean(sleepHVals);
+      if (Number.isFinite(wellnessAvg)) b.wellnessAvg = wellnessAvg;
+      if (Number.isFinite(energyAvg)) b.energyAvg = energyAvg;
+      if (Number.isFinite(vertAvg)) b.vertAvg = vertAvg;
+      if (Number.isFinite(sprint10Avg)) b.sprint10Avg = sprint10Avg;
+      if (Number.isFinite(codAvg)) b.codAvg = codAvg;
+      if (Number.isFinite(sleepHoursAvg)) b.sleepHoursAvg = sleepHoursAvg;
+      if (Number.isFinite(sleepQualityAvg)) b.sleepQualityAvg = sleepQualityAvg;
 
       state.profile.baselines = b;
       __saveLocal(state);
@@ -861,6 +928,7 @@
     }
 
     function sleepComposite(hours, quality) {
+      // 60/40 quality/duration when both present
       const h = numOrNull(hours);
       const q = numOrNull(quality);
       const hs = Number.isFinite(h) ? clamp((h - 4) / (9 - 4), 0, 1) : null;
@@ -921,106 +989,82 @@
       return 1.0;
     }
 
-    // Training suggestion generator (coach-usable)
-    function planForGrade(grade) {
+    function prescriptionForGrade(grade) {
+      // Actionable session controls
       const g = String(grade || "").toUpperCase();
-      if (g === "A") return { type: "Full", volumeDelta: 0, intensityCap: "RPE ≤ 8", avoid: "None (keep technique clean)", recovery: "Normal" };
-      if (g === "B") return { type: "Normal", volumeDelta: 0, intensityCap: "RPE ≤ 8", avoid: "None", recovery: "Normal" };
-      if (g === "C") return { type: "Reduced", volumeDelta: -15, intensityCap: "RPE ≤ 7", avoid: "Max jumps/sprints + heavy eccentrics", recovery: "Extra sleep + hydration focus" };
-      if (g === "D") return { type: "Recovery", volumeDelta: -40, intensityCap: "RPE ≤ 6", avoid: "High impact + max strength", recovery: "Mobility + easy skill + sleep priority" };
-      return { type: "Off", volumeDelta: -100, intensityCap: "N/A", avoid: "Training", recovery: "Return-to-play / medical guidance" };
+      if (g === "OUT") {
+        return {
+          volumeMultiplier: 0,
+          liftLoadMultiplier: 0,
+          intensityCapRPE: 0,
+          jumpContactsCap: 0,
+          sprintRepsCap: 0,
+          note: "No training. Follow medical/return-to-play plan."
+        };
+      }
+      if (g === "A") {
+        return {
+          volumeMultiplier: 1.0,
+          liftLoadMultiplier: 1.05,
+          intensityCapRPE: 8,
+          jumpContactsCap: 40,
+          sprintRepsCap: 8,
+          note: "Green light. Progress if mechanics are clean."
+        };
+      }
+      if (g === "B") {
+        return {
+          volumeMultiplier: 1.0,
+          liftLoadMultiplier: 1.0,
+          intensityCapRPE: 8,
+          jumpContactsCap: 35,
+          sprintRepsCap: 6,
+          note: "Normal training. Maintain plan."
+        };
+      }
+      if (g === "C") {
+        return {
+          volumeMultiplier: 0.85,
+          liftLoadMultiplier: 0.9,
+          intensityCapRPE: 7,
+          jumpContactsCap: 25,
+          sprintRepsCap: 4,
+          note: "Caution. Reduce volume 10–20%, keep intensity controlled."
+        };
+      }
+      // D
+      return {
+        volumeMultiplier: 0.6,
+        liftLoadMultiplier: 0.75,
+        intensityCapRPE: 6,
+        jumpContactsCap: 10,
+        sprintRepsCap: 2,
+        note: "Recovery focus. Mobility/skill-only or reduced load."
+      };
     }
 
-    function guidanceForGrade(grade, payload) {
-      const p = planForGrade(grade);
+    function guidanceForGrade(grade, reasons) {
+      const g = String(grade || "").toUpperCase();
       const base = {
-        A: "Green light.",
-        B: "Normal training.",
-        C: "Caution.",
-        D: "Recovery focus.",
-        OUT: "No training."
-      }[String(grade || "").toUpperCase()] || "Normal training.";
+        A: "Green light. Progress load if technique is solid.",
+        B: "Normal training. Maintain planned load.",
+        C: "Caution. Reduce volume 10–20% and keep intensity controlled.",
+        D: "Recovery focus. Reduce load significantly or switch to mobility/skill-only.",
+        OUT: "No training. Follow return-to-play plan / medical guidance."
+      }[g] || "Normal training.";
 
-      const parts = [];
-      parts.push(`${base} Today: ${p.type}.`);
-      if (p.volumeDelta !== 0 && p.volumeDelta !== -100) parts.push(`Volume ${p.volumeDelta}% (approx).`);
-      if (p.volumeDelta === -100) parts.push(`Training locked.`);
-      if (p.intensityCap) parts.push(`Cap: ${p.intensityCap}.`);
-      if (p.avoid) parts.push(`Avoid: ${p.avoid}.`);
-      if (p.recovery) parts.push(`Recovery: ${p.recovery}.`);
+      const extra = (reasons && reasons.length)
+        ? (" " + reasons.slice(0, 4).join(" "))
+        : "";
 
-      if (payload && payload.length) parts.push(payload.join(" "));
-
-      return parts.join(" ");
-    }
-
-    // Session load + ACWR
-    // Session load = practiceRPE (1-10) * durationMin
-    function sessionLoadFromLog(l) {
-      const rpe = numOrNull(l?.practice_intensity);
-      const dur = numOrNull(l?.practice_duration_min);
-      if (!Number.isFinite(rpe) || !Number.isFinite(dur)) return 0;
-      return clamp(rpe, 1, 10) * clamp(dur, 0, 600);
-    }
-
-    function acwrForDate(dateISO) {
-      const date = safeDateISO(dateISO) || todayISO();
-      const cutMs = isoToMs(date);
-      if (!Number.isFinite(cutMs)) return { acute: null, chronic: null, acwr: null, note: "Bad date" };
-
-      const logs = (state.logs || [])
-        .filter((l) => l && safeDateISO(l.dateISO) && l.dateISO <= date)
-        .slice()
-        .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-
-      const loadByDay = logs.map((l) => ({ dateISO: l.dateISO, load: sessionLoadFromLog(l) }))
-        .filter((x) => Number.isFinite(x.load) && x.load > 0);
-
-      if (!loadByDay.length) return { acute: 0, chronic: 0, acwr: null, note: "No load data" };
-
-      // Acute: last 7 days sum
-      const acute = loadByDay
-        .filter((x) => {
-          const ms = isoToMs(x.dateISO);
-          if (!Number.isFinite(ms)) return false;
-          const age = (cutMs - ms) / (1000 * 60 * 60 * 24);
-          return age >= 0 && age <= 6.999; // inclusive-ish
-        })
-        .reduce((a, b) => a + b.load, 0);
-
-      // Chronic: last 28 days average weekly load
-      const chronic28 = loadByDay
-        .filter((x) => {
-          const ms = isoToMs(x.dateISO);
-          if (!Number.isFinite(ms)) return false;
-          const age = (cutMs - ms) / (1000 * 60 * 60 * 24);
-          return age >= 0 && age <= 27.999;
-        })
-        .reduce((a, b) => a + b.load, 0);
-
-      // weekly average over 4 weeks
-      const chronic = chronic28 / 4;
-
-      const acwr = (chronic > 0) ? (acute / chronic) : null;
-      return { acute: Math.round(acute), chronic: Math.round(chronic), acwr: acwr !== null ? Number(acwr.toFixed(2)) : null, note: "" };
+      return base + extra;
     }
 
     function computeForDate(dateISO) {
       const date = safeDateISO(dateISO) || todayISO();
-
-      // build baselines using configured window
-      updateBaselinesFromHistory(date);
+      updateBaselinesFromHistory();
 
       const b = state.profile?.baselines || {};
-      const cfg = state.profile?.baselineConfig || { windowDays: 28, minSamples: 5 };
-      const windowDays = Number.isFinite(cfg.windowDays) ? cfg.windowDays : 28;
-      const minSamples = Number.isFinite(cfg.minSamples) ? cfg.minSamples : 5;
-      const baseMeta = b._meta || { logSamples: 0, testSamples: 0 };
-
-      const baselineBuilding =
-        (Number(baseMeta.logSamples) < minSamples) ||
-        (Number(baseMeta.testSamples) < minSamples);
-
       const logs7 = lastNLogs(7, date);
       const tests7 = lastNTests(7, date);
 
@@ -1046,30 +1090,20 @@
 
       const redFlags = [];
       const cautions = [];
-      const explain = {
-        points: { neuromuscular: 0, sleep: 0, subjective: 0, hydration: 0, trend: 0 },
-        deltas: {},
-        modifiers: { injuryMultiplier: 1, readinessModifier: 1, acwrCap: 1 },
-        overrides: [],
-        baseline: { building: baselineBuilding, windowDays, minSamples, logSamples: baseMeta.logSamples || 0, testSamples: baseMeta.testSamples || 0 },
-        acwr: { acute: null, chronic: null, acwr: null }
-      };
 
+      // Trend velocity detectors
       if (Number.isFinite(wSlope) && wSlope <= -0.75) redFlags.push("Wellness trend dropping fast.");
       if (Number.isFinite(eSlope) && eSlope <= -0.75) redFlags.push("Energy trend dropping fast.");
 
+      // Consecutive low wellness
       const last2 = lastNLogs(2, date);
       const lowW = last2.filter((l) => Number.isFinite(numOrNull(l.wellness)) && numOrNull(l.wellness) <= 4).length;
       if (lowW >= 2) redFlags.push("Consecutive low wellness (≤4).");
 
-      // neuromuscular deltas only if baseline exists AND we're not baseline-building for tests
-      const vertDrop = (!baselineBuilding) ? percentDropFromBaseline(todaysTest?.vert, b.vertAvg) : null;
-      const sprintWorse = (!baselineBuilding) ? percentWorseFromBaseline_time(todaysTest?.sprint10, b.sprint10Avg) : null;
-      const codWorse = (!baselineBuilding) ? percentWorseFromBaseline_time(todaysTest?.cod, b.codAvg) : null;
-
-      explain.deltas.vertDrop = vertDrop;
-      explain.deltas.sprintWorse = sprintWorse;
-      explain.deltas.codWorse = codWorse;
+      // Performance deltas vs baseline
+      const vertDrop = percentDropFromBaseline(todaysTest?.vert, b.vertAvg);
+      const sprintWorse = percentWorseFromBaseline_time(todaysTest?.sprint10, b.sprint10Avg);
+      const codWorse = percentWorseFromBaseline_time(todaysTest?.cod, b.codAvg);
 
       if (Number.isFinite(vertDrop) && vertDrop >= 0.05) redFlags.push("Vertical drop ≥5% vs baseline.");
       else if (Number.isFinite(vertDrop) && vertDrop >= 0.03) cautions.push("Vertical drop ≥3% vs baseline.");
@@ -1081,20 +1115,16 @@
       else if (Number.isFinite(codWorse) && codWorse >= 0.03) cautions.push("COD time worse ≥3% vs baseline.");
 
       const sleepComp = sleepComposite(sleepHours, sleepQuality);
-      explain.deltas.sleepComposite = sleepComp;
-
       if (sleepComp !== null && sleepComp < 0.35) redFlags.push("Sleep quality/duration low.");
       else if (sleepComp !== null && sleepComp < 0.5) cautions.push("Sleep could be better.");
 
       const hydScore = hydrationScore(hydration);
       if (hydration === HYDRATION_LEVELS.LOW) cautions.push("Hydration low.");
 
-      // injury modifier
+      // Injury tiers
       const injury = injuryTierPenalty(injuryFlag, injuryPain);
-      explain.modifiers.injuryMultiplier = injury.multiplier;
-
       if (injury.lock) {
-        const baseProg = programBaseMultiplier(date);
+        const pres = prescriptionForGrade("OUT");
         return {
           dateISO: date,
           score: 0,
@@ -1102,65 +1132,45 @@
           color: COLORS.OUT,
           readinessModifier: 0,
           programWeek: programWeekIndex(date),
-          baseProgressionMultiplier: baseProg,
+          baseProgressionMultiplier: programBaseMultiplier(date),
           finalProgressionMultiplier: 0,
+          prescription: pres,
           guidance: guidanceForGrade("OUT", [injury.label]),
-          reasons: [injury.label],
-          explain,
-          acwr: { acute: null, chronic: null, acwr: null }
+          reasons: [injury.label]
         };
       }
       if (injury.multiplier === 0) redFlags.push("Severe pain tier.");
       else if (injury.multiplier < 1) cautions.push(injury.label);
 
-      // ACWR
-      const acwrObj = acwrForDate(date);
-      explain.acwr = acwrObj;
-
-      // ACWR rules:
-      // - If ACWR > 1.5 => caution + cap progression multiplier (acwrCap 0.90)
-      // - If ACWR < 0.8 => underload flag (no cap; coach note)
-      let acwrCap = 1.0;
-      if (Number.isFinite(acwrObj.acwr) && acwrObj.acwr > 1.5) {
-        cautions.push(`ACWR high (${acwrObj.acwr}).`);
-        acwrCap = 0.90;
-      } else if (Number.isFinite(acwrObj.acwr) && acwrObj.acwr < 0.8 && acwrObj.acwr > 0) {
-        cautions.push(`ACWR low (${acwrObj.acwr}) — possible underload.`);
-      }
-      explain.modifiers.acwrCap = acwrCap;
-
-      // ===== Score build (0–100) =====
+      // Score composition (0–100-ish)
       let score = 0;
+      const reasons = [];
 
-      // Neuromuscular (0–40)
+      // Neuromuscular / performance (40)
       let nm = 40;
       if (Number.isFinite(vertDrop)) nm -= clamp((vertDrop / 0.10) * 20, 0, 20);
       if (Number.isFinite(sprintWorse)) nm -= clamp((sprintWorse / 0.10) * 10, 0, 10);
       if (Number.isFinite(codWorse)) nm -= clamp((codWorse / 0.10) * 10, 0, 10);
       nm = clamp(nm, 0, 40);
       score += nm;
-      explain.points.neuromuscular = Math.round(nm);
 
-      // Sleep (0–20)
-      let sl = 0;
-      if (sleepComp === null) sl = 12; // neutral-ish when missing
-      else sl = clamp(sleepComp * 20, 0, 20);
-      score += sl;
-      explain.points.sleep = Math.round(sl);
+      // Sleep (20)
+      if (sleepComp === null) score += 12;
+      else score += clamp(sleepComp * 20, 0, 20);
 
-      // Subjective vs baseline (0–20)
+      // Subjective (20) with individual baseline
       const wBase = numOrNull(b.wellnessAvg);
       const eBase = numOrNull(b.energyAvg);
 
       let sub = 20;
-      if (!baselineBuilding && Number.isFinite(wellnessToday) && Number.isFinite(wBase)) {
+      if (Number.isFinite(wellnessToday) && Number.isFinite(wBase)) {
         const delta = wellnessToday - wBase;
         sub += clamp(delta * 2, -12, 4);
       } else if (Number.isFinite(wellnessToday)) {
         sub += clamp((wellnessToday - 6) * 1.5, -9, 6);
       }
 
-      if (!baselineBuilding && Number.isFinite(energyToday) && Number.isFinite(eBase)) {
+      if (Number.isFinite(energyToday) && Number.isFinite(eBase)) {
         const delta = energyToday - eBase;
         sub += clamp(delta * 2, -12, 4);
       } else if (Number.isFinite(energyToday)) {
@@ -1169,76 +1179,56 @@
 
       sub = clamp(sub, 0, 20);
       score += sub;
-      explain.points.subjective = Math.round(sub);
 
-      // Hydration (0–10)
-      const hydPts = clamp(hydScore * 10, 0, 10);
-      score += hydPts;
-      explain.points.hydration = Math.round(hydPts);
+      // Hydration (10)
+      score += clamp(hydScore * 10, 0, 10);
 
-      // Trend velocity (0–10)
+      // Trend velocity (10)
       let tv = 10;
       if (Number.isFinite(wSlope) && wSlope < 0) tv -= clamp(Math.abs(wSlope) * 6, 0, 6);
       if (Number.isFinite(eSlope) && eSlope < 0) tv -= clamp(Math.abs(eSlope) * 4, 0, 4);
       tv = clamp(tv, 0, 10);
       score += tv;
-      explain.points.trend = Math.round(tv);
 
-      // apply injury multiplier
+      // Apply injury multiplier
       score = score * injury.multiplier;
 
-      // grade
       let grade = gradeFromScore(score);
 
-      // overrides
-      if (baselineBuilding) {
-        // soften grading while baseline is building (avoid overreacting without baselines)
-        cautions.push(`Baseline building (${Math.max(baseMeta.logSamples || 0, baseMeta.testSamples || 0)}/${minSamples} samples).`);
-      }
-
+      // Overrides
       if (redFlags.length >= 2) {
-        if (grade === "A" || grade === "B") { grade = "C"; explain.overrides.push("2+ red flags → capped to C"); }
+        if (grade === "A" || grade === "B") grade = "C";
       } else if (redFlags.length === 1) {
-        if (grade === "A") { grade = "B"; explain.overrides.push("1 red flag → A→B"); }
-        else if (grade === "B") { grade = "C"; explain.overrides.push("1 red flag → B→C"); }
-        else if (grade === "C") { grade = "D"; explain.overrides.push("1 red flag → C→D"); }
+        if (grade === "A") grade = "B";
+        else if (grade === "B") grade = "C";
+        else if (grade === "C") grade = "D";
       }
 
       if (sleepComp !== null && sleepComp < 0.25) {
-        if (grade === "A" || grade === "B") { grade = "C"; explain.overrides.push("Very low sleep → capped to C"); }
+        if (grade === "A" || grade === "B") grade = "C";
       }
 
       if (hydration === HYDRATION_LEVELS.LOW && Number.isFinite(wellnessToday) && wellnessToday <= 5) {
-        if (grade === "A" || grade === "B") { grade = "C"; explain.overrides.push("Low hydration + low wellness → capped to C"); }
+        if (grade === "A" || grade === "B") grade = "C";
       }
 
-      // reasons list
-      const reasons = [];
       if (redFlags.length) reasons.push(...redFlags.map((x) => `⚠️ ${x}`));
       if (cautions.length) reasons.push(...cautions.map((x) => `• ${x}`));
       if (injury.label && injury.label !== "None") reasons.push(`• Injury: ${injury.label}`);
 
       const readinessModifier = readinessToModifier(grade);
-      explain.modifiers.readinessModifier = readinessModifier;
-
       const baseProg = programBaseMultiplier(date);
-
-      // final progression multiplier: base * readiness * acwrCap
-      let finalProg = clamp(baseProg * readinessModifier * acwrCap, 0, 2);
-
-      // If severe pain tier (multiplier 0) already handled; if moderate, reduce further by readiness already.
-      // Provide load text
-      const w = programWeekIndex(date);
-      const basePct = Math.round(baseProg * 100);
-      const finalPct = Math.round(finalProg * 100);
+      const finalProg = clamp(baseProg * readinessModifier, 0, 2);
 
       const loadText = (function () {
+        const w = programWeekIndex(date);
+        const basePct = Math.round(baseProg * 100);
+        const finalPct = Math.round(finalProg * 100);
         if (grade === "OUT") return "Training locked.";
-        const bits = [`Week ${w} base: ${basePct}%.`, `Adjusted: ${finalPct}%.`];
-        if (Number.isFinite(acwrObj.acwr) && acwrObj.acwr > 1.5) bits.push(`ACWR cap applied.`);
-        return bits.join(" ");
+        return `Week ${w} base load: ${basePct}%. Readiness-adjusted: ${finalPct}%.`;
       })();
 
+      const pres = prescriptionForGrade(grade);
       const guidance = guidanceForGrade(grade, [loadText]);
 
       return {
@@ -1247,13 +1237,12 @@
         grade,
         color: COLORS[grade] || COLORS.B,
         readinessModifier,
-        programWeek: w,
+        programWeek: programWeekIndex(date),
         baseProgressionMultiplier: baseProg,
         finalProgressionMultiplier: finalProg,
+        prescription: pres,
         guidance,
-        reasons,
-        explain,
-        acwr: acwrObj
+        reasons
       };
     }
 
@@ -1262,9 +1251,44 @@
 
   window.PIQ.readiness = window.PIQ.readiness || {};
   window.PIQ.readiness.forDate = (iso) => PIQ_Readiness.computeForDate(iso);
-  window.PIQ.readiness.updateBaselines = (asOfISO) => PIQ_Readiness.updateBaselinesFromHistory(asOfISO || todayISO());
+  window.PIQ.readiness.updateBaselines = () => PIQ_Readiness.updateBaselinesFromHistory();
 
-  // ---- Renderers ----
+  // =========================================================
+  // CSV Export (device-side)
+  // =========================================================
+  function toCSV(rows, headers) {
+    const safe = (v) => {
+      const s = String(v ?? "");
+      if (s.includes('"') || s.includes(",") || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const cols = headers && headers.length ? headers : (rows[0] ? Object.keys(rows[0]) : []);
+    const out = [];
+    out.push(cols.map(safe).join(","));
+    for (const r of rows) out.push(cols.map((k) => safe(r ? r[k] : "")).join(","));
+    return out.join("\n");
+  }
+
+  function downloadTextFile(filename, text) {
+    try {
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      logError("downloadTextFile", e);
+      alert("Export failed.");
+    }
+  }
+
+  // =========================================================
+  // Renderers
+  // =========================================================
   function renderProfile() {
     const el = $("tab-profile");
     if (!el) return;
@@ -1274,9 +1298,7 @@
     const days = Number.isFinite(state.profile?.days) ? state.profile.days : 4;
     const name = state.profile?.name || "";
 
-    const cfg = state.profile?.baselineConfig || { windowDays: 28, minSamples: 5 };
     const b = state.profile?.baselines || {};
-    const bm = b._meta || {};
     const baselineText = `
       Wellness avg: ${Number.isFinite(b.wellnessAvg) ? b.wellnessAvg.toFixed(1) : "—"} •
       Energy avg: ${Number.isFinite(b.energyAvg) ? b.energyAvg.toFixed(1) : "—"} •
@@ -1286,7 +1308,7 @@
 
     el.innerHTML = `
       <h3 style="margin-top:0">Profile</h3>
-      <div class="small">Offline-first. Your profile saves to this device. Sign in only if you want sync.</div>
+      <div class="small">App v${sanitizeHTML(APP_VERSION)} • Offline-first. Sign in only if you want sync.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -1322,26 +1344,14 @@
         </div>
       </div>
 
-      <div class="row" style="margin-top:10px">
-        <div class="field">
-          <label for="baselineWindowDays">Baseline window (days)</label>
-          <input id="baselineWindowDays" inputmode="numeric" placeholder="28" value="${sanitizeHTML(cfg.windowDays)}"/>
-        </div>
-        <div class="field">
-          <label for="baselineMinSamples">Min samples per signal</label>
-          <input id="baselineMinSamples" inputmode="numeric" placeholder="5" value="${sanitizeHTML(cfg.minSamples)}"/>
-        </div>
-      </div>
-
       <div class="btnRow" style="margin-top:12px">
         <button class="btn" id="btnSaveProfile" type="button">Save Profile</button>
         <button class="btn secondary" id="btnGenProgram" type="button">Generate / Update Program</button>
       </div>
 
       <div class="hr"></div>
-      <div class="small"><b>Baselines</b> (window: ${sanitizeHTML(cfg.windowDays)}d • min samples: ${sanitizeHTML(cfg.minSamples)})</div>
+      <div class="small"><b>Baselines (auto from last 3–5 entries)</b></div>
       <div class="small">${sanitizeHTML(baselineText)}</div>
-      <div class="small">Samples — logs: ${sanitizeHTML(bm.logSamples ?? 0)} • tests: ${sanitizeHTML(bm.testSamples ?? 0)} • last built: ${bm.lastBuiltAtMs ? sanitizeHTML(new Date(bm.lastBuiltAtMs).toLocaleString()) : "—"}</div>
     `;
 
     $("profileSport").value = sport;
@@ -1351,15 +1361,7 @@
       const nextSport = $("profileSport")?.value || sport;
       const nextDays = $("profileDays")?.value || days;
       const nextName = $("profileName")?.value || "";
-
-      const wDays = numOrNull($("baselineWindowDays")?.value);
-      const minS = numOrNull($("baselineMinSamples")?.value);
-
       setProfileBasics(nextSport, nextDays, nextName);
-
-      state.profile.baselineConfig.windowDays = Number.isFinite(wDays) ? clamp(wDays, 7, 90) : 28;
-      state.profile.baselineConfig.minSamples = Number.isFinite(minS) ? clamp(minS, 3, 15) : 5;
-
       saveState();
       setPills();
       alert("Saved.");
@@ -1374,6 +1376,48 @@
       showTab("program");
       renderActiveTab();
     });
+  }
+
+  function adjustExerciseForPrescription(ex, pres, finalProgMultiplier) {
+    // Non-destructive: returns display-only adjusted text
+    const p = pres || { volumeMultiplier: 1, liftLoadMultiplier: 1, intensityCapRPE: 8, jumpContactsCap: 35, sprintRepsCap: 6 };
+    const baseMult = Number.isFinite(finalProgMultiplier) ? finalProgMultiplier : 1.0;
+
+    const type = String(ex?.type || "").toLowerCase();
+    let note = "";
+    let sets = ex.sets;
+    let reps = ex.reps;
+    let rpe = ex.rpe;
+
+    // Volume changes (sets) for most strength/accessory
+    if (type.includes("lift") || type === "accessory") {
+      if (Number.isFinite(ex.sets)) sets = Math.max(1, Math.round(ex.sets * p.volumeMultiplier));
+      note = `Load x${(baseMult * p.liftLoadMultiplier).toFixed(2)} • RPE cap ${p.intensityCapRPE}`;
+    } else if (type === "jump") {
+      // cap contacts via sets*reps estimate if reps numeric
+      const repsNum = Number(String(ex.reps || "").replace(/[^0-9]/g, ""));
+      const perSet = Number.isFinite(repsNum) && repsNum > 0 ? repsNum : 3;
+      const maxSets = Math.max(1, Math.floor(p.jumpContactsCap / perSet));
+      if (Number.isFinite(ex.sets)) sets = Math.min(ex.sets, maxSets);
+      note = `Cap contacts ~${p.jumpContactsCap}`;
+    } else if (type === "sprint") {
+      if (Number.isFinite(ex.sets)) sets = Math.min(ex.sets, p.sprintRepsCap);
+      note = `Cap reps ${p.sprintRepsCap}`;
+    } else if (type === "cod") {
+      if (Number.isFinite(ex.sets)) sets = Math.max(1, Math.round(ex.sets * p.volumeMultiplier));
+      note = `Volume x${p.volumeMultiplier.toFixed(2)} • RPE cap ${p.intensityCapRPE}`;
+    } else if (type === "recovery") {
+      note = "Keep easy.";
+    }
+
+    // Intensity cap hint
+    if (typeof rpe === "string" && rpe.match(/^\d/)) {
+      // If RPE provided as number string, cap it
+      const n = Number(rpe);
+      if (Number.isFinite(n)) rpe = String(Math.min(n, p.intensityCapRPE));
+    }
+
+    return { sets, reps, rpe, note };
   }
 
   function renderProgram() {
@@ -1391,42 +1435,49 @@
 
     const date = todayISO();
     const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(date) : null;
+
     const wk = programWeekIndex(date);
     const baseProg = programBaseMultiplier(date);
     const finalProg = r ? r.finalProgressionMultiplier : baseProg;
+    const pres = r?.prescription || null;
 
     const readinessLine = r
-      ? `<div class="small" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
+      ? `<div class="small gradeText" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
           Readiness: <b>${sanitizeHTML(r.grade)}</b> (${sanitizeHTML(r.score)}) • ${sanitizeHTML(r.guidance)}
         </div>`
       : "";
 
-    const acwrLine = (r && r.acwr && Number.isFinite(r.acwr.acwr))
-      ? `<div class="small" style="margin-top:6px">
-          Load: Acute ${sanitizeHTML(r.acwr.acute)} • Chronic ${sanitizeHTML(r.acwr.chronic)} • ACWR <b>${sanitizeHTML(r.acwr.acwr)}</b>
+    const presLine = pres
+      ? `<div class="small gradeText" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
+          Today’s prescription: Volume x<b>${sanitizeHTML(pres.volumeMultiplier)}</b>, Lift load x<b>${sanitizeHTML(pres.liftLoadMultiplier)}</b>,
+          RPE cap <b>${sanitizeHTML(pres.intensityCapRPE)}</b>, Jump cap <b>${sanitizeHTML(pres.jumpContactsCap)}</b>, Sprint cap <b>${sanitizeHTML(pres.sprintRepsCap)}</b>.
         </div>`
-      : `<div class="small" style="margin-top:6px">Load: add Practice intensity + duration in Log to enable ACWR.</div>`;
+      : "";
 
     const progLine = `
       <div class="small" style="margin-top:6px">
-        Auto progression: <b>Week ${wk}</b> base multiplier <b>${baseProg.toFixed(2)}x</b> • final <b>${finalProg.toFixed(2)}x</b>
+        Auto progression: <b>Week ${wk}</b> base multiplier <b>${baseProg.toFixed(2)}x</b> • readiness-adjusted <b>${finalProg.toFixed(2)}x</b>
       </div>
     `;
 
     const daysHtml = (p.daysPlan || []).map((day) => `
       <div class="card" style="margin:16px 0;padding:14px">
         <div style="font-weight:600;margin-bottom:8px">${sanitizeHTML(day.title)}</div>
-        ${(day.exercises || []).map(ex => `
-          <div style="margin-bottom:10px">
-            <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
-            <div class="small">
-              ${ex.sets ? `Sets: ${sanitizeHTML(ex.sets)} • ` : ""}
-              ${ex.reps ? `Reps: ${sanitizeHTML(ex.reps)} • ` : ""}
-              ${ex.rest ? `Rest: ${sanitizeHTML(ex.rest)} • ` : ""}
-              ${ex.rpe ? `RPE: ${sanitizeHTML(ex.rpe)}` : ""}
+        ${(day.exercises || []).map(ex => {
+          const adj = adjustExerciseForPrescription(ex, pres, finalProg);
+          return `
+            <div style="margin-bottom:10px">
+              <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
+              <div class="small">
+                ${adj.sets ? `Sets: <b>${sanitizeHTML(adj.sets)}</b> • ` : ""}
+                ${adj.reps ? `Reps: ${sanitizeHTML(adj.reps)} • ` : ""}
+                ${ex.rest ? `Rest: ${sanitizeHTML(ex.rest)} • ` : ""}
+                ${adj.rpe ? `RPE: ${sanitizeHTML(adj.rpe)}` : ""}
+              </div>
+              ${adj.note ? `<div class="small" style="opacity:.9">${sanitizeHTML(adj.note)}</div>` : ""}
             </div>
-          </div>
-        `).join("")}
+          `;
+        }).join("")}
       </div>
     `).join("");
 
@@ -1436,8 +1487,8 @@
         Sport: <b>${sanitizeHTML(p.sport)}</b> • Days/week: <b>${sanitizeHTML(p.days)}</b>
       </div>
       ${progLine}
-      ${acwrLine}
       ${readinessLine}
+      ${presLine}
 
       <div class="hr"></div>
 
@@ -1455,7 +1506,9 @@
     `;
   }
 
-  // LOG TAB — expanded inputs (practice intensity/duration + extra gym + notes)
+  // =========================================================
+  // Log tab (Sleep Quality + Injury Pain)
+  // =========================================================
   function renderLog() {
     const el = $("tab-log");
     if (!el) return;
@@ -1466,7 +1519,7 @@
 
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
-      <div class="small">Daily log drives readiness + load (ACWR). Stored locally; can sync when signed in.</div>
+      <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
       <div class="hr"></div>
 
       <div class="row">
@@ -1520,37 +1573,6 @@
         </div>
       </div>
 
-      <div class="hr"></div>
-
-      <div class="row">
-        <div class="field">
-          <label for="practiceIntensity">Practice intensity (RPE 1–10)</label>
-          <input id="practiceIntensity" inputmode="numeric" placeholder="7" />
-        </div>
-        <div class="field">
-          <label for="practiceDuration">Practice duration (minutes)</label>
-          <input id="practiceDuration" inputmode="numeric" placeholder="90" />
-        </div>
-        <div class="field">
-          <label for="extraGym">Extra gym?</label>
-          <select id="extraGym">
-            <option value="false" selected>No</option>
-            <option value="true">Yes</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="extraGymDuration">Extra gym minutes</label>
-          <input id="extraGymDuration" inputmode="numeric" placeholder="30" />
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <div class="field" style="flex:1">
-          <label for="logNotes">Notes (optional)</label>
-          <input id="logNotes" placeholder="Any soreness location, game, travel, etc." />
-        </div>
-      </div>
-
       <div class="btnRow" style="margin-top:12px">
         <button class="btn" id="btnSaveLog" type="button">Save Log</button>
       </div>
@@ -1569,7 +1591,7 @@
 
     $("btnSaveLog")?.addEventListener("click", () => {
       const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const hydration = ($("hydrationLevel")?.value || "good").trim();
+      const hydration = ($("hydrationLevel")?.value || "good").trim(); // categorical only
 
       const wellness = clampNumOrNull($("wellness")?.value, 1, 10);
       const energy = clampNumOrNull($("energy")?.value, 1, 10);
@@ -1577,14 +1599,6 @@
 
       const injury = ($("injuryFlag")?.value || "none").trim();
       const injury_pain = clampNumOrNull($("injuryPain")?.value, 0, 10);
-
-      const practice_intensity = clampNumOrNull($("practiceIntensity")?.value, 1, 10);
-      const practice_duration_min = clampNumOrNull($("practiceDuration")?.value, 0, 600);
-
-      const extra_gym = ($("extraGym")?.value || "false") === "true";
-      const extra_gym_duration_min = extra_gym ? clampNumOrNull($("extraGymDuration")?.value, 0, 240) : null;
-
-      const notes = ($("logNotes")?.value || "").trim();
 
       const localLog = {
         dateISO,
@@ -1595,11 +1609,6 @@
         energy,
         sleep_quality,
         hydration,
-        practice_intensity: practice_intensity !== null ? String(practice_intensity) : null, // keep as string for DB mapping compatibility
-        practice_duration_min,
-        extra_gym,
-        extra_gym_duration_min,
-        notes: notes || null,
         entries: []
       };
 
@@ -1620,35 +1629,24 @@
       return;
     }
 
-    list.innerHTML = logs.slice(0, 10).map((l) => {
-      const load = (function () {
-        const rpe = numOrNull(l.practice_intensity);
-        const dur = numOrNull(l.practice_duration_min);
-        if (!Number.isFinite(rpe) || !Number.isFinite(dur)) return "—";
-        return String(Math.round(clamp(rpe, 1, 10) * clamp(dur, 0, 600)));
-      })();
-
-      return `
-        <div class="card" style="margin:10px 0">
-          <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-            <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
-            <div class="small">
-              Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")} • SleepQ: ${sanitizeHTML(l.sleep_quality ?? "—")}
-            </div>
-          </div>
+    list.innerHTML = logs.slice(0, 10).map((l) => `
+      <div class="card" style="margin:10px 0">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
           <div class="small">
-            Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")} • Pain: ${sanitizeHTML(l.injury_pain ?? "—")}
+            Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")} • SleepQ: ${sanitizeHTML(l.sleep_quality ?? "—")}
           </div>
-          <div class="small">
-            Practice RPE: ${sanitizeHTML(l.practice_intensity ?? "—")} • Minutes: ${sanitizeHTML(l.practice_duration_min ?? "—")} • Session load: <b>${sanitizeHTML(load)}</b>
-            • Extra gym: ${sanitizeHTML(l.extra_gym ? "Yes" : "No")} ${l.extra_gym ? `(${sanitizeHTML(l.extra_gym_duration_min ?? "—")} min)` : ""}
-          </div>
-          ${l.notes ? `<div class="small">Notes: ${sanitizeHTML(l.notes)}</div>` : ``}
         </div>
-      `;
-    }).join("");
+        <div class="small">
+          Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")} • Pain: ${sanitizeHTML(l.injury_pain ?? "—")}
+        </div>
+      </div>
+    `).join("");
   }
 
+  // =========================================================
+  // Performance tab
+  // =========================================================
   function renderPerformance() {
     const el = $("tab-performance");
     if (!el) return;
@@ -1698,6 +1696,12 @@
 
       <div class="hr"></div>
 
+      <div class="btnRow">
+        <button class="btn secondary" id="btnExportTests" type="button">Export Tests CSV</button>
+      </div>
+
+      <div class="hr"></div>
+
       <div class="small"><b>Recent tests</b></div>
       <div id="testList"></div>
     `;
@@ -1722,6 +1726,12 @@
       alert("Saved.");
     });
 
+    $("btnExportTests")?.addEventListener("click", () => {
+      const rows = (state.tests || []).slice().sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+      const csv = toCSV(rows, ["dateISO", "vert", "sprint10", "cod", "bw", "sleep"]);
+      downloadTextFile(`performance_tests_${todayISO()}.csv`, csv);
+    });
+
     const list = $("testList");
     if (!list) return;
 
@@ -1741,80 +1751,34 @@
     `).join("");
   }
 
+  // =========================================================
+  // Dashboard (Phase 4): readiness + trends + risk list
+  // =========================================================
   function renderDashboard() {
     const el = $("tab-dashboard");
     if (!el) return;
 
     const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
 
-    const explainOpen = !!state._ui?.explainOpen;
-
     const readinessCard = r ? `
       <div class="card" style="margin:10px 0;padding:12px">
         <div class="small"><b>Readiness today</b></div>
-        <div style="margin-top:6px;color:${sanitizeHTML(r.color)};font-weight:700;font-size:18px">
+        <div class="gradeText" style="margin-top:6px;color:${sanitizeHTML(r.color)};font-weight:700;font-size:18px">
           ${sanitizeHTML(r.grade)} (${sanitizeHTML(r.score)})
         </div>
-        <div class="small" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
+        <div class="small gradeText" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
           ${sanitizeHTML(r.guidance)}
         </div>
-
-        ${r.acwr && Number.isFinite(r.acwr.acwr) ? `
-          <div class="small" style="margin-top:8px">
-            Load: Acute ${sanitizeHTML(r.acwr.acute)} • Chronic ${sanitizeHTML(r.acwr.chronic)} • ACWR <b>${sanitizeHTML(r.acwr.acwr)}</b>
+        ${r.prescription ? `
+          <div class="small gradeText" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
+            Prescription — Vol x${sanitizeHTML(r.prescription.volumeMultiplier)}, Lift x${sanitizeHTML(r.prescription.liftLoadMultiplier)},
+            RPE cap ${sanitizeHTML(r.prescription.intensityCapRPE)}, Jump cap ${sanitizeHTML(r.prescription.jumpContactsCap)}, Sprint cap ${sanitizeHTML(r.prescription.sprintRepsCap)}
           </div>
-        ` : `
-          <div class="small" style="margin-top:8px">
-            Load: add Practice intensity + duration in Log to enable ACWR.
-          </div>
-        `}
-
+        ` : ``}
         ${r.reasons && r.reasons.length ? `
           <div class="small" style="margin-top:8px">
             ${r.reasons.map(x => sanitizeHTML(x)).join("<br/>")}
           </div>
-        ` : ``}
-
-        <div class="btnRow" style="margin-top:10px">
-          <button class="btn secondary" id="btnToggleExplain" type="button">${explainOpen ? "Hide" : "Explain this score"}</button>
-        </div>
-
-        ${explainOpen ? `
-          <div class="hr"></div>
-          <div class="small"><b>Explain</b></div>
-          <div class="small">
-            Points — Neuromuscular: <b>${sanitizeHTML(r.explain?.points?.neuromuscular ?? "—")}</b>/40 •
-            Sleep: <b>${sanitizeHTML(r.explain?.points?.sleep ?? "—")}</b>/20 •
-            Subjective: <b>${sanitizeHTML(r.explain?.points?.subjective ?? "—")}</b>/20 •
-            Hydration: <b>${sanitizeHTML(r.explain?.points?.hydration ?? "—")}</b>/10 •
-            Trend: <b>${sanitizeHTML(r.explain?.points?.trend ?? "—")}</b>/10
-          </div>
-          <div class="small" style="margin-top:6px">
-            Modifiers — Injury: <b>${sanitizeHTML(r.explain?.modifiers?.injuryMultiplier ?? "—")}</b> •
-            Readiness: <b>${sanitizeHTML(r.explain?.modifiers?.readinessModifier ?? "—")}</b> •
-            ACWR cap: <b>${sanitizeHTML(r.explain?.modifiers?.acwrCap ?? "—")}</b>
-          </div>
-          <div class="small" style="margin-top:6px">
-            Baseline — window: ${sanitizeHTML(r.explain?.baseline?.windowDays ?? "—")}d •
-            min samples: ${sanitizeHTML(r.explain?.baseline?.minSamples ?? "—")} •
-            logs: ${sanitizeHTML(r.explain?.baseline?.logSamples ?? "—")} • tests: ${sanitizeHTML(r.explain?.baseline?.testSamples ?? "—")}
-            ${r.explain?.baseline?.building ? " • <b>building</b>" : ""}
-          </div>
-
-          ${(r.explain?.deltas && (r.explain.deltas.vertDrop !== null || r.explain.deltas.sprintWorse !== null || r.explain.deltas.codWorse !== null)) ? `
-            <div class="small" style="margin-top:6px">
-              Deltas vs baseline —
-              Vert drop: ${Number.isFinite(r.explain.deltas.vertDrop) ? sanitizeHTML((r.explain.deltas.vertDrop * 100).toFixed(1) + "%") : "—"} •
-              Sprint worse: ${Number.isFinite(r.explain.deltas.sprintWorse) ? sanitizeHTML((r.explain.deltas.sprintWorse * 100).toFixed(1) + "%") : "—"} •
-              COD worse: ${Number.isFinite(r.explain.deltas.codWorse) ? sanitizeHTML((r.explain.deltas.codWorse * 100).toFixed(1) + "%") : "—"}
-            </div>
-          ` : ``}
-
-          ${(r.explain?.overrides && r.explain.overrides.length) ? `
-            <div class="small" style="margin-top:6px">
-              Overrides:<br/>${r.explain.overrides.map(x => sanitizeHTML("• " + x)).join("<br/>")}
-            </div>
-          ` : ``}
         ` : ``}
       </div>
     ` : "";
@@ -1825,6 +1789,12 @@
       <div class="hr"></div>
 
       ${readinessCard}
+
+      <div class="btnRow">
+        <button class="btn secondary" id="btnExportLogs" type="button">Export Logs CSV</button>
+      </div>
+
+      <div class="hr"></div>
 
       <div class="card" style="margin:10px 0">
         <div class="small"><b>Wellness trend (last 14)</b></div>
@@ -1837,10 +1807,10 @@
       </div>
     `;
 
-    $("btnToggleExplain")?.addEventListener("click", () => {
-      state._ui.explainOpen = !state._ui.explainOpen;
-      __saveLocal(state);
-      renderDashboard();
+    $("btnExportLogs")?.addEventListener("click", () => {
+      const rows = (state.logs || []).slice().sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
+      const csv = toCSV(rows, ["dateISO", "theme", "wellness", "energy", "sleep_quality", "hydration", "injury", "injury_pain"]);
+      downloadTextFile(`daily_logs_${todayISO()}.csv`, csv);
     });
 
     function drawLine(canvasId, points) {
@@ -1896,7 +1866,6 @@
     const wellnessPts = logs
       .map((l, i) => ({ x: i, y: Number(l.wellness) }))
       .filter((p) => Number.isFinite(p.y));
-
     drawLine("chartWellness", wellnessPts);
 
     const tests = (state.tests || [])
@@ -1908,36 +1877,430 @@
     const vertPts = tests
       .map((t, i) => ({ x: i, y: Number(t.vert) }))
       .filter((p) => Number.isFinite(p.y));
-
     drawLine("chartVert", vertPts);
+  }
+
+  // =========================================================
+  // Team (Phase 4): Teams + Roster + Sessions + Attendance + Team dashboard summary
+  // =========================================================
+  function getActiveTeam() {
+    const id = String(state.team.activeTeamId || "");
+    return (state.team.teams || []).find((t) => t && t.id === id) || null;
+  }
+
+  function ensureActiveTeam() {
+    const t = getActiveTeam();
+    if (t) return t;
+    // auto-pick first team if exists
+    if (state.team.teams && state.team.teams.length) {
+      state.team.activeTeamId = state.team.teams[0].id;
+      __saveLocal(state);
+      return getActiveTeam();
+    }
+    return null;
   }
 
   function renderTeam() {
     const el = $("tab-team");
     if (!el) return;
+
+    const role = String(state.role || "").toLowerCase().trim();
+    const canManage = (role === ROLES.COACH || role === ROLES.ADMIN);
+
+    const active = ensureActiveTeam();
+    const teams = (state.team.teams || []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const roster = (state.team.roster || []).filter((m) => active && m.teamId === active.id);
+    const sessions = (state.team.sessions || []).filter((s) => active && s.teamId === active.id)
+      .slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""));
+
+    const activeId = active ? active.id : "";
+
     el.innerHTML = `
       <h3 style="margin-top:0">Team</h3>
-      <div class="small">Team features are stubbed for now.</div>
+      <div class="small">Coach workflow: teams → roster → sessions → attendance. Offline-first.</div>
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="field">
+          <label for="teamSelect">Active team</label>
+          <select id="teamSelect" ${teams.length ? "" : "disabled"}>
+            ${teams.map(t => `<option value="${sanitizeHTML(t.id)}">${sanitizeHTML(t.name)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>Ops queued (offline)</label>
+          <div class="pill">${sanitizeHTML((state.team.opsQueue || []).length)}</div>
+        </div>
+      </div>
+
+      ${canManage ? `
+        <div class="row" style="margin-top:10px">
+          <div class="field">
+            <label for="teamName">Create team</label>
+            <input id="teamName" placeholder="e.g., Virginia Trailblazers 16U"/>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end">
+            <button class="btn" id="btnCreateTeam" type="button">Create</button>
+          </div>
+        </div>
+      ` : `
+        <div class="small">Team management is available for Coach/Admin roles.</div>
+      `}
+
+      <div class="hr"></div>
+
+      ${active ? `
+        <div class="row">
+          <div class="field">
+            <label>Roster (${sanitizeHTML(roster.length)})</label>
+            <div class="small">Add athletes and mark attendance per session.</div>
+          </div>
+          <div class="field" style="display:flex;gap:8px;justify-content:flex-end;align-items:flex-end">
+            <button class="btn secondary" id="btnExportRoster" type="button">Export Roster CSV</button>
+          </div>
+        </div>
+
+        ${canManage ? `
+          <div class="row" style="margin-top:8px">
+            <div class="field">
+              <label for="memberName">Name</label>
+              <input id="memberName" placeholder="Athlete name"/>
+            </div>
+            <div class="field">
+              <label for="memberEmail">Email (optional)</label>
+              <input id="memberEmail" placeholder="athlete@email.com"/>
+            </div>
+            <div class="field">
+              <label for="memberRole">Role</label>
+              <select id="memberRole">
+                <option value="athlete" selected>Athlete</option>
+                <option value="coach">Coach</option>
+                <option value="parent">Parent</option>
+              </select>
+            </div>
+            <div class="field" style="display:flex;align-items:flex-end">
+              <button class="btn" id="btnAddMember" type="button">Add</button>
+            </div>
+          </div>
+        ` : ""}
+
+        <div class="tableWrap" style="margin-top:10px">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Email</th><th>Role</th>${canManage ? "<th></th>" : ""}
+              </tr>
+            </thead>
+            <tbody>
+              ${roster.length ? roster.map(m => `
+                <tr>
+                  <td>${sanitizeHTML(m.name || "")}</td>
+                  <td class="small">${sanitizeHTML(m.email || "")}</td>
+                  <td class="small">${sanitizeHTML(m.role || "athlete")}</td>
+                  ${canManage ? `<td style="text-align:right"><button class="btn tiny danger" data-del-member="${sanitizeHTML(m.id)}" type="button">Remove</button></td>` : ""}
+                </tr>
+              `).join("") : `<tr><td colspan="${canManage ? 4 : 3}" class="small">No roster yet.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <div class="field">
+            <label>Sessions (${sanitizeHTML(sessions.length)})</label>
+            <div class="small">Create a practice/lift session and mark attendance.</div>
+          </div>
+          <div class="field" style="display:flex;gap:8px;justify-content:flex-end;align-items:flex-end">
+            <button class="btn secondary" id="btnExportAttendance" type="button">Export Attendance CSV</button>
+          </div>
+        </div>
+
+        ${canManage ? `
+          <div class="row" style="margin-top:8px">
+            <div class="field">
+              <label for="sessionDate">Date</label>
+              <input id="sessionDate" type="date" value="${todayISO()}"/>
+            </div>
+            <div class="field">
+              <label for="sessionTitle">Title</label>
+              <input id="sessionTitle" placeholder="e.g., Practice + Lift"/>
+            </div>
+            <div class="field">
+              <label for="sessionNotes">Notes (optional)</label>
+              <input id="sessionNotes" placeholder="focus, intensity, etc."/>
+            </div>
+            <div class="field" style="display:flex;align-items:flex-end">
+              <button class="btn" id="btnCreateSession" type="button">Create</button>
+            </div>
+          </div>
+        ` : ""}
+
+        <div class="tableWrap" style="margin-top:10px">
+          <table class="table">
+            <thead>
+              <tr><th>Date</th><th>Title</th><th class="small">Attendance</th><th></th></tr>
+            </thead>
+            <tbody>
+              ${sessions.length ? sessions.slice(0, 10).map(s => {
+                const att = (state.team.attendance || []).filter(a => a && a.sessionId === s.id && a.teamId === active.id);
+                const present = att.filter(a => a.status === ATTENDANCE.PRESENT).length;
+                const absent = att.filter(a => a.status === ATTENDANCE.ABSENT).length;
+                const excused = att.filter(a => a.status === ATTENDANCE.EXCUSED).length;
+                return `
+                  <tr>
+                    <td>${sanitizeHTML(s.dateISO || "")}</td>
+                    <td>${sanitizeHTML(s.title || "")}</td>
+                    <td class="small">P:${sanitizeHTML(present)} A:${sanitizeHTML(absent)} E:${sanitizeHTML(excused)}</td>
+                    <td style="text-align:right"><button class="btn tiny" data-open-session="${sanitizeHTML(s.id)}" type="button">Open</button></td>
+                  </tr>
+                `;
+              }).join("") : `<tr><td colspan="4" class="small">No sessions yet.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+
+        <div id="sessionPanel" style="margin-top:12px"></div>
+      ` : `
+        <div class="small">No teams yet. ${canManage ? "Create one above." : "Ask a coach/admin to create a team."}</div>
+      `}
     `;
+
+    // set team select value
+    if ($("teamSelect") && activeId) $("teamSelect").value = activeId;
+
+    $("teamSelect")?.addEventListener("change", () => {
+      state.team.activeTeamId = $("teamSelect")?.value || "";
+      __saveLocal(state);
+      renderTeam();
+    });
+
+    $("btnCreateTeam")?.addEventListener("click", () => {
+      const name = ($("teamName")?.value || "").trim();
+      if (!name) return alert("Enter a team name.");
+      const team = { id: uuid(), name, createdAtMs: Date.now() };
+      state.team.teams = state.team.teams || [];
+      state.team.teams.push(team);
+      state.team.activeTeamId = team.id;
+
+      // queue cloud op
+      enqueueTeamOp({ type: "upsertTeam", payload: team });
+
+      saveState();
+      alert("Team created.");
+    });
+
+    $("btnAddMember")?.addEventListener("click", () => {
+      const t = getActiveTeam();
+      if (!t) return alert("Create/select a team first.");
+      const name = ($("memberName")?.value || "").trim();
+      const email = ($("memberEmail")?.value || "").trim();
+      const role = ($("memberRole")?.value || "athlete").trim();
+      if (!name) return alert("Enter a name.");
+
+      const member = { id: uuid(), teamId: t.id, name, email, role, createdAtMs: Date.now() };
+      state.team.roster = state.team.roster || [];
+      state.team.roster.push(member);
+
+      enqueueTeamOp({ type: "upsertRosterMember", payload: member });
+
+      saveState();
+      $("memberName").value = "";
+      $("memberEmail").value = "";
+      alert("Member added.");
+    });
+
+    // remove member
+    el.querySelectorAll("[data-del-member]")?.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-del-member");
+        const t = getActiveTeam();
+        if (!t || !id) return;
+        if (!confirm("Remove this member?")) return;
+
+        state.team.roster = (state.team.roster || []).filter((m) => m.id !== id);
+        // also remove attendance rows for this athlete
+        state.team.attendance = (state.team.attendance || []).filter((a) => a.athleteId !== id);
+
+        enqueueTeamOp({ type: "removeRosterMember", payload: { teamId: t.id, memberId: id } });
+
+        saveState();
+      });
+    });
+
+    $("btnCreateSession")?.addEventListener("click", () => {
+      const t = getActiveTeam();
+      if (!t) return alert("Create/select a team first.");
+      const dateISO = ($("sessionDate")?.value || todayISO()).trim();
+      const title = ($("sessionTitle")?.value || "").trim();
+      const notes = ($("sessionNotes")?.value || "").trim();
+      if (!safeDateISO(dateISO)) return alert("Invalid date.");
+      if (!title) return alert("Enter a session title.");
+
+      const session = { id: uuid(), teamId: t.id, dateISO, title, notes, createdAtMs: Date.now() };
+      state.team.sessions = state.team.sessions || [];
+      // replace if same date+title exists
+      state.team.sessions = state.team.sessions.filter((s) => !(s.teamId === t.id && s.dateISO === dateISO && s.title === title));
+      state.team.sessions.push(session);
+
+      enqueueTeamOp({ type: "upsertSession", payload: session });
+
+      saveState();
+      $("sessionTitle").value = "";
+      $("sessionNotes").value = "";
+      alert("Session created.");
+    });
+
+    $("btnExportRoster")?.addEventListener("click", () => {
+      const t = getActiveTeam();
+      if (!t) return;
+      const rows = (state.team.roster || []).filter(m => m.teamId === t.id);
+      const csv = toCSV(rows, ["id", "teamId", "name", "email", "role", "createdAtMs"]);
+      downloadTextFile(`roster_${sanitizeHTML(t.name).replace(/\s+/g, "_")}_${todayISO()}.csv`, csv);
+    });
+
+    $("btnExportAttendance")?.addEventListener("click", () => {
+      const t = getActiveTeam();
+      if (!t) return;
+      const rows = (state.team.attendance || []).filter(a => a.teamId === t.id);
+      const csv = toCSV(rows, ["teamId", "sessionId", "athleteId", "status", "note", "updatedAtMs"]);
+      downloadTextFile(`attendance_${sanitizeHTML(t.name).replace(/\s+/g, "_")}_${todayISO()}.csv`, csv);
+    });
+
+    // open session
+    el.querySelectorAll("[data-open-session]")?.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sessionId = btn.getAttribute("data-open-session");
+        if (!sessionId) return;
+        renderSessionPanel(sessionId);
+      });
+    });
+
+    function renderSessionPanel(sessionId) {
+      const panel = $("sessionPanel");
+      if (!panel) return;
+
+      const t = getActiveTeam();
+      if (!t) return;
+
+      const session = (state.team.sessions || []).find(s => s.id === sessionId && s.teamId === t.id);
+      if (!session) {
+        panel.innerHTML = `<div class="small">Session not found.</div>`;
+        return;
+      }
+
+      const members = (state.team.roster || []).filter(m => m.teamId === t.id && (m.role || "athlete") === "athlete");
+      const attRows = (state.team.attendance || []).filter(a => a.teamId === t.id && a.sessionId === session.id);
+      const byAthlete = new Map(attRows.map(a => [a.athleteId, a]));
+
+      panel.innerHTML = `
+        <div class="card" style="padding:12px">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:700">${sanitizeHTML(session.dateISO)} — ${sanitizeHTML(session.title)}</div>
+              <div class="small">${sanitizeHTML(session.notes || "")}</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn tiny secondary" id="btnCloseSession" type="button">Close</button>
+            </div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="small"><b>Attendance</b></div>
+          <div class="tableWrap" style="margin-top:8px">
+            <table class="table">
+              <thead>
+                <tr><th>Athlete</th><th>Status</th><th>Note</th></tr>
+              </thead>
+              <tbody>
+                ${members.length ? members.map(m => {
+                  const a = byAthlete.get(m.id);
+                  const status = a?.status || ATTENDANCE.PRESENT;
+                  const note = a?.note || "";
+                  return `
+                    <tr>
+                      <td>${sanitizeHTML(m.name || "")}</td>
+                      <td>
+                        <select data-att-status="${sanitizeHTML(m.id)}">
+                          <option value="${ATTENDANCE.PRESENT}" ${status === ATTENDANCE.PRESENT ? "selected" : ""}>Present</option>
+                          <option value="${ATTENDANCE.ABSENT}" ${status === ATTENDANCE.ABSENT ? "selected" : ""}>Absent</option>
+                          <option value="${ATTENDANCE.EXCUSED}" ${status === ATTENDANCE.EXCUSED ? "selected" : ""}>Excused</option>
+                        </select>
+                      </td>
+                      <td><input data-att-note="${sanitizeHTML(m.id)}" value="${sanitizeHTML(note)}" placeholder="optional"/></td>
+                    </tr>
+                  `;
+                }).join("") : `<tr><td colspan="3" class="small">No athletes on roster.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="btnRow" style="margin-top:10px">
+            <button class="btn" id="btnSaveAttendance" type="button">Save Attendance</button>
+          </div>
+        </div>
+      `;
+
+      $("btnCloseSession")?.addEventListener("click", () => {
+        panel.innerHTML = "";
+      });
+
+      $("btnSaveAttendance")?.addEventListener("click", () => {
+        const updated = [];
+        for (const m of members) {
+          const statusEl = panel.querySelector(`[data-att-status="${m.id}"]`);
+          const noteEl = panel.querySelector(`[data-att-note="${m.id}"]`);
+          const status = (statusEl?.value || ATTENDANCE.PRESENT).trim();
+          const note = (noteEl?.value || "").trim();
+
+          const row = {
+            id: uuid(),
+            teamId: t.id,
+            sessionId: session.id,
+            athleteId: m.id,
+            status,
+            note,
+            updatedAtMs: Date.now()
+          };
+
+          // replace existing (team+session+athlete)
+          state.team.attendance = (state.team.attendance || []).filter(a => !(a.teamId === t.id && a.sessionId === session.id && a.athleteId === m.id));
+          state.team.attendance.push(row);
+
+          enqueueTeamOp({ type: "upsertAttendance", payload: row });
+          updated.push(row);
+        }
+
+        saveState();
+        alert("Attendance saved.");
+      });
+    }
   }
 
+  // =========================================================
+  // Parent tab (still minimal)
+  // =========================================================
   function renderParent() {
     const el = $("tab-parent");
     if (!el) return;
     el.innerHTML = `
       <h3 style="margin-top:0">Parent</h3>
-      <div class="small">Parent view is stubbed for now.</div>
+      <div class="small">Parent view is still lightweight in this phase.</div>
+      <div class="hr"></div>
+      <div class="small">Use Dashboard for readiness + trends. Team tab for attendance (Coach/Admin).</div>
     `;
   }
 
+  // =========================================================
+  // Settings tab
+  // =========================================================
   async function renderSettings() {
     const el = $("tab-settings");
     if (!el) return;
 
     const supaOk = isSupabaseReady();
     const signed = supaOk ? await isSignedIn() : false;
-
-    const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
 
     el.innerHTML = `
       <h3 style="margin-top:0">Settings</h3>
@@ -1946,10 +2309,11 @@
 
       <div class="card" style="margin:10px 0">
         <div class="small">
-          Core: <b>${sanitizeHTML(state.meta.coreVersion || "—")}</b><br/>
+          App version: <b>${sanitizeHTML(APP_VERSION)}</b><br/>
           Supabase: <b>${supaOk ? "Configured" : "Not configured"}</b><br/>
           Auth: <b>${signed ? "Signed in" : "Signed out"}</b><br/>
-          Last synced: <b>${state.meta.lastSyncedAtMs ? sanitizeHTML(new Date(state.meta.lastSyncedAtMs).toLocaleString()) : "—"}</b>
+          Last synced: <b>${state.meta.lastSyncedAtMs ? new Date(state.meta.lastSyncedAtMs).toLocaleString() : "—"}</b><br/>
+          Team ops queued: <b>${sanitizeHTML((state.team.opsQueue || []).length)}</b>
         </div>
       </div>
 
@@ -1965,22 +2329,8 @@
       <div class="btnRow">
         <button class="btn secondary" id="btnDumpState" type="button">Copy state JSON</button>
         <button class="btn secondary" id="btnRecalcBaselines" type="button">Rebuild baselines</button>
-        <button class="btn secondary" id="btnCopyReadiness" type="button">Copy readiness JSON</button>
+        <button class="btn secondary" id="btnFlushTeamOps" type="button">Flush team ops</button>
       </div>
-
-      <div class="small" style="margin-top:10px"><b>Diagnostics</b></div>
-      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify({
-        now: new Date().toISOString(),
-        coreVersion: state.meta.coreVersion,
-        stateVersion: state.meta.version,
-        activeTab: state._ui.activeTab,
-        readiness: r ? {
-          dateISO: r.dateISO, grade: r.grade, score: r.score,
-          baseProgressionMultiplier: r.baseProgressionMultiplier,
-          finalProgressionMultiplier: r.finalProgressionMultiplier,
-          acwr: r.acwr
-        } : null
-      }, null, 2))}</pre>
 
       <div class="small" style="margin-top:10px">Errors (latest first):</div>
       <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2))}</pre>
@@ -2032,8 +2382,8 @@
 
     $("btnRecalcBaselines")?.addEventListener("click", () => {
       try {
-        window.PIQ?.readiness?.updateBaselines?.(todayISO());
-        alert("Baselines rebuilt from configured window.");
+        window.PIQ?.readiness?.updateBaselines?.();
+        alert("Baselines rebuilt from recent history.");
         renderActiveTab();
       } catch (e) {
         logError("recalcBaselines", e);
@@ -2041,13 +2391,14 @@
       }
     });
 
-    $("btnCopyReadiness")?.addEventListener("click", async () => {
+    $("btnFlushTeamOps")?.addEventListener("click", async () => {
       try {
-        const rr = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
-        await navigator.clipboard.writeText(JSON.stringify(rr, null, 2));
-        alert("Copied readiness JSON.");
-      } catch {
-        alert("Copy failed. (Clipboard permissions)");
+        await flushTeamOpsQueue();
+        alert("Flush attempted.");
+        renderActiveTab();
+      } catch (e) {
+        logError("flushTeamOps.manual", e);
+        alert("Flush failed.");
       }
     });
   }
@@ -2067,6 +2418,9 @@
     }
   }
 
+  // =========================================================
+  // App start
+  // =========================================================
   window.startApp = function () {
     const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
     if (!role) {
@@ -2078,12 +2432,12 @@
     wireNav();
     showTab(activeTab());
 
-    try { PIQ_Readiness.updateBaselinesFromHistory(todayISO()); } catch (e) { logError("baselineInit", e); }
+    try { PIQ_Readiness.updateBaselinesFromHistory(); } catch (e) { logError("baselineInit", e); }
 
     renderActiveTab();
     hideSplashNow();
 
-    console.log("PerformanceIQ core started. Role:", state.role || role, "core:", state.meta.coreVersion);
+    console.log("PerformanceIQ core started. Role:", state.role || role, "v", APP_VERSION);
   };
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -2107,5 +2461,8 @@
     setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
     window.addEventListener("click", hideSplashNow, { once: true });
     window.addEventListener("touchstart", hideSplashNow, { once: true });
+
+    // best-effort: flush queued team ops on boot if possible
+    flushTeamOpsQueue();
   });
 })();
