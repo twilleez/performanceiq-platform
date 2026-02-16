@@ -2400,4 +2400,3 @@
     window.addEventListener("touchstart", hideSplashNow, { once: true });
   });
 })();
-```0
