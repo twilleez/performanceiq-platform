@@ -3,14 +3,19 @@
 // Provides:
 // - pushState(state), pullState()
 // - upsertWorkoutLog(row), upsertPerformanceMetric(row)
-// - Phase 3 Team APIs: createTeam, listMyTeams, listTeamMembers, addTeamMember, removeTeamMember,
+//
+// - Phase 3 Team APIs:
+//   createTeam, listMyTeams, listTeamMembers, addTeamMember, removeTeamMember,
 //   getTeamRosterSummary, createTeamSession, listTeamSessions, upsertAttendance
 //
+// - Phase 4 Readiness helpers (coach/team intelligence):
+//   listWorkoutLogsForUsers(userIds, dateFromISO, dateToISO)
+//   listPerformanceMetricsForUsers(userIds, dateFromISO, dateToISO)
+//
 // IMPORTANT:
-// I cannot confirm your Supabase table names or schema.
-// This file supports configurable table names via window.PIQ_CONFIG.tables.*
-// If you do not provide overrides, it will use the defaults below.
-// Make sure your Supabase tables match these defaults or set overrides in config.js.
+// I cannot confirm your Supabase RLS policies.
+// Coach/team reads require RLS that allows authorized coaches to read team-athlete data.
+// If RLS blocks reads, these functions will throw.
 
 (function () {
   "use strict";
@@ -19,20 +24,9 @@
   window.__PIQ_DATASTORE_LOADED__ = true;
 
   const DEFAULT_TABLES = Object.freeze({
-    // State table (cloud snapshot of local app state)
-    // Expected columns:
-    // - user_id uuid (primary key)
-    // - state jsonb
-    // - updated_at timestamptz (optional; can be trigger-managed)
     state: "piq_user_state",
-
-    // Workout logs
     workout_logs: "workout_logs",
-
-    // Performance metrics
     performance_metrics: "performance_metrics",
-
-    // Team tables (Phase 3)
     teams: "teams",
     team_members: "team_members",
     user_profiles: "user_profiles",
@@ -85,8 +79,12 @@
     return new Error(msg);
   }
 
+  function isISODate(d) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(d || "").trim());
+  }
+
   // =========================================================
-  // State sync (device <-> cloud)
+  // State sync
   // =========================================================
   async function pushState(stateObj) {
     ensureReadyOrThrow();
@@ -94,9 +92,6 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
-
-    // Expected table: T.state
-    // Expected columns: user_id (pk), state (jsonb)
     const payload = { user_id: u.id, state: stateObj };
 
     const { error } = await window.supabaseClient
@@ -121,14 +116,11 @@
       .maybeSingle();
 
     if (error) throw normalizeErr(error);
-    return data || null; // expected: { state: { ... } } or null
+    return data || null;
   }
 
   // =========================================================
-  // Workout logs upsert
-  // core.js calls: dataStore.upsertWorkoutLog(row)
-  // row shape expected by your core.js mapper:
-  // { date, program_day, volume, wellness, energy, hydration, injury_flag, injury_pain, sleep_quality, ... }
+  // Logs/Metrics upserts
   // =========================================================
   async function upsertWorkoutLog(row) {
     ensureReadyOrThrow();
@@ -136,8 +128,8 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
-
     if (!row || !row.date) throw new Error("Missing row.date");
+
     const payload = { ...row, user_id: u.id };
 
     const { error } = await window.supabaseClient
@@ -148,20 +140,14 @@
     return true;
   }
 
-  // =========================================================
-  // Performance metrics upsert
-  // core.js calls: dataStore.upsertPerformanceMetric(row)
-  // row shape expected by your core.js mapper:
-  // { date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours }
-  // =========================================================
   async function upsertPerformanceMetric(row) {
     ensureReadyOrThrow();
     const u = await getUser();
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
-
     if (!row || !row.date) throw new Error("Missing row.date");
+
     const payload = { ...row, user_id: u.id };
 
     const { error } = await window.supabaseClient
@@ -192,7 +178,6 @@
 
     if (error) throw normalizeErr(error);
 
-    // Add creator as coach
     const { error: e2 } = await window.supabaseClient
       .from(T.team_members)
       .insert({ team_id: team.id, user_id: u.id, role: "coach" });
@@ -207,6 +192,8 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
+
+    // NOTE: This returns all teams; if you want "my teams only", you can swap to a view or join.
     const { data, error } = await window.supabaseClient
       .from(T.teams)
       .select("id,name,created_at,created_by")
@@ -336,7 +323,7 @@
     const d = String(sessionDate || "").trim();
 
     if (!tid) throw new Error("teamId required");
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error("sessionDate must be YYYY-MM-DD");
+    if (!isISODate(d)) throw new Error("sessionDate must be YYYY-MM-DD");
 
     const { data, error } = await window.supabaseClient
       .from(T.team_sessions)
@@ -407,6 +394,63 @@
   }
 
   // =========================================================
+  // Phase 4 — Readiness data helpers (coach/team intelligence)
+  // =========================================================
+  async function listWorkoutLogsForUsers(userIds, dateFromISO, dateToISO) {
+    ensureReadyOrThrow();
+    const u = await getUser();
+    if (!u) throw new Error("Not signed in");
+
+    const T = tables();
+    const ids = Array.isArray(userIds) ? userIds.filter(Boolean).map(String) : [];
+    if (!ids.length) return [];
+
+    const from = String(dateFromISO || "").trim();
+    const to = String(dateToISO || "").trim();
+    if (from && !isISODate(from)) throw new Error("dateFromISO must be YYYY-MM-DD");
+    if (to && !isISODate(to)) throw new Error("dateToISO must be YYYY-MM-DD");
+
+    let q = window.supabaseClient
+      .from(T.workout_logs)
+      .select("user_id,date,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,program_day,volume")
+      .in("user_id", ids);
+
+    if (from) q = q.gte("date", from);
+    if (to) q = q.lte("date", to);
+
+    const { data, error } = await q.order("date", { ascending: true });
+    if (error) throw normalizeErr(error);
+    return data || [];
+  }
+
+  async function listPerformanceMetricsForUsers(userIds, dateFromISO, dateToISO) {
+    ensureReadyOrThrow();
+    const u = await getUser();
+    if (!u) throw new Error("Not signed in");
+
+    const T = tables();
+    const ids = Array.isArray(userIds) ? userIds.filter(Boolean).map(String) : [];
+    if (!ids.length) return [];
+
+    const from = String(dateFromISO || "").trim();
+    const to = String(dateToISO || "").trim();
+    if (from && !isISODate(from)) throw new Error("dateFromISO must be YYYY-MM-DD");
+    if (to && !isISODate(to)) throw new Error("dateToISO must be YYYY-MM-DD");
+
+    let q = window.supabaseClient
+      .from(T.performance_metrics)
+      .select("user_id,date,vert_inches,sprint_seconds,cod_seconds,bw_lbs,sleep_hours")
+      .in("user_id", ids);
+
+    if (from) q = q.gte("date", from);
+    if (to) q = q.lte("date", to);
+
+    const { data, error } = await q.order("date", { ascending: true });
+    if (error) throw normalizeErr(error);
+    return data || [];
+  }
+
+  // =========================================================
   // Public API
   // =========================================================
   window.dataStore = {
@@ -414,7 +458,7 @@
     pushState,
     pullState,
 
-    // logs/metrics upserts
+    // logs/metrics
     upsertWorkoutLog,
     upsertPerformanceMetric,
 
@@ -427,7 +471,10 @@
     getTeamRosterSummary,
     createTeamSession,
     listTeamSessions,
-    upsertAttendance
-  };
+    upsertAttendance,
 
+    // readiness helpers
+    listWorkoutLogsForUsers,
+    listPerformanceMetricsForUsers
+  };
 })();
