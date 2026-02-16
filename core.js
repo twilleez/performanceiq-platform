@@ -1,8 +1,15 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.1.3
+// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.1.4
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 // Includes: tabs + Profile + Program + Log + Performance + Dashboard + Settings
 // Phase 4: Team readiness + coach decision engine + coach UI (Dashboard + Team tab)
 // Team tab FIX: single implementation (cache-based), date selectable defaulting to today (or cached date)
+//
+// v1.1.4 changes (compat layer):
+// - Team readiness now works with either:
+//   A) dataStore.getTeamRosterSummary + dataStore.listWorkoutLogsForUsers + dataStore.listPerformanceMetricsForUsers
+//   OR
+//   B) dataStore.listTeamMembers + dataStore.listWorkoutLogsForAthlete + dataStore.listMetricsForAthlete
+// - Workout/metric rows are keyed by athlete_id (your CSV schema), with safe fallbacks.
 
 (function () {
   "use strict";
@@ -142,14 +149,14 @@
       tests: [],
       team: {
         name: "",
-        roster: [],
+        roster: [], // used here as "teams list" cache (legacy naming)
         attendance: [],
         board: "",
         compliance: "off",
         selectedTeamId: "",
         cache: {
           dateISO: "",
-          roster: [],
+          roster: [], // roster rows for selected team (athletes)
           readinessByUser: {},
           teamSummary: null,
           teamDecision: null,
@@ -331,12 +338,8 @@
 
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
-        Object.keys(state).forEach((k) => {
-          delete state[k];
-        });
-        Object.keys(next).forEach((k) => {
-          state[k] = next[k];
-        });
+        Object.keys(state).forEach((k) => delete state[k]);
+        Object.keys(next).forEach((k) => (state[k] = next[k]));
         __saveLocal(state);
         renderActiveTab();
         return true;
@@ -435,12 +438,8 @@
   }
 
   window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => {
-    __tryUpsertWorkoutLog(localLog);
-  };
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => {
-    __tryUpsertMetric(localTest);
-  };
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => __tryUpsertWorkoutLog(localLog);
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => __tryUpsertMetric(localTest);
 
   function setRoleEverywhere(role) {
     state.role = role || "";
@@ -669,7 +668,6 @@
     const d = Math.min(Math.max(Number(days || 4), 3), 5);
 
     const baseWarmup = ["5–8 min zone 2 cardio", "Dynamic mobility (hips, ankles, t-spine)", "Glute + core activation"];
-
     const baseFinisher = ["Cooldown walk 5 min", "Breathing reset 3–5 min", "Stretch major muscle groups"];
 
     function primaryLift(name) {
@@ -704,7 +702,12 @@
         },
         {
           title: "Day 3 — Upper Strength",
-          exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Scapular Retraction Rows")]
+          exercises: [
+            primaryLift("Bench Press"),
+            secondaryLift("Pull-Ups"),
+            accessory("DB Shoulder Press"),
+            accessory("Scapular Retraction Rows")
+          ]
         },
         {
           title: "Day 4 — Reactive + Conditioning",
@@ -717,7 +720,11 @@
         },
         {
           title: "Day 5 — Optional Recovery",
-          exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }, accessory("Mobility Flow"), accessory("Soft Tissue Work")]
+          exercises: [
+            { tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" },
+            accessory("Mobility Flow"),
+            accessory("Soft Tissue Work")
+          ]
         }
       ]
     };
@@ -731,7 +738,15 @@
       guidance: "Auto progression: Week 2/3/4 gradually increase load. Readiness can override this (reduce or hold load)."
     };
 
-    return { sport: s, days: d, createdAtISO: new Date().toISOString(), progression, warmup: baseWarmup, finisher: baseFinisher, daysPlan: picked };
+    return {
+      sport: s,
+      days: d,
+      createdAtISO: new Date().toISOString(),
+      progression,
+      warmup: baseWarmup,
+      finisher: baseFinisher,
+      daysPlan: picked
+    };
   }
 
   function programWeekIndex(todayIso) {
@@ -1175,7 +1190,7 @@
   window.PIQ.readiness.updateBaselines = () => PIQ_Readiness.updateBaselinesFromHistory();
 
   // =========================================================
-  // Phase 4 — Cloud team readiness fetch + cache
+  // Phase 4 — Cloud team readiness fetch + cache (compat)
   // =========================================================
   function isoAddDays(iso, delta) {
     const ms = isoToMs(iso);
@@ -1211,6 +1226,80 @@
     };
   }
 
+  function getIdFromRosterRow(r) {
+    // Cannot confirm rosterSummary shape across implementations; accept common keys safely.
+    // Preferred (your schema): athlete_id
+    // Fallbacks: user_id, id, linked_athlete_id
+    const a = r && (r.athlete_id || r.user_id || r.id || r.linked_athlete_id);
+    return a ? String(a) : "";
+  }
+
+  async function fetchRosterCompat(teamId) {
+    const ds = window.dataStore;
+
+    // A) Preferred: getTeamRosterSummary(teamId) -> { athletes: [...] }
+    if (ds?.getTeamRosterSummary) {
+      const rs = await ds.getTeamRosterSummary(teamId);
+      const athletes = rs?.athletes;
+      if (Array.isArray(athletes)) return athletes;
+      // If it returns directly as array
+      if (Array.isArray(rs)) return rs;
+      return [];
+    }
+
+    // B) Fallback: listTeamMembers(teamId) and treat athlete members as roster
+    if (ds?.listTeamMembers) {
+      const members = await ds.listTeamMembers(teamId);
+      const out = (members || []).map((m) => {
+        const role = String(m.role_in_team || "").toLowerCase().trim();
+        const athleteId = role === "parent" && m.linked_athlete_id ? String(m.linked_athlete_id) : String(m.user_id || "");
+        return {
+          athlete_id: athleteId,
+          user_id: athleteId,
+          display_name: m.display_name || m.name || athleteId || "Athlete",
+          last_log_date: null
+        };
+      }).filter((x) => x.athlete_id);
+      return out;
+    }
+
+    throw new Error("No roster API found in dataStore");
+  }
+
+  async function fetchLogsMetricsCompat(athleteIds, fromISO, toISO) {
+    const ds = window.dataStore;
+
+    // A) Bulk APIs (if present)
+    if (ds?.listWorkoutLogsForUsers && ds?.listPerformanceMetricsForUsers) {
+      const [logsRows, metricRows] = await Promise.all([
+        ds.listWorkoutLogsForUsers(athleteIds, fromISO, toISO),
+        ds.listPerformanceMetricsForUsers(athleteIds, fromISO, toISO)
+      ]);
+      return { logsRows: logsRows || [], metricRows: metricRows || [] };
+    }
+
+    // B) Per-athlete APIs (present in your pasted dataStore)
+    if (ds?.listWorkoutLogsForAthlete && ds?.listMetricsForAthlete) {
+      const per = await Promise.all(
+        athleteIds.map(async (aid) => {
+          const [logs, metrics] = await Promise.all([
+            ds.listWorkoutLogsForAthlete(aid, toISO, 14),
+            ds.listMetricsForAthlete(aid, toISO, 14)
+          ]);
+          // Normalize row keys to always include athlete_id
+          const l = (logs || []).map((r) => ({ ...r, athlete_id: r.athlete_id || aid }));
+          const m = (metrics || []).map((r) => ({ ...r, athlete_id: r.athlete_id || aid }));
+          return { aid, logs: l, metrics: m };
+        })
+      );
+      const logsRows = per.flatMap((x) => x.logs || []);
+      const metricRows = per.flatMap((x) => x.metrics || []);
+      return { logsRows, metricRows };
+    }
+
+    throw new Error("No readiness log/metric APIs found in dataStore");
+  }
+
   async function refreshTeamReadiness(dateISO) {
     const date = safeDateISO(dateISO) || todayISO();
     state.team.cache.error = "";
@@ -1241,16 +1330,9 @@
       return false;
     }
 
-    if (!window.dataStore?.getTeamRosterSummary) {
-      state.team.cache.error = "dataStore missing team APIs.";
-      __saveLocal(state);
-      return false;
-    }
-
     try {
-      const rosterSummary = await window.dataStore.getTeamRosterSummary(teamId);
-      const roster = rosterSummary?.athletes || [];
-      const athleteIds = roster.map((a) => a.user_id).filter(Boolean);
+      const roster = await fetchRosterCompat(teamId);
+      const athleteIds = roster.map(getIdFromRosterRow).filter(Boolean);
 
       state.team.cache.roster = roster;
       state.team.cache.dateISO = date;
@@ -1267,25 +1349,18 @@
       const from = isoAddDays(date, -13);
       const to = date;
 
-      if (!window.dataStore.listWorkoutLogsForUsers || !window.dataStore.listPerformanceMetricsForUsers) {
-        throw new Error("dataStore readiness helpers not found");
-      }
-
-      const [logsRows, metricRows] = await Promise.all([
-        window.dataStore.listWorkoutLogsForUsers(athleteIds, from, to),
-        window.dataStore.listPerformanceMetricsForUsers(athleteIds, from, to)
-      ]);
+      const { logsRows, metricRows } = await fetchLogsMetricsCompat(athleteIds, from, to);
 
       const logsByUser = {};
       (logsRows || []).forEach((r) => {
-        const uid = r.user_id;
+        const uid = String(r.athlete_id || r.user_id || "").trim();
         if (!uid) return;
         (logsByUser[uid] = logsByUser[uid] || []).push(mapWorkoutRowToLocalLog(r));
       });
 
       const testsByUser = {};
       (metricRows || []).forEach((r) => {
-        const uid = r.user_id;
+        const uid = String(r.athlete_id || r.user_id || "").trim();
         if (!uid) return;
         (testsByUser[uid] = testsByUser[uid] || []).push(mapMetricRowToLocalTest(r));
       });
@@ -1294,13 +1369,17 @@
       const readinessList = [];
 
       roster.forEach((ath) => {
-        const uid = ath.user_id;
+        const uid = getIdFromRosterRow(ath);
+        if (!uid) return;
         const logs = logsByUser[uid] || [];
         const tests = testsByUser[uid] || [];
         const baselines = PIQ_Readiness.computeBaselinesFromHistory(logs, tests, date);
 
         const r = PIQ_Readiness.computeFromData(date, logs, tests, baselines);
-        const withDisplay = { ...r, athlete: { user_id: uid, display_name: ath.display_name || "Athlete" } };
+        const withDisplay = {
+          ...r,
+          athlete: { user_id: uid, display_name: ath.display_name || ath.name || "Athlete" }
+        };
         readinessByUser[uid] = withDisplay;
         readinessList.push(withDisplay);
       });
@@ -1874,8 +1953,7 @@
       const ctx = c.getContext("2d");
       if (!ctx) return;
 
-      const w = c.width,
-        h = c.height;
+      const w = c.width, h = c.height;
       ctx.clearRect(0, 0, w, h);
 
       if (!points || points.length < 2) {
@@ -2063,7 +2141,7 @@
 
         if (team?.id) state.team.selectedTeamId = String(team.id);
 
-        const teams = await window.dataStore.listMyTeams();
+        const teams = window.dataStore.listMyTeams ? await window.dataStore.listMyTeams() : [];
         state.team.roster = teams || [];
         state.team.cache.error = "";
         saveState();
@@ -2112,13 +2190,13 @@
     }
 
     const rows = roster.map((a) => {
-      const uid = a.user_id;
+      const uid = getIdFromRosterRow(a);
       const r = readinessByUser[uid];
       const grade = r?.grade || "—";
       const score = Number.isFinite(r?.score) ? r.score : "—";
       const color = r?.color || "#bdc3c7";
       const guidance = r?.guidance || "";
-      const name = a.display_name || "Athlete";
+      const name = a.display_name || a.name || "Athlete";
 
       return `
         <div class="card" style="margin:10px 0;padding:10px">
@@ -2296,7 +2374,7 @@
     renderActiveTab();
     hideSplashNow();
 
-    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.1.3");
+    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.1.4");
   };
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -2322,3 +2400,4 @@
     window.addEventListener("touchstart", hideSplashNow, { once: true });
   });
 })();
+```0
