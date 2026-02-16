@@ -1,8 +1,8 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.1.2
+// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.1.3
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 // Includes: tabs + Profile + Program + Log + Performance + Dashboard + Settings
-// Adds Phase 4: Team readiness + coach decision engine + minimal coach UI (Dashboard + Team tab)
-// Readiness Engine v2 remains (trend velocity + baselines + injury tiers + sleep quality 60/40 + overrides)
+// Phase 4: Team readiness + coach decision engine + coach UI (Dashboard + Team tab)
+// Team tab FIX: single implementation (cache-based), date selectable defaulting to today (or cached date)
 
 (function () {
   "use strict";
@@ -150,7 +150,7 @@
         cache: {
           dateISO: "",
           roster: [],
-          readinessByUser: {}, // { [user_id]: { grade, score, color, guidance, reasons, ... } }
+          readinessByUser: {},
           teamSummary: null,
           teamDecision: null,
           updatedAtMs: 0,
@@ -177,7 +177,8 @@
     if (!Number.isFinite(s.profile.days)) s.profile.days = d.profile.days;
     if (typeof s.profile.name !== "string") s.profile.name = d.profile.name;
 
-    s.profile.baselines = s.profile.baselines && typeof s.profile.baselines === "object" ? s.profile.baselines : d.profile.baselines;
+    s.profile.baselines =
+      s.profile.baselines && typeof s.profile.baselines === "object" ? s.profile.baselines : d.profile.baselines;
     const b = s.profile.baselines;
     const bd = d.profile.baselines;
     if (!Number.isFinite(b.wellnessAvg)) b.wellnessAvg = bd.wellnessAvg;
@@ -242,7 +243,11 @@
     bumpMeta();
     __saveLocal(state);
     scheduleCloudPush();
-    try { PIQ_Readiness.updateBaselinesFromHistory(); } catch (e) { logError("baselineUpdate", e); }
+    try {
+      PIQ_Readiness.updateBaselinesFromHistory();
+    } catch (e) {
+      logError("baselineUpdate", e);
+    }
     renderActiveTab();
   }
 
@@ -258,7 +263,11 @@
     s.style.display = "none";
     s.style.visibility = "hidden";
     s.style.opacity = "0";
-    try { s.remove(); } catch (e) { logError("hideSplash", e); }
+    try {
+      s.remove();
+    } catch (e) {
+      logError("hideSplash", e);
+    }
   }
   window.hideSplashNow = window.hideSplashNow || hideSplashNow;
 
@@ -322,8 +331,12 @@
 
       if (cloudUpdated > localUpdated) {
         const next = normalizeState(cloud.state);
-        Object.keys(state).forEach((k) => { delete state[k]; });
-        Object.keys(next).forEach((k) => { state[k] = next[k]; });
+        Object.keys(state).forEach((k) => {
+          delete state[k];
+        });
+        Object.keys(next).forEach((k) => {
+          state[k] = next[k];
+        });
         __saveLocal(state);
         renderActiveTab();
         return true;
@@ -385,8 +398,13 @@
 
     const row = __localLogToWorkoutRow(localLog);
     if (!row || !row.date) return false;
-    try { await window.dataStore.upsertWorkoutLog(row); return true; }
-    catch (e) { logError("upsertWorkoutLog", e); return false; }
+    try {
+      await window.dataStore.upsertWorkoutLog(row);
+      return true;
+    } catch (e) {
+      logError("upsertWorkoutLog", e);
+      return false;
+    }
   }
 
   async function __tryUpsertMetric(localTest) {
@@ -407,18 +425,35 @@
       row.sleep_hours !== null;
     if (!hasAny) return false;
 
-    try { await window.dataStore.upsertPerformanceMetric(row); return true; }
-    catch (e) { logError("upsertPerformanceMetric", e); return false; }
+    try {
+      await window.dataStore.upsertPerformanceMetric(row);
+      return true;
+    } catch (e) {
+      logError("upsertPerformanceMetric", e);
+      return false;
+    }
   }
 
   window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => { __tryUpsertWorkoutLog(localLog); };
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => { __tryUpsertMetric(localTest); };
+  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => {
+    __tryUpsertWorkoutLog(localLog);
+  };
+  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => {
+    __tryUpsertMetric(localTest);
+  };
 
   function setRoleEverywhere(role) {
     state.role = role || "";
-    try { localStorage.setItem("role", state.role); } catch (e) { logError("setRole", e); }
-    try { localStorage.setItem("selectedRole", state.role); } catch (e) { logError("setSelectedRole", e); }
+    try {
+      localStorage.setItem("role", state.role);
+    } catch (e) {
+      logError("setRole", e);
+    }
+    try {
+      localStorage.setItem("selectedRole", state.role);
+    } catch (e) {
+      logError("setSelectedRole", e);
+    }
   }
 
   function setProfileBasics(sport, days, name) {
@@ -534,7 +569,12 @@
       );
       saveState();
 
-      try { mount.style.display = "none"; mount.innerHTML = ""; } catch (e) { logError("hideRoleChooser", e); }
+      try {
+        mount.style.display = "none";
+        mount.innerHTML = "";
+      } catch (e) {
+        logError("hideRoleChooser", e);
+      }
       hideSplashNow();
       window.startApp?.();
     });
@@ -583,7 +623,9 @@
     });
   }
 
-  window.showRoleChooser = function () { renderRoleChooser(); };
+  window.showRoleChooser = function () {
+    renderRoleChooser();
+  };
 
   const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
 
@@ -591,7 +633,7 @@
     for (const t of TABS) {
       const el = $(`tab-${t}`);
       if (!el) continue;
-      el.style.display = (t === tabName) ? "block" : "none";
+      el.style.display = t === tabName ? "block" : "none";
     }
     state._ui = state._ui || {};
     state._ui.activeTab = tabName;
@@ -626,17 +668,9 @@
     const s = (sport || SPORTS.BASKETBALL).toLowerCase();
     const d = Math.min(Math.max(Number(days || 4), 3), 5);
 
-    const baseWarmup = [
-      "5–8 min zone 2 cardio",
-      "Dynamic mobility (hips, ankles, t-spine)",
-      "Glute + core activation"
-    ];
+    const baseWarmup = ["5–8 min zone 2 cardio", "Dynamic mobility (hips, ankles, t-spine)", "Glute + core activation"];
 
-    const baseFinisher = [
-      "Cooldown walk 5 min",
-      "Breathing reset 3–5 min",
-      "Stretch major muscle groups"
-    ];
+    const baseFinisher = ["Cooldown walk 5 min", "Breathing reset 3–5 min", "Stretch major muscle groups"];
 
     function primaryLift(name) {
       return { tier: "Primary", name, sets: 4, reps: "4–6", rest: "2–3 min", rpe: "7–8" };
@@ -650,11 +684,41 @@
 
     const templates = {
       basketball: [
-        { title: "Day 1 — Lower Strength", exercises: [primaryLift("Trap Bar Deadlift"), secondaryLift("Rear Foot Elevated Split Squat"), accessory("Hamstring Curl"), accessory("Core Anti-Rotation Press")] },
-        { title: "Day 2 — Speed + Plyo", exercises: [{ tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" }, { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" }, accessory("Calf Raises"), accessory("Hip Mobility Circuit")] },
-        { title: "Day 3 — Upper Strength", exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Scapular Retraction Rows")] },
-        { title: "Day 4 — Reactive + Conditioning", exercises: [{ tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" }, { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" }, accessory("Core Circuit"), accessory("Zone 2 Bike 12–15 min")] },
-        { title: "Day 5 — Optional Recovery", exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }, accessory("Mobility Flow"), accessory("Soft Tissue Work")] }
+        {
+          title: "Day 1 — Lower Strength",
+          exercises: [
+            primaryLift("Trap Bar Deadlift"),
+            secondaryLift("Rear Foot Elevated Split Squat"),
+            accessory("Hamstring Curl"),
+            accessory("Core Anti-Rotation Press")
+          ]
+        },
+        {
+          title: "Day 2 — Speed + Plyo",
+          exercises: [
+            { tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" },
+            { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" },
+            accessory("Calf Raises"),
+            accessory("Hip Mobility Circuit")
+          ]
+        },
+        {
+          title: "Day 3 — Upper Strength",
+          exercises: [primaryLift("Bench Press"), secondaryLift("Pull-Ups"), accessory("DB Shoulder Press"), accessory("Scapular Retraction Rows")]
+        },
+        {
+          title: "Day 4 — Reactive + Conditioning",
+          exercises: [
+            { tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" },
+            { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" },
+            accessory("Core Circuit"),
+            accessory("Zone 2 Bike 12–15 min")
+          ]
+        },
+        {
+          title: "Day 5 — Optional Recovery",
+          exercises: [{ tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" }, accessory("Mobility Flow"), accessory("Soft Tissue Work")]
+        }
       ]
     };
 
@@ -719,7 +783,7 @@
         sumXY += i * y[i];
         sumXX += i * i;
       }
-      const denom = (n * sumXX - sumX * sumX);
+      const denom = n * sumXX - sumX * sumX;
       if (denom === 0) return null;
       return (n * sumXY - sumX * sumY) / denom;
     }
@@ -751,7 +815,7 @@
       const q = numOrNull(quality);
       const hs = Number.isFinite(h) ? clamp((h - 4) / (9 - 4), 0, 1) : null;
       const qs = Number.isFinite(q) ? clamp((q - 1) / (10 - 1), 0, 1) : null;
-      if (qs !== null && hs !== null) return (qs * 0.6) + (hs * 0.4);
+      if (qs !== null && hs !== null) return qs * 0.6 + hs * 0.4;
       if (qs !== null) return qs;
       if (hs !== null) return hs;
       return null;
@@ -809,15 +873,16 @@
 
     function guidanceForGrade(grade, reasons) {
       const g = String(grade || "").toUpperCase();
-      const base = {
-        A: "Green light. Progress load if technique is solid.",
-        B: "Normal training. Maintain planned load.",
-        C: "Caution. Reduce volume 10–20% and keep intensity controlled.",
-        D: "Recovery focus. Reduce load significantly or switch to mobility/skill-only.",
-        OUT: "No training. Follow return-to-play plan / medical guidance."
-      }[g] || "Normal training.";
+      const base =
+        {
+          A: "Green light. Progress load if technique is solid.",
+          B: "Normal training. Maintain planned load.",
+          C: "Caution. Reduce volume 10–20% and keep intensity controlled.",
+          D: "Recovery focus. Reduce load significantly or switch to mobility/skill-only.",
+          OUT: "No training. Follow return-to-play plan / medical guidance."
+        }[g] || "Normal training.";
 
-      const extra = (reasons && reasons.length) ? (" " + reasons.slice(0, 4).join(" ")) : "";
+      const extra = reasons && reasons.length ? " " + reasons.slice(0, 4).join(" ") : "";
       return base + extra;
     }
 
@@ -840,7 +905,6 @@
       const b = state.profile.baselines || (state.profile.baselines = {});
       const bl = computeBaselinesFromHistory(state.logs || [], state.tests || [], todayISO());
 
-      // Only overwrite when finite to avoid clobbering user baselines with nulls
       if (Number.isFinite(bl.wellnessAvg)) b.wellnessAvg = bl.wellnessAvg;
       if (Number.isFinite(bl.energyAvg)) b.energyAvg = bl.energyAvg;
       if (Number.isFinite(bl.vertAvg)) b.vertAvg = bl.vertAvg;
@@ -1031,9 +1095,7 @@
       };
     }
 
-    // =========================================================
     // Phase 4 — Team aggregation + coach decision engine
-    // =========================================================
     function teamSummaryForDate(dateISO, readinessList) {
       const date = safeDateISO(dateISO) || todayISO();
       const arr = Array.isArray(readinessList) ? readinessList.filter(Boolean) : [];
@@ -1050,7 +1112,7 @@
       const unavailable = (grades.OUT || 0) + (grades.D || 0);
       const availabilityPct = Math.round(((arr.length - unavailable) / arr.length) * 100);
 
-      const redFlagCount = arr.filter(r => r.grade === "D" || r.grade === "OUT").length;
+      const redFlagCount = arr.filter((r) => r.grade === "D" || r.grade === "OUT").length;
 
       return {
         dateISO: date,
@@ -1077,10 +1139,10 @@
         const dOutPct = (dCount + outCount) / total;
         const cPct = cCount / total;
 
-        if (dOutPct >= 0.30) {
+        if (dOutPct >= 0.3) {
           recommendation = "Recovery / walkthrough only";
           notes.push("≥30% D/OUT");
-        } else if (cPct >= 0.20) {
+        } else if (cPct >= 0.2) {
           recommendation = "Reduced volume (15–25%)";
           notes.push("≥20% C");
         }
@@ -1133,7 +1195,7 @@
       injury: typeof row.injury_flag === "string" ? row.injury_flag : (typeof row.injury === "string" ? row.injury : "none"),
       injury_pain: numOrNull(row.injury_pain),
       sleep_quality: numOrNull(row.sleep_quality),
-      entries: [] // not needed for readiness
+      entries: []
     };
   }
 
@@ -1188,7 +1250,7 @@
     try {
       const rosterSummary = await window.dataStore.getTeamRosterSummary(teamId);
       const roster = rosterSummary?.athletes || [];
-      const athleteIds = roster.map(a => a.user_id).filter(Boolean);
+      const athleteIds = roster.map((a) => a.user_id).filter(Boolean);
 
       state.team.cache.roster = roster;
       state.team.cache.dateISO = date;
@@ -1202,7 +1264,6 @@
         return true;
       }
 
-      // pull last 14 days so slopes + baselines have enough data
       const from = isoAddDays(date, -13);
       const to = date;
 
@@ -1215,7 +1276,6 @@
         window.dataStore.listPerformanceMetricsForUsers(athleteIds, from, to)
       ]);
 
-      // group by user
       const logsByUser = {};
       (logsRows || []).forEach((r) => {
         const uid = r.user_id;
@@ -1240,10 +1300,7 @@
         const baselines = PIQ_Readiness.computeBaselinesFromHistory(logs, tests, date);
 
         const r = PIQ_Readiness.computeFromData(date, logs, tests, baselines);
-        const withDisplay = {
-          ...r,
-          athlete: { user_id: uid, display_name: ath.display_name || "Athlete" }
-        };
+        const withDisplay = { ...r, athlete: { user_id: uid, display_name: ath.display_name || "Athlete" } };
         readinessByUser[uid] = withDisplay;
         readinessList.push(withDisplay);
       });
@@ -1394,10 +1451,14 @@
       </div>
     `;
 
-    const daysHtml = (p.daysPlan || []).map((day) => `
+    const daysHtml = (p.daysPlan || [])
+      .map(
+        (day) => `
       <div class="card" style="margin:16px 0;padding:14px">
         <div style="font-weight:600;margin-bottom:8px">${sanitizeHTML(day.title)}</div>
-        ${(day.exercises || []).map(ex => `
+        ${(day.exercises || [])
+          .map(
+            (ex) => `
           <div style="margin-bottom:10px">
             <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
             <div class="small">
@@ -1407,9 +1468,13 @@
               ${ex.rpe ? `RPE: ${sanitizeHTML(ex.rpe)}` : ""}
             </div>
           </div>
-        `).join("")}
+        `
+          )
+          .join("")}
       </div>
-    `).join("");
+    `
+      )
+      .join("");
 
     el.innerHTML = `
       <h3 style="margin-top:0">Program</h3>
@@ -1423,28 +1488,23 @@
 
       <div class="small"><b>Warmup</b></div>
       <ul style="margin:8px 0 16px 18px">
-        ${(p.warmup || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.warmup || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
 
       ${daysHtml}
 
       <div class="small"><b>Finisher</b></div>
       <ul style="margin:8px 0 0 18px">
-        ${(p.finisher || []).map(x => `<li>${sanitizeHTML(x)}</li>`).join("")}
+        ${(p.finisher || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
       </ul>
     `;
   }
 
-  // =========================================================
-  // Log tab (already updated: sleep quality + injury pain)
-  // =========================================================
   function renderLog() {
     const el = $("tab-log");
     if (!el) return;
 
-    const logs = Array.isArray(state.logs)
-      ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
-      : [];
+    const logs = Array.isArray(state.logs) ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Log</h3>
@@ -1558,7 +1618,10 @@
       return;
     }
 
-    list.innerHTML = logs.slice(0, 10).map((l) => `
+    list.innerHTML = logs
+      .slice(0, 10)
+      .map(
+        (l) => `
       <div class="card" style="margin:10px 0">
         <div style="display:flex;justify-content:space-between;gap:10px">
           <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
@@ -1570,16 +1633,16 @@
           Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")} • Pain: ${sanitizeHTML(l.injury_pain ?? "—")}
         </div>
       </div>
-    `).join("");
+    `
+      )
+      .join("");
   }
 
   function renderPerformance() {
     const el = $("tab-performance");
     if (!el) return;
 
-    const tests = Array.isArray(state.tests)
-      ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || ""))
-      : [];
+    const tests = Array.isArray(state.tests) ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
 
     el.innerHTML = `
       <h3 style="margin-top:0">Performance</h3>
@@ -1654,7 +1717,10 @@
       return;
     }
 
-    list.innerHTML = tests.slice(0, 10).map((t) => `
+    list.innerHTML = tests
+      .slice(0, 10)
+      .map(
+        (t) => `
       <div class="card" style="margin:10px 0">
         <div><b>${sanitizeHTML(t.dateISO)}</b></div>
         <div class="small">
@@ -1662,7 +1728,9 @@
           • BW: ${sanitizeHTML(t.bw ?? "—")} • Sleep: ${sanitizeHTML(t.sleep ?? "—")}
         </div>
       </div>
-    `).join("");
+    `
+      )
+      .join("");
   }
 
   function renderDashboard() {
@@ -1671,7 +1739,8 @@
 
     const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
 
-    const readinessCard = r ? `
+    const readinessCard = r
+      ? `
       <div class="card" style="margin:10px 0;padding:12px">
         <div class="small"><b>Readiness today</b></div>
         <div style="margin-top:6px;color:${sanitizeHTML(r.color)};font-weight:700;font-size:18px">
@@ -1680,27 +1749,32 @@
         <div class="small" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
           ${sanitizeHTML(r.guidance)}
         </div>
-        ${r.reasons && r.reasons.length ? `
+        ${
+          r.reasons && r.reasons.length
+            ? `
           <div class="small" style="margin-top:8px">
-            ${r.reasons.map(x => sanitizeHTML(x)).join("<br/>")}
+            ${r.reasons.map((x) => sanitizeHTML(x)).join("<br/>")}
           </div>
-        ` : ``}
+        `
+            : ``
+        }
       </div>
-    ` : "";
+    `
+      : "";
 
-    // Phase 4 Coach card (Team readiness)
     const isCoach = (state.role || "").trim() === ROLES.COACH;
     const teamId = String(state.team.selectedTeamId || "").trim();
     const tc = state.team.cache || {};
     const hasTeamCard = isCoach && teamId;
 
-    const teamCard = hasTeamCard ? (function () {
-      const summary = tc.teamSummary;
-      const decision = tc.teamDecision;
-      const err = String(tc.error || "").trim();
+    const teamCard = hasTeamCard
+      ? (function () {
+          const summary = tc.teamSummary;
+          const decision = tc.teamDecision;
+          const err = String(tc.error || "").trim();
 
-      if (err) {
-        return `
+          if (err) {
+            return `
           <div class="card" style="margin:10px 0;padding:12px">
             <div class="small"><b>Team readiness</b></div>
             <div class="small" style="margin-top:6px;color:#e74c3c">${sanitizeHTML(err)}</div>
@@ -1710,10 +1784,10 @@
             </div>
           </div>
         `;
-      }
+          }
 
-      if (!summary) {
-        return `
+          if (!summary) {
+            return `
           <div class="card" style="margin:10px 0;padding:12px">
             <div class="small"><b>Team readiness</b></div>
             <div class="small" style="margin-top:6px">No cached team readiness yet.</div>
@@ -1723,26 +1797,25 @@
             </div>
           </div>
         `;
-      }
+          }
 
-      const total = summary.total || 0;
-      const availability = summary.availabilityPct ?? "—";
-      const avg = summary.avgScore ?? "—";
-      const grades = summary.grades || {};
-      const rec = decision?.recommendation || "—";
-      const notes = (decision?.notes || []).slice(0, 3);
+          const total = summary.total || 0;
+          const availability = summary.availabilityPct ?? "—";
+          const avg = summary.avgScore ?? "—";
+          const grades = summary.grades || {};
+          const rec = decision?.recommendation || "—";
+          const notes = (decision?.notes || []).slice(0, 3);
 
-      // Color the team headline by avgScore grade bucket (same thresholds as individual)
-      let teamGrade = "B";
-      if (Number.isFinite(avg)) {
-        if (avg >= 85) teamGrade = "A";
-        else if (avg >= 70) teamGrade = "B";
-        else if (avg >= 55) teamGrade = "C";
-        else teamGrade = "D";
-      }
-      const color = PIQ_Readiness.COLORS[teamGrade] || "#f1c40f";
+          let teamGrade = "B";
+          if (Number.isFinite(avg)) {
+            if (avg >= 85) teamGrade = "A";
+            else if (avg >= 70) teamGrade = "B";
+            else if (avg >= 55) teamGrade = "C";
+            else teamGrade = "D";
+          }
+          const color = PIQ_Readiness.COLORS[teamGrade] || "#f1c40f";
 
-      return `
+          return `
         <div class="card" style="margin:10px 0;padding:12px">
           <div class="small"><b>Team readiness</b></div>
           <div style="margin-top:6px;color:${sanitizeHTML(color)};font-weight:800;font-size:18px">
@@ -1755,14 +1828,15 @@
           <div class="small" style="margin-top:8px;color:${sanitizeHTML(color)}">
             Recommendation: <b>${sanitizeHTML(rec)}</b>
           </div>
-          ${notes.length ? `<div class="small" style="margin-top:6px">${notes.map(x => sanitizeHTML("• " + x)).join("<br/>")}</div>` : ""}
+          ${notes.length ? `<div class="small" style="margin-top:6px">${notes.map((x) => sanitizeHTML("• " + x)).join("<br/>")}</div>` : ""}
           <div class="btnRow" style="margin-top:10px">
             <button class="btn secondary" id="btnRefreshTeamReadiness" type="button">Refresh</button>
             <button class="btn secondary" id="btnGoTeamTab" type="button">Open Team</button>
           </div>
         </div>
       `;
-    })() : "";
+        })()
+      : "";
 
     el.innerHTML = `
       <h3 style="margin-top:0">Dashboard</h3>
@@ -1783,7 +1857,6 @@
       </div>
     `;
 
-    // Wire coach buttons (if present)
     $("btnRefreshTeamReadiness")?.addEventListener("click", async () => {
       const ok = await refreshTeamReadiness(todayISO());
       if (!ok) alert(state.team.cache.error || "Refresh failed.");
@@ -1801,7 +1874,8 @@
       const ctx = c.getContext("2d");
       if (!ctx) return;
 
-      const w = c.width, h = c.height;
+      const w = c.width,
+        h = c.height;
       ctx.clearRect(0, 0, w, h);
 
       if (!points || points.length < 2) {
@@ -1818,7 +1892,7 @@
       const scaleY = (y) => {
         if (maxY === minY) return h / 2;
         const t = (y - minY) / (maxY - minY);
-        return (h - pad) - t * (h - pad * 2);
+        return h - pad - t * (h - pad * 2);
       };
 
       ctx.beginPath();
@@ -1845,10 +1919,7 @@
       .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
-    const wellnessPts = logs
-      .map((l, i) => ({ x: i, y: Number(l.wellness) }))
-      .filter((p) => Number.isFinite(p.y));
-
+    const wellnessPts = logs.map((l, i) => ({ x: i, y: Number(l.wellness) })).filter((p) => Number.isFinite(p.y));
     drawLine("chartWellness", wellnessPts);
 
     const tests = (state.tests || [])
@@ -1857,439 +1928,19 @@
       .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
       .slice(-14);
 
-    const vertPts = tests
-      .map((t, i) => ({ x: i, y: Number(t.vert) }))
-      .filter((p) => Number.isFinite(p.y));
-
+    const vertPts = tests.map((t, i) => ({ x: i, y: Number(t.vert) })).filter((p) => Number.isFinite(p.y));
     drawLine("chartVert", vertPts);
   }
 
   // =========================================================
-  // Phase 4 — Team tab UI (Coach role)
+  // Team tab — FIXED (single implementation) + Date selectable default to today
   // =========================================================
   async function renderTeam() {
-  const el = $("tab-team");
-  if (!el) return;
-
-  const supaOk = isSupabaseReady();
-  const signed = supaOk ? await isSignedIn().catch(() => false) : false;
-
-  // UI: team selector + date selector (default = today)
-  el.innerHTML = `
-    <h3 style="margin-top:0">Team</h3>
-    <div class="small">Team readiness uses cloud logs/metrics. Sign in required.</div>
-    <div class="hr"></div>
-
-    <div class="row">
-      <div class="field">
-        <label for="teamPick">Team</label>
-        <select id="teamPick" ${(!supaOk || !signed) ? "disabled" : ""}>
-          <option value="">Loading…</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="teamDate">Date</label>
-        <input id="teamDate" type="date" value="${todayISO()}" ${(!supaOk || !signed) ? "disabled" : ""}/>
-      </div>
-    </div>
-
-    <div class="btnRow" style="margin-top:12px">
-      <button class="btn" id="btnTeamRefresh" type="button" ${(!supaOk || !signed) ? "disabled" : ""}>Refresh</button>
-    </div>
-
-    <div class="hr"></div>
-    <div id="teamStatus" class="small"></div>
-    <div id="teamRoster" style="margin-top:10px"></div>
-  `;
-
-  const statusEl = $("teamStatus");
-  const rosterEl = $("teamRoster");
-  const teamPick = $("teamPick");
-  const teamDate = $("teamDate");
-
-  if (!supaOk) {
-    if (statusEl) statusEl.innerHTML = `Supabase not configured.`;
-    return;
-  }
-  if (!signed) {
-    if (statusEl) statusEl.innerHTML = `Sign in to view team readiness.`;
-    return;
-  }
-  if (!window.dataStore) {
-    if (statusEl) statusEl.innerHTML = `dataStore not available.`;
-    return;
-  }
-
-  // ---- Helpers (local to Team tab) ----
-  const COLORS = { A: "#2ecc71", B: "#f1c40f", C: "#e67e22", D: "#e74c3c", OUT: "#bdc3c7" };
-
-  const clampLocal = (n, a, b) => Math.min(Math.max(n, a), b);
-  const num = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-  const mean = (arr) => {
-    const v = (arr || []).map(num).filter((x) => Number.isFinite(x));
-    if (!v.length) return null;
-    return v.reduce((a, b) => a + b, 0) / v.length;
-  };
-  const slope = (vals) => {
-    const y = (vals || []).map(num).filter((x) => Number.isFinite(x));
-    const n = y.length;
-    if (n < 2) return null;
-    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    for (let i = 0; i < n; i++) {
-      sumX += i;
-      sumY += y[i];
-      sumXY += i * y[i];
-      sumXX += i * i;
-    }
-    const denom = (n * sumXX - sumX * sumX);
-    if (denom === 0) return null;
-    return (n * sumXY - sumX * sumY) / denom;
-  };
-
-  const hydrationScore = (h) => {
-    const x = String(h || "").toLowerCase().trim();
-    if (x === "great") return 1.0;
-    if (x === "good") return 0.85;
-    if (x === "ok") return 0.7;
-    if (x === "low") return 0.4;
-    return 0.75;
-  };
-
-  // sleep quality 60/40 with hours (same as your readiness engine)
-  const sleepComposite = (hours, quality) => {
-    const h = num(hours);
-    const q = num(quality);
-    const hs = Number.isFinite(h) ? clampLocal((h - 4) / (9 - 4), 0, 1) : null;
-    const qs = Number.isFinite(q) ? clampLocal((q - 1) / (10 - 1), 0, 1) : null;
-    if (qs !== null && hs !== null) return (qs * 0.6) + (hs * 0.4);
-    if (qs !== null) return qs;
-    if (hs !== null) return hs;
-    return null;
-  };
-
-  const pctDrop = (current, baseline) => {
-    const c = num(current);
-    const b = num(baseline);
-    if (!Number.isFinite(c) || !Number.isFinite(b) || b === 0) return null;
-    return (b - c) / b;
-  };
-  const pctWorseTime = (current, baseline) => {
-    const c = num(current);
-    const b = num(baseline);
-    if (!Number.isFinite(c) || !Number.isFinite(b) || b === 0) return null;
-    return (c - b) / b;
-  };
-
-  const injuryTier = (injuryFlag, painScore) => {
-    const f = String(injuryFlag || "none").toLowerCase().trim();
-    if (f === "out") return { lock: true, multiplier: 0, label: "Out (no training)" };
-
-    const p = num(painScore);
-    if (Number.isFinite(p)) {
-      if (p >= 7) return { lock: false, multiplier: 0.0, label: "Severe pain (D-grade override)" };
-      if (p >= 5) return { lock: false, multiplier: 0.75, label: "Moderate pain (-25%)" };
-      if (p >= 3) return { lock: false, multiplier: 0.9, label: "Minor soreness (-10%)" };
-      return { lock: false, multiplier: 1.0, label: "No meaningful pain" };
-    }
-
-    if (f === "minor") return { lock: false, multiplier: 0.9, label: "Minor (flag) (-10%)" };
-    if (f === "sore") return { lock: false, multiplier: 0.93, label: "Sore (flag) (-7%)" };
-    if (f === "none") return { lock: false, multiplier: 1.0, label: "None" };
-    return { lock: false, multiplier: 0.9, label: "Injury (flag) (-10%)" };
-  };
-
-  const gradeFromScore = (score) => {
-    const s = Number(score);
-    if (!Number.isFinite(s)) return "B";
-    if (s >= 85) return "A";
-    if (s >= 70) return "B";
-    if (s >= 55) return "C";
-    return "D";
-  };
-
-  const readinessToGuidance = (grade) => ({
-    A: "Green light. Progress load if technique is solid.",
-    B: "Normal training. Maintain planned load.",
-    C: "Caution. Reduce volume 10–20% and keep intensity controlled.",
-    D: "Recovery focus. Reduce load significantly or switch to mobility/skill-only.",
-    OUT: "No training. Follow return-to-play plan / medical guidance."
-  }[grade] || "Normal training.");
-
-  // Compute baselines from last 5 entries (team athlete history)
-  const computeBaselines = (logs, metrics) => ({
-    wellnessAvg: mean((logs || []).map((l) => l.wellness)),
-    energyAvg: mean((logs || []).map((l) => l.energy)),
-    sleepQualityAvg: mean((logs || []).map((l) => l.sleep_quality)),
-    vertAvg: mean((metrics || []).map((m) => m.vert_inches)),
-    sprint10Avg: mean((metrics || []).map((m) => m.sprint_seconds)),
-    codAvg: mean((metrics || []).map((m) => m.cod_seconds)),
-    sleepHoursAvg: mean((metrics || []).map((m) => m.sleep_hours))
-  });
-
-  // Readiness using the same structure as your engine, but from supplied arrays
-  const computeReadinessFromData = (dateISO, logsUpTo, metricsUpTo) => {
-    const logs = (logsUpTo || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-    const metrics = (metricsUpTo || []).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-
-    const lastLog = logs.length ? logs[logs.length - 1] : null;
-    const lastMet = metrics.length ? metrics[metrics.length - 1] : null;
-
-    // baselines from last 5
-    const b = computeBaselines(logs.slice(-5), metrics.slice(-5));
-
-    const wellnessToday = num(lastLog?.wellness);
-    const energyToday = num(lastLog?.energy);
-
-    const sleepHours = num(lastMet?.sleep_hours);
-    const sleepQuality = num(lastLog?.sleep_quality);
-
-    const hydration = String(lastLog?.hydration || "").toLowerCase().trim();
-    const injuryFlag = String(lastLog?.injury_flag || "none").toLowerCase().trim();
-    const injuryPain = num(lastLog?.injury_pain);
-
-    // trend velocity (last 3)
-    const w3 = logs.slice(-3).map((l) => num(l.wellness)).filter((x)=>Number.isFinite(x));
-    const e3 = logs.slice(-3).map((l) => num(l.energy)).filter((x)=>Number.isFinite(x));
-    const wSlope = slope(w3);
-    const eSlope = slope(e3);
-
-    const redFlags = [];
-    const cautions = [];
-
-    if (Number.isFinite(wSlope) && wSlope <= -0.75) redFlags.push("Wellness trend dropping fast.");
-    if (Number.isFinite(eSlope) && eSlope <= -0.75) redFlags.push("Energy trend dropping fast.");
-
-    // consecutive low wellness (last 2)
-    const last2 = logs.slice(-2);
-    const lowW = last2.filter((l) => Number.isFinite(num(l.wellness)) && num(l.wellness) <= 4).length;
-    if (lowW >= 2) redFlags.push("Consecutive low wellness (≤4).");
-
-    const vertDrop = pctDrop(lastMet?.vert_inches, b.vertAvg);
-    const sprintWorse = pctWorseTime(lastMet?.sprint_seconds, b.sprint10Avg);
-    const codWorse = pctWorseTime(lastMet?.cod_seconds, b.codAvg);
-
-    if (Number.isFinite(vertDrop) && vertDrop >= 0.05) redFlags.push("Vertical drop ≥5% vs baseline.");
-    else if (Number.isFinite(vertDrop) && vertDrop >= 0.03) cautions.push("Vertical drop ≥3% vs baseline.");
-
-    if (Number.isFinite(sprintWorse) && sprintWorse >= 0.05) redFlags.push("Sprint time worse ≥5% vs baseline.");
-    else if (Number.isFinite(sprintWorse) && sprintWorse >= 0.03) cautions.push("Sprint time worse ≥3% vs baseline.");
-
-    if (Number.isFinite(codWorse) && codWorse >= 0.05) redFlags.push("COD time worse ≥5% vs baseline.");
-    else if (Number.isFinite(codWorse) && codWorse >= 0.03) cautions.push("COD time worse ≥3% vs baseline.");
-
-    const sleepComp = sleepComposite(sleepHours, sleepQuality);
-    if (sleepComp !== null && sleepComp < 0.35) redFlags.push("Sleep quality/duration low.");
-    else if (sleepComp !== null && sleepComp < 0.5) cautions.push("Sleep could be better.");
-
-    if (hydration === "low") cautions.push("Hydration low.");
-
-    const injury = injuryTier(injuryFlag, injuryPain);
-    if (injury.lock) {
-      return {
-        grade: "OUT",
-        score: 0,
-        color: COLORS.OUT,
-        guidance: readinessToGuidance("OUT"),
-        reasons: [injury.label]
-      };
-    }
-    if (injury.multiplier === 0) redFlags.push("Severe pain tier.");
-    else if (injury.multiplier < 1) cautions.push(injury.label);
-
-    // scoring (mirrors your weights)
-    let score = 0;
-
-    // neuromuscular (40)
-    let nm = 40;
-    if (Number.isFinite(vertDrop)) nm -= clampLocal((vertDrop / 0.10) * 20, 0, 20);
-    if (Number.isFinite(sprintWorse)) nm -= clampLocal((sprintWorse / 0.10) * 10, 0, 10);
-    if (Number.isFinite(codWorse)) nm -= clampLocal((codWorse / 0.10) * 10, 0, 10);
-    nm = clampLocal(nm, 0, 40);
-    score += nm;
-
-    // sleep (20) with fallback
-    score += (sleepComp === null) ? 12 : clampLocal(sleepComp * 20, 0, 20);
-
-    // subjective (20) vs baseline
-    const wBase = num(b.wellnessAvg);
-    const eBase = num(b.energyAvg);
-    let sub = 20;
-
-    if (Number.isFinite(wellnessToday) && Number.isFinite(wBase)) {
-      sub += clampLocal((wellnessToday - wBase) * 2, -12, 4);
-    } else if (Number.isFinite(wellnessToday)) {
-      sub += clampLocal((wellnessToday - 6) * 1.5, -9, 6);
-    }
-
-    if (Number.isFinite(energyToday) && Number.isFinite(eBase)) {
-      sub += clampLocal((energyToday - eBase) * 2, -12, 4);
-    } else if (Number.isFinite(energyToday)) {
-      sub += clampLocal((energyToday - 6) * 1.5, -9, 6);
-    }
-
-    sub = clampLocal(sub, 0, 20);
-    score += sub;
-
-    // hydration (10)
-    score += clampLocal(hydrationScore(hydration) * 10, 0, 10);
-
-    // trend velocity (10)
-    let tv = 10;
-    if (Number.isFinite(wSlope) && wSlope < 0) tv -= clampLocal(Math.abs(wSlope) * 6, 0, 6);
-    if (Number.isFinite(eSlope) && eSlope < 0) tv -= clampLocal(Math.abs(eSlope) * 4, 0, 4);
-    tv = clampLocal(tv, 0, 10);
-    score += tv;
-
-    // injury multiplier
-    score = score * injury.multiplier;
-
-    let grade = gradeFromScore(score);
-
-    // red-flag overrides (same logic)
-    if (redFlags.length >= 2) {
-      if (grade === "A" || grade === "B") grade = "C";
-    } else if (redFlags.length === 1) {
-      if (grade === "A") grade = "B";
-      else if (grade === "B") grade = "C";
-      else if (grade === "C") grade = "D";
-    }
-
-    if (sleepComp !== null && sleepComp < 0.25) {
-      if (grade === "A" || grade === "B") grade = "C";
-    }
-    if (hydration === "low" && Number.isFinite(wellnessToday) && wellnessToday <= 5) {
-      if (grade === "A" || grade === "B") grade = "C";
-    }
-
-    const reasons = [
-      ...redFlags.map((x) => `⚠️ ${x}`),
-      ...cautions.map((x) => `• ${x}`),
-      ...(injury.label && injury.label !== "None" ? [`• Injury: ${injury.label}`] : [])
-    ];
-
-    return {
-      grade,
-      score: Math.round(score),
-      color: COLORS[grade] || COLORS.B,
-      guidance: readinessToGuidance(grade),
-      reasons
-    };
-  };
-
-  // Fetch helpers from dataStore (expects your updated schema: athlete_id, injury_flag, etc.)
-  async function fetchAthleteSeries(athleteId, dateISO) {
-    // pull last 7 logs/metrics up to selected date
-    const logs = await window.dataStore.listWorkoutLogsForAthlete?.(athleteId, dateISO, 7);
-    const metrics = await window.dataStore.listMetricsForAthlete?.(athleteId, dateISO, 7);
-    return { logs: logs || [], metrics: metrics || [] };
-  }
-
-  async function loadTeamsIntoSelect() {
-    try {
-      if (statusEl) statusEl.textContent = "Loading teams…";
-      const teams = await window.dataStore.listMyTeams();
-      if (!teamPick) return;
-
-      teamPick.innerHTML = (teams || []).length
-        ? `<option value="">Select a team…</option>` + teams.map((t) =>
-            `<option value="${sanitizeHTML(t.id)}">${sanitizeHTML(t.name || "Team")}</option>`
-          ).join("")
-        : `<option value="">No teams found</option>`;
-
-      if (statusEl) statusEl.textContent = (teams || []).length ? "" : "No teams found for your account.";
-    } catch (e) {
-      if (statusEl) statusEl.textContent = "Failed to load teams.";
-      logError("teamLoadTeams", e);
-    }
-  }
-
-  async function renderRoster() {
-    if (!teamPick || !teamDate || !rosterEl) return;
-
-    const teamId = String(teamPick.value || "").trim();
-    const dateISO = String(teamDate.value || todayISO()).trim();
-
-    if (!teamId) {
-      rosterEl.innerHTML = `<div class="small">Select a team.</div>`;
-      return;
-    }
-
-    try {
-      rosterEl.innerHTML = `<div class="small">Loading roster + readiness…</div>`;
-
-      // Pull team members; your schema includes linked_athlete_id
-      const members = await window.dataStore.listTeamMembers(teamId);
-
-      // Athlete ids: prefer linked_athlete_id, else user_id (cannot confirm this is your exact intent)
-      const athletes = (members || [])
-        .filter((m) => String(m.role_in_team || "").toLowerCase() === "athlete")
-        .map((m) => ({
-          athlete_id: m.linked_athlete_id || m.user_id,
-          label: m.display_name || "Athlete", // may not exist; safe fallback
-          raw: m
-        }))
-        .filter((a) => !!a.athlete_id);
-
-      if (!athletes.length) {
-        rosterEl.innerHTML = `<div class="small">No athletes found on this team.</div>`;
-        return;
-      }
-
-      // For each athlete: fetch last 7 logs/metrics and compute readiness for selected date
-      const rows = [];
-      for (const a of athletes) {
-        const series = await fetchAthleteSeries(a.athlete_id, dateISO);
-        const r = computeReadinessFromData(dateISO, series.logs, series.metrics);
-        rows.push({ athlete: a, r, lastLog: series.logs?.slice?.(-1)?.[0] || null, lastMet: series.metrics?.slice?.(-1)?.[0] || null });
-      }
-
-      rosterEl.innerHTML = rows.map(({ athlete, r, lastLog, lastMet }) => {
-        const name = athlete.label || "Athlete";
-        const lastLogDate = lastLog?.date ? String(lastLog.date) : "—";
-        const lastMetDate = lastMet?.date ? String(lastMet.date) : "—";
-        const reasonsHtml = (r.reasons && r.reasons.length)
-          ? `<div class="small" style="margin-top:8px">${r.reasons.map(x => sanitizeHTML(x)).join("<br/>")}</div>`
-          : "";
-
-        return `
-          <div class="card" style="margin:10px 0;padding:12px">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-              <div>
-                <div style="font-weight:700">${sanitizeHTML(name)}</div>
-                <div class="small">Last log: ${sanitizeHTML(lastLogDate)} • Last metric: ${sanitizeHTML(lastMetDate)}</div>
-              </div>
-              <div style="text-align:right">
-                <div style="font-weight:800;color:${sanitizeHTML(r.color)};font-size:18px">
-                  ${sanitizeHTML(r.grade)} (${sanitizeHTML(r.score)})
-                </div>
-                <div class="small" style="color:${sanitizeHTML(r.color)}">${sanitizeHTML(r.guidance)}</div>
-              </div>
-            </div>
-            ${reasonsHtml}
-          </div>
-        `;
-      }).join("");
-
-      if (statusEl) statusEl.textContent = `Showing readiness for ${dateISO}.`;
-    } catch (e) {
-      logError("teamRenderRoster", e);
-      rosterEl.innerHTML = `<div class="small">Failed to load roster/readiness. Check RLS + table names.</div>`;
-    }
-  }
-
-  // Wire events
-  $("btnTeamRefresh")?.addEventListener("click", renderRoster);
-  teamPick?.addEventListener("change", renderRoster);
-  teamDate?.addEventListener("change", renderRoster);
-
-  // Initial load
-  await loadTeamsIntoSelect();
-  await renderRoster();
-}
+    const el = $("tab-team");
+    if (!el) return;
+
+    const supaOk = isSupabaseReady();
+    const signed = supaOk ? await isSignedIn().catch(() => false) : false;
 
     const selectedTeamId = String(state.team.selectedTeamId || "").trim();
     const cache = state.team.cache || {};
@@ -2299,9 +1950,11 @@
     const decision = cache.teamDecision;
     const err = String(cache.error || "").trim();
 
+    const dateDefault = safeDateISO(cache.dateISO) || todayISO();
+
     el.innerHTML = `
       <h3 style="margin-top:0">Team</h3>
-      <div class="small">Coach tools: teams + roster + team readiness.</div>
+      <div class="small">Coach tools: teams + roster + readiness. Date defaults to today (or last cached date).</div>
       <div class="hr"></div>
 
       <div class="card" style="margin:10px 0;padding:12px">
@@ -2311,6 +1964,7 @@
           Auth: <b>${signed ? "Signed in" : "Signed out"}</b>
         </div>
         ${!signed ? `<div class="small" style="margin-top:6px;color:#e67e22">Sign in (Settings tab) to use team features.</div>` : ``}
+        ${err ? `<div class="small" style="margin-top:6px;color:#e74c3c">${sanitizeHTML(err)}</div>` : ``}
       </div>
 
       <div class="card" style="margin:10px 0;padding:12px">
@@ -2318,47 +1972,54 @@
         <div class="row" style="margin-top:10px">
           <div class="field">
             <label for="teamSelect">Select team</label>
-            <select id="teamSelect"></select>
+            <select id="teamSelect" ${signed ? "" : "disabled"}></select>
           </div>
           <div class="field">
             <label for="newTeamName">Create team</label>
-            <input id="newTeamName" placeholder="e.g., Trailblazers 16U" />
+            <input id="newTeamName" placeholder="e.g., Trailblazers 16U" ${signed ? "" : "disabled"} />
           </div>
         </div>
         <div class="btnRow" style="margin-top:10px">
           <button class="btn secondary" id="btnLoadTeams" type="button" ${signed ? "" : "disabled"}>Load teams</button>
           <button class="btn" id="btnCreateTeam" type="button" ${signed ? "" : "disabled"}>Create team</button>
-          <button class="btn secondary" id="btnSaveTeamSelection" type="button">Save selection</button>
+          <button class="btn secondary" id="btnSaveTeamSelection" type="button" ${signed ? "" : "disabled"}>Save selection</button>
         </div>
-        <div class="small" style="margin-top:8px;color:#e74c3c">${sanitizeHTML(err)}</div>
       </div>
 
       <div class="card" style="margin:10px 0;padding:12px">
         <div class="small"><b>Team readiness</b></div>
+
         <div class="row" style="margin-top:10px">
           <div class="field">
-            <label for="teamDate">Date</label>
-            <input id="teamDate" type="date" value="${todayISO()}" />
+            <label for="teamDatePick">Date</label>
+            <input id="teamDatePick" type="date" value="${sanitizeHTML(dateDefault)}" ${signed && selectedTeamId ? "" : "disabled"} />
           </div>
           <div class="field">
             <label>Selected team</label>
             <div class="pill">${sanitizeHTML(selectedTeamId || "—")}</div>
           </div>
         </div>
+
         <div class="btnRow" style="margin-top:10px">
-          <button class="btn" id="btnRefreshTeam" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Refresh team readiness</button>
+          <button class="btn" id="btnRefreshTeam" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Refresh readiness</button>
           <button class="btn secondary" id="btnOpenDashboard" type="button">Open dashboard</button>
         </div>
-        ${summary ? `
+
+        ${
+          summary
+            ? `
           <div class="small" style="margin-top:10px">
+            Date: <b>${sanitizeHTML(summary.dateISO || dateDefault)}</b><br/>
             Avg: <b>${sanitizeHTML(summary.avgScore)}</b> • Availability: <b>${sanitizeHTML(summary.availabilityPct)}%</b> • Total: <b>${sanitizeHTML(summary.total)}</b><br/>
             Grades: A ${sanitizeHTML(summary.grades?.A || 0)} • B ${sanitizeHTML(summary.grades?.B || 0)} • C ${sanitizeHTML(summary.grades?.C || 0)} • D ${sanitizeHTML(summary.grades?.D || 0)} • OUT ${sanitizeHTML(summary.grades?.OUT || 0)}
           </div>
           <div class="small" style="margin-top:8px">
             Recommendation: <b>${sanitizeHTML(decision?.recommendation || "—")}</b><br/>
-            ${(decision?.notes || []).slice(0,3).map(x => sanitizeHTML("• " + x)).join("<br/>")}
+            ${(decision?.notes || []).slice(0, 3).map((x) => sanitizeHTML("• " + x)).join("<br/>")}
           </div>
-        ` : `<div class="small" style="margin-top:10px">No readiness data yet.</div>`}
+        `
+            : `<div class="small" style="margin-top:10px">No readiness data yet for this date.</div>`
+        }
       </div>
 
       <div class="card" style="margin:10px 0;padding:12px">
@@ -2367,18 +2028,17 @@
       </div>
     `;
 
-    // Fill team dropdown
     const teamSelect = $("teamSelect");
-    if (teamSelect) teamSelect.innerHTML = `<option value="">—</option>`;
-    const cachedTeams = state.team.roster && Array.isArray(state.team.roster) ? state.team.roster : [];
-    cachedTeams.forEach(t => {
-      if (!t?.id) return;
-      const opt = document.createElement("option");
-      opt.value = t.id;
-      opt.textContent = t.name || t.id;
-      teamSelect?.appendChild(opt);
-    });
-    if (teamSelect) teamSelect.value = selectedTeamId;
+    if (teamSelect) {
+      const teams = Array.isArray(state.team.roster) ? state.team.roster : [];
+      teamSelect.innerHTML =
+        `<option value="">—</option>` +
+        teams
+          .filter((t) => t && t.id)
+          .map((t) => `<option value="${sanitizeHTML(t.id)}">${sanitizeHTML(t.name || t.id)}</option>`)
+          .join("");
+      teamSelect.value = selectedTeamId;
+    }
 
     $("btnLoadTeams")?.addEventListener("click", async () => {
       try {
@@ -2400,12 +2060,15 @@
         if (!name) return alert("Enter a team name.");
         if (!window.dataStore?.createTeam) return alert("Team API not available.");
         const team = await window.dataStore.createTeam(name);
-        alert("Team created.");
-        state.team.selectedTeamId = team?.id ? String(team.id) : state.team.selectedTeamId;
-        // refresh list
+
+        if (team?.id) state.team.selectedTeamId = String(team.id);
+
         const teams = await window.dataStore.listMyTeams();
         state.team.roster = teams || [];
+        state.team.cache.error = "";
         saveState();
+
+        alert("Team created.");
       } catch (e) {
         logError("createTeam", e);
         alert("Create team failed: " + (e?.message || e));
@@ -2413,7 +2076,7 @@
     });
 
     $("btnSaveTeamSelection")?.addEventListener("click", () => {
-      const v = ($("teamSelect")?.value || "").trim();
+      const v = (teamSelect?.value || "").trim();
       state.team.selectedTeamId = v;
       state.team.cache.error = "";
       __saveLocal(state);
@@ -2422,7 +2085,14 @@
     });
 
     $("btnRefreshTeam")?.addEventListener("click", async () => {
-      const d = ($("teamDate")?.value || todayISO()).trim();
+      const d = ($("teamDatePick")?.value || todayISO()).trim();
+      const ok = await refreshTeamReadiness(d);
+      if (!ok) alert(state.team.cache.error || "Refresh failed.");
+      renderActiveTab();
+    });
+
+    $("teamDatePick")?.addEventListener("change", async () => {
+      const d = ($("teamDatePick")?.value || todayISO()).trim();
       const ok = await refreshTeamReadiness(d);
       if (!ok) alert(state.team.cache.error || "Refresh failed.");
       renderActiveTab();
@@ -2433,12 +2103,11 @@
       renderActiveTab();
     });
 
-    // roster list (color-coded)
     const list = $("teamRosterList");
     if (!list) return;
 
     if (!roster.length) {
-      list.innerHTML = `No roster loaded yet. Refresh team readiness to load roster.`;
+      list.innerHTML = `No roster loaded yet. Refresh readiness to load roster.`;
       return;
     }
 
@@ -2463,7 +2132,7 @@
               <div class="small" style="max-width:220px;color:${sanitizeHTML(color)}">${sanitizeHTML(guidance)}</div>
             </div>
           </div>
-          ${r?.reasons?.length ? `<div class="small" style="margin-top:6px">${r.reasons.slice(0,3).map(x => sanitizeHTML(x)).join("<br/>")}</div>` : ``}
+          ${r?.reasons?.length ? `<div class="small" style="margin-top:6px">${r.reasons.slice(0, 3).map((x) => sanitizeHTML(x)).join("<br/>")}</div>` : ``}
         </div>
       `;
     });
@@ -2577,15 +2246,33 @@
   function renderActiveTab() {
     setPills();
     switch (activeTab()) {
-      case "profile": renderProfile(); break;
-      case "program": renderProgram(); break;
-      case "log": renderLog(); break;
-      case "performance": renderPerformance(); break;
-      case "dashboard": renderDashboard(); break;
-      case "team": renderTeam(); break;
-      case "parent": renderParent(); break;
-      case "settings": renderSettings(); break;
-      default: renderProfile(); break;
+      case "profile":
+        renderProfile();
+        break;
+      case "program":
+        renderProgram();
+        break;
+      case "log":
+        renderLog();
+        break;
+      case "performance":
+        renderPerformance();
+        break;
+      case "dashboard":
+        renderDashboard();
+        break;
+      case "team":
+        renderTeam();
+        break;
+      case "parent":
+        renderParent();
+        break;
+      case "settings":
+        renderSettings();
+        break;
+      default:
+        renderProfile();
+        break;
     }
   }
 
@@ -2600,12 +2287,16 @@
     wireNav();
     showTab(activeTab());
 
-    try { PIQ_Readiness.updateBaselinesFromHistory(); } catch (e) { logError("baselineInit", e); }
+    try {
+      PIQ_Readiness.updateBaselinesFromHistory();
+    } catch (e) {
+      logError("baselineInit", e);
+    }
 
     renderActiveTab();
     hideSplashNow();
 
-    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.1.2");
+    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.1.3");
   };
 
   document.addEventListener("DOMContentLoaded", () => {
