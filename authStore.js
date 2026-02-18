@@ -15,7 +15,7 @@
         console.warn("[auth.getUser]", e);
         return null;
       }
-    ,
+    
 (async function () {
   if (!window.supabaseClient) return;
 
