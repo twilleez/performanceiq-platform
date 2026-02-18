@@ -1,8 +1,12 @@
-// dataStore.js — PRODUCTION-READY (FULL FILE REPLACEMENT) — v1.1.4 (Join Code)
-// Aligned to your CURRENT Supabase schema (per your CSV) + OPTIONAL join-code support:
+// dataStore.js — PRODUCTION-READY (FULL FILE REPLACEMENT) — v1.1.4
+// Adds "Join code" helpers WITHOUT requiring DB schema changes.
+// IMPORTANT: This join code is NOT a secure invite system (no server verification / no one-time use).
+// Recommended secure version requires a server-side Edge Function + join-code table.
+//
+// Aligned to your CURRENT Supabase schema (per your CSV):
 // - workout_logs: athlete_id, date, program_day, volume, wellness, energy, hydration, injury_flag, injury_pain, sleep_quality, ...
 // - performance_metrics: athlete_id, date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours, ...
-// - teams: id, name, sport, coach_id, created_at   (+ optional: join_code, join_code_enabled)
+// - teams: id, name, sport, coach_id, created_at
 // - team_members: id, team_id, user_id, role_in_team, linked_athlete_id, joined_at
 //
 // This module only runs if Supabase is configured + user is signed in.
@@ -12,22 +16,8 @@
 // - upsertWorkoutLog(row), upsertPerformanceMetric(row)
 // - Athlete history: listWorkoutLogsForAthlete, listMetricsForAthlete
 // - Team APIs: createTeam, listMyTeams, listTeamMembers, addTeamMember, removeTeamMember
-// - Join-code flow (recommended):
-//     - joinTeamByCode(code, roleInTeam="athlete", linkedAthleteId=null)
-//     - regenerateTeamJoinCode(teamId)
-//     - enableTeamJoinCode(teamId, enabled)
-//     - getTeamJoinCode(teamId)  (coach use; requires RLS allowing read)
-// - Team readiness helpers for core.js coach readiness:
-//     - getTeamRosterSummary(teamId)
-//     - listWorkoutLogsForUsers(userIds, fromISO, toISO)
-//     - listPerformanceMetricsForUsers(userIds, fromISO, toISO)
-//
-// IMPORTANT:
-// - "state" snapshot table is configurable via window.PIQ_CONFIG.tables.state (not included in your CSV).
-// - If your unique constraints differ, update the onConflict strings to match your DB.
-// - Join-code support assumes OPTIONAL columns on teams: join_code, join_code_enabled.
-//   If those columns do NOT exist yet, createTeam will still work (it will fall back automatically),
-//   but join-code functions will not work until you add them + RLS.
+// - Team readiness helpers: getTeamRosterSummary, listWorkoutLogsForUsers, listPerformanceMetricsForUsers
+// - Join code helpers (simple): createJoinCode, joinTeamByCode
 
 (function () {
   "use strict";
@@ -97,42 +87,6 @@
   }
 
   // =========================================================
-  // Join code helpers (client-side generator)
-  // =========================================================
-  function _cryptoBytes(len) {
-    const out = new Uint8Array(len);
-    const c = (typeof crypto !== "undefined" && crypto.getRandomValues) ? crypto : null;
-    if (!c) throw new Error("Secure crypto not available");
-    c.getRandomValues(out);
-    return out;
-  }
-
-  function generateJoinCode(length = 8) {
-    const L = Math.max(6, Math.min(Number(length) || 8, 16));
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/1/0 to reduce confusion
-    const bytes = _cryptoBytes(L);
-    let s = "";
-    for (let i = 0; i < L; i++) {
-      s += alphabet[bytes[i] % alphabet.length];
-    }
-    return s;
-  }
-
-  function normalizeJoinCode(code) {
-    return String(code || "")
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .trim();
-  }
-
-  function looksLikeMissingJoinColumns(err) {
-    const m = String(err?.message || "").toLowerCase();
-    // Postgres undefined_column is 42703, but Supabase JS may not always expose code.
-    const c = String(err?.code || "").trim();
-    return c === "42703" || m.includes("join_code") || m.includes("join code") || m.includes("column") && m.includes("join");
-  }
-
-  // =========================================================
   // State sync (device <-> cloud)
   // =========================================================
   async function pushState(stateObj) {
@@ -154,19 +108,13 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
-
-    const { data, error } = await window.supabaseClient
-      .from(T.state)
-      .select("state")
-      .eq("user_id", u.id)
-      .maybeSingle();
-
+    const { data, error } = await window.supabaseClient.from(T.state).select("state").eq("user_id", u.id).maybeSingle();
     if (error) throw normalizeErr(error);
-    return data || null; // { state: {...} } or null
+    return data || null;
   }
 
   // =========================================================
-  // Workout logs upsert (single athlete = current auth user)
+  // Workout logs upsert
   // =========================================================
   async function upsertWorkoutLog(row) {
     ensureReadyOrThrow();
@@ -178,17 +126,14 @@
 
     const payload = { ...row, athlete_id: u.id };
 
-    // IMPORTANT: DB must have UNIQUE(athlete_id, date) (recommended)
-    const { error } = await window.supabaseClient
-      .from(T.workout_logs)
-      .upsert(payload, { onConflict: "athlete_id,date" });
-
+    // Requires UNIQUE(athlete_id, date)
+    const { error } = await window.supabaseClient.from(T.workout_logs).upsert(payload, { onConflict: "athlete_id,date" });
     if (error) throw normalizeErr(error);
     return true;
   }
 
   // =========================================================
-  // Performance metrics upsert (single athlete = current auth user)
+  // Performance metrics upsert
   // =========================================================
   async function upsertPerformanceMetric(row) {
     ensureReadyOrThrow();
@@ -200,11 +145,8 @@
 
     const payload = { ...row, athlete_id: u.id };
 
-    // IMPORTANT: DB must have UNIQUE(athlete_id, date) (recommended)
-    const { error } = await window.supabaseClient
-      .from(T.performance_metrics)
-      .upsert(payload, { onConflict: "athlete_id,date" });
-
+    // Requires UNIQUE(athlete_id, date)
+    const { error } = await window.supabaseClient.from(T.performance_metrics).upsert(payload, { onConflict: "athlete_id,date" });
     if (error) throw normalizeErr(error);
     return true;
   }
@@ -228,9 +170,7 @@
 
     const { data, error } = await window.supabaseClient
       .from(T.workout_logs)
-      .select(
-        "athlete_id,date,program_day,volume,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at"
-      )
+      .select("athlete_id,date,program_day,volume,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at")
       .eq("athlete_id", aid)
       .lte("date", d)
       .order("date", { ascending: true })
@@ -280,47 +220,22 @@
 
     const teamSport = String(sport || "").trim() || null;
 
-    // Prefer join-code columns if they exist
-    const join_code = generateJoinCode(8);
-    const insertWithCode = { name: teamName, sport: teamSport, coach_id: u.id, join_code, join_code_enabled: true };
-    const insertBasic = { name: teamName, sport: teamSport, coach_id: u.id };
+    const { data: team, error } = await window.supabaseClient
+      .from(T.teams)
+      .insert({ name: teamName, sport: teamSport, coach_id: u.id })
+      .select("*")
+      .single();
 
-    let team = null;
+    if (error) throw normalizeErr(error);
 
-    // Attempt #1: with join_code
-    {
-      const { data, error } = await window.supabaseClient
-        .from(T.teams)
-        .insert(insertWithCode)
-        .select("*")
-        .single();
-
-      if (!error) {
-        team = data;
-      } else if (looksLikeMissingJoinColumns(error)) {
-        // Attempt #2: fall back without join_code columns (schema not updated yet)
-        const { data: d2, error: e2 } = await window.supabaseClient
-          .from(T.teams)
-          .insert(insertBasic)
-          .select("*")
-          .single();
-
-        if (e2) throw normalizeErr(e2);
-        team = d2;
-      } else {
-        throw normalizeErr(error);
-      }
-    }
-
-    // Add creator as coach member row
-    const { error: eMember } = await window.supabaseClient.from(T.team_members).insert({
+    const { error: e2 } = await window.supabaseClient.from(T.team_members).insert({
       team_id: team.id,
       user_id: u.id,
       role_in_team: "coach",
       linked_athlete_id: null
     });
-    if (eMember) throw normalizeErr(eMember);
 
+    if (e2) throw normalizeErr(e2);
     return team;
   }
 
@@ -330,31 +245,14 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
-
-    // We attempt to select join columns as well; if they don't exist, we retry without them.
-    const selectWithJoin = "id,name,sport,created_at,coach_id,join_code,join_code_enabled";
-    const selectBasic = "id,name,sport,created_at,coach_id";
-
     const { data, error } = await window.supabaseClient
       .from(T.teams)
-      .select(selectWithJoin)
+      .select("id,name,sport,created_at,coach_id")
       .eq("coach_id", u.id)
       .order("created_at", { ascending: false });
 
-    if (!error) return data || [];
-
-    if (looksLikeMissingJoinColumns(error)) {
-      const { data: d2, error: e2 } = await window.supabaseClient
-        .from(T.teams)
-        .select(selectBasic)
-        .eq("coach_id", u.id)
-        .order("created_at", { ascending: false });
-
-      if (e2) throw normalizeErr(e2);
-      return d2 || [];
-    }
-
-    throw normalizeErr(error);
+    if (error) throw normalizeErr(error);
+    return data || [];
   }
 
   async function listTeamMembers(teamId) {
@@ -413,129 +311,14 @@
     if (!tid) throw new Error("teamId required");
     if (!mid) throw new Error("memberRowId required");
 
-    const { error } = await window.supabaseClient
-      .from(T.team_members)
-      .delete()
-      .eq("team_id", tid)
-      .eq("id", mid);
-
+    const { error } = await window.supabaseClient.from(T.team_members).delete().eq("team_id", tid).eq("id", mid);
     if (error) throw normalizeErr(error);
     return true;
   }
 
   // =========================================================
-  // Join-code APIs (recommended flow)
-  // =========================================================
-
-  // Coach-only (requires RLS): fetch join_code (+ enabled) for team
-  async function getTeamJoinCode(teamId) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId required");
-
-    const { data, error } = await window.supabaseClient
-      .from(T.teams)
-      .select("id,join_code,join_code_enabled,coach_id")
-      .eq("id", tid)
-      .maybeSingle();
-
-    if (error) throw normalizeErr(error);
-    return data || null;
-  }
-
-  // Coach-only (requires columns + RLS): regenerate join code
-  async function regenerateTeamJoinCode(teamId) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId required");
-
-    const join_code = generateJoinCode(8);
-
-    const { data, error } = await window.supabaseClient
-      .from(T.teams)
-      .update({ join_code, join_code_enabled: true })
-      .eq("id", tid)
-      .select("id,join_code,join_code_enabled")
-      .single();
-
-    if (error) throw normalizeErr(error);
-    return data || null;
-  }
-
-  // Coach-only (requires columns + RLS): enable/disable
-  async function enableTeamJoinCode(teamId, enabled) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId required");
-
-    const en = !!enabled;
-
-    const { data, error } = await window.supabaseClient
-      .from(T.teams)
-      .update({ join_code_enabled: en })
-      .eq("id", tid)
-      .select("id,join_code,join_code_enabled")
-      .single();
-
-    if (error) throw normalizeErr(error);
-    return data || null;
-  }
-
-  // Athlete self-join by code: resolves team by join_code and inserts team_members row for current user.
-  // Requires:
-  // - teams.join_code (+ enabled)
-  // - RLS allowing select of teams by join_code (or an RPC), and insert into team_members for auth.uid()
-  async function joinTeamByCode(code, roleInTeam = "athlete", linkedAthleteId = null) {
-    ensureReadyOrThrow();
-    const u = await getUser();
-    if (!u) throw new Error("Not signed in");
-
-    const T = tables();
-    const c = normalizeJoinCode(code);
-    if (!c) throw new Error("Join code required");
-
-    const { data: team, error: eTeam } = await window.supabaseClient
-      .from(T.teams)
-      .select("id,join_code,join_code_enabled")
-      .eq("join_code", c)
-      .maybeSingle();
-
-    if (eTeam) throw normalizeErr(eTeam);
-    if (!team || !team.id) throw new Error("Invalid code");
-    if (team.join_code_enabled === false) throw new Error("Code disabled");
-
-    const r = String(roleInTeam || "athlete").trim() || "athlete";
-    const lid = linkedAthleteId ? String(linkedAthleteId).trim() : null;
-
-    const { error: eIns } = await window.supabaseClient.from(T.team_members).insert({
-      team_id: team.id,
-      user_id: u.id,
-      role_in_team: r,
-      linked_athlete_id: lid
-    });
-
-    if (eIns) throw normalizeErr(eIns);
-    return { team_id: team.id };
-  }
-
-  // =========================================================
   // Team readiness helpers (used by core.js coach readiness)
   // =========================================================
-
-  // Returns { athletes: [{ user_id, display_name, last_log_date }] }
-  // NOTE: "display_name" is not in your CSV. We fall back to a short user id label.
   async function getTeamRosterSummary(teamId) {
     ensureReadyOrThrow();
     const u = await getUser();
@@ -609,9 +392,7 @@
 
     const { data, error } = await window.supabaseClient
       .from(T.workout_logs)
-      .select(
-        "athlete_id as user_id,date,program_day,volume,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at"
-      )
+      .select("athlete_id as user_id,date,program_day,volume,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at")
       .in("athlete_id", ids)
       .gte("date", from)
       .lte("date", to)
@@ -647,6 +428,75 @@
   }
 
   // =========================================================
+  // Join code helpers (NO DB CHANGES)
+  // Format: "PIQ1.<base64url(json)>"
+  // json: { team_id, role_in_team, linked_athlete_id, exp_ms }
+  // =========================================================
+  function base64UrlEncode(str) {
+    const b64 = btoa(unescape(encodeURIComponent(str)));
+    return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+
+  function base64UrlDecode(b64url) {
+    const b64 = String(b64url).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(b64url).length + 3) % 4);
+    const str = decodeURIComponent(escape(atob(b64)));
+    return str;
+  }
+
+  function createJoinCode(teamId, opts) {
+    const tid = String(teamId || "").trim();
+    if (!tid) throw new Error("teamId required");
+
+    const role = String(opts?.role_in_team || "athlete").trim() || "athlete";
+    const linked = opts?.linked_athlete_id ? String(opts.linked_athlete_id).trim() : null;
+
+    const ttlMinutes = Number(opts?.ttl_minutes);
+    const safeTtl = Number.isFinite(ttlMinutes) ? Math.max(5, Math.min(ttlMinutes, 60 * 24 * 14)) : 60 * 24; // default 24h, max 14 days
+    const expMs = Date.now() + safeTtl * 60 * 1000;
+
+    const payload = {
+      team_id: tid,
+      role_in_team: role,
+      linked_athlete_id: linked,
+      exp_ms: expMs
+    };
+
+    return "PIQ1." + base64UrlEncode(JSON.stringify(payload));
+  }
+
+  async function joinTeamByCode(code) {
+    ensureReadyOrThrow();
+    const u = await getUser();
+    if (!u) throw new Error("Not signed in");
+
+    const raw = String(code || "").trim();
+    if (!raw) throw new Error("Join code required");
+    if (!raw.startsWith("PIQ1.")) throw new Error("Invalid join code format");
+
+    const encoded = raw.slice("PIQ1.".length);
+    let payload;
+    try {
+      payload = JSON.parse(base64UrlDecode(encoded));
+    } catch {
+      throw new Error("Invalid join code payload");
+    }
+
+    const tid = String(payload?.team_id || "").trim();
+    if (!tid) throw new Error("Join code missing team_id");
+
+    const exp = Number(payload?.exp_ms);
+    if (!Number.isFinite(exp)) throw new Error("Join code missing exp");
+    if (Date.now() > exp) throw new Error("Join code expired");
+
+    const role = String(payload?.role_in_team || "athlete").trim() || "athlete";
+    const linked = payload?.linked_athlete_id ? String(payload.linked_athlete_id).trim() : null;
+
+    // Insert into team_members for the CURRENT signed-in user
+    await addTeamMember(tid, u.id, role, linked);
+    return { team_id: tid, role_in_team: role, linked_athlete_id: linked };
+  }
+
+  // =========================================================
   // Public API
   // =========================================================
   window.dataStore = {
@@ -669,15 +519,13 @@
     addTeamMember,
     removeTeamMember,
 
-    // join-code
-    getTeamJoinCode,
-    regenerateTeamJoinCode,
-    enableTeamJoinCode,
-    joinTeamByCode,
-
     // team readiness helpers
     getTeamRosterSummary,
     listWorkoutLogsForUsers,
-    listPerformanceMetricsForUsers
+    listPerformanceMetricsForUsers,
+
+    // join code helpers (simple)
+    createJoinCode,
+    joinTeamByCode
   };
 })();
