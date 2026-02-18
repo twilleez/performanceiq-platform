@@ -1,36 +1,47 @@
-// supabase-config.js
-// Leave values as empty strings to keep sync disabled.
-// When you paste real values, cloud sync becomes available.
+// supabaseClient.js — PRODUCTION-READY (FULL FILE) v1.2.1
+// Initializes window.supabaseClient ONLY if URL + anon key are provided.
+// Otherwise stays offline-first (supabaseClient = null).
 
 (function () {
   "use strict";
 
-  // ✅ YOU must fill these from your Supabase project settings.
-  // I cannot confirm your URL/keys.
-  window.PIQ_SUPABASE_URL = "";     // e.g. https://xxxx.supabase.co
-  window.PIQ_SUPABASE_ANON_KEY = ""; // anon public key
+  function getCfg() {
+    const fromCfg = window.PIQ_CONFIG?.supabase || {};
+    const url =
+      (typeof fromCfg.url === "string" && fromCfg.url.trim()) ||
+      (typeof window.PIQ_SUPABASE_URL === "string" && window.PIQ_SUPABASE_URL.trim()) ||
+      "";
 
-  function canInit() {
-    return (
+    const anonKey =
+      (typeof fromCfg.anonKey === "string" && fromCfg.anonKey.trim()) ||
+      (typeof window.PIQ_SUPABASE_ANON_KEY === "string" && window.PIQ_SUPABASE_ANON_KEY.trim()) ||
+      "";
+
+    return { url: url.trim(), anonKey: anonKey.trim() };
+  }
+
+  function canInit(url, anonKey) {
+    return !!(
       typeof window.supabase !== "undefined" &&
-      typeof window.PIQ_SUPABASE_URL === "string" &&
-      window.PIQ_SUPABASE_URL.trim() &&
-      typeof window.PIQ_SUPABASE_ANON_KEY === "string" &&
-      window.PIQ_SUPABASE_ANON_KEY.trim()
+      window.supabase &&
+      typeof window.supabase.createClient === "function" &&
+      typeof url === "string" &&
+      url &&
+      typeof anonKey === "string" &&
+      anonKey
     );
   }
 
   try {
-    if (canInit()) {
-      window.supabaseClient = window.supabase.createClient(
-        window.PIQ_SUPABASE_URL.trim(),
-        window.PIQ_SUPABASE_ANON_KEY.trim()
-      );
+    const { url, anonKey } = getCfg();
+
+    if (canInit(url, anonKey)) {
+      window.supabaseClient = window.supabase.createClient(url, anonKey);
     } else {
-      window.supabaseClient = null; // keeps app offline-first
+      window.supabaseClient = null;
     }
   } catch (e) {
-    console.warn("[supabase-init]", e);
+    console.warn("[supabaseClient-init]", e);
     window.supabaseClient = null;
   }
 })();
