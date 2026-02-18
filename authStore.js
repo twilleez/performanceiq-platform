@@ -16,7 +16,18 @@
         return null;
       }
     },
+(async function () {
+  if (!window.supabaseClient) return;
 
+  // This ensures the auth callback URL is processed
+  try {
+    await window.supabaseClient.auth.getSession();
+  } catch (e) {
+    console.warn("[auth callback consume]", e);
+  }
+})();
+
+    
     const { error } = await window.supabaseClient.auth.signInWithOtp({
   email: clean,
   options: {
