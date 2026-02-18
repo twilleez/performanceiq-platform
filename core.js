@@ -2084,7 +2084,7 @@
         <div class="small"><b>Vertical trend (last 14)</b></div>
         <canvas id="chartVert" width="320" height="140" style="width:100%;max-width:640px"></canvas>
       </div>
-    `;
+    
 
     $("btnRefreshTeamReadiness")?.addEventListener("click", async () => {
       const ok = await refreshTeamReadiness(todayISO());
