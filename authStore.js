@@ -17,22 +17,12 @@
       }
     },
 
-    async signInWithOtp(email) {
-      if (!window.supabaseClient) {
-        throw new Error("Supabase not configured.");
-      }
-
-      const clean = String(email || "").trim();
-      if (!clean) throw new Error("Email required.");
-
-      const redirectTo = window.location.href.split("#")[0];
-
-      const { error } = await window.supabaseClient.auth.signInWithOtp({
-        email: clean,
-        options: {
-          emailRedirectTo: redirectTo
-        }
-      });
+    const { error } = await window.supabaseClient.auth.signInWithOtp({
+  email: clean,
+  options: {
+    emailRedirectTo: "https://willeez.github.io/performanceiq-platform/"
+  }
+});
 
       if (error) throw error;
       return true;
