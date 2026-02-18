@@ -1,9 +1,10 @@
-// dataStore.js — PRODUCTION-READY (FULL FILE REPLACEMENT) — v1.1.3
-// Aligned to your CURRENT Supabase schema (per your CSV):
-// - workout_logs: athlete_id, date, program_day, volume, wellness, energy, hydration, injury_flag, injury_pain, sleep_quality, ...
-// - performance_metrics: athlete_id, date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours, ...
-// - teams: id, name, sport, coach_id, created_at
-// - team_members: id, team_id, user_id, role_in_team, linked_athlete_id, joined_at
+// dataStore.js — PRODUCTION-READY (FULL FILE REPLACEMENT) — v1.1.4
+// Aligned to your CURRENT Supabase schema (per your uploaded CSV):
+// - workout_logs columns: id, athlete_id, date, program_day, volume, wellness, energy, hydration, injury_flag,
+//   practice_intensity, practice_duration_min, extra_gym, extra_gym_duration_min, created_at, updated_at
+// - performance_metrics columns: id, athlete_id, date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours, created_at
+// - teams columns: id, name, sport, coach_id, created_at
+// - team_members columns: id, team_id, user_id, role_in_team, linked_athlete_id, joined_at
 //
 // This module only runs if Supabase is configured + user is signed in.
 //
@@ -12,15 +13,16 @@
 // - upsertWorkoutLog(row), upsertPerformanceMetric(row)
 // - Athlete history: listWorkoutLogsForAthlete, listMetricsForAthlete
 // - Team APIs: createTeam, listMyTeams, listTeamMembers, addTeamMember, removeTeamMember
+// - Team readiness helpers (for core.js coach tools):
+//   - getTeamRosterSummary(teamId)
+//   - listWorkoutLogsForUsers(userIds, fromISO, toISO)
+//   - listPerformanceMetricsForUsers(userIds, fromISO, toISO)
 //
 // IMPORTANT:
 // - This file maps "current auth user id" => athlete_id/coach_id where appropriate.
 // - "state" snapshot table is configurable via window.PIQ_CONFIG.tables.state (not included in your CSV).
 // - If your unique constraints differ, update the onConflict strings to match your DB.
-// - core.js team readiness expects these optional helpers if you want team readiness to work:
-//   - getTeamRosterSummary(teamId)
-//   - listWorkoutLogsForUsers(userIds, fromISO, toISO)
-//   - listPerformanceMetricsForUsers(userIds, fromISO, toISO)
+// - Any extra fields passed from core.js that are NOT in your DB schema are stripped before upsert.
 
 (function () {
   "use strict";
@@ -38,6 +40,33 @@
     performance_metrics: "performance_metrics",
     teams: "teams",
     team_members: "team_members"
+  });
+
+  // Allowed columns per uploaded CSV (used to strip unknown fields safely)
+  const ALLOWED = Object.freeze({
+    workout_logs: new Set([
+      "athlete_id",
+      "date",
+      "program_day",
+      "volume",
+      "wellness",
+      "energy",
+      "hydration",
+      "injury_flag",
+      "practice_intensity",
+      "practice_duration_min",
+      "extra_gym",
+      "extra_gym_duration_min"
+    ]),
+    performance_metrics: new Set([
+      "athlete_id",
+      "date",
+      "vert_inches",
+      "sprint_seconds",
+      "cod_seconds",
+      "bw_lbs",
+      "sleep_hours"
+    ])
   });
 
   function tables() {
@@ -93,6 +122,15 @@
     return Math.max(1, Math.min(Math.floor(x), max));
   }
 
+  function pickAllowed(obj, allowedSet) {
+    const out = {};
+    if (!obj || typeof obj !== "object") return out;
+    Object.keys(obj).forEach((k) => {
+      if (allowedSet.has(k)) out[k] = obj[k];
+    });
+    return out;
+  }
+
   // =========================================================
   // State sync (device <-> cloud)
   // =========================================================
@@ -115,20 +153,14 @@
     if (!u) throw new Error("Not signed in");
 
     const T = tables();
-
-    const { data, error } = await window.supabaseClient
-      .from(T.state)
-      .select("state")
-      .eq("user_id", u.id)
-      .maybeSingle();
-
+    const { data, error } = await window.supabaseClient.from(T.state).select("state").eq("user_id", u.id).maybeSingle();
     if (error) throw normalizeErr(error);
     return data || null; // { state: {...} } or null
   }
 
   // =========================================================
   // Workout logs upsert
-  // core.js passes: { date, program_day, volume, wellness, energy, hydration, injury_flag, ... }
+  // core.js passes extra fields sometimes; we STRIP to DB schema.
   // Table expects athlete_id instead of user_id.
   // =========================================================
   async function upsertWorkoutLog(row) {
@@ -138,8 +170,11 @@
 
     const T = tables();
     if (!row || !row.date) throw new Error("Missing row.date");
+    if (!isISODate(row.date)) throw new Error("row.date must be YYYY-MM-DD");
 
-    const payload = { ...row, athlete_id: u.id };
+    // strip to schema + enforce athlete_id
+    const base = pickAllowed(row, ALLOWED.workout_logs);
+    const payload = { ...base, athlete_id: u.id };
 
     // IMPORTANT: DB must have UNIQUE(athlete_id, date) (recommended)
     const { error } = await window.supabaseClient.from(T.workout_logs).upsert(payload, { onConflict: "athlete_id,date" });
@@ -149,7 +184,7 @@
 
   // =========================================================
   // Performance metrics upsert
-  // core.js passes: { date, vert_inches, sprint_seconds, cod_seconds, bw_lbs, sleep_hours }
+  // core.js may pass extra; we STRIP to DB schema.
   // Table expects athlete_id instead of user_id.
   // =========================================================
   async function upsertPerformanceMetric(row) {
@@ -159,8 +194,10 @@
 
     const T = tables();
     if (!row || !row.date) throw new Error("Missing row.date");
+    if (!isISODate(row.date)) throw new Error("row.date must be YYYY-MM-DD");
 
-    const payload = { ...row, athlete_id: u.id };
+    const base = pickAllowed(row, ALLOWED.performance_metrics);
+    const payload = { ...base, athlete_id: u.id };
 
     // IMPORTANT: DB must have UNIQUE(athlete_id, date) (recommended)
     const { error } = await window.supabaseClient
@@ -191,11 +228,11 @@
     const { data, error } = await window.supabaseClient
       .from(T.workout_logs)
       .select(
-        "athlete_id,date,program_day,volume,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at"
+        "athlete_id,date,program_day,volume,wellness,energy,hydration,injury_flag,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at"
       )
       .eq("athlete_id", aid)
       .lte("date", d)
-      .order("date", { ascending: true }) // ascending so last is latest
+      .order("date", { ascending: true })
       .limit(safeLim);
 
     if (error) throw normalizeErr(error);
@@ -218,7 +255,7 @@
 
     const { data, error } = await window.supabaseClient
       .from(T.performance_metrics)
-      .select("athlete_id,date,vert_inches,sprint_seconds,cod_seconds,bw_lbs,sleep_hours,created_at,updated_at")
+      .select("athlete_id,date,vert_inches,sprint_seconds,cod_seconds,bw_lbs,sleep_hours,created_at")
       .eq("athlete_id", aid)
       .lte("date", d)
       .order("date", { ascending: true })
@@ -229,9 +266,7 @@
   }
 
   // =========================================================
-  // Team APIs (Aligned to your schema)
-  // teams: coach_id, name, sport
-  // team_members: team_id, user_id, role_in_team, linked_athlete_id
+  // Team APIs
   // =========================================================
   async function createTeam(name, sport) {
     ensureReadyOrThrow();
@@ -252,7 +287,7 @@
 
     if (error) throw normalizeErr(error);
 
-    // Add creator as coach member row too (common pattern)
+    // Add creator as coach member row
     const { error: e2 } = await window.supabaseClient.from(T.team_members).insert({
       team_id: team.id,
       user_id: u.id,
@@ -346,8 +381,8 @@
   // Team readiness helpers (for core.js Coach/Team readiness)
   // =========================================================
 
-  // Returns { athletes: [{ user_id, display_name, last_log_date }], team: {...} }
-  // NOTE: "display_name" is not in your CSV. If you don't have profiles, we fall back to user_id short form.
+  // Returns { athletes: [{ user_id, display_name, last_log_date }] }
+  // NOTE: "display_name" is not in your CSV; we generate a fallback.
   async function getTeamRosterSummary(teamId) {
     ensureReadyOrThrow();
     const u = await getUser();
@@ -357,7 +392,6 @@
     const tid = String(teamId || "").trim();
     if (!tid) throw new Error("teamId required");
 
-    // Get members
     const { data: members, error: e1 } = await window.supabaseClient
       .from(T.team_members)
       .select("id,team_id,user_id,role_in_team,linked_athlete_id,joined_at")
@@ -365,28 +399,22 @@
 
     if (e1) throw normalizeErr(e1);
 
-    // Athlete user ids: members with role_in_team === 'athlete' OR linked_athlete_id present
     const athletes = (members || [])
       .map((m) => {
         const role = String(m.role_in_team || "").toLowerCase().trim();
         const athleteUid = m.linked_athlete_id ? String(m.linked_athlete_id) : String(m.user_id || "");
         if (!athleteUid) return null;
-        if (role === "athlete" || m.linked_athlete_id) {
-          return { user_id: athleteUid };
-        }
+        if (role === "athlete" || m.linked_athlete_id) return { user_id: athleteUid };
         return null;
       })
       .filter(Boolean);
 
-    // Dedup
     const uniq = {};
     athletes.forEach((a) => (uniq[a.user_id] = a));
     const athleteIds = Object.keys(uniq);
 
-    // Pull "last log date" per athlete (fast path: 1 query per athlete would be slow; use IN)
     let lastLogByAthlete = {};
     if (athleteIds.length) {
-      // Supabase can't do group-by max easily without RPC; we fetch recent logs and compute client-side.
       const { data: logs, error: e2 } = await window.supabaseClient
         .from(T.workout_logs)
         .select("athlete_id,date")
@@ -404,7 +432,6 @@
       });
     }
 
-    // Provide display_name fallback
     const athletesOut = athleteIds.map((id) => ({
       user_id: id,
       display_name: `Athlete ${String(id).slice(0, 6)}`,
@@ -427,10 +454,11 @@
     if (!ids.length) return [];
     if (!isISODate(from) || !isISODate(to)) throw new Error("fromISO/toISO must be YYYY-MM-DD");
 
+    // PostgREST rename syntax: athlete_id:user_id
     const { data, error } = await window.supabaseClient
       .from(T.workout_logs)
       .select(
-        "athlete_id as user_id,date,program_day,volume,wellness,energy,hydration,injury_flag,injury_pain,sleep_quality,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at"
+        "athlete_id:user_id,date,program_day,volume,wellness,energy,hydration,injury_flag,practice_intensity,practice_duration_min,extra_gym,extra_gym_duration_min,created_at,updated_at"
       )
       .in("athlete_id", ids)
       .gte("date", from)
@@ -456,7 +484,7 @@
 
     const { data, error } = await window.supabaseClient
       .from(T.performance_metrics)
-      .select("athlete_id as user_id,date,vert_inches,sprint_seconds,cod_seconds,bw_lbs,sleep_hours,created_at,updated_at")
+      .select("athlete_id:user_id,date,vert_inches,sprint_seconds,cod_seconds,bw_lbs,sleep_hours,created_at")
       .in("athlete_id", ids)
       .gte("date", from)
       .lte("date", to)
@@ -489,7 +517,7 @@
     addTeamMember,
     removeTeamMember,
 
-    // team readiness helpers (optional but used by core.js coach tools)
+    // team readiness helpers
     getTeamRosterSummary,
     listWorkoutLogsForUsers,
     listPerformanceMetricsForUsers
