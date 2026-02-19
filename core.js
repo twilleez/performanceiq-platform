@@ -1,14 +1,20 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.2.0
+// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.2.1
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
 // Includes: tabs + Profile + Program + Log + Performance + Dashboard + Settings
 // Phase 4: Team readiness + coach decision engine + Team tab (cache-based)
 // Phase 5: Coach Execution Engine (OFFLINE-FIRST): Session Plan + Attendance + CSV Export (no new tables required)
 //
+// Fixes in v1.2.1:
+// - Removed duplicate/stray Team-tab code that caused syntax/runtime errors
+// - Fixed Dashboard template string that was not closed
+// - Added state.team.members to default/normalize (used by Team tab)
+// - Consolidated Team tab into a single, coherent renderer incl. Phase 5 plan/attendance/export UI
+//
 // IMPORTANT:
-// - This file no longer depends on dataStore.getTeamRosterSummary / listWorkoutLogsForUsers / listPerformanceMetricsForUsers.
-// - It uses only the APIs you already have in your dataStore: listMyTeams, listTeamMembers,
-//   listWorkoutLogsForAthlete, listMetricsForAthlete, plus basic state push/pull + upserts.
-// - Team member display names are not guaranteed by your current schema; we show a short user id label by default.
+// - Uses only existing dataStore APIs referenced here: listMyTeams, createTeam, listTeamMembers,
+//   addTeamMember, removeTeamMember, listWorkoutLogsForAthlete, listMetricsForAthlete,
+//   upsertWorkoutLog, upsertPerformanceMetric, pushState, pullState.
+// - Team member display names are not guaranteed by your schema; we show "Athlete <shortId>".
 
 (function () {
   "use strict";
@@ -157,22 +163,14 @@
       logs: [],
       tests: [],
       team: {
-        // teams list cache (from cloud) stored here for convenience
         roster: [],
-
+        members: [], // <-- FIX: used by Team tab
         selectedTeamId: "",
-
-        // Phase 5: coach execution engine (offline-first)
-        sessions: {
-          // [teamId]: { [dateISO]: { locked:boolean, planText:string, createdAtMs:number, updatedAtMs:number, source:string } }
-        },
-        attendanceByDate: {
-          // [teamId]: { [dateISO]: { [userId]: "present"|"limited"|"out" } }
-        },
-
+        sessions: {},
+        attendanceByDate: {},
         cache: {
           dateISO: "",
-          members: [], // team_members rows
+          members: [],
           readinessByUser: {},
           teamSummary: null,
           teamDecision: null,
@@ -223,9 +221,9 @@
 
     s.team = s.team && typeof s.team === "object" ? s.team : d.team;
     if (!Array.isArray(s.team.roster)) s.team.roster = [];
+    if (!Array.isArray(s.team.members)) s.team.members = []; // <-- FIX
     if (typeof s.team.selectedTeamId !== "string") s.team.selectedTeamId = "";
 
-    // Phase 5 objects
     if (!s.team.sessions || typeof s.team.sessions !== "object") s.team.sessions = {};
     if (!s.team.attendanceByDate || typeof s.team.attendanceByDate !== "object") s.team.attendanceByDate = {};
 
@@ -941,7 +939,6 @@
         sprint10Avg: mean(tests5.map((t) => numOrNull(t.sprint10))),
         codAvg: mean(tests5.map((t) => numOrNull(t.cod))),
         sleepHoursAvg: mean(tests5.map((t) => numOrNull(t.sleep))),
-        // for completeness
         sleepQualityAvg_fromLogs: mean(logs5.map((l) => numOrNull(l.sleep_quality)))
       };
     }
@@ -1142,7 +1139,6 @@
       };
     }
 
-    // Team aggregation + coach decision engine
     function teamSummaryForDate(dateISO, readinessList) {
       const date = safeDateISO(dateISO) || todayISO();
       const arr = Array.isArray(readinessList) ? readinessList.filter(Boolean) : [];
@@ -1286,7 +1282,6 @@
       return false;
     }
 
-    // Required datastore APIs
     if (!window.dataStore?.listTeamMembers) {
       state.team.cache.error = "dataStore missing listTeamMembers(teamId).";
       __saveLocal(state);
@@ -1318,7 +1313,6 @@
       const upTo = date;
       const limit = 14;
 
-      // Fetch per athlete (simple + reliable with current dataStore)
       const readinessByUser = {};
       const readinessList = [];
 
@@ -1348,7 +1342,6 @@
         readinessByUser[uid] = withDisplay;
         readinessList.push(withDisplay);
 
-        // Phase 5: auto-suggest attendance if not already set
         try {
           ensureTeamAttendanceSlot(teamId, date);
           const current = state.team.attendanceByDate?.[teamId]?.[date]?.[uid];
@@ -1369,7 +1362,6 @@
       state.team.cache.updatedAtMs = Date.now();
       state.team.cache.error = "";
 
-      // Phase 5: auto-generate a session plan draft (offline-first)
       try {
         ensureTeamSessionSlot(teamId, date);
         const sess = state.team.sessions[teamId][date];
@@ -1455,7 +1447,6 @@
     if (notes.length) lines.push(`Notes: ${notes.map((n) => `• ${n}`).join(" ")}`);
     lines.push("");
 
-    // If a program exists, provide a structured template; otherwise provide a generic structure
     const p = program && program.daysPlan ? program : null;
     if (p) {
       lines.push(`Program context: Week ${wk} (${String(p.sport || "").toLowerCase()} • ${p.days || "?"} days/wk)`);
@@ -1529,7 +1520,6 @@
       rows.push([d, tid, uid, label, grade, score, att, rec, locked]);
     }
 
-    // Escape CSV
     function esc(v) {
       const s = String(v ?? "");
       if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -1570,12 +1560,11 @@
     const name = state.profile?.name || "";
 
     const b = state.profile?.baselines || {};
-    const baselineText = `
-      Wellness avg: ${Number.isFinite(b.wellnessAvg) ? b.wellnessAvg.toFixed(1) : "—"} •
-      Energy avg: ${Number.isFinite(b.energyAvg) ? b.energyAvg.toFixed(1) : "—"} •
-      SleepQ avg: ${Number.isFinite(b.sleepQualityAvg) ? b.sleepQualityAvg.toFixed(1) : "—"} •
-      Vert avg: ${Number.isFinite(b.vertAvg) ? b.vertAvg.toFixed(1) : "—"}
-    `;
+    const baselineText = `Wellness avg: ${Number.isFinite(b.wellnessAvg) ? b.wellnessAvg.toFixed(1) : "—"} • Energy avg: ${
+      Number.isFinite(b.energyAvg) ? b.energyAvg.toFixed(1) : "—"
+    } • SleepQ avg: ${Number.isFinite(b.sleepQualityAvg) ? b.sleepQualityAvg.toFixed(1) : "—"} • Vert avg: ${
+      Number.isFinite(b.vertAvg) ? b.vertAvg.toFixed(1) : "—"
+    }`;
 
     el.innerHTML = `
       <h3 style="margin-top:0">Profile</h3>
@@ -2084,7 +2073,7 @@
         <div class="small"><b>Vertical trend (last 14)</b></div>
         <canvas id="chartVert" width="320" height="140" style="width:100%;max-width:640px"></canvas>
       </div>
-    
+    `;
 
     $("btnRefreshTeamReadiness")?.addEventListener("click", async () => {
       const ok = await refreshTeamReadiness(todayISO());
@@ -2161,436 +2150,212 @@
   }
 
   // =========================
-  // Team tab — Phase 4 + Phase 5 (session plan + attendance + export)
+  // Team tab — Phase 4 + Phase 5 (single renderer, no duplicates)
   // =========================
- // =========================================================
-// Team tab — Roster UI + Join Code
-// Join Code = team_id (because your schema does not include a join_code column)
-// =========================================================
-async function renderTeam() {
-  const el = $("tab-team");
-  if (!el) return;
+  async function renderTeam() {
+    const el = $("tab-team");
+    if (!el) return;
 
-  const supaOk = isSupabaseReady();
-  const signed = supaOk ? await isSignedIn().catch(() => false) : false;
+    const supaOk = isSupabaseReady();
+    const signed = supaOk ? await isSignedIn().catch(() => false) : false;
 
-  const role = String(state.role || "").trim();
-  const isCoach = role === ROLES.COACH;
+    const role = String(state.role || "").trim();
+    const isCoach = role === ROLES.COACH;
 
-  const selectedTeamId = String(state.team.selectedTeamId || "").trim();
-  const cache = state.team.cache || {};
-  const err = String(cache.error || "").trim();
+    const selectedTeamId = String(state.team.selectedTeamId || "").trim();
+    const cache = state.team.cache || {};
+    const err = String(cache.error || "").trim();
 
-  // local team list is stored in state.team.roster (your existing usage)
-  const teams = Array.isArray(state.team.roster) ? state.team.roster : [];
+    const teams = Array.isArray(state.team.roster) ? state.team.roster : [];
+    const membersLoaded = Array.isArray(state.team.members) ? state.team.members : [];
 
-  // roster members loaded via listTeamMembers()
-  const members = Array.isArray(state.team.members) ? state.team.members : [];
+    const dateDefault = safeDateISO(cache.dateISO) || todayISO();
+    const readinessByUser = cache.readinessByUser || {};
+    const teamSummary = cache.teamSummary;
+    const teamDecision = cache.teamDecision;
 
-  const dateDefault = safeDateISO(cache.dateISO) || todayISO();
+    // For roster readiness list, use cache.members (fresh from refreshTeamReadiness) as source of truth
+    const rosterRows = Array.isArray(cache.members) ? cache.members : [];
+    const athleteMembers = rosterRows.filter((m) => String(m?.role_in_team || "").toLowerCase() === "athlete");
 
-  el.innerHTML = `
-    <h3 style="margin-top:0">Team</h3>
-    <div class="small">
-      ${isCoach ? "Coach tools: teams + roster + readiness." : "Join a team using a join code."}
-    </div>
-    <div class="hr"></div>
+    const sess = selectedTeamId ? ensureTeamSessionSlot(selectedTeamId, dateDefault) : null;
+    const attendanceMap = selectedTeamId ? ensureTeamAttendanceSlot(selectedTeamId, dateDefault) : null;
 
-    <div class="card" style="margin:10px 0;padding:12px">
-      <div class="small"><b>Status</b></div>
-      <div class="small" style="margin-top:6px">
-        Supabase: <b>${supaOk ? "Configured" : "Not configured"}</b> •
-        Auth: <b>${signed ? "Signed in" : "Signed out"}</b> •
-        Role: <b>${sanitizeHTML(role || "—")}</b>
-      </div>
-      ${!signed ? `<div class="small" style="margin-top:6px;color:#e67e22">Sign in (Settings tab) to use team features.</div>` : ``}
-      ${err ? `<div class="small" style="margin-top:6px;color:#e74c3c">${sanitizeHTML(err)}</div>` : ``}
-    </div>
-
-    ${
-      isCoach
-        ? `
-      <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>Teams</b></div>
-        <div class="row" style="margin-top:10px">
-          <div class="field">
-            <label for="teamSelect">Select team</label>
-            <select id="teamSelect" ${signed ? "" : "disabled"}></select>
-          </div>
-          <div class="field">
-            <label for="newTeamName">Create team</label>
-            <input id="newTeamName" placeholder="e.g., Trailblazers 16U" ${signed ? "" : "disabled"} />
-          </div>
-          <div class="field">
-            <label for="newTeamSport">Sport (optional)</label>
-            <input id="newTeamSport" placeholder="basketball" ${signed ? "" : "disabled"} />
-          </div>
-        </div>
-        <div class="btnRow" style="margin-top:10px">
-          <button class="btn secondary" id="btnLoadTeams" type="button" ${signed ? "" : "disabled"}>Load teams</button>
-          <button class="btn" id="btnCreateTeam" type="button" ${signed ? "" : "disabled"}>Create team</button>
-          <button class="btn secondary" id="btnSaveTeamSelection" type="button" ${signed ? "" : "disabled"}>Save selection</button>
-        </div>
-
-        <div class="hr"></div>
-        <div class="small"><b>Join code</b></div>
-        <div class="small" style="margin-top:6px">
-          Your current schema has no separate join_code column. The join code is the <b>team id</b>.
-        </div>
-        <div class="small" style="margin-top:6px">
-          Selected team id: <b>${sanitizeHTML(selectedTeamId || "—")}</b>
-        </div>
-      </div>
-    `
-        : `
-      <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>Join a team</b></div>
-        <div class="small" style="margin-top:6px">
-          Join code = <b>team id</b> (UUID). Ask your coach for it.
-        </div>
-        <div class="row" style="margin-top:10px">
-          <div class="field">
-            <label for="joinTeamId">Join code (team id)</label>
-            <input id="joinTeamId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" ${signed ? "" : "disabled"} />
-          </div>
-          <div class="field">
-            <label for="joinRole">Role</label>
-            <select id="joinRole" ${signed ? "" : "disabled"}>
-              <option value="athlete">athlete</option>
-              <option value="parent">parent</option>
-              <option value="manager">manager</option>
-            </select>
-          </div>
-        </div>
-        <div class="btnRow" style="margin-top:10px">
-          <button class="btn" id="btnJoinTeam" type="button" ${signed ? "" : "disabled"}>Join team</button>
-          <button class="btn secondary" id="btnLeaveTeam" type="button" ${signed ? "" : "disabled"}>Leave selected team</button>
-        </div>
-        <div class="small" style="margin-top:8px">
-          Selected team id (local): <b>${sanitizeHTML(selectedTeamId || "—")}</b>
-        </div>
-      </div>
-    `
-    }
-
-    ${
-      isCoach
-        ? `
-      <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>Roster</b></div>
-        <div class="small" style="margin-top:6px">
-          Add by <b>user_id</b> (UUID). RLS allows coach to add/remove members.
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <div class="field">
-            <label for="memberUserId">Member user_id</label>
-            <input id="memberUserId" placeholder="UUID" ${signed && selectedTeamId ? "" : "disabled"} />
-          </div>
-          <div class="field">
-            <label for="memberRole">Role</label>
-            <select id="memberRole" ${signed && selectedTeamId ? "" : "disabled"}>
-              <option value="athlete">athlete</option>
-              <option value="parent">parent</option>
-              <option value="manager">manager</option>
-              <option value="coach">coach</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="linkedAthleteId">linked_athlete_id (optional)</label>
-            <input id="linkedAthleteId" placeholder="UUID (for parent linking)" ${signed && selectedTeamId ? "" : "disabled"} />
-          </div>
-        </div>
-
-        <div class="btnRow" style="margin-top:10px">
-          <button class="btn" id="btnLoadMembers" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Load roster</button>
-          <button class="btn" id="btnAddMember" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Add member</button>
-        </div>
-
-        <div class="hr"></div>
-        <div id="memberList" class="small" style="margin-top:10px"></div>
-      </div>
+    el.innerHTML = `
+      <h3 style="margin-top:0">Team</h3>
+      <div class="small">${isCoach ? "Coach tools: teams + roster + readiness + session plan." : "Join a team using a join code."}</div>
+      <div class="hr"></div>
 
       <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>Team readiness</b></div>
-        <div class="row" style="margin-top:10px">
-          <div class="field">
-            <label for="teamDatePick">Date</label>
-            <input id="teamDatePick" type="date" value="${sanitizeHTML(dateDefault)}" ${signed && selectedTeamId ? "" : "disabled"} />
-          </div>
-          <div class="field">
-            <label>Selected team</label>
-            <div class="pill">${sanitizeHTML(selectedTeamId || "—")}</div>
-          </div>
+        <div class="small"><b>Status</b></div>
+        <div class="small" style="margin-top:6px">
+          Supabase: <b>${supaOk ? "Configured" : "Not configured"}</b> •
+          Auth: <b>${signed ? "Signed in" : "Signed out"}</b> •
+          Role: <b>${sanitizeHTML(role || "—")}</b>
         </div>
-        <div class="btnRow" style="margin-top:10px">
-          <button class="btn" id="btnRefreshTeam" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Refresh readiness</button>
-          <button class="btn secondary" id="btnOpenDashboard" type="button">Open dashboard</button>
-        </div>
+        ${!signed ? `<div class="small" style="margin-top:6px;color:#e67e22">Sign in (Settings tab) to use team features.</div>` : ``}
+        ${err ? `<div class="small" style="margin-top:6px;color:#e74c3c">${sanitizeHTML(err)}</div>` : ``}
       </div>
-    `
-        : ``
-    }
-  `;
 
-  // Populate team select (coach)
-  const teamSelect = $("teamSelect");
-  if (teamSelect) {
-    teamSelect.innerHTML =
-      `<option value="">—</option>` +
-      teams
-        .filter((t) => t && t.id)
-        .map((t) => `<option value="${sanitizeHTML(t.id)}">${sanitizeHTML(t.name || t.id)}</option>`)
-        .join("");
-    teamSelect.value = selectedTeamId;
-  }
-
-  // =========================
-  // Coach: load teams
-  // =========================
-  $("btnLoadTeams")?.addEventListener("click", async () => {
-    try {
-      if (!window.dataStore?.listMyTeams) return alert("Team API not available (dataStore.listMyTeams missing).");
-      const t = await window.dataStore.listMyTeams();
-      state.team.roster = t || [];
-      state.team.cache.error = "";
-      saveState();
-    } catch (e) {
-      logError("loadTeams", e);
-      state.team.cache.error = e?.message || String(e);
-      __saveLocal(state);
-      renderActiveTab();
-    }
-  });
-
-  // =========================
-  // Coach: create team
-  // =========================
-  $("btnCreateTeam")?.addEventListener("click", async () => {
-    try {
-      const name = ($("newTeamName")?.value || "").trim();
-      const sport = ($("newTeamSport")?.value || "").trim();
-      if (!name) return alert("Enter a team name.");
-      if (!window.dataStore?.createTeam) return alert("Team API not available (dataStore.createTeam missing).");
-
-      const team = await window.dataStore.createTeam(name, sport);
-      if (team?.id) state.team.selectedTeamId = String(team.id);
-
-      const t = await window.dataStore.listMyTeams();
-      state.team.roster = t || [];
-      state.team.cache.error = "";
-      saveState();
-
-      alert("Team created.");
-    } catch (e) {
-      logError("createTeam", e);
-      alert("Create team failed: " + (e?.message || e));
-    }
-  });
-
-  // =========================
-  // Coach: save selection
-  // =========================
-  $("btnSaveTeamSelection")?.addEventListener("click", () => {
-    const v = (teamSelect?.value || "").trim();
-    state.team.selectedTeamId = v;
-    state.team.cache.error = "";
-    // clear loaded members when switching teams
-    state.team.members = [];
-    __saveLocal(state);
-    alert("Saved.");
-    renderActiveTab();
-  });
-
-  // =========================
-  // Coach: load roster members
-  // =========================
-  async function loadMembers() {
-    if (!window.dataStore?.listTeamMembers) throw new Error("dataStore.listTeamMembers missing");
-    const tid = String(state.team.selectedTeamId || "").trim();
-    if (!tid) throw new Error("Select a team first.");
-    const rows = await window.dataStore.listTeamMembers(tid);
-    state.team.members = rows || [];
-    __saveLocal(state);
-    return state.team.members;
-  }
-
-  $("btnLoadMembers")?.addEventListener("click", async () => {
-    try {
-      await loadMembers();
-      renderActiveTab();
-    } catch (e) {
-      logError("loadMembers", e);
-      alert(e?.message || e);
-    }
-  });
-
-  // =========================
-  // Coach: add member
-  // =========================
-  $("btnAddMember")?.addEventListener("click", async () => {
-    try {
-      const tid = String(state.team.selectedTeamId || "").trim();
-      if (!tid) return alert("Select a team first.");
-
-      const userId = ($("memberUserId")?.value || "").trim();
-      const roleInTeam = ($("memberRole")?.value || "athlete").trim();
-      const linkedAthleteId = ($("linkedAthleteId")?.value || "").trim() || null;
-
-      if (!userId) return alert("Enter member user_id (UUID).");
-      if (!window.dataStore?.addTeamMember) return alert("Team API not available (dataStore.addTeamMember missing).");
-
-      await window.dataStore.addTeamMember(tid, userId, roleInTeam, linkedAthleteId);
-      await loadMembers();
-      alert("Member added.");
-      renderActiveTab();
-    } catch (e) {
-      logError("addMember", e);
-      alert("Add failed: " + (e?.message || e));
-    }
-  });
-
-  // =========================
-  // Coach: render member list + remove buttons
-  // =========================
-  const memberList = $("memberList");
-  if (memberList && isCoach) {
-    if (!selectedTeamId) {
-      memberList.innerHTML = "Select a team to manage roster.";
-    } else if (!members.length) {
-      memberList.innerHTML = "Roster not loaded yet. Click “Load roster”.";
-    } else {
-      memberList.innerHTML = members
-        .map((m) => {
-          return `
-            <div class="card" style="margin:10px 0;padding:10px">
-              <div style="display:flex;justify-content:space-between;gap:10px">
-                <div>
-                  <div><b>${sanitizeHTML(m.user_id || "—")}</b></div>
-                  <div class="small">
-                    role: ${sanitizeHTML(m.role_in_team || "—")}
-                    ${m.linked_athlete_id ? ` • linked_athlete_id: ${sanitizeHTML(m.linked_athlete_id)}` : ""}
-                  </div>
-                </div>
-                <div>
-                  <button class="btn secondary" type="button" data-remove-member="${sanitizeHTML(m.id)}">Remove</button>
-                </div>
-              </div>
+      ${
+        isCoach
+          ? `
+        <div class="card" style="margin:10px 0;padding:12px">
+          <div class="small"><b>Teams</b></div>
+          <div class="row" style="margin-top:10px">
+            <div class="field">
+              <label for="teamSelect">Select team</label>
+              <select id="teamSelect" ${signed ? "" : "disabled"}></select>
             </div>
-          `;
-        })
-        .join("");
+            <div class="field">
+              <label for="newTeamName">Create team</label>
+              <input id="newTeamName" placeholder="e.g., Trailblazers 16U" ${signed ? "" : "disabled"} />
+            </div>
+            <div class="field">
+              <label for="newTeamSport">Sport (optional)</label>
+              <input id="newTeamSport" placeholder="basketball" ${signed ? "" : "disabled"} />
+            </div>
+          </div>
+          <div class="btnRow" style="margin-top:10px">
+            <button class="btn secondary" id="btnLoadTeams" type="button" ${signed ? "" : "disabled"}>Load teams</button>
+            <button class="btn" id="btnCreateTeam" type="button" ${signed ? "" : "disabled"}>Create team</button>
+            <button class="btn secondary" id="btnSaveTeamSelection" type="button" ${signed ? "" : "disabled"}>Save selection</button>
+          </div>
 
-      memberList.querySelectorAll("[data-remove-member]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          try {
-            const mid = btn.getAttribute("data-remove-member");
-            if (!mid) return;
-            if (!confirm("Remove this member from the team?")) return;
-            if (!window.dataStore?.removeTeamMember) throw new Error("dataStore.removeTeamMember missing");
-            await window.dataStore.removeTeamMember(selectedTeamId, mid);
-            await loadMembers();
-            renderActiveTab();
-          } catch (e) {
-            logError("removeMember", e);
-            alert("Remove failed: " + (e?.message || e));
+          <div class="hr"></div>
+          <div class="small"><b>Join code</b></div>
+          <div class="small" style="margin-top:6px">Join code = <b>team id</b> (UUID). Your schema has no join_code column.</div>
+          <div class="small" style="margin-top:6px">Selected team id: <b>${sanitizeHTML(selectedTeamId || "—")}</b></div>
+        </div>
+
+        <div class="card" style="margin:10px 0;padding:12px">
+          <div class="small"><b>Roster (manage)</b></div>
+          <div class="small" style="margin-top:6px">Add by <b>user_id</b> (UUID). RLS must allow coach to add/remove members.</div>
+
+          <div class="row" style="margin-top:10px">
+            <div class="field">
+              <label for="memberUserId">Member user_id</label>
+              <input id="memberUserId" placeholder="UUID" ${signed && selectedTeamId ? "" : "disabled"} />
+            </div>
+            <div class="field">
+              <label for="memberRole">Role</label>
+              <select id="memberRole" ${signed && selectedTeamId ? "" : "disabled"}>
+                <option value="athlete">athlete</option>
+                <option value="parent">parent</option>
+                <option value="manager">manager</option>
+                <option value="coach">coach</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="linkedAthleteId">linked_athlete_id (optional)</label>
+              <input id="linkedAthleteId" placeholder="UUID (for parent linking)" ${signed && selectedTeamId ? "" : "disabled"} />
+            </div>
+          </div>
+
+          <div class="btnRow" style="margin-top:10px">
+            <button class="btn secondary" id="btnLoadMembers" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Load roster</button>
+            <button class="btn" id="btnAddMember" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Add member</button>
+          </div>
+
+          <div class="hr"></div>
+          <div id="memberList" class="small" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card" style="margin:10px 0;padding:12px">
+          <div class="small"><b>Team readiness + Session plan</b></div>
+          <div class="row" style="margin-top:10px">
+            <div class="field">
+              <label for="teamDatePick">Date</label>
+              <input id="teamDatePick" type="date" value="${sanitizeHTML(dateDefault)}" ${signed && selectedTeamId ? "" : "disabled"} />
+            </div>
+            <div class="field">
+              <label>Selected team</label>
+              <div class="pill">${sanitizeHTML(selectedTeamId || "—")}</div>
+            </div>
+          </div>
+          <div class="btnRow" style="margin-top:10px">
+            <button class="btn" id="btnRefreshTeam" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Refresh readiness</button>
+            <button class="btn secondary" id="btnOpenDashboard" type="button">Open dashboard</button>
+          </div>
+
+          <div class="hr"></div>
+
+          ${
+            teamSummary
+              ? `
+            <div class="small" style="margin-top:6px">
+              Summary — Avg: <b>${sanitizeHTML(teamSummary.avgScore ?? "—")}</b> • Availability: <b>${sanitizeHTML(teamSummary.availabilityPct ?? "—")}%</b> • Total: <b>${sanitizeHTML(teamSummary.total ?? "—")}</b>
+            </div>
+            <div class="small" style="margin-top:4px">
+              Grades: A ${sanitizeHTML(teamSummary.grades?.A || 0)} • B ${sanitizeHTML(teamSummary.grades?.B || 0)} • C ${sanitizeHTML(teamSummary.grades?.C || 0)} • D ${sanitizeHTML(teamSummary.grades?.D || 0)} • OUT ${sanitizeHTML(teamSummary.grades?.OUT || 0)}
+            </div>
+          `
+              : `<div class="small" style="margin-top:6px">No team readiness cached yet. Click “Refresh readiness”.</div>`
           }
-        });
-      });
-    }
-  }
 
-  // =========================
-  // Athlete/Parent: join team (join code = team id)
-  // =========================
-  $("btnJoinTeam")?.addEventListener("click", async () => {
-    try {
-      if (!window.PIQ_AuthStore?.getUser) throw new Error("Auth store missing (PIQ_AuthStore.getUser).");
-      if (!window.dataStore?.addTeamMember) throw new Error("Team API missing (dataStore.addTeamMember).");
+          ${
+            teamDecision
+              ? `
+            <div class="small" style="margin-top:8px">
+              Recommendation: <b>${sanitizeHTML(teamDecision.recommendation || "—")}</b>
+              ${teamDecision.notes?.length ? `<br/>${teamDecision.notes.map((n) => sanitizeHTML("• " + n)).join("<br/>")}` : ""}
+            </div>
+          `
+              : ``
+          }
 
-      const u = await window.PIQ_AuthStore.getUser();
-      if (!u?.id) throw new Error("Not signed in.");
+          <div class="hr"></div>
 
-      const tid = ($("joinTeamId")?.value || "").trim();
-      if (!tid) throw new Error("Enter join code (team id).");
+          <div class="small"><b>Session plan (offline-first)</b></div>
+          <div class="small" style="margin-top:6px">
+            Locked: <b>${sess?.locked ? "Yes" : "No"}</b> • Source: <b>${sanitizeHTML(sess?.source || "—")}</b>
+          </div>
+          <textarea id="sessionPlanText" style="width:100%;min-height:180px;margin-top:8px" ${sess?.locked ? "disabled" : ""}>${
+            sanitizeHTML(sess?.planText || "")
+          }</textarea>
+          <div class="btnRow" style="margin-top:10px">
+            <button class="btn secondary" id="btnAutoPlan" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Auto-generate</button>
+            <button class="btn" id="btnSavePlan" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Save plan</button>
+            <button class="btn secondary" id="btnToggleLock" type="button" ${signed && selectedTeamId ? "" : "disabled"}>${sess?.locked ? "Unlock" : "Lock"}</button>
+            <button class="btn secondary" id="btnExportCSV" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Export CSV</button>
+          </div>
 
-      const roleInTeam = ($("joinRole")?.value || "athlete").trim();
+          <div class="hr"></div>
+          <div class="small"><b>Athletes (readiness + attendance)</b></div>
+          <div id="teamRosterList" style="margin-top:10px"></div>
+        </div>
+      `
+          : `
+        <div class="card" style="margin:10px 0;padding:12px">
+          <div class="small"><b>Join a team</b></div>
+          <div class="small" style="margin-top:6px">Join code = <b>team id</b> (UUID). Ask your coach for it.</div>
+          <div class="row" style="margin-top:10px">
+            <div class="field">
+              <label for="joinTeamId">Join code (team id)</label>
+              <input id="joinTeamId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" ${signed ? "" : "disabled"} />
+            </div>
+            <div class="field">
+              <label for="joinRole">Role</label>
+              <select id="joinRole" ${signed ? "" : "disabled"}>
+                <option value="athlete">athlete</option>
+                <option value="parent">parent</option>
+                <option value="manager">manager</option>
+              </select>
+            </div>
+          </div>
+          <div class="btnRow" style="margin-top:10px">
+            <button class="btn" id="btnJoinTeam" type="button" ${signed ? "" : "disabled"}>Join team</button>
+            <button class="btn secondary" id="btnLeaveTeam" type="button" ${signed ? "" : "disabled"}>Leave selected team</button>
+          </div>
+          <div class="small" style="margin-top:8px">Selected team id (local): <b>${sanitizeHTML(selectedTeamId || "—")}</b></div>
+        </div>
+      `
+      }
+    `;
 
-      // user joins themselves
-      await window.dataStore.addTeamMember(tid, u.id, roleInTeam, null);
-
-      state.team.selectedTeamId = tid;
-      state.team.cache.error = "";
-      __saveLocal(state);
-
-      alert("Joined team.");
-      renderActiveTab();
-    } catch (e) {
-      logError("joinTeam", e);
-      alert("Join failed: " + (e?.message || e));
-    }
-  });
-
-  // Leave team: delete your own membership row (requires roster load to find row id)
-  $("btnLeaveTeam")?.addEventListener("click", async () => {
-    try {
-      const tid = String(state.team.selectedTeamId || "").trim();
-      if (!tid) return alert("No selected team.");
-
-      if (!window.PIQ_AuthStore?.getUser) throw new Error("Auth store missing.");
-      const u = await window.PIQ_AuthStore.getUser();
-      if (!u?.id) throw new Error("Not signed in.");
-
-      if (!window.dataStore?.listTeamMembers) throw new Error("dataStore.listTeamMembers missing");
-      if (!window.dataStore?.removeTeamMember) throw new Error("dataStore.removeTeamMember missing");
-
-      const rows = await window.dataStore.listTeamMembers(tid);
-      const mine = (rows || []).find((r) => r && r.user_id === u.id);
-      if (!mine?.id) throw new Error("Could not find your membership row.");
-
-      if (!confirm("Leave this team?")) return;
-      await window.dataStore.removeTeamMember(tid, mine.id);
-
-      state.team.selectedTeamId = "";
-      state.team.members = [];
-      state.team.cache.error = "";
-      __saveLocal(state);
-
-      alert("Left team.");
-      renderActiveTab();
-    } catch (e) {
-      logError("leaveTeam", e);
-      alert("Leave failed: " + (e?.message || e));
-    }
-  });
-
-  // =========================
-  // Coach: readiness refresh hooks (kept from your current core.js)
-  // =========================
-  $("btnRefreshTeam")?.addEventListener("click", async () => {
-    const d = ($("teamDatePick")?.value || todayISO()).trim();
-    const ok = await refreshTeamReadiness(d);
-    if (!ok) alert(state.team.cache.error || "Refresh failed.");
-    renderActiveTab();
-  });
-
-  $("teamDatePick")?.addEventListener("change", async () => {
-    const d = ($("teamDatePick")?.value || todayISO()).trim();
-    const ok = await refreshTeamReadiness(d);
-    if (!ok) alert(state.team.cache.error || "Refresh failed.");
-    renderActiveTab();
-  });
-
-  $("btnOpenDashboard")?.addEventListener("click", () => {
-    showTab("dashboard");
-    renderActiveTab();
-  });
-}
-
-    // Team select fill from state.team.roster (listMyTeams result cached)
+    // Populate team select (coach)
     const teamSelect = $("teamSelect");
     if (teamSelect) {
-      const teams = Array.isArray(state.team.roster) ? state.team.roster : [];
       teamSelect.innerHTML =
         `<option value="">—</option>` +
         teams
@@ -2600,11 +2365,13 @@ async function renderTeam() {
       teamSelect.value = selectedTeamId;
     }
 
+    // ===== Coach: Teams =====
     $("btnLoadTeams")?.addEventListener("click", async () => {
       try {
-        if (!window.dataStore?.listMyTeams) return alert("Team API not available.");
-        const teams = await window.dataStore.listMyTeams();
-        state.team.roster = teams || [];
+        if (!window.dataStore?.listMyTeams) return alert("Team API not available (dataStore.listMyTeams missing).");
+        const t = await window.dataStore.listMyTeams();
+        state.team.roster = t || [];
+        state.team.cache.error = "";
         saveState();
       } catch (e) {
         logError("loadTeams", e);
@@ -2617,14 +2384,15 @@ async function renderTeam() {
     $("btnCreateTeam")?.addEventListener("click", async () => {
       try {
         const name = ($("newTeamName")?.value || "").trim();
+        const sport = ($("newTeamSport")?.value || "").trim();
         if (!name) return alert("Enter a team name.");
-        if (!window.dataStore?.createTeam) return alert("Team API not available.");
-        const team = await window.dataStore.createTeam(name, state.profile?.sport || null);
+        if (!window.dataStore?.createTeam) return alert("Team API not available (dataStore.createTeam missing).");
 
+        const team = await window.dataStore.createTeam(name, sport);
         if (team?.id) state.team.selectedTeamId = String(team.id);
 
-        const teams = await window.dataStore.listMyTeams();
-        state.team.roster = teams || [];
+        const t = await window.dataStore.listMyTeams();
+        state.team.roster = t || [];
         state.team.cache.error = "";
         saveState();
 
@@ -2639,11 +2407,162 @@ async function renderTeam() {
       const v = (teamSelect?.value || "").trim();
       state.team.selectedTeamId = v;
       state.team.cache.error = "";
+      state.team.members = [];
       __saveLocal(state);
       alert("Saved.");
       renderActiveTab();
     });
 
+    // ===== Coach: Roster management =====
+    async function loadMembers() {
+      if (!window.dataStore?.listTeamMembers) throw new Error("dataStore.listTeamMembers missing");
+      const tid = String(state.team.selectedTeamId || "").trim();
+      if (!tid) throw new Error("Select a team first.");
+      const rows = await window.dataStore.listTeamMembers(tid);
+      state.team.members = rows || [];
+      __saveLocal(state);
+      return state.team.members;
+    }
+
+    $("btnLoadMembers")?.addEventListener("click", async () => {
+      try {
+        await loadMembers();
+        renderActiveTab();
+      } catch (e) {
+        logError("loadMembers", e);
+        alert(e?.message || e);
+      }
+    });
+
+    $("btnAddMember")?.addEventListener("click", async () => {
+      try {
+        const tid = String(state.team.selectedTeamId || "").trim();
+        if (!tid) return alert("Select a team first.");
+
+        const userId = ($("memberUserId")?.value || "").trim();
+        const roleInTeam = ($("memberRole")?.value || "athlete").trim();
+        const linkedAthleteId = ($("linkedAthleteId")?.value || "").trim() || null;
+
+        if (!userId) return alert("Enter member user_id (UUID).");
+        if (!window.dataStore?.addTeamMember) return alert("Team API not available (dataStore.addTeamMember missing).");
+
+        await window.dataStore.addTeamMember(tid, userId, roleInTeam, linkedAthleteId);
+        await loadMembers();
+        alert("Member added.");
+        renderActiveTab();
+      } catch (e) {
+        logError("addMember", e);
+        alert("Add failed: " + (e?.message || e));
+      }
+    });
+
+    const memberList = $("memberList");
+    if (memberList && isCoach) {
+      if (!selectedTeamId) {
+        memberList.innerHTML = "Select a team to manage roster.";
+      } else if (!membersLoaded.length) {
+        memberList.innerHTML = "Roster not loaded yet. Click “Load roster”.";
+      } else {
+        memberList.innerHTML = membersLoaded
+          .map((m) => {
+            return `
+              <div class="card" style="margin:10px 0;padding:10px">
+                <div style="display:flex;justify-content:space-between;gap:10px">
+                  <div>
+                    <div><b>${sanitizeHTML(m.user_id || "—")}</b></div>
+                    <div class="small">
+                      role: ${sanitizeHTML(m.role_in_team || "—")}
+                      ${m.linked_athlete_id ? ` • linked_athlete_id: ${sanitizeHTML(m.linked_athlete_id)}` : ""}
+                    </div>
+                  </div>
+                  <div>
+                    <button class="btn secondary" type="button" data-remove-member="${sanitizeHTML(m.id)}">Remove</button>
+                  </div>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        memberList.querySelectorAll("[data-remove-member]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            try {
+              const mid = btn.getAttribute("data-remove-member");
+              if (!mid) return;
+              if (!confirm("Remove this member from the team?")) return;
+              if (!window.dataStore?.removeTeamMember) throw new Error("dataStore.removeTeamMember missing");
+              await window.dataStore.removeTeamMember(selectedTeamId, mid);
+              await loadMembers();
+              renderActiveTab();
+            } catch (e) {
+              logError("removeMember", e);
+              alert("Remove failed: " + (e?.message || e));
+            }
+          });
+        });
+      }
+    }
+
+    // ===== Athlete/Parent: Join / Leave =====
+    $("btnJoinTeam")?.addEventListener("click", async () => {
+      try {
+        if (!window.PIQ_AuthStore?.getUser) throw new Error("Auth store missing (PIQ_AuthStore.getUser).");
+        if (!window.dataStore?.addTeamMember) throw new Error("Team API missing (dataStore.addTeamMember).");
+
+        const u = await window.PIQ_AuthStore.getUser();
+        if (!u?.id) throw new Error("Not signed in.");
+
+        const tid = ($("joinTeamId")?.value || "").trim();
+        if (!tid) throw new Error("Enter join code (team id).");
+
+        const roleInTeam = ($("joinRole")?.value || "athlete").trim();
+        await window.dataStore.addTeamMember(tid, u.id, roleInTeam, null);
+
+        state.team.selectedTeamId = tid;
+        state.team.cache.error = "";
+        __saveLocal(state);
+
+        alert("Joined team.");
+        renderActiveTab();
+      } catch (e) {
+        logError("joinTeam", e);
+        alert("Join failed: " + (e?.message || e));
+      }
+    });
+
+    $("btnLeaveTeam")?.addEventListener("click", async () => {
+      try {
+        const tid = String(state.team.selectedTeamId || "").trim();
+        if (!tid) return alert("No selected team.");
+
+        if (!window.PIQ_AuthStore?.getUser) throw new Error("Auth store missing.");
+        const u = await window.PIQ_AuthStore.getUser();
+        if (!u?.id) throw new Error("Not signed in.");
+
+        if (!window.dataStore?.listTeamMembers) throw new Error("dataStore.listTeamMembers missing");
+        if (!window.dataStore?.removeTeamMember) throw new Error("dataStore.removeTeamMember missing");
+
+        const rows = await window.dataStore.listTeamMembers(tid);
+        const mine = (rows || []).find((r) => r && r.user_id === u.id);
+        if (!mine?.id) throw new Error("Could not find your membership row.");
+
+        if (!confirm("Leave this team?")) return;
+        await window.dataStore.removeTeamMember(tid, mine.id);
+
+        state.team.selectedTeamId = "";
+        state.team.members = [];
+        state.team.cache.error = "";
+        __saveLocal(state);
+
+        alert("Left team.");
+        renderActiveTab();
+      } catch (e) {
+        logError("leaveTeam", e);
+        alert("Leave failed: " + (e?.message || e));
+      }
+    });
+
+    // ===== Coach: readiness refresh + session plan + export =====
     $("btnRefreshTeam")?.addEventListener("click", async () => {
       const d = ($("teamDatePick")?.value || todayISO()).trim();
       const ok = await refreshTeamReadiness(d);
@@ -2663,7 +2582,6 @@ async function renderTeam() {
       renderActiveTab();
     });
 
-    // Phase 5: Plan buttons
     $("btnAutoPlan")?.addEventListener("click", () => {
       if (!selectedTeamId) return;
       const d = ($("teamDatePick")?.value || todayISO()).trim();
@@ -2713,76 +2631,70 @@ async function renderTeam() {
       if (!ok) alert("Export failed.");
     });
 
-    // Roster list render
+    // ===== Coach: readiness + attendance roster list =====
     const list = $("teamRosterList");
-    if (!list) return;
+    if (list && isCoach) {
+      if (!selectedTeamId) {
+        list.innerHTML = `Select a team first.`;
+      } else if (!athleteMembers.length) {
+        list.innerHTML = `No athletes in this team yet (team_members role_in_team="athlete").`;
+      } else {
+        const date = safeDateISO($("teamDatePick")?.value) || dateDefault;
+        const attMap = ensureTeamAttendanceSlot(selectedTeamId, date);
 
-    if (!selectedTeamId) {
-      list.innerHTML = `Select a team first.`;
-      return;
-    }
+        list.innerHTML = athleteMembers
+          .map((m) => {
+            const uid = String(m?.user_id || "").trim();
+            const r = readinessByUser[uid];
+            const grade = r?.grade || "—";
+            const score = Number.isFinite(r?.score) ? r.score : "—";
+            const color = r?.color || "#bdc3c7";
+            const guidance = r?.guidance || "";
+            const name = r?.athlete?.display_name || `Athlete ${shortId(uid)}`;
 
-    if (!athleteMembers.length) {
-      list.innerHTML = `No athletes in this team yet (team_members role_in_team="athlete").`;
-      return;
-    }
+            const att = attMap?.[uid] || "";
+            const attPill = att === "present" ? "Present" : att === "limited" ? "Limited" : att === "out" ? "Out" : "—";
 
-    const date = safeDateISO(dateDefault) || todayISO();
-    const attendanceMap = ensureTeamAttendanceSlot(selectedTeamId, date);
+            return `
+              <div class="card" style="margin:10px 0;padding:10px">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+                  <div style="flex:1">
+                    <div style="font-weight:700">${sanitizeHTML(name)}</div>
+                    <div class="small">User: ${sanitizeHTML(shortId(uid))}</div>
+                    <div class="small" style="margin-top:6px">
+                      Attendance:
+                      <select data-att="${sanitizeHTML(uid)}">
+                        <option value="present" ${att === "present" ? "selected" : ""}>Present</option>
+                        <option value="limited" ${att === "limited" ? "selected" : ""}>Limited</option>
+                        <option value="out" ${att === "out" ? "selected" : ""}>Out</option>
+                      </select>
+                      <span class="pill" style="margin-left:8px">${sanitizeHTML(attPill)}</span>
+                    </div>
+                  </div>
 
-    const rows = athleteMembers.map((m) => {
-      const uid = String(m?.user_id || "").trim();
-      const r = readinessByUser[uid];
-      const grade = r?.grade || "—";
-      const score = Number.isFinite(r?.score) ? r.score : "—";
-      const color = r?.color || "#bdc3c7";
-      const guidance = r?.guidance || "";
-      const name = r?.athlete?.display_name || `Athlete ${shortId(uid)}`;
-
-      const att = attendanceMap?.[uid] || "";
-      const attPill =
-        att === "present" ? "Present" : att === "limited" ? "Limited" : att === "out" ? "Out" : "—";
-
-      return `
-        <div class="card" style="margin:10px 0;padding:10px">
-          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-            <div style="flex:1">
-              <div style="font-weight:700">${sanitizeHTML(name)}</div>
-              <div class="small">User: ${sanitizeHTML(shortId(uid))}</div>
-              <div class="small" style="margin-top:6px">
-                Attendance:
-                <select data-att="${sanitizeHTML(uid)}">
-                  <option value="present" ${att === "present" ? "selected" : ""}>Present</option>
-                  <option value="limited" ${att === "limited" ? "selected" : ""}>Limited</option>
-                  <option value="out" ${att === "out" ? "selected" : ""}>Out</option>
-                </select>
-                <span class="pill" style="margin-left:8px">${sanitizeHTML(attPill)}</span>
+                  <div style="text-align:right">
+                    <div style="font-weight:900;color:${sanitizeHTML(color)};font-size:16px">${sanitizeHTML(grade)} (${sanitizeHTML(score)})</div>
+                    <div class="small" style="max-width:240px;color:${sanitizeHTML(color)}">${sanitizeHTML(guidance)}</div>
+                  </div>
+                </div>
+                ${r?.reasons?.length ? `<div class="small" style="margin-top:6px">${r.reasons.slice(0, 3).map((x) => sanitizeHTML(x)).join("<br/>")}</div>` : ``}
               </div>
-            </div>
+            `;
+          })
+          .join("");
 
-            <div style="text-align:right">
-              <div style="font-weight:900;color:${sanitizeHTML(color)};font-size:16px">${sanitizeHTML(grade)} (${sanitizeHTML(score)})</div>
-              <div class="small" style="max-width:240px;color:${sanitizeHTML(color)}">${sanitizeHTML(guidance)}</div>
-            </div>
-          </div>
-          ${r?.reasons?.length ? `<div class="small" style="margin-top:6px">${r.reasons.slice(0, 3).map((x) => sanitizeHTML(x)).join("<br/>")}</div>` : ``}
-        </div>
-      `;
-    });
-
-    list.innerHTML = rows.join("");
-
-    // Attendance change wiring
-    Array.from(list.querySelectorAll("select[data-att]")).forEach((sel) => {
-      sel.addEventListener("change", () => {
-        const uid = String(sel.getAttribute("data-att") || "").trim();
-        const v = String(sel.value || "").trim();
-        if (!uid) return;
-        ensureTeamAttendanceSlot(selectedTeamId, date);
-        state.team.attendanceByDate[selectedTeamId][date][uid] = v;
-        __saveLocal(state);
-      });
-    });
+        Array.from(list.querySelectorAll("select[data-att]")).forEach((sel) => {
+          sel.addEventListener("change", () => {
+            const uid = String(sel.getAttribute("data-att") || "").trim();
+            const v = String(sel.value || "").trim();
+            if (!uid) return;
+            ensureTeamAttendanceSlot(selectedTeamId, date);
+            state.team.attendanceByDate[selectedTeamId][date][uid] = v;
+            __saveLocal(state);
+          });
+        });
+      }
+    }
   }
 
   function renderParent() {
@@ -2944,7 +2856,7 @@ async function renderTeam() {
     renderActiveTab();
     hideSplashNow();
 
-    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.2.0");
+    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.2.1");
   };
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -2970,3 +2882,4 @@ async function renderTeam() {
     window.addEventListener("touchstart", hideSplashNow, { once: true });
   });
 })();
+```0
