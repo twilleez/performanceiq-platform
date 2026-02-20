@@ -1,15 +1,11 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.2.1
+// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.2.1 + Phase 58 + Phase 5C
 // Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
-// Includes: tabs + Profile + Program + Log + Performance + Dashboard + Settings
+// Includes: tabs + Profile + Program + Log + Performance + Dashboard + Team + Parent + Settings
 // Phase 4: Team readiness + coach decision engine + Team tab (cache-based)
 // Phase 5: Coach Execution Engine (OFFLINE-FIRST): Session Plan + Attendance + CSV Export (no new tables required)
-//
-// Fixes in v1.2.1:
-// - Removed duplicate/stray Team-tab code that caused syntax/runtime errors
-// - Fixed Dashboard template string that was not closed
-// - Added state.team.members to default/normalize (used by Team tab)
-// - Consolidated Team tab into a single, coherent renderer incl. Phase 5 plan/attendance/export UI
-//
+// Phase 58 + 5C (ADDED): createTeam() inserts into teams (owner_id/coach_id) + auto-add creator to team_members;
+//                         loadRoster() groups team_members by role.
+
 // IMPORTANT:
 // - Uses only existing dataStore APIs referenced here: listMyTeams, createTeam, listTeamMembers,
 //   addTeamMember, removeTeamMember, listWorkoutLogsForAthlete, listMetricsForAthlete,
@@ -164,7 +160,7 @@
       tests: [],
       team: {
         roster: [],
-        members: [], // <-- FIX: used by Team tab
+        members: [],
         selectedTeamId: "",
         sessions: {},
         attendanceByDate: {},
@@ -221,7 +217,7 @@
 
     s.team = s.team && typeof s.team === "object" ? s.team : d.team;
     if (!Array.isArray(s.team.roster)) s.team.roster = [];
-    if (!Array.isArray(s.team.members)) s.team.members = []; // <-- FIX
+    if (!Array.isArray(s.team.members)) s.team.members = [];
     if (typeof s.team.selectedTeamId !== "string") s.team.selectedTeamId = "";
 
     if (!s.team.sessions || typeof s.team.sessions !== "object") s.team.sessions = {};
@@ -298,6 +294,91 @@
   function isSupabaseReady() {
     return !!(window.supabaseClient && window.PIQ_AuthStore && window.dataStore);
   }
+
+  /* ============================================================
+     Phase 58 + Phase 5C — Teams helpers (ADDED)
+     - createTeam(): inserts into teams and auto-adds creator to team_members as coach
+     - loadRoster(): groups team_members by role
+     Also wires these into window.dataStore if missing.
+     ============================================================ */
+
+  async function createTeam(name, sport) {
+    const supabase = window.supabaseClient;
+    if (!supabase) throw new Error("Supabase not initialized");
+
+    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") {
+      throw new Error("Auth store not available (PIQ_AuthStore.getUser missing)");
+    }
+
+    const user = await window.PIQ_AuthStore.getUser();
+    if (!user?.id) throw new Error("Not signed in");
+
+    const cleanName = String(name || "").trim();
+    if (!cleanName) throw new Error("Team name is required");
+
+    // 1) Create team
+    const { data: team, error: teamErr } = await supabase
+      .from("teams")
+      .insert({
+        name: cleanName,
+        sport: sport ? String(sport).trim() : null,
+        owner_id: user.id,
+        coach_id: user.id
+      })
+      .select("*")
+      .single();
+
+    if (teamErr) throw teamErr;
+    if (!team?.id) throw new Error("Team insert returned no id");
+
+    // 2) Add creator to team_members as coach
+    const { error: memberErr } = await supabase
+      .from("team_members")
+      .insert({
+        team_id: team.id,
+        user_id: user.id,
+        role_in_team: "coach",
+        linked_athlete_id: null
+      });
+
+    if (memberErr) throw memberErr;
+
+    return team;
+  }
+
+  async function loadRoster(teamId) {
+    const tid = String(teamId || "").trim();
+    if (!tid) throw new Error("teamId is required");
+
+    if (!window.dataStore || typeof window.dataStore.listTeamMembers !== "function") {
+      throw new Error("dataStore.listTeamMembers(teamId) missing");
+    }
+
+    const members = await window.dataStore.listTeamMembers(tid);
+
+    const roster = { coaches: [], athletes: [], parents: [] };
+
+    for (const m of members || []) {
+      const role = String(m?.role_in_team || "").toLowerCase().trim();
+      if (role === "coach") roster.coaches.push(m);
+      else if (role === "athlete") roster.athletes.push(m);
+      else roster.parents.push(m);
+    }
+
+    return roster;
+  }
+
+  // Safe exposure (won't overwrite your existing implementations)
+  window.PIQ = window.PIQ || {};
+  window.PIQ.team = window.PIQ.team || {};
+  window.PIQ.team.createTeam = window.PIQ.team.createTeam || createTeam;
+  window.PIQ.team.loadRoster = window.PIQ.team.loadRoster || loadRoster;
+
+  window.dataStore = window.dataStore || {};
+  window.dataStore.createTeam = window.dataStore.createTeam || createTeam;
+  window.dataStore.loadRoster = window.dataStore.loadRoster || loadRoster;
+
+  /* ========================= END Phase 58 + 5C ========================= */
 
   async function isSignedIn() {
     try {
@@ -2174,12 +2255,10 @@
     const teamSummary = cache.teamSummary;
     const teamDecision = cache.teamDecision;
 
-    // For roster readiness list, use cache.members (fresh from refreshTeamReadiness) as source of truth
     const rosterRows = Array.isArray(cache.members) ? cache.members : [];
     const athleteMembers = rosterRows.filter((m) => String(m?.role_in_team || "").toLowerCase() === "athlete");
 
     const sess = selectedTeamId ? ensureTeamSessionSlot(selectedTeamId, dateDefault) : null;
-    const attendanceMap = selectedTeamId ? ensureTeamAttendanceSlot(selectedTeamId, dateDefault) : null;
 
     el.innerHTML = `
       <h3 style="margin-top:0">Team</h3>
@@ -2353,7 +2432,6 @@
       }
     `;
 
-    // Populate team select (coach)
     const teamSelect = $("teamSelect");
     if (teamSelect) {
       teamSelect.innerHTML =
@@ -2365,7 +2443,6 @@
       teamSelect.value = selectedTeamId;
     }
 
-    // ===== Coach: Teams =====
     $("btnLoadTeams")?.addEventListener("click", async () => {
       try {
         if (!window.dataStore?.listMyTeams) return alert("Team API not available (dataStore.listMyTeams missing).");
@@ -2413,7 +2490,6 @@
       renderActiveTab();
     });
 
-    // ===== Coach: Roster management =====
     async function loadMembers() {
       if (!window.dataStore?.listTeamMembers) throw new Error("dataStore.listTeamMembers missing");
       const tid = String(state.team.selectedTeamId || "").trim();
@@ -2503,7 +2579,6 @@
       }
     }
 
-    // ===== Athlete/Parent: Join / Leave =====
     $("btnJoinTeam")?.addEventListener("click", async () => {
       try {
         if (!window.PIQ_AuthStore?.getUser) throw new Error("Auth store missing (PIQ_AuthStore.getUser).");
@@ -2562,7 +2637,6 @@
       }
     });
 
-    // ===== Coach: readiness refresh + session plan + export =====
     $("btnRefreshTeam")?.addEventListener("click", async () => {
       const d = ($("teamDatePick")?.value || todayISO()).trim();
       const ok = await refreshTeamReadiness(d);
@@ -2631,7 +2705,6 @@
       if (!ok) alert("Export failed.");
     });
 
-    // ===== Coach: readiness + attendance roster list =====
     const list = $("teamRosterList");
     if (list && isCoach) {
       if (!selectedTeamId) {
@@ -2856,7 +2929,7 @@
     renderActiveTab();
     hideSplashNow();
 
-    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.2.1");
+    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.2.1+58+5C");
   };
 
   document.addEventListener("DOMContentLoaded", () => {
