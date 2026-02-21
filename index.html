@@ -61,8 +61,13 @@
   </div>
 
   <!-- Scripts (defer preserves order) -->
-  <<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const supabase = window.supabase.createClient(
+    'https://YOUR_PROJECT_ID.supabase.co',
+    'YOUR_ANON_PUBLIC_KEY'
+  );
+</script>
 <script defer src="./config.js?v=1.2.1"></script>
 <script defer src="./supabaseClient.js?v=1.2.1"></script>
 
