@@ -49,8 +49,9 @@
       const { error } = await window.supabaseClient.auth.signInWithOtp({
         email: clean,
         options: {
-          emailRedirectTo: redirectTo
-        }
+  emailRedirectTo: window.location.origin
+}
+        
       });
 
       if (error) throw error;
