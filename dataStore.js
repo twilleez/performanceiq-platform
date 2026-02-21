@@ -146,7 +146,7 @@
     // If your teams table has NO owner column, tell me the columns and I'll adjust.
     const { data: team, error: e1 } = await supabase
       .from("teams")
-      .insert({ name, sport: sport || null, created_by: uid })
+      .insert({ name, sport: sport || null, })
       .select("*")
       .single();
     if (e1) throw e1;
