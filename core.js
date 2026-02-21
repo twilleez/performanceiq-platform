@@ -310,8 +310,11 @@
       throw new Error("Auth store not available (PIQ_AuthStore.getUser missing)");
     }
 
-    const user = await window.PIQ_AuthStore.getUser();
-    if (!user?.id) throw new Error("Not signed in");
+    const {
+  data: { user }
+} = await supabase.auth.getUser();
+
+if (!user) throw new Error("User not authenticated");
 
     const cleanName = String(name || "").trim();
     if (!cleanName) throw new Error("Team name is required");
