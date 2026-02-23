@@ -137,31 +137,43 @@
     return data || [];
   }
 
-  async function createTeam(name, sport) {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
+async function createTeam(name, sport) {
+  const supabase = requireClient();
+  const uid = await getUserId();
+  if (!uid) throw new Error("Not signed in");
 
-    // NOTE: This assumes teams table has created_by (uuid) or owner_id etc.
-    // If your teams table has NO owner column, tell me the columns and I'll adjust.
-    const { data: team, error: e1 } = await supabase
-      .from("teams")
-      .insert({ name, sport: sport || null, })
-      .select("*")
-      .single();
-    if (e1) throw e1;
+  const cleanName = String(name || "").trim();
+  if (!cleanName) throw new Error("Team name is required");
 
-    // add yourself as coach
-    const { error: e2 } = await supabase.from("team_members").insert({
-      team_id: team.id,
-      user_id: uid,
-      role_in_team: "coach",
-      linked_athlete_id: null
-    });
-    if (e2) throw e2;
+  const cleanSport = String(sport || "").trim() || null;
 
-    return team;
-  }
+  // 1) Create team (✅ include owner_id + coach_id)
+  const { data: team, error: e1 } = await supabase
+    .from("teams")
+    .insert({
+      name: cleanName,
+      sport: cleanSport,
+      owner_id: uid,
+      coach_id: uid
+    })
+    .select("*")
+    .single();
+
+  if (e1) throw e1;
+  if (!team?.id) throw new Error("Team insert returned no id");
+
+  // 2) Add yourself as coach in team_members
+  const { error: e2 } = await supabase.from("team_members").insert({
+    team_id: team.id,
+    user_id: uid,
+    role_in_team: "coach",
+    linked_athlete_id: null
+  });
+
+  if (e2) throw e2;
+
+  return team;
+}
 
   async function listTeamMembers(teamId) {
     const supabase = requireClient();
