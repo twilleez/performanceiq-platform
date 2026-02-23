@@ -323,6 +323,83 @@
     return true;
   }
 
+  // Get a team by join code (requires teams.join_code column + RLS allowing select)
+async function getTeamByJoinCode(joinCode) {
+  const supabase = requireClient();
+  const code = String(joinCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!code) throw new Error("joinCode is required");
+
+  const { data, error } = await supabase
+    .from("teams")
+    .select("id,name,sport,join_code,created_at")
+    .eq("join_code", code)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+// Join a team using join code (resolves to team_id, then inserts into team_members)
+async function joinTeamByCode(joinCode, roleInTeam, linkedAthleteId) {
+  const supabase = requireClient();
+  const uid = await getUserId();
+  if (!uid) throw new Error("Not signed in");
+
+  const team = await getTeamByJoinCode(joinCode);
+  if (!team?.id) throw new Error("Join code not found");
+
+  const { error } = await supabase.from("team_members").insert({
+    team_id: team.id,
+    user_id: uid,
+    role_in_team: roleInTeam || "athlete",
+    linked_athlete_id: linkedAthleteId || null
+  });
+
+  if (error) throw error;
+  return team;
+}
+
+// Regenerate join code for a team (requires RPC or update permission on teams.join_code)
+// Option A (recommended): create a Postgres RPC: regen_team_join_code(team_id uuid)
+// This client calls it if present.
+async function renewTeamJoinCode(teamId) {
+  const supabase = requireClient();
+  const uid = await getUserId();
+  if (!uid) throw new Error("Not signed in");
+
+  // Try RPC first
+  const { data: rpcData, error: rpcErr } = await supabase.rpc("regen_team_join_code", { team_id: teamId });
+  if (!rpcErr && rpcData) return rpcData;
+
+  // Fallback to direct update if allowed by RLS
+  const next = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+  const { data, error } = await supabase
+    .from("teams")
+    .update({ join_code: next })
+    .eq("id", teamId)
+    .select("id,name,sport,join_code,created_at")
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+// ===== END JOIN CODE PATCH =====
+
+```
+
+Then expose them by adding to the export object:
+
+```js
+  window.dataStore = {
+    // ...existing
+    getTeamByJoinCode,
+    joinTeamByCode,
+    renewTeamJoinCode
+  };
+```
+
+---
   window.dataStore = {
     pushState,
     pullState,
