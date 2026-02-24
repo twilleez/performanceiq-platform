@@ -437,105 +437,149 @@
               <span class="muted">Macros + adherence</span>
             </div>
 
-            <div class="row gap wrap">
-              <div class="field">
-                <label>Athlete</label>
-                <select id="nutAthlete"></select>
+            <div class="callout" id="nutPaywall" style="display:none">
+              <b>Elite Nutrition is a paid upgrade.</b>
+              <div class="small muted">Unlock to enable meal plans, micronutrient targets, and timing recommendations.</div>
+              <div class="row gap wrap" style="margin-top:10px">
+                <input id="unlockCode" placeholder="Enter unlock code" class="grow" />
+                <button class="btn" id="btnUnlock">Unlock</button>
               </div>
-              <div class="field">
-                <label>Date</label>
-                <input id="nutDate" type="date" />
-              </div>
-              <div class="field">
-                <label>Protein (g)</label>
-                <input id="nutProt" type="number" min="0" max="500" value="0" />
-              </div>
-              <div class="field">
-                <label>Carbs (g)</label>
-                <input id="nutCarb" type="number" min="0" max="1000" value="0" />
-              </div>
-              <div class="field">
-                <label>Fat (g)</label>
-                <input id="nutFat" type="number" min="0" max="400" value="0" />
-              </div>
-              <div class="field">
-                <label>Water (oz)</label>
-                <input id="nutWater" type="number" min="0" max="300" value="0" />
-              </div>
-              <div class="field">
-                <label>&nbsp;</label>
-                <button class="btn" id="btnSaveNutrition">Save</button>
-              </div>
+              <div class="small muted" id="unlockHint" style="margin-top:8px"></div>
             </div>
 
-            <div class="row gap wrap">
-              <div class="field grow">
-                <label>Notes</label>
-                <input id="nutNotes" placeholder="optional (timing, appetite, etc.)" />
+            <div id="nutMain">
+              <div class="row gap wrap">
+                <div class="field">
+                  <label>Athlete</label>
+                  <select id="nutAthlete"></select>
+                </div>
+                <div class="field">
+                  <label>Date</label>
+                  <input id="nutDate" type="date" />
+                </div>
+                <div class="field">
+                  <label>Protein (g)</label>
+                  <input id="nutProt" type="number" min="0" max="500" value="0" />
+                </div>
+                <div class="field">
+                  <label>Carbs (g)</label>
+                  <input id="nutCarb" type="number" min="0" max="1000" value="0" />
+                </div>
+                <div class="field">
+                  <label>Fat (g)</label>
+                  <input id="nutFat" type="number" min="0" max="400" value="0" />
+                </div>
+                <div class="field">
+                  <label>Water (oz)</label>
+                  <input id="nutWater" type="number" min="0" max="300" value="0" />
+                </div>
+                <div class="field">
+                  <label>&nbsp;</label>
+                  <button class="btn" id="btnSaveNutrition">Save</button>
+                </div>
               </div>
-            </div>
 
-            <div class="mini">
-              <div class="minihead">Adherence (0–100)</div>
-              <div class="minibody mono small" id="nutComputed">—</div>
-            </div>
+              <div class="row gap wrap">
+                <div class="field grow">
+                  <label>Notes</label>
+                  <input id="nutNotes" placeholder="optional (timing, appetite, etc.)" />
+                </div>
+              </div>
 
-            <div class="list" id="nutritionList"></div>
+              <div class="mini">
+                <div class="minihead">Adherence (0–100)</div>
+                <div class="minibody mono small" id="nutComputed">—</div>
+              </div>
+
+              <div class="list" id="nutritionList"></div>
+            </div>
           </div>
 
           <div class="card">
             <div class="cardhead">
               <h2>Targets & Tools</h2>
-              <span class="muted">Per athlete targets</span>
+              <span class="muted">Per athlete targets + meal plans</span>
             </div>
 
-            <div class="row gap wrap">
-              <div class="field">
-                <label>Athlete</label>
-                <select id="targetAthlete"></select>
-              </div>
-              <div class="field">
-                <label>Target Protein (g)</label>
-                <input id="tProt" type="number" min="0" max="500" />
-              </div>
-              <div class="field">
-                <label>Target Carbs (g)</label>
-                <input id="tCarb" type="number" min="0" max="1000" />
-              </div>
-              <div class="field">
-                <label>Target Fat (g)</label>
-                <input id="tFat" type="number" min="0" max="400" />
-              </div>
-              <div class="field">
-                <label>Target Water (oz)</label>
-                <input id="tWater" type="number" min="0" max="300" />
-              </div>
-              <div class="field">
-                <label>&nbsp;</label>
-                <button class="btn" id="btnSaveTargets">Save Targets</button>
-              </div>
-            </div>
-
-            <hr class="sep" />
-
-            <div class="mini">
-              <div class="minihead">Quick meal builder (no database)</div>
-              <div class="minibody small muted">
-                Enter a meal macro estimate and append it to today’s totals.
-              </div>
+            <div id="targetsBlock">
               <div class="row gap wrap">
-                <div class="field"><label>Protein</label><input id="qmProt" type="number" min="0" max="200" value="30" /></div>
-                <div class="field"><label>Carbs</label><input id="qmCarb" type="number" min="0" max="300" value="60" /></div>
-                <div class="field"><label>Fat</label><input id="qmFat" type="number" min="0" max="150" value="15" /></div>
-                <div class="field"><label>Water</label><input id="qmWater" type="number" min="0" max="80" value="16" /></div>
-                <div class="field"><label>&nbsp;</label><button class="btn ghost" id="btnQuickMeal">Add to today</button></div>
+                <div class="field">
+                  <label>Athlete</label>
+                  <select id="targetAthlete"></select>
+                </div>
+                <div class="field">
+                  <label>Target Protein (g)</label>
+                  <input id="tProt" type="number" min="0" max="500" />
+                </div>
+                <div class="field">
+                  <label>Target Carbs (g)</label>
+                  <input id="tCarb" type="number" min="0" max="1000" />
+                </div>
+                <div class="field">
+                  <label>Target Fat (g)</label>
+                  <input id="tFat" type="number" min="0" max="400" />
+                </div>
+                <div class="field">
+                  <label>Target Water (oz)</label>
+                  <input id="tWater" type="number" min="0" max="300" />
+                </div>
+                <div class="field">
+                  <label>&nbsp;</label>
+                  <button class="btn" id="btnSaveTargets">Save Targets</button>
+                </div>
               </div>
-            </div>
 
-            <details class="explain">
-              <summary>How adherence is calculated</summary>
-              <div class="mono small" id="nutExplain"></div>
-            </details>
+              <hr class="sep" />
+
+              <div class="mini">
+                <div class="minihead">Quick meal builder (no database)</div>
+                <div class="minibody small muted">
+                  Enter a meal macro estimate and append it to today’s totals.
+                </div>
+                <div class="row gap wrap">
+                  <div class="field"><label>Protein</label><input id="qmProt" type="number" min="0" max="200" value="30" /></div>
+                  <div class="field"><label>Carbs</label><input id="qmCarb" type="number" min="0" max="300" value="60" /></div>
+                  <div class="field"><label>Fat</label><input id="qmFat" type="number" min="0" max="150" value="15" /></div>
+                  <div class="field"><label>Water</label><input id="qmWater" type="number" min="0" max="80" value="16" /></div>
+                  <div class="field"><label>&nbsp;</label><button class="btn ghost" id="btnQuickMeal">Add to today</button></div>
+                </div>
+              </div>
+
+              <div class="mini">
+                <div class="minihead">Meal plan generator (Elite)</div>
+                <div class="minibody small muted">
+                  Generates a day plan using your macro targets, training day context, and simple micronutrient focus.
+                </div>
+                <div class="row gap wrap">
+                  <div class="field">
+                    <label>Day type</label>
+                    <select id="mealDayType">
+                      <option value="training">Training day</option>
+                      <option value="game">Game day</option>
+                      <option value="recovery">Recovery day</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Diet preference</label>
+                    <select id="mealDiet">
+                      <option value="standard">Standard</option>
+                      <option value="highprotein">Higher protein</option>
+                      <option value="lowerfat">Lower fat</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>&nbsp;</label>
+                    <button class="btn" id="btnGenerateMealPlan">Generate Plan</button>
+                  </div>
+                </div>
+                <div class="mono small" id="mealPlanOut">—</div>
+              </div>
+
+              <details class="explain">
+                <summary>How adherence is calculated</summary>
+                <div class="mono small" id="nutExplain"></div>
+              </details>
+            </div>
           </div>
         </div>
       </section>
@@ -626,7 +670,7 @@
         <div class="card">
           <div class="cardhead">
             <h2>Settings</h2>
-            <span class="muted">Storage + safety</span>
+            <span class="muted">Storage + upgrade</span>
           </div>
 
           <div class="grid2">
@@ -636,6 +680,18 @@
                 Everything is saved in your browser on this device.
               </div>
               <button class="btn danger" id="btnWipe">Wipe all local data</button>
+            </div>
+
+            <div class="mini">
+              <div class="minihead">Elite upgrade</div>
+              <div class="minibody small muted">
+                Toggle stored entitlements (for demos / sales calls).
+              </div>
+              <div class="row gap wrap">
+                <button class="btn ghost" id="btnEnableElite">Enable Elite</button>
+                <button class="btn ghost" id="btnDisableElite">Disable Elite</button>
+              </div>
+              <div class="small muted" id="eliteState">—</div>
             </div>
 
             <div class="mini">
@@ -653,6 +709,7 @@
     <span class="muted">PerformanceIQ • Offline-first build</span>
   </footer>
 
+  <script src="./dataStore.js"></script>
   <script src="./core.js"></script>
 </body>
-</html>
+                </html>
