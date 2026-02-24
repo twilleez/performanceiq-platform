@@ -1,2972 +1,1411 @@
-// core.js — PRODUCTION-READY REPLACEMENT (FULL FILE) — v1.2.3 + Phase 6 (JOIN CODES)
-// Boot-safe + Splash-safe + Offline-first + Optional Supabase sync (state + logs + metrics)
-// Includes: tabs + Profile + Program + Log + Performance + Dashboard + Team + Parent + Settings
-// Phase 4: Team readiness + coach decision engine + Team tab (cache-based)
-// Phase 5: Coach Execution Engine (OFFLINE-FIRST): Session Plan + Attendance + CSV Export (no new tables required)
-// Phase 6 (UPDATED): Join-code flow
-//  - createTeam() uses dataStore.createTeam() which generates teams.join_code + auto-adds creator to team_members
-//  - joinTeamByCode() uses dataStore.joinTeamByCode(joinCode, role, linkedAthleteId)
-//  - coaches can renewJoinCode() for a team
-//
-// IMPORTANT:
-// - Uses only dataStore APIs referenced here:
-//   listMyTeams, createTeam, renewJoinCode, joinTeamByCode, getTeamByJoinCode,
-//   listTeamMembers, addTeamMember, removeTeamMember,
-//   listWorkoutLogsForAthlete, listMetricsForAthlete, upsertWorkoutLog, upsertPerformanceMetric,
-//   pushState, pullState.
-// - Team member display names are not guaranteed by your schema; we show "Athlete <shortId>".
+// core.js — PerformanceIQ Next Phase (Top-tier foundation)
+// v2.0.0 — PIQ Score + Heatmap + Elite Nutrition (paid) + Risk + Periodization
 
 (function () {
   "use strict";
+  if (window.PIQ_App) return;
 
-  if (window.__PIQ_CORE_LOADED__) return;
-  window.__PIQ_CORE_LOADED__ = true;
+  const S = window.PIQ_Store;
+  if (!S) throw new Error("PIQ_Store missing. Ensure dataStore.js is loaded before core.js.");
 
-  const STORAGE_KEY = "piq_state_v1";
-  const CLOUD_PUSH_DEBOUNCE_MS = 800;
-  const SPLASH_FAILSAFE_MS = 2000;
-  const MAX_ERROR_QUEUE_SIZE = 50;
+  // ---------- DOM helpers ----------
+  const $ = (id) => document.getElementById(id);
+  const qs = (sel, root = document) => root.querySelector(sel);
+  const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  const ROLES = Object.freeze({
-    ATHLETE: "athlete",
-    COACH: "coach",
-    PARENT: "parent",
-    ADMIN: "admin"
-  });
-
-  const SPORTS = Object.freeze({
-    BASKETBALL: "basketball",
-    FOOTBALL: "football",
-    BASEBALL: "baseball",
-    VOLLEYBALL: "volleyball",
-    SOCCER: "soccer"
-  });
-
-  const HYDRATION_LEVELS = Object.freeze({
-    LOW: "low",
-    OK: "ok",
-    GOOD: "good",
-    GREAT: "great"
-  });
-
-  const errorQueue = [];
-  function logError(context, error) {
-    const entry = { context, message: error?.message || String(error), ts: Date.now() };
-    errorQueue.push(entry);
-    if (errorQueue.length > MAX_ERROR_QUEUE_SIZE) errorQueue.shift();
-    console.warn(`[${context}]`, error);
+  function setText(el, txt) {
+    if (!el) return;
+    el.textContent = txt;
   }
 
-  const $ = (id) => document.getElementById(id) || null;
+  function show(el) { if (el) el.hidden = false; }
+  function hide(el) { if (el) el.hidden = true; }
 
-  function sanitizeHTML(str) {
-    const div = document.createElement("div");
-    div.textContent = String(str ?? "");
-    return div.innerHTML;
+  function setDisplay(el, display) {
+    if (el) el.style.display = display;
   }
 
-  const numOrNull = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const clamp = (n, a, b) => Math.min(Math.max(n, a), b);
-
-  const parseInputNumOrNull = (id) => {
-    const el = $(id);
-    const raw = (el?.value || "").trim();
-    if (!raw) return null;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const todayISO = () => new Date().toISOString().slice(0, 10);
-
-  function debounce(fn, delay) {
-    let timer = null;
-    return function debounced(...args) {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => fn.apply(this, args), delay);
-      return timer;
-    };
+  function fmt(n, digits = 0) {
+    const x = Number(n);
+    if (Number.isNaN(x)) return "—";
+    return x.toFixed(digits);
   }
 
-  function safeDateISO(d) {
-    const s = String(d || "").trim();
-    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  function isoAddDays(iso, days) {
+    const d = new Date(iso + "T00:00:00");
+    d.setDate(d.getDate() + Number(days || 0));
+    return d.toISOString().slice(0, 10);
   }
 
-  function isoToMs(iso) {
-    const d = safeDateISO(iso);
-    if (!d) return null;
-    const ms = Date.parse(d);
-    return Number.isFinite(ms) ? ms : null;
+  function isoToNice(iso) {
+    if (!iso) return "—";
+    return iso;
   }
 
-  function daysBetweenISO(aISO, bISO) {
-    const a = isoToMs(aISO);
-    const b = isoToMs(bISO);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-    return (b - a) / (1000 * 60 * 60 * 24);
+  function safeSum(arr, fn) {
+    return (arr || []).reduce((acc, x) => acc + (Number(fn(x)) || 0), 0);
   }
 
-  function isoAddDays(iso, delta) {
-    const ms = isoToMs(iso);
-    if (!Number.isFinite(ms)) return todayISO();
-    const out = new Date(ms + delta * 24 * 60 * 60 * 1000);
-    return out.toISOString().slice(0, 10);
+  // ---------- Splash ----------
+  function endSplash() {
+    const splash = $("splash");
+    if (!splash) return;
+    splash.classList.add("hide");
+    splash.setAttribute("aria-hidden", "true");
+    setTimeout(() => { splash.remove(); }, 250);
   }
 
-  function __loadLocalRaw() {
-    try {
-      return localStorage.getItem(STORAGE_KEY);
-    } catch (e) {
-      logError("loadLocalRaw", e);
-      return null;
-    }
-  }
-
-  function __saveLocal(stateObj) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateObj));
-      return true;
-    } catch (e) {
-      logError("saveLocal", e);
-      return false;
-    }
-  }
-
-  // =========================
-  // Default + normalize state
-  // =========================
-  function defaultState() {
-    const now = Date.now();
-    return {
-      meta: { updatedAtMs: now, lastSyncedAtMs: 0, version: 0 },
-      role: "",
-      profile: {
-        sport: SPORTS.BASKETBALL,
-        days: 4,
-        name: "",
-        baselines: {
-          wellnessAvg: null,
-          energyAvg: null,
-          vertAvg: null,
-          sprint10Avg: null,
-          codAvg: null,
-          sleepHoursAvg: null,
-          sleepQualityAvg: null
-        }
-      },
-      trial: { startedAtMs: now, activated: false, licenseKey: "", licenseUntilMs: 0 },
-      week: null,
-      logs: [],
-      tests: [],
-      team: {
-        roster: [],
-        members: [],
-        selectedTeamId: "",
-        sessions: {},
-        attendanceByDate: {},
-        cache: {
-          dateISO: "",
-          members: [],
-          readinessByUser: {},
-          teamSummary: null,
-          teamDecision: null,
-          updatedAtMs: 0,
-          error: ""
-        }
-      },
-      _ui: { activeTab: "profile" }
-    };
-  }
-
-  function normalizeState(s) {
-    const d = defaultState();
-    if (!s || typeof s !== "object") return d;
-
-    s.meta = s.meta && typeof s.meta === "object" ? s.meta : d.meta;
-    if (!Number.isFinite(s.meta.updatedAtMs)) s.meta.updatedAtMs = Date.now();
-    if (!Number.isFinite(s.meta.lastSyncedAtMs)) s.meta.lastSyncedAtMs = 0;
-    if (!Number.isFinite(s.meta.version)) s.meta.version = 0;
-
-    if (typeof s.role !== "string") s.role = d.role;
-
-    s.profile = s.profile && typeof s.profile === "object" ? s.profile : d.profile;
-    if (typeof s.profile.sport !== "string") s.profile.sport = d.profile.sport;
-    if (!Number.isFinite(s.profile.days)) s.profile.days = d.profile.days;
-    if (typeof s.profile.name !== "string") s.profile.name = d.profile.name;
-
-    s.profile.baselines =
-      s.profile.baselines && typeof s.profile.baselines === "object" ? s.profile.baselines : d.profile.baselines;
-    const b = s.profile.baselines;
-    const bd = d.profile.baselines;
-    if (!Number.isFinite(b.wellnessAvg)) b.wellnessAvg = bd.wellnessAvg;
-    if (!Number.isFinite(b.energyAvg)) b.energyAvg = bd.energyAvg;
-    if (!Number.isFinite(b.vertAvg)) b.vertAvg = bd.vertAvg;
-    if (!Number.isFinite(b.sprint10Avg)) b.sprint10Avg = bd.sprint10Avg;
-    if (!Number.isFinite(b.codAvg)) b.codAvg = bd.codAvg;
-    if (!Number.isFinite(b.sleepHoursAvg)) b.sleepHoursAvg = bd.sleepHoursAvg;
-    if (!Number.isFinite(b.sleepQualityAvg)) b.sleepQualityAvg = bd.sleepQualityAvg;
-
-    s.trial = s.trial && typeof s.trial === "object" ? s.trial : d.trial;
-    if (!Number.isFinite(s.trial.startedAtMs)) s.trial.startedAtMs = d.trial.startedAtMs;
-    if (typeof s.trial.activated !== "boolean") s.trial.activated = d.trial.activated;
-    if (typeof s.trial.licenseKey !== "string") s.trial.licenseKey = d.trial.licenseKey;
-    if (!Number.isFinite(s.trial.licenseUntilMs)) s.trial.licenseUntilMs = d.trial.licenseUntilMs;
-
-    if (!Array.isArray(s.logs)) s.logs = [];
-    if (!Array.isArray(s.tests)) s.tests = [];
-
-    s.team = s.team && typeof s.team === "object" ? s.team : d.team;
-    if (!Array.isArray(s.team.roster)) s.team.roster = [];
-    if (!Array.isArray(s.team.members)) s.team.members = [];
-    if (typeof s.team.selectedTeamId !== "string") s.team.selectedTeamId = "";
-
-    if (!s.team.sessions || typeof s.team.sessions !== "object") s.team.sessions = {};
-    if (!s.team.attendanceByDate || typeof s.team.attendanceByDate !== "object") s.team.attendanceByDate = {};
-
-    s.team.cache = s.team.cache && typeof s.team.cache === "object" ? s.team.cache : d.team.cache;
-    if (typeof s.team.cache.dateISO !== "string") s.team.cache.dateISO = "";
-    if (!Array.isArray(s.team.cache.members)) s.team.cache.members = [];
-    if (!s.team.cache.readinessByUser || typeof s.team.cache.readinessByUser !== "object") s.team.cache.readinessByUser = {};
-    if (!("teamSummary" in s.team.cache)) s.team.cache.teamSummary = null;
-    if (!("teamDecision" in s.team.cache)) s.team.cache.teamDecision = null;
-    if (!Number.isFinite(s.team.cache.updatedAtMs)) s.team.cache.updatedAtMs = 0;
-    if (typeof s.team.cache.error !== "string") s.team.cache.error = "";
-
-    s._ui = s._ui && typeof s._ui === "object" ? s._ui : d._ui;
-    if (typeof s._ui.activeTab !== "string") s._ui.activeTab = "profile";
-
-    return s;
-  }
-
-  function loadState() {
-    const raw = __loadLocalRaw();
-    if (!raw) return null;
-    try {
-      return normalizeState(JSON.parse(raw));
-    } catch (e) {
-      logError("loadState", e);
-      return null;
-    }
-  }
-
-  const state = loadState() || defaultState();
-
-  function bumpMeta() {
-    state.meta.updatedAtMs = Date.now();
-    state.meta.version = (state.meta.version || 0) + 1;
-  }
-
-  function saveState() {
-    bumpMeta();
-    __saveLocal(state);
-    scheduleCloudPush();
-    try {
-      PIQ_Readiness.updateBaselinesFromHistory();
-    } catch (e) {
-      logError("baselineUpdate", e);
-    }
-    renderActiveTab();
-  }
-
-  window.PIQ = window.PIQ || {};
-  window.PIQ.getState = () => state;
-  window.PIQ.getErrors = () => [...errorQueue];
-  window.PIQ.saveState = window.PIQ.saveState || (() => saveState());
-
-  // =========================
-  // Splash + role utilities
-  // =========================
-  function hideSplashNow() {
-    const s = $("splash");
-    if (!s) return;
-    s.classList.add("hidden");
-    s.style.display = "none";
-    s.style.visibility = "hidden";
-    s.style.opacity = "0";
-    try {
-      s.remove();
-    } catch (e) {
-      logError("hideSplash", e);
-    }
-  }
-  window.hideSplashNow = window.hideSplashNow || hideSplashNow;
-
-  function isSupabaseReady() {
-    return !!(window.supabaseClient && window.PIQ_AuthStore && window.dataStore);
-  }
-
-  /* ============================================================
-     Phase 6 — Team helpers (JOIN CODES)
-     - createTeam(): use dataStore.createTeam()
-     - loadRoster(): groups team_members by role
-     ============================================================ */
-
-  async function createTeam(name, sport) {
-    if (!window.dataStore || typeof window.dataStore.createTeam !== "function") {
-      throw new Error("dataStore.createTeam(name, sport) missing");
-    }
-    return window.dataStore.createTeam(name, sport);
-  }
-
-  async function loadRoster(teamId) {
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId is required");
-    if (!window.dataStore || typeof window.dataStore.listTeamMembers !== "function") {
-      throw new Error("dataStore.listTeamMembers(teamId) missing");
-    }
-
-    const members = await window.dataStore.listTeamMembers(tid);
-    const roster = { coaches: [], athletes: [], parents: [], other: [] };
-
-    for (const m of members || []) {
-      const role = String(m?.role_in_team || "").toLowerCase().trim();
-      if (role === "coach") roster.coaches.push(m);
-      else if (role === "athlete") roster.athletes.push(m);
-      else if (role === "parent") roster.parents.push(m);
-      else roster.other.push(m);
-    }
-
-    return roster;
-  }
-
-  // Expose on PIQ.team for direct callers.
-  // NOTE: Do NOT assign onto window.dataStore here — dataStore.js owns that namespace.
-  // The local createTeam/loadRoster wrappers are only exposed on window.PIQ.team as a
-  // convenience API. If dataStore.js is loaded first (correct order), its richer
-  // implementation (with joinCodeLength, ownership checks, etc.) is already in place.
-  window.PIQ = window.PIQ || {};
-  window.PIQ.team = window.PIQ.team || {};
-  window.PIQ.team.createTeam = window.PIQ.team.createTeam || createTeam;
-  window.PIQ.team.loadRoster = window.PIQ.team.loadRoster || loadRoster;
-
-  /* ========================= END Phase 6 ========================= */
-
-  async function isSignedIn() {
-    try {
-      if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
-      const u = await window.PIQ_AuthStore.getUser();
-      return !!u;
-    } catch (e) {
-      logError("isSignedIn", e);
-      return false;
-    }
-  }
-
-  async function __pushStateNow() {
-    if (!isSupabaseReady()) return false;
-    if (!window.dataStore || typeof window.dataStore.pushState !== "function") return false;
-    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
-
-    try {
-      const u = await window.PIQ_AuthStore.getUser();
-      if (!u) return false;
-
-      await window.dataStore.pushState(state);
-      state.meta.lastSyncedAtMs = Date.now();
-      __saveLocal(state);
-      return true;
-    } catch (e) {
-      logError("pushState", e);
-      return false;
-    }
-  }
-
-  const scheduleCloudPush = debounce(async () => {
-    if (!isSupabaseReady()) return;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
-    const signed = await isSignedIn().catch(() => false);
-    if (!signed) return;
-    await __pushStateNow();
-  }, CLOUD_PUSH_DEBOUNCE_MS);
-
-  async function __pullCloudStateIfNewer() {
-    if (!isSupabaseReady()) return false;
-    if (!window.dataStore || typeof window.dataStore.pullState !== "function") return false;
-    if (!window.PIQ_AuthStore || typeof window.PIQ_AuthStore.getUser !== "function") return false;
-
-    try {
-      const u = await window.PIQ_AuthStore.getUser();
-      if (!u) return false;
-
-      const cloud = await window.dataStore.pullState();
-      if (!cloud || !cloud.state || typeof cloud.state !== "object") return false;
-
-      const cloudUpdated = Number(cloud.state?.meta?.updatedAtMs || 0);
-      const localUpdated = Number(state?.meta?.updatedAtMs || 0);
-
-      if (cloudUpdated > localUpdated) {
-        const next = normalizeState(cloud.state);
-        Object.keys(state).forEach((k) => delete state[k]);
-        Object.keys(next).forEach((k) => (state[k] = next[k]));
-        __saveLocal(state);
-        renderActiveTab();
-        return true;
-      }
-      return false;
-    } catch (e) {
-      logError("pullState", e);
-      return false;
-    }
-  }
-
-  function setRoleEverywhere(role) {
-    state.role = role || "";
-    try {
-      localStorage.setItem("role", state.role);
-    } catch (e) {
-      logError("setRole", e);
-    }
-    try {
-      localStorage.setItem("selectedRole", state.role);
-    } catch (e) {
-      logError("setSelectedRole", e);
-    }
-  }
-
-  function setProfileBasics(sport, days, name) {
-    state.profile = state.profile || {};
-    state.profile.sport = sport || state.profile.sport || SPORTS.BASKETBALL;
-    state.profile.days = Number(days || state.profile.days || 4);
-    if (!Number.isFinite(state.profile.days) || state.profile.days <= 0) state.profile.days = 4;
-    if (typeof name === "string") state.profile.name = name;
-  }
-
-  function ensureOnboardMount() {
-    let mount = $("onboard");
-    if (!mount) {
-      mount = document.createElement("div");
-      mount.id = "onboard";
-      document.body.appendChild(mount);
-    }
-    return mount;
-  }
-
-  async function renderRoleChooser() {
-    const mount = ensureOnboardMount();
-    mount.style.display = "block";
-
-    const supaOk = isSupabaseReady();
-    const signed = supaOk ? await isSignedIn() : false;
-
-    const currentRole = (state.role || "").trim();
-    const currentSport = state.profile?.sport || SPORTS.BASKETBALL;
-    const currentDays = Number.isFinite(state.profile?.days) ? String(state.profile.days) : "4";
-
-    mount.innerHTML = `
-      <div class="modalBack">
-        <div class="modal">
-          <h3 style="margin:0 0 6px 0">Choose your role</h3>
-          <div class="small">Required to continue.</div>
-          <div class="hr"></div>
-
-          <div class="row">
-            <div class="field">
-              <label for="piqRole">Role (required)</label>
-              <select id="piqRole">
-                <option value="${ROLES.ATHLETE}">Athlete</option>
-                <option value="${ROLES.COACH}">Coach</option>
-                <option value="${ROLES.PARENT}">Parent</option>
-                <option value="${ROLES.ADMIN}">Administrator</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="piqSport">Sport</label>
-              <select id="piqSport">
-                <option value="${SPORTS.BASKETBALL}">Basketball</option>
-                <option value="${SPORTS.FOOTBALL}">Football</option>
-                <option value="${SPORTS.BASEBALL}">Baseball</option>
-                <option value="${SPORTS.VOLLEYBALL}">Volleyball</option>
-                <option value="${SPORTS.SOCCER}">Soccer</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="piqDays">Days/week</label>
-              <select id="piqDays">
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="btnRow" style="margin-top:12px">
-            <button class="btn" id="piqSaveRole" type="button">Save & continue</button>
-            <button class="btn secondary" id="piqResetRole" type="button">Reset local data</button>
-          </div>
-
-          <div class="hr"></div>
-          <div class="small" id="piqSyncStatus"></div>
-
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="piqSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in to sync</button>
-            <button class="btn secondary" id="piqSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
-            <button class="btn secondary" id="piqPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
-          </div>
-
-          <div class="small" style="margin-top:8px">
-            Offline-first: works without signing in. Sync is optional and only runs when signed in.
-          </div>
-        </div>
-      </div>
-    `;
-
-    const roleSel = $("piqRole");
-    const sportSel = $("piqSport");
-    const daysSel = $("piqDays");
-    const syncEl = $("piqSyncStatus");
-
-    if (roleSel) roleSel.value = currentRole || ROLES.ATHLETE;
-    if (sportSel) sportSel.value = currentSport;
-    if (daysSel) daysSel.value = currentDays;
-
-    if (syncEl) {
-      if (!supaOk) syncEl.innerHTML = "Cloud sync: <b>Unavailable</b> (Supabase not configured).";
-      else if (!signed) syncEl.innerHTML = "Cloud sync: <b>Available</b> — not signed in.";
-      else syncEl.innerHTML = "Cloud sync: <b>Signed in</b> — pull/push enabled.";
-    }
-
-    $("piqSaveRole")?.addEventListener("click", () => {
-      setRoleEverywhere(roleSel ? roleSel.value : ROLES.ATHLETE);
-      setProfileBasics(
-        sportSel ? sportSel.value : SPORTS.BASKETBALL,
-        daysSel ? daysSel.value : 4,
-        state.profile?.name || ""
-      );
-      saveState();
-
-      try {
-        mount.style.display = "none";
-        mount.innerHTML = "";
-      } catch (e) {
-        logError("hideRoleChooser", e);
-      }
-      hideSplashNow();
-      window.startApp?.();
+  // ---------- Navigation ----------
+  function setView(name) {
+    qsa(".view[data-view]").forEach((v) => {
+      const is = v.id === "view-" + name;
+      v.hidden = !is;
     });
-
-    $("piqResetRole")?.addEventListener("click", () => {
-      if (!confirm("Clear ALL saved data on this device?")) return;
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
-      location.reload();
+    qsa(".navbtn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.view === name);
     });
-
-    $("piqSignIn")?.addEventListener("click", async () => {
-      try {
-        if (!window.PIQ_AuthStore) return alert("Auth not available.");
-        const email = prompt("Enter email for magic-link sign-in:");
-        if (!email) return;
-        await window.PIQ_AuthStore.signInWithOtp(email.trim());
-        alert("Check your email for the sign-in link, then return here.");
-      } catch (e) {
-        logError("signIn", e);
-        alert("Sign-in failed: " + (e?.message || e));
-      }
-    });
-
-    $("piqSignOut")?.addEventListener("click", async () => {
-      try {
-        await window.PIQ_AuthStore?.signOut?.();
-        alert("Signed out.");
-        location.reload();
-      } catch (e) {
-        logError("signOut", e);
-        alert("Sign-out failed: " + (e?.message || e));
-      }
-    });
-
-    $("piqPull")?.addEventListener("click", async () => {
-      try {
-        const pulled = await __pullCloudStateIfNewer();
-        alert(pulled ? "Pulled newer cloud state." : "No newer cloud state found.");
-        location.reload();
-      } catch (e) {
-        logError("pullCloud", e);
-        alert("Pull failed: " + (e?.message || e));
-      }
-    });
-  }
-
-  window.showRoleChooser = function () {
-    renderRoleChooser();
-  };
-
-  // =========================
-  // Tabs/nav
-  // =========================
-  const TABS = ["profile", "program", "log", "performance", "dashboard", "team", "parent", "settings"];
-
-  function showTab(tabName) {
-    for (const t of TABS) {
-      const el = $(`tab-${t}`);
-      if (!el) continue;
-      el.style.display = t === tabName ? "block" : "none";
-    }
-    state._ui = state._ui || {};
-    state._ui.activeTab = tabName;
-    __saveLocal(state);
-  }
-
-  function activeTab() {
-    const fromState = state?._ui?.activeTab;
-    if (fromState && TABS.includes(fromState)) return fromState;
-    return "profile";
+    // view-specific refresh
+    if (name === "dashboard") refreshDashboard();
+    if (name === "team") refreshTeam();
+    if (name === "log") refreshLog();
+    if (name === "nutrition") refreshNutrition();
+    if (name === "periodization") refreshPeriodization();
+    if (name === "settings") refreshSettings();
   }
 
   function wireNav() {
-    for (const t of TABS) {
-      $(`nav-${t}`)?.addEventListener("click", () => {
-        showTab(t);
-        renderActiveTab();
+    qsa(".navbtn").forEach((b) => {
+      b.addEventListener("click", () => setView(b.dataset.view));
+    });
+  }
+
+  // ---------- Core computed metrics ----------
+  function calcSessionLoad(session) {
+    const min = Number(session?.minutes) || 0;
+    const rpe = Number(session?.rpe) || 0;
+    return Math.max(0, min * rpe);
+  }
+
+  function calcDailyLoad(athleteId, dateISO) {
+    const sessions = S.getTrainingForDate(athleteId, dateISO);
+    return safeSum(sessions, calcSessionLoad);
+  }
+
+  function calcReadinessScore(entry) {
+    // Simple, explainable: sleep is positive; soreness/stress reduce; energy increases.
+    // Output 0–100.
+    if (!entry) return null;
+    const sleep = S.clamp(entry.sleepHrs, 0, 16);        // 0..16
+    const sore = S.clamp(entry.sore, 0, 10);             // 0..10
+    const stress = S.clamp(entry.stress, 0, 10);         // 0..10
+    const energy = S.clamp(entry.energy, 0, 10);         // 0..10
+
+    // Normalize
+    const sleepScore = S.clamp((sleep / 9) * 35, 0, 35); // 9hrs ~= strong baseline
+    const energyScore = S.clamp((energy / 10) * 35, 0, 35);
+    const penalty = S.clamp(((sore + stress) / 20) * 30, 0, 30);
+
+    const out = S.clamp(sleepScore + energyScore + (30 - penalty), 0, 100);
+    return out;
+  }
+
+  function calcNutritionAdherence(athleteId, dateISO) {
+    const n = S.getNutritionForDate(athleteId, dateISO);
+    if (!n) return null;
+
+    const t = S.getTargetsForAthlete(athleteId);
+    const p = Number(n.p) || 0, c = Number(n.c) || 0, f = Number(n.f) || 0, w = Number(n.w) || 0;
+
+    // component adherence = 100 - % deviation, clipped.
+    function comp(actual, target, weight) {
+      if (!target || target <= 0) return { score: 100, detail: "target=0 => 100" };
+      const dev = Math.abs(actual - target) / target; // 0..inf
+      const s = S.clamp(100 - dev * 120, 0, 100);     // allow small miss; big miss drops
+      return { score: s, detail: `${actual}/${target}` };
+    }
+
+    const pc = comp(p, t.p, 1);
+    const cc = comp(c, t.c, 1);
+    const fc = comp(f, t.f, 1);
+    const wc = comp(w, t.w, 1);
+
+    // protein slightly more important; hydration important
+    const total =
+      (pc.score * 0.35) +
+      (cc.score * 0.25) +
+      (fc.score * 0.15) +
+      (wc.score * 0.25);
+
+    return {
+      score: Math.round(S.clamp(total, 0, 100)),
+      parts: { protein: pc, carbs: cc, fat: fc, water: wc },
+      targets: t,
+      actuals: { p, c, f, w }
+    };
+  }
+
+  function calcTrainingSubScore(athleteId, dateISO) {
+    // Training score is "appropriate load" vs athlete's rolling baseline.
+    // Too low or too high reduces; medium is best.
+    const load = calcDailyLoad(athleteId, dateISO); // 0.. large
+    const chronic = calcChronicLoad(athleteId, dateISO, 28); // avg daily over 28d
+    const baseline = Math.max(1, chronic);
+
+    const ratio = load / baseline; // ~1.0 ideal-ish
+    // Score peaks near 1.0; falls as diverges
+    const score = S.clamp(100 - Math.abs(ratio - 1) * 70, 0, 100);
+    return { score: Math.round(score), load, baseline, ratio: Number(ratio.toFixed(2)) };
+  }
+
+  function calcChronicLoad(athleteId, dateISO, windowDays) {
+    const days = Number(windowDays || 28);
+    let sum = 0;
+    for (let i = 0; i < days; i++) {
+      sum += calcDailyLoad(athleteId, isoAddDays(dateISO, -i));
+    }
+    return sum / days;
+  }
+
+  function calcAcuteLoad(athleteId, dateISO, windowDays) {
+    const days = Number(windowDays || 7);
+    let sum = 0;
+    for (let i = 0; i < days; i++) {
+      sum += calcDailyLoad(athleteId, isoAddDays(dateISO, -i));
+    }
+    return sum / days;
+  }
+
+  function calcMonotonyAndStrain(athleteId, dateISO) {
+    // 7-day load monotony = mean / sd; strain = mean * monotony
+    const loads = [];
+    for (let i = 0; i < 7; i++) loads.push(calcDailyLoad(athleteId, isoAddDays(dateISO, -i)));
+    const mean = loads.reduce((a, b) => a + b, 0) / 7;
+    const variance = loads.reduce((a, x) => a + Math.pow(x - mean, 2), 0) / 7;
+    const sd = Math.sqrt(variance);
+    const monotony = sd === 0 ? (mean > 0 ? 5 : 0) : mean / sd;
+    const strain = mean * monotony;
+    return { mean, sd, monotony, strain, loads };
+  }
+
+  function calcRiskIndex(athleteId, dateISO) {
+    // Heuristic risk: acute:chronic, monotony, low readiness, low sleep, soreness, pain note, low nutrition adherence.
+    const acute = calcAcuteLoad(athleteId, dateISO, 7);
+    const chronic = calcChronicLoad(athleteId, dateISO, 28);
+    const acr = chronic > 0 ? acute / chronic : (acute > 0 ? 2 : 0);
+
+    const ms = calcMonotonyAndStrain(athleteId, dateISO);
+
+    const rEntry = S.getReadinessForDate(athleteId, dateISO);
+    const readiness = calcReadinessScore(rEntry);
+    const sleep = rEntry ? Number(rEntry.sleepHrs) || 0 : null;
+    const sore = rEntry ? Number(rEntry.sore) || 0 : null;
+    const pain = rEntry ? String(rEntry.injuryNote || "").trim() : "";
+
+    const nut = calcNutritionAdherence(athleteId, dateISO);
+    const nutScore = nut ? nut.score : null;
+
+    let risk = 0;
+    const flags = [];
+
+    // ACR
+    if (acr >= 1.5) { risk += 22; flags.push("Acute load high vs baseline (ACR ≥ 1.5)"); }
+    else if (acr >= 1.3) { risk += 12; flags.push("Acute load elevated (ACR ≥ 1.3)"); }
+    else if (acr <= 0.5 && chronic > 0) { risk += 6; flags.push("Acute load very low vs baseline (possible detraining)"); }
+
+    // Monotony
+    if (ms.monotony >= 2.0) { risk += 14; flags.push("High monotony (little day-to-day variation)"); }
+    if (ms.strain >= 2500) { risk += 10; flags.push("High 7-day strain"); }
+
+    // Readiness
+    if (readiness !== null && readiness < 55) { risk += 18; flags.push("Low readiness score"); }
+    if (sleep !== null && sleep < 7) { risk += 10; flags.push("Sleep < 7h"); }
+    if (sore !== null && sore >= 7) { risk += 10; flags.push("High soreness (≥7)"); }
+    if (pain) { risk += 14; flags.push("Pain/Injury note present"); }
+
+    // Nutrition
+    if (nutScore !== null && nutScore < 60) { risk += 10; flags.push("Low nutrition adherence"); }
+    if (nutScore === null) { risk += 4; flags.push("No nutrition log (unknown)"); }
+
+    // Cap and map to 0–100
+    risk = S.clamp(risk, 0, 100);
+
+    // Build short summary bucket
+    let band = "LOW";
+    if (risk >= 65) band = "HIGH";
+    else if (risk >= 40) band = "MODERATE";
+
+    return {
+      risk: Math.round(risk),
+      band,
+      inputs: {
+        acute: Number(acute.toFixed(1)),
+        chronic: Number(chronic.toFixed(1)),
+        acr: Number(acr.toFixed(2)),
+        monotony: Number(ms.monotony.toFixed(2)),
+        strain: Number(ms.strain.toFixed(0)),
+        readiness: readiness === null ? null : Math.round(readiness),
+        sleep,
+        sore,
+        nutScore
+      },
+      flags
+    };
+  }
+
+  function calcRecoverySubScore(athleteId, dateISO) {
+    // Recovery sub-score driven by sleep and soreness/stress; uses readiness entry
+    const r = S.getReadinessForDate(athleteId, dateISO);
+    if (!r) return { score: 50, note: "No check-in logged (default 50)" };
+
+    const sleep = Number(r.sleepHrs) || 0;
+    const sore = Number(r.sore) || 0;
+    const stress = Number(r.stress) || 0;
+
+    const sleepScore = S.clamp((sleep / 9) * 60, 0, 60);
+    const penalty = S.clamp(((sore + stress) / 20) * 40, 0, 40);
+
+    const out = S.clamp(sleepScore + (40 - penalty), 0, 100);
+    return { score: Math.round(out), note: `sleep=${sleep}h, sore=${sore}, stress=${stress}` };
+  }
+
+  function calcPIQScore(athleteId, dateISO) {
+    const weights = S.getState().team.weights;
+
+    const rEntry = S.getReadinessForDate(athleteId, dateISO);
+    const readiness = rEntry ? calcReadinessScore(rEntry) : null;
+
+    const training = calcTrainingSubScore(athleteId, dateISO);
+    const recovery = calcRecoverySubScore(athleteId, dateISO);
+    const nutrition = calcNutritionAdherence(athleteId, dateISO);
+    const risk = calcRiskIndex(athleteId, dateISO);
+
+    const readinessScore = readiness === null ? 50 : readiness;
+    const nutritionScore = nutrition ? nutrition.score : 50;
+    const riskScore = 100 - risk.risk; // invert: higher risk -> lower score
+
+    const wSum = weights.readiness + weights.training + weights.recovery + weights.nutrition + weights.risk;
+    const w = wSum === 100 ? weights : { readiness: 30, training: 25, recovery: 20, nutrition: 15, risk: 10 };
+
+    const blended =
+      (readinessScore * (w.readiness / 100)) +
+      (training.score * (w.training / 100)) +
+      (recovery.score * (w.recovery / 100)) +
+      (nutritionScore * (w.nutrition / 100)) +
+      (riskScore * (w.risk / 100));
+
+    const score = Math.round(S.clamp(blended, 0, 100));
+
+    let band = "DEVELOPING";
+    if (score >= 85) band = "ELITE";
+    else if (score >= 70) band = "COMPETITIVE";
+    else if (score >= 55) band = "BUILDING";
+
+    const explain = [
+      `PIQ Score = weighted blend (0–100)`,
+      ``,
+      `Readiness: ${fmt(readinessScore, 0)} (weight ${w.readiness}%)`,
+      `Training:  ${fmt(training.score, 0)} (weight ${w.training}%)`,
+      `Recovery:  ${fmt(recovery.score, 0)} (weight ${w.recovery}%)`,
+      `Nutrition: ${fmt(nutritionScore, 0)} (weight ${w.nutrition}%)`,
+      `Risk:      ${fmt(riskScore, 0)} (weight ${w.risk}%)  [computed as 100 - riskIndex]`,
+      ``,
+      `Training details: load=${fmt(training.load, 0)}, baseline=${fmt(training.baseline, 0)}, ratio=${training.ratio}`,
+      `Recovery details: ${recovery.note}`,
+      `Risk details: riskIndex=${risk.risk} (${risk.band}), ACR=${risk.inputs.acr}, monotony=${risk.inputs.monotony}`,
+      nutrition ? `Nutrition details: p ${nutrition.actuals.p}/${nutrition.targets.p}, c ${nutrition.actuals.c}/${nutrition.targets.c}, f ${nutrition.actuals.f}/${nutrition.targets.f}, w ${nutrition.actuals.w}/${nutrition.targets.w}` : `Nutrition details: no entry (default 50)`,
+    ].join("\n");
+
+    return {
+      score,
+      band,
+      subs: {
+        readiness: Math.round(readinessScore),
+        training: training.score,
+        recovery: recovery.score,
+        nutrition: Math.round(nutritionScore),
+        risk: Math.round(riskScore),
+        riskIndex: risk.risk
+      },
+      explain
+    };
+  }
+
+  // ---------- UI: roster + selects ----------
+  function roster() {
+    return S.getState().roster || [];
+  }
+
+  function ensureRoster() {
+    const r = roster();
+    if (r.length) return;
+    // keep empty by default; seed button provides demo
+  }
+
+  function fillAthleteSelect(selectEl, selectedId) {
+    if (!selectEl) return;
+    const r = roster();
+    selectEl.innerHTML = "";
+    r.forEach((a) => {
+      const opt = document.createElement("option");
+      opt.value = a.id;
+      opt.textContent = a.name;
+      selectEl.appendChild(opt);
+    });
+    if (selectedId && r.some((x) => x.id === selectedId)) selectEl.value = selectedId;
+  }
+
+  function syncAllAthleteSelects() {
+    const ids = [
+      "dashAthlete","riskAthlete","logAthlete","readyAthlete","nutAthlete","targetAthlete","perAthlete","monAthlete"
+    ];
+    const primary = roster()[0]?.id || "";
+    ids.forEach((id) => fillAthleteSelect($(id), $(id)?.value || primary));
+  }
+
+  // ---------- TEAM VIEW ----------
+  function refreshTeam() {
+    const st = S.getState();
+    setText($("activeTeamPill"), `Team: ${st.team.name || "Default"}`);
+
+    $("teamName").value = st.team.name || "";
+    $("seasonStart").value = st.team.seasonStart || "";
+    $("seasonEnd").value = st.team.seasonEnd || "";
+
+    $("defProt").value = st.team.macroDefaults.p;
+    $("defCarb").value = st.team.macroDefaults.c;
+    $("defFat").value = st.team.macroDefaults.f;
+
+    $("wReadiness").value = st.team.weights.readiness;
+    $("wTraining").value = st.team.weights.training;
+    $("wRecovery").value = st.team.weights.recovery;
+    $("wNutrition").value = st.team.weights.nutrition;
+    $("wRisk").value = st.team.weights.risk;
+
+    renderRosterList();
+    syncAllAthleteSelects();
+
+    // weights note
+    const sum = st.team.weights.readiness + st.team.weights.training + st.team.weights.recovery + st.team.weights.nutrition + st.team.weights.risk;
+    setText($("weightsNote"), sum === 100 ? "✅ Weights total 100." : `⚠️ Weights total ${sum}. Adjust to 100 for best results.`);
+  }
+
+  function renderRosterList() {
+    const list = $("rosterList");
+    if (!list) return;
+    const r = roster();
+    if (!r.length) {
+      list.innerHTML = `<div class="empty">No athletes yet. Add one above or click <b>Seed Demo</b>.</div>`;
+      return;
+    }
+    list.innerHTML = r.map((a) => {
+      const t = a.targets ? `Targets: P${a.targets.p}/C${a.targets.c}/F${a.targets.f}/W${a.targets.w}` : `Targets: team default`;
+      return `
+        <div class="item">
+          <div class="itemmain">
+            <div><b>${escapeHTML(a.name)}</b> <span class="muted">(${escapeHTML(a.pos || "—")})</span></div>
+            <div class="small muted">Ht ${a.heightIn} in • Wt ${a.weightLb} lb • ${escapeHTML(t)}</div>
+          </div>
+          <div class="itemactions">
+            <button class="btn ghost" data-act="setTargets" data-id="${a.id}">Targets</button>
+            <button class="btn danger ghost" data-act="remove" data-id="${a.id}">Remove</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    qsa("button[data-act]", list).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const act = btn.dataset.act;
+        const id = btn.dataset.id;
+        if (act === "remove") {
+          S.removeAthlete(id);
+          refreshTeam();
+          refreshDashboard();
+          refreshLog();
+          refreshNutrition();
+          refreshPeriodization();
+        }
+        if (act === "setTargets") {
+          setView("nutrition");
+          // select athlete in targets section
+          if ($("targetAthlete")) $("targetAthlete").value = id;
+          loadTargetsUI();
+        }
       });
-    }
-  }
-
-  function setPills() {
-    const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim() || "—";
-    const rolePill = $("rolePill");
-    if (rolePill) rolePill.textContent = `Role: ${role}`;
-
-    const syncPill = $("syncPill");
-    if (syncPill) syncPill.textContent = isSupabaseReady() ? "Offline-first + Sync" : "Offline-first";
-  }
-
-  // =========================
-  // Program generator
-  // =========================
-  function generateProgram(sport, days) {
-    const s = (sport || SPORTS.BASKETBALL).toLowerCase();
-    const d = Math.min(Math.max(Number(days || 4), 3), 5);
-
-    const baseWarmup = ["5–8 min zone 2 cardio", "Dynamic mobility (hips, ankles, t-spine)", "Glute + core activation"];
-    const baseFinisher = ["Cooldown walk 5 min", "Breathing reset 3–5 min", "Stretch major muscle groups"];
-
-    function primaryLift(name) {
-      return { tier: "Primary", name, sets: 4, reps: "4–6", rest: "2–3 min", rpe: "7–8" };
-    }
-    function secondaryLift(name) {
-      return { tier: "Secondary", name, sets: 3, reps: "6–8", rest: "90 sec", rpe: "7" };
-    }
-    function accessory(name) {
-      return { tier: "Accessory", name, sets: 3, reps: "8–12", rest: "60 sec", rpe: "6–7" };
-    }
-
-    const templates = {
-      basketball: [
-        {
-          title: "Day 1 — Lower Strength",
-          exercises: [
-            primaryLift("Trap Bar Deadlift"),
-            secondaryLift("Rear Foot Elevated Split Squat"),
-            accessory("Hamstring Curl"),
-            accessory("Core Anti-Rotation Press")
-          ]
-        },
-        {
-          title: "Day 2 — Speed + Plyo",
-          exercises: [
-            { tier: "Power", name: "Box Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Fast & crisp" },
-            { tier: "Speed", name: "10–20m Sprints", sets: 6, reps: "1", rest: "Full", rpe: "Max effort" },
-            accessory("Calf Raises"),
-            accessory("Hip Mobility Circuit")
-          ]
-        },
-        {
-          title: "Day 3 — Upper Strength",
-          exercises: [
-            primaryLift("Bench Press"),
-            secondaryLift("Pull-Ups"),
-            accessory("DB Shoulder Press"),
-            accessory("Scapular Retraction Rows")
-          ]
-        },
-        {
-          title: "Day 4 — Reactive + Conditioning",
-          exercises: [
-            { tier: "Reactive", name: "Depth Jumps", sets: 4, reps: "3", rest: "90 sec", rpe: "Explosive" },
-            { tier: "Agility", name: "Cone COD Drills", sets: 5, reps: "1", rest: "60 sec", rpe: "Sharp" },
-            accessory("Core Circuit"),
-            accessory("Zone 2 Bike 12–15 min")
-          ]
-        },
-        {
-          title: "Day 5 — Optional Recovery",
-          exercises: [
-            { tier: "Recovery", name: "Zone 2 20–30 min", sets: 1, reps: "", rest: "", rpe: "Easy" },
-            accessory("Mobility Flow"),
-            accessory("Soft Tissue Work")
-          ]
-        }
-      ]
-    };
-
-    const template = templates[s] || templates.basketball;
-    const picked = template.slice(0, d);
-
-    const progression = {
-      model: "4-week wave (auto load)",
-      weekMultipliers: [1.0, 1.03, 1.06, 1.09],
-      guidance: "Auto progression: Week 2/3/4 gradually increase load. Readiness can override this (reduce or hold load)."
-    };
-
-    return {
-      sport: s,
-      days: d,
-      createdAtISO: new Date().toISOString(),
-      progression,
-      warmup: baseWarmup,
-      finisher: baseFinisher,
-      daysPlan: picked
-    };
-  }
-
-  function programWeekIndex(todayIso) {
-    const p = state.week;
-    if (!p?.createdAtISO) return 1;
-    const createdIso = String(p.createdAtISO).slice(0, 10);
-    const createdDay = safeDateISO(createdIso) ? createdIso : todayISO();
-    const diffDays = daysBetweenISO(createdDay, todayIso);
-    if (!Number.isFinite(diffDays)) return 1;
-    const week = Math.floor(diffDays / 7) + 1;
-    return ((week - 1) % 4) + 1;
-  }
-
-  function programBaseMultiplier(todayIso) {
-    const p = state.week;
-    const w = programWeekIndex(todayIso);
-    const arr = p?.progression?.weekMultipliers;
-    if (Array.isArray(arr) && Number.isFinite(arr[w - 1])) return arr[w - 1];
-    return [1.0, 1.03, 1.06, 1.09][w - 1] || 1.0;
-  }
-
-  // =========================
-  // Cloud upserts (logs/metrics)
-  // =========================
-  function __piqComputeVolumeFromEntries(entries) {
-    let vol = 0;
-    (entries || []).forEach((e) => {
-      const w = Number(e && e.weight);
-      const reps = Number(String(e && e.reps ? e.reps : "").replace(/[^0-9]/g, ""));
-      if (Number.isFinite(w) && Number.isFinite(reps)) vol += w * reps;
     });
-    return vol;
   }
 
-  function __localLogToWorkoutRow(localLog) {
-    if (!localLog) return null;
-    return {
-      date: localLog.dateISO || null,
-      program_day: localLog.theme || null,
-      volume: __piqComputeVolumeFromEntries(localLog.entries || []),
-      wellness: numOrNull(localLog.wellness),
-      energy: numOrNull(localLog.energy),
-      hydration: typeof localLog.hydration === "string" ? localLog.hydration : null,
-      injury_flag: typeof localLog.injury === "string" ? localLog.injury : "none",
-      injury_pain: numOrNull(localLog.injury_pain),
-      sleep_quality: numOrNull(localLog.sleep_quality),
-      practice_intensity: typeof localLog.practice_intensity === "string" ? localLog.practice_intensity : null,
-      practice_duration_min: numOrNull(localLog.practice_duration_min),
-      extra_gym: typeof localLog.extra_gym === "boolean" ? localLog.extra_gym : null,
-      extra_gym_duration_min: numOrNull(localLog.extra_gym_duration_min)
-    };
-  }
-
-  function __localTestToMetricRow(test) {
-    if (!test) return null;
-    return {
-      date: test.dateISO || null,
-      vert_inches: numOrNull(test.vert),
-      sprint_seconds: numOrNull(test.sprint10),
-      cod_seconds: numOrNull(test.cod),
-      bw_lbs: numOrNull(test.bw),
-      sleep_hours: numOrNull(test.sleep)
-    };
-  }
-
-  async function __tryUpsertWorkoutLog(localLog) {
-    if (!isSupabaseReady()) return false;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
-    const signed = await isSignedIn().catch(() => false);
-    if (!signed) return false;
-    if (!window.dataStore || typeof window.dataStore.upsertWorkoutLog !== "function") return false;
-
-    const row = __localLogToWorkoutRow(localLog);
-    if (!row || !row.date) return false;
-    try {
-      await window.dataStore.upsertWorkoutLog(row);
-      return true;
-    } catch (e) {
-      logError("upsertWorkoutLog", e);
-      return false;
-    }
-  }
-
-  async function __tryUpsertMetric(localTest) {
-    if (!isSupabaseReady()) return false;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
-    const signed = await isSignedIn().catch(() => false);
-    if (!signed) return false;
-    if (!window.dataStore || typeof window.dataStore.upsertPerformanceMetric !== "function") return false;
-
-    const row = __localTestToMetricRow(localTest);
-    if (!row || !row.date) return false;
-
-    const hasAny =
-      row.vert_inches !== null ||
-      row.sprint_seconds !== null ||
-      row.cod_seconds !== null ||
-      row.bw_lbs !== null ||
-      row.sleep_hours !== null;
-    if (!hasAny) return false;
-
-    try {
-      await window.dataStore.upsertPerformanceMetric(row);
-      return true;
-    } catch (e) {
-      logError("upsertPerformanceMetric", e);
-      return false;
-    }
-  }
-
-  window.PIQ.cloud = window.PIQ.cloud || {};
-  window.PIQ.cloud.upsertWorkoutLogFromLocal = (localLog) => __tryUpsertWorkoutLog(localLog);
-  window.PIQ.cloud.upsertPerformanceMetricFromLocal = (localTest) => __tryUpsertMetric(localTest);
-
-  // =========================
-  // Readiness Engine v2 + team intelligence
-  // =========================
-  const PIQ_Readiness = (function () {
-    const COLORS = Object.freeze({
-      A: "#2ecc71",
-      B: "#f1c40f",
-      C: "#e67e22",
-      D: "#e74c3c",
-      OUT: "#bdc3c7"
-    });
-
-    function mean(nums) {
-      const v = (nums || []).filter((x) => Number.isFinite(x));
-      if (!v.length) return null;
-      const sum = v.reduce((a, b) => a + b, 0);
-      return sum / v.length;
-    }
-
-    function slope(vals) {
-      const y = (vals || []).map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      const n = y.length;
-      if (n < 2) return null;
-      let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-      for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += y[i];
-        sumXY += i * y[i];
-        sumXX += i * i;
-      }
-      const denom = n * sumXX - sumX * sumX;
-      if (denom === 0) return null;
-      return (n * sumXY - sumX * sumY) / denom;
-    }
-
-    function sortByDateISO(arr, key) {
-      return (arr || [])
-        .filter((x) => x && safeDateISO(x[key]))
-        .slice()
-        .sort((a, b) => String(a[key]).localeCompare(String(b[key])));
-    }
-
-    function lastNByDate(arr, key, n, upToISO) {
-      const cut = safeDateISO(upToISO) || todayISO();
-      const s = sortByDateISO(arr, key).filter((x) => x[key] <= cut);
-      return s.slice(-n);
-    }
-
-    function hydrationScore(h) {
-      const x = String(h || "").toLowerCase().trim();
-      if (x === HYDRATION_LEVELS.GREAT) return 1.0;
-      if (x === HYDRATION_LEVELS.GOOD) return 0.85;
-      if (x === HYDRATION_LEVELS.OK) return 0.7;
-      if (x === HYDRATION_LEVELS.LOW) return 0.4;
-      return 0.75;
-    }
-
-    function sleepComposite(hours, quality) {
-      const h = numOrNull(hours);
-      const q = numOrNull(quality);
-      const hs = Number.isFinite(h) ? clamp((h - 4) / (9 - 4), 0, 1) : null;
-      const qs = Number.isFinite(q) ? clamp((q - 1) / (10 - 1), 0, 1) : null;
-      if (qs !== null && hs !== null) return qs * 0.6 + hs * 0.4;
-      if (qs !== null) return qs;
-      if (hs !== null) return hs;
-      return null;
-    }
-
-    function percentDropFromBaseline(current, baseline) {
-      const c = numOrNull(current);
-      const b = numOrNull(baseline);
-      if (!Number.isFinite(c) || !Number.isFinite(b) || b === 0) return null;
-      return (b - c) / b;
-    }
-
-    function percentWorseFromBaseline_time(current, baseline) {
-      const c = numOrNull(current);
-      const b = numOrNull(baseline);
-      if (!Number.isFinite(c) || !Number.isFinite(b) || b === 0) return null;
-      return (c - b) / b;
-    }
-
-    function injuryTierPenalty(injuryFlag, painScore) {
-      const f = String(injuryFlag || "none").toLowerCase().trim();
-      if (f === "out") return { lock: true, multiplier: 0, label: "Out (no training)" };
-
-      const p = numOrNull(painScore);
-      if (Number.isFinite(p)) {
-        if (p >= 7) return { lock: false, multiplier: 0.0, label: "Severe pain (D-grade override)" };
-        if (p >= 5) return { lock: false, multiplier: 0.75, label: "Moderate pain (-25%)" };
-        if (p >= 3) return { lock: false, multiplier: 0.9, label: "Minor soreness (-10%)" };
-        return { lock: false, multiplier: 1.0, label: "No meaningful pain" };
-      }
-
-      if (f === "minor") return { lock: false, multiplier: 0.9, label: "Minor (flag) (-10%)" };
-      if (f === "sore") return { lock: false, multiplier: 0.93, label: "Sore (flag) (-7%)" };
-      if (f === "none") return { lock: false, multiplier: 1.0, label: "None" };
-      return { lock: false, multiplier: 0.9, label: "Injury (flag) (-10%)" };
-    }
-
-    function gradeFromScore(score) {
-      const s = Number(score);
-      if (!Number.isFinite(s)) return "B";
-      if (s >= 85) return "A";
-      if (s >= 70) return "B";
-      if (s >= 55) return "C";
-      return "D";
-    }
-
-    function readinessToModifier(grade) {
-      if (grade === "A") return 1.05;
-      if (grade === "B") return 1.0;
-      if (grade === "C") return 0.9;
-      if (grade === "D") return 0.75;
-      if (grade === "OUT") return 0.0;
-      return 1.0;
-    }
-
-    function guidanceForGrade(grade, reasons) {
-      const g = String(grade || "").toUpperCase();
-      const base =
-        {
-          A: "Green light. Progress load if technique is solid.",
-          B: "Normal training. Maintain planned load.",
-          C: "Caution. Reduce volume 10–20% and keep intensity controlled.",
-          D: "Recovery focus. Reduce load significantly or switch to mobility/skill-only.",
-          OUT: "No training. Follow return-to-play plan / medical guidance."
-        }[g] || "Normal training.";
-
-      const extra = reasons && reasons.length ? " " + reasons.slice(0, 4).join(" ") : "";
-      return base + extra;
-    }
-
-    function computeBaselinesFromHistory(logs, tests, upToISO) {
-      const logs5 = lastNByDate(logs, "dateISO", 5, upToISO);
-      const tests5 = lastNByDate(tests, "dateISO", 5, upToISO);
-
-      return {
-        wellnessAvg: mean(logs5.map((l) => numOrNull(l.wellness))),
-        energyAvg: mean(logs5.map((l) => numOrNull(l.energy))),
-        sleepQualityAvg: mean(logs5.map((l) => numOrNull(l.sleep_quality))),
-        vertAvg: mean(tests5.map((t) => numOrNull(t.vert))),
-        sprint10Avg: mean(tests5.map((t) => numOrNull(t.sprint10))),
-        codAvg: mean(tests5.map((t) => numOrNull(t.cod))),
-        sleepHoursAvg: mean(tests5.map((t) => numOrNull(t.sleep))),
-        sleepQualityAvg_fromLogs: mean(logs5.map((l) => numOrNull(l.sleep_quality)))
-      };
-    }
-
-    function updateBaselinesFromHistory() {
-      const b = state.profile.baselines || (state.profile.baselines = {});
-      const bl = computeBaselinesFromHistory(state.logs || [], state.tests || [], todayISO());
-
-      if (Number.isFinite(bl.wellnessAvg)) b.wellnessAvg = bl.wellnessAvg;
-      if (Number.isFinite(bl.energyAvg)) b.energyAvg = bl.energyAvg;
-      if (Number.isFinite(bl.vertAvg)) b.vertAvg = bl.vertAvg;
-      if (Number.isFinite(bl.sprint10Avg)) b.sprint10Avg = bl.sprint10Avg;
-      if (Number.isFinite(bl.codAvg)) b.codAvg = bl.codAvg;
-      if (Number.isFinite(bl.sleepHoursAvg)) b.sleepHoursAvg = bl.sleepHoursAvg;
-
-      const sq = Number.isFinite(bl.sleepQualityAvg) ? bl.sleepQualityAvg : bl.sleepQualityAvg_fromLogs;
-      if (Number.isFinite(sq)) b.sleepQualityAvg = sq;
-
-      state.profile.baselines = b;
-      __saveLocal(state);
-    }
-
-    function computeFromData(dateISO, logs, tests, baselines) {
-      const date = safeDateISO(dateISO) || todayISO();
-
-      const logs7 = lastNByDate(logs || [], "dateISO", 7, date);
-      const tests7 = lastNByDate(tests || [], "dateISO", 7, date);
-
-      const todaysLog = logs7.length ? logs7[logs7.length - 1] : null;
-      const todaysTest = tests7.length ? tests7[tests7.length - 1] : null;
-
-      const wellnessToday = numOrNull(todaysLog?.wellness);
-      const energyToday = numOrNull(todaysLog?.energy);
-
-      const sleepHours = numOrNull(todaysTest?.sleep);
-      const sleepQuality = numOrNull(todaysLog?.sleep_quality);
-
-      const hydration = String(todaysLog?.hydration || "").toLowerCase().trim();
-      const injuryFlag = String(todaysLog?.injury || todaysLog?.injury_flag || "none").toLowerCase().trim();
-      const injuryPain = numOrNull(todaysLog?.injury_pain);
-
-      const last3 = lastNByDate(logs || [], "dateISO", 3, date);
-      const w3 = last3.map((l) => numOrNull(l.wellness)).filter((x) => Number.isFinite(x));
-      const e3 = last3.map((l) => numOrNull(l.energy)).filter((x) => Number.isFinite(x));
-
-      const wSlope = slope(w3);
-      const eSlope = slope(e3);
-
-      const redFlags = [];
-      const cautions = [];
-
-      if (Number.isFinite(wSlope) && wSlope <= -0.75) redFlags.push("Wellness trend dropping fast.");
-      if (Number.isFinite(eSlope) && eSlope <= -0.75) redFlags.push("Energy trend dropping fast.");
-
-      const last2 = lastNByDate(logs || [], "dateISO", 2, date);
-      const lowW = last2.filter((l) => Number.isFinite(numOrNull(l.wellness)) && numOrNull(l.wellness) <= 4).length;
-      if (lowW >= 2) redFlags.push("Consecutive low wellness (≤4).");
-
-      const b = baselines || {};
-      const vertDrop = percentDropFromBaseline(todaysTest?.vert, b.vertAvg);
-      const sprintWorse = percentWorseFromBaseline_time(todaysTest?.sprint10, b.sprint10Avg);
-      const codWorse = percentWorseFromBaseline_time(todaysTest?.cod, b.codAvg);
-
-      if (Number.isFinite(vertDrop) && vertDrop >= 0.05) redFlags.push("Vertical drop ≥5% vs baseline.");
-      else if (Number.isFinite(vertDrop) && vertDrop >= 0.03) cautions.push("Vertical drop ≥3% vs baseline.");
-
-      if (Number.isFinite(sprintWorse) && sprintWorse >= 0.05) redFlags.push("Sprint time worse ≥5% vs baseline.");
-      else if (Number.isFinite(sprintWorse) && sprintWorse >= 0.03) cautions.push("Sprint time worse ≥3% vs baseline.");
-
-      if (Number.isFinite(codWorse) && codWorse >= 0.05) redFlags.push("COD time worse ≥5% vs baseline.");
-      else if (Number.isFinite(codWorse) && codWorse >= 0.03) cautions.push("COD time worse ≥3% vs baseline.");
-
-      const sleepComp = sleepComposite(sleepHours, sleepQuality);
-      if (sleepComp !== null && sleepComp < 0.35) redFlags.push("Sleep quality/duration low.");
-      else if (sleepComp !== null && sleepComp < 0.5) cautions.push("Sleep could be better.");
-
-      const hydScore = hydrationScore(hydration);
-      if (hydration === HYDRATION_LEVELS.LOW) cautions.push("Hydration low.");
-
-      const injury = injuryTierPenalty(injuryFlag, injuryPain);
-      if (injury.lock) {
-        return {
-          dateISO: date,
-          score: 0,
-          grade: "OUT",
-          color: COLORS.OUT,
-          readinessModifier: 0,
-          guidance: guidanceForGrade("OUT", [injury.label]),
-          reasons: [injury.label]
-        };
-      }
-      if (injury.multiplier === 0) redFlags.push("Severe pain tier.");
-      else if (injury.multiplier < 1) cautions.push(injury.label);
-
-      let score = 0;
-      const reasons = [];
-
-      // neuromuscular bucket (40)
-      let nm = 40;
-      if (Number.isFinite(vertDrop)) nm -= clamp((vertDrop / 0.10) * 20, 0, 20);
-      if (Number.isFinite(sprintWorse)) nm -= clamp((sprintWorse / 0.10) * 10, 0, 10);
-      if (Number.isFinite(codWorse)) nm -= clamp((codWorse / 0.10) * 10, 0, 10);
-      nm = clamp(nm, 0, 40);
-      score += nm;
-
-      // sleep bucket (20)
-      if (sleepComp === null) score += 12;
-      else score += clamp(sleepComp * 20, 0, 20);
-
-      // subjective vs baseline (20)
-      const wBase = numOrNull(b.wellnessAvg);
-      const eBase = numOrNull(b.energyAvg);
-      let sub = 20;
-
-      if (Number.isFinite(wellnessToday) && Number.isFinite(wBase)) sub += clamp((wellnessToday - wBase) * 2, -12, 4);
-      else if (Number.isFinite(wellnessToday)) sub += clamp((wellnessToday - 6) * 1.5, -9, 6);
-
-      if (Number.isFinite(energyToday) && Number.isFinite(eBase)) sub += clamp((energyToday - eBase) * 2, -12, 4);
-      else if (Number.isFinite(energyToday)) sub += clamp((energyToday - 6) * 1.5, -9, 6);
-
-      sub = clamp(sub, 0, 20);
-      score += sub;
-
-      // hydration bucket (10)
-      score += clamp(hydScore * 10, 0, 10);
-
-      // trend velocity bucket (10)
-      let tv = 10;
-      if (Number.isFinite(wSlope) && wSlope < 0) tv -= clamp(Math.abs(wSlope) * 6, 0, 6);
-      if (Number.isFinite(eSlope) && eSlope < 0) tv -= clamp(Math.abs(eSlope) * 4, 0, 4);
-      tv = clamp(tv, 0, 10);
-      score += tv;
-
-      // injury multiplier
-      score = score * injury.multiplier;
-
-      let grade = gradeFromScore(score);
-
-      // red-flag override rules
-      if (redFlags.length >= 2) {
-        if (grade === "A" || grade === "B") grade = "C";
-      } else if (redFlags.length === 1) {
-        if (grade === "A") grade = "B";
-        else if (grade === "B") grade = "C";
-        else if (grade === "C") grade = "D";
-      }
-
-      if (sleepComp !== null && sleepComp < 0.25) {
-        if (grade === "A" || grade === "B") grade = "C";
-      }
-
-      if (hydration === HYDRATION_LEVELS.LOW && Number.isFinite(wellnessToday) && wellnessToday <= 5) {
-        if (grade === "A" || grade === "B") grade = "C";
-      }
-
-      if (redFlags.length) reasons.push(...redFlags.map((x) => `⚠️ ${x}`));
-      if (cautions.length) reasons.push(...cautions.map((x) => `• ${x}`));
-      if (injury.label && injury.label !== "None") reasons.push(`• Injury: ${injury.label}`);
-
-      const readinessModifier = readinessToModifier(grade);
-
-      return {
-        dateISO: date,
-        score: Math.round(score),
-        grade,
-        color: COLORS[grade] || COLORS.B,
-        readinessModifier,
-        guidance: guidanceForGrade(grade, []),
-        reasons
-      };
-    }
-
-    function computeForDate(dateISO) {
-      const date = safeDateISO(dateISO) || todayISO();
-      updateBaselinesFromHistory();
-
-      const r = computeFromData(date, state.logs || [], state.tests || [], state.profile?.baselines || {});
-      const baseProg = programBaseMultiplier(date);
-      const finalProg = clamp(baseProg * (r.readinessModifier || 1), 0, 2);
-
-      const loadText = (function () {
-        const w = programWeekIndex(date);
-        const basePct = Math.round(baseProg * 100);
-        const finalPct = Math.round(finalProg * 100);
-        if (r.grade === "OUT") return `Training locked.`;
-        return `Week ${w} base load: ${basePct}%. Readiness-adjusted: ${finalPct}%.`;
-      })();
-
-      const guidance = guidanceForGrade(r.grade, [loadText]);
-
-      return {
-        ...r,
-        readinessModifier: r.readinessModifier,
-        programWeek: programWeekIndex(date),
-        baseProgressionMultiplier: baseProg,
-        finalProgressionMultiplier: finalProg,
-        guidance
-      };
-    }
-
-    function teamSummaryForDate(dateISO, readinessList) {
-      const date = safeDateISO(dateISO) || todayISO();
-      const arr = Array.isArray(readinessList) ? readinessList.filter(Boolean) : [];
-      if (!arr.length) return null;
-
-      const avgScore = Math.round(arr.reduce((s, r) => s + (Number(r.score) || 0), 0) / arr.length);
-
-      const grades = arr.reduce((acc, r) => {
-        const g = String(r.grade || "B");
-        acc[g] = (acc[g] || 0) + 1;
-        return acc;
-      }, {});
-
-      const unavailable = (grades.OUT || 0) + (grades.D || 0);
-      const availabilityPct = Math.round(((arr.length - unavailable) / arr.length) * 100);
-
-      const redFlagCount = arr.filter((r) => r.grade === "D" || r.grade === "OUT").length;
-
-      return {
-        dateISO: date,
-        total: arr.length,
-        avgScore,
-        grades,
-        availabilityPct,
-        redFlags: redFlagCount
-      };
-    }
-
-    function teamDecision(teamSummary) {
-      if (!teamSummary) return null;
-
-      const notes = [];
-      let recommendation = "Normal session";
-
-      const total = Number(teamSummary.total) || 0;
-      const cCount = Number(teamSummary.grades?.C || 0);
-      const dCount = Number(teamSummary.grades?.D || 0);
-      const outCount = Number(teamSummary.grades?.OUT || 0);
-
-      if (total > 0) {
-        const dOutPct = (dCount + outCount) / total;
-        const cPct = cCount / total;
-
-        if (dOutPct >= 0.3) {
-          recommendation = "Recovery / walkthrough only";
-          notes.push("≥30% D/OUT");
-        } else if (cPct >= 0.2) {
-          recommendation = "Reduced volume (15–25%)";
-          notes.push("≥20% C");
-        }
-
-        if ((teamSummary.redFlags || 0) >= 2) {
-          notes.push("Avoid max velocity & plyometrics");
-        }
-
-        if ((teamSummary.avgScore || 0) >= 80 && dOutPct < 0.15) {
-          notes.push("Group looks stable");
-        }
-      }
-
-      return { recommendation, notes };
-    }
-
-    return {
-      COLORS,
-      updateBaselinesFromHistory,
-      computeForDate,
-      computeFromData,
-      computeBaselinesFromHistory,
-      teamSummaryForDate,
-      teamDecision
-    };
-  })();
-
-  window.PIQ.readiness = window.PIQ.readiness || {};
-  window.PIQ.readiness.forDate = (iso) => PIQ_Readiness.computeForDate(iso);
-  window.PIQ.readiness.updateBaselines = () => PIQ_Readiness.updateBaselinesFromHistory();
-
-  // =========================
-  // Phase 4+5 — Team readiness refresh using EXISTING dataStore APIs
-  // =========================
-  function shortId(id) {
-    const s = String(id || "");
-    return s.length > 8 ? s.slice(0, 8) : s;
-  }
-
-  function mapWorkoutRowToLocalLog(row) {
-    if (!row) return null;
-    return {
-      dateISO: row.date,
-      theme: row.program_day || null,
-      wellness: numOrNull(row.wellness),
-      energy: numOrNull(row.energy),
-      hydration: typeof row.hydration === "string" ? row.hydration : null,
-      injury: typeof row.injury_flag === "string" ? row.injury_flag : (typeof row.injury === "string" ? row.injury : "none"),
-      injury_pain: numOrNull(row.injury_pain),
-      sleep_quality: numOrNull(row.sleep_quality),
-      entries: []
-    };
-  }
-
-  function mapMetricRowToLocalTest(row) {
-    if (!row) return null;
-    return {
-      dateISO: row.date,
-      vert: numOrNull(row.vert_inches),
-      sprint10: numOrNull(row.sprint_seconds),
-      cod: numOrNull(row.cod_seconds),
-      bw: numOrNull(row.bw_lbs),
-      sleep: numOrNull(row.sleep_hours)
-    };
-  }
-
-  async function refreshTeamReadiness(dateISO) {
-    const date = safeDateISO(dateISO) || todayISO();
-    state.team.cache.error = "";
-
-    if ((state.role || "").trim() !== ROLES.COACH) {
-      state.team.cache.error = "Team readiness is available in Coach role.";
-      __saveLocal(state);
-      return false;
-    }
-
-    if (!isSupabaseReady()) {
-      state.team.cache.error = "Sync not configured. Sign in with Supabase to use team readiness.";
-      __saveLocal(state);
-      return false;
-    }
-
-    const signed = await isSignedIn().catch(() => false);
-    if (!signed) {
-      state.team.cache.error = "Not signed in. Sign in to use team readiness.";
-      __saveLocal(state);
-      return false;
-    }
-
-    const teamId = String(state.team.selectedTeamId || "").trim();
-    if (!teamId) {
-      state.team.cache.error = "No team selected.";
-      __saveLocal(state);
-      return false;
-    }
-
-    if (!window.dataStore?.listTeamMembers) {
-      state.team.cache.error = "dataStore missing listTeamMembers(teamId).";
-      __saveLocal(state);
-      return false;
-    }
-    if (!window.dataStore?.listWorkoutLogsForAthlete || !window.dataStore?.listMetricsForAthlete) {
-      state.team.cache.error = "dataStore missing readiness helpers (listWorkoutLogsForAthlete/listMetricsForAthlete).";
-      __saveLocal(state);
-      return false;
-    }
-
-    try {
-      const members = await window.dataStore.listTeamMembers(teamId);
-      const athleteMembers = (members || []).filter((m) => String(m?.role_in_team || "").toLowerCase() === "athlete");
-
-      state.team.cache.members = members || [];
-      state.team.cache.dateISO = date;
-
-      if (!athleteMembers.length) {
-        state.team.cache.readinessByUser = {};
-        state.team.cache.teamSummary = null;
-        state.team.cache.teamDecision = null;
-        state.team.cache.updatedAtMs = Date.now();
-        __saveLocal(state);
-        return true;
-      }
-
-      const from = isoAddDays(date, -13);
-      const upTo = date;
-      const limit = 14;
-
-      const readinessByUser = {};
-      const readinessList = [];
-
-      for (const m of athleteMembers) {
-        const uid = String(m?.user_id || "").trim();
-        if (!uid) continue;
-
-        const logsRows = await window.dataStore.listWorkoutLogsForAthlete(uid, upTo, limit);
-        const metricRows = await window.dataStore.listMetricsForAthlete(uid, upTo, limit);
-
-        const logsLocal = (logsRows || [])
-          .filter((r) => r?.date && r.date >= from && r.date <= upTo)
-          .map(mapWorkoutRowToLocalLog)
-          .filter(Boolean);
-
-        const testsLocal = (metricRows || [])
-          .filter((r) => r?.date && r.date >= from && r.date <= upTo)
-          .map(mapMetricRowToLocalTest)
-          .filter(Boolean);
-
-        const baselines = PIQ_Readiness.computeBaselinesFromHistory(logsLocal, testsLocal, date);
-        const r = PIQ_Readiness.computeFromData(date, logsLocal, testsLocal, baselines);
-
-        const displayName = `Athlete ${shortId(uid)}`;
-        const withDisplay = { ...r, athlete: { user_id: uid, display_name: displayName } };
-
-        readinessByUser[uid] = withDisplay;
-        readinessList.push(withDisplay);
-
-        try {
-          ensureTeamAttendanceSlot(teamId, date);
-          const current = state.team.attendanceByDate?.[teamId]?.[date]?.[uid];
-          if (!current) {
-            state.team.attendanceByDate[teamId][date][uid] = suggestAttendanceFromGrade(r.grade);
-          }
-        } catch (e) {
-          logError("attendanceSuggest", e);
-        }
-      }
-
-      const teamSummary = PIQ_Readiness.teamSummaryForDate(date, readinessList);
-      const teamDecision = PIQ_Readiness.teamDecision(teamSummary);
-
-      state.team.cache.readinessByUser = readinessByUser;
-      state.team.cache.teamSummary = teamSummary;
-      state.team.cache.teamDecision = teamDecision;
-      state.team.cache.updatedAtMs = Date.now();
-      state.team.cache.error = "";
-
+  function wireTeam() {
+    $("btnAddAthlete").addEventListener("click", () => {
       try {
-        ensureTeamSessionSlot(teamId, date);
-        const sess = state.team.sessions[teamId][date];
-        if (!sess.planText || !sess.planText.trim()) {
-          sess.planText = generateSessionPlanText({
-            dateISO: date,
-            decision: teamDecision,
-            program: state.week,
-            weekIndex: programWeekIndex(date)
-          });
-          sess.source = "auto";
-          sess.updatedAtMs = Date.now();
-        }
+        const a = S.addAthlete(
+          $("athName").value,
+          $("athPos").value,
+          $("athHt").value,
+          $("athWt").value
+        );
+        $("athName").value = "";
+        $("athPos").value = "";
+        $("athHt").value = "";
+        $("athWt").value = "";
+        refreshTeam();
+        // also refresh dependent views
+        refreshDashboard();
+        refreshLog();
+        refreshNutrition();
+        refreshPeriodization();
+        // select new athlete in all selects
+        syncAllAthleteSelects();
+        if ($("dashAthlete")) $("dashAthlete").value = a.id;
       } catch (e) {
-        logError("autoSessionPlan", e);
+        alert(e.message || String(e));
       }
+    });
 
-      __saveLocal(state);
-      return true;
-    } catch (e) {
-      logError("refreshTeamReadiness", e);
-      state.team.cache.error = e?.message || String(e);
-      state.team.cache.updatedAtMs = Date.now();
-      __saveLocal(state);
-      return false;
+    $("btnSaveTeam").addEventListener("click", () => {
+      S.setTeam({
+        name: String($("teamName").value || "Default").trim() || "Default",
+        seasonStart: $("seasonStart").value || "",
+        seasonEnd: $("seasonEnd").value || "",
+      });
+      refreshTeam();
+    });
+
+    $("btnSaveMacroDefaults").addEventListener("click", () => {
+      // keep water default untouched here; adjust in code if needed
+      const st = S.getState();
+      S.setMacroDefaults($("defProt").value, $("defCarb").value, $("defFat").value, st.team.macroDefaults.w);
+      refreshTeam();
+      refreshNutrition();
+    });
+
+    $("btnSaveWeights").addEventListener("click", () => {
+      S.setWeights({
+        readiness: $("wReadiness").value,
+        training: $("wTraining").value,
+        recovery: $("wRecovery").value,
+        nutrition: $("wNutrition").value,
+        risk: $("wRisk").value,
+      });
+      refreshTeam();
+      refreshDashboard();
+    });
+  }
+
+  // ---------- LOG VIEW ----------
+  function refreshLog() {
+    syncAllAthleteSelects();
+    const t = S.todayISO();
+    if ($("logDate") && !$("logDate").value) $("logDate").value = t;
+    if ($("readyDate") && !$("readyDate").value) $("readyDate").value = t;
+
+    updateTrainingComputed();
+    updateReadinessComputed();
+    renderTrainingList();
+    renderReadinessList();
+  }
+
+  function updateTrainingComputed() {
+    const minutes = Number($("logMin")?.value) || 0;
+    const rpe = Number($("logRpe")?.value) || 0;
+    const load = minutes * rpe;
+    setText($("logComputed"), `Load: ${fmt(load, 0)} (minutes × sRPE)`);
+  }
+
+  function updateReadinessComputed() {
+    const entry = {
+      sleepHrs: Number($("readySleep")?.value) || 0,
+      sore: Number($("readySore")?.value) || 0,
+      stress: Number($("readyStress")?.value) || 0,
+      energy: Number($("readyEnergy")?.value) || 0,
+    };
+    const score = calcReadinessScore(entry);
+    setText($("readyComputed"), score === null ? "—" : `${fmt(score, 0)} / 100`);
+  }
+
+  function renderTrainingList() {
+    const list = $("trainingList");
+    if (!list) return;
+    const athleteId = $("logAthlete")?.value;
+    if (!athleteId) { list.innerHTML = `<div class="empty">Add an athlete first.</div>`; return; }
+    const items = S.listTraining(athleteId, 30);
+    if (!items.length) { list.innerHTML = `<div class="empty">No sessions yet.</div>`; return; }
+
+    list.innerHTML = items.map((x) => {
+      return `
+        <div class="item">
+          <div class="itemmain">
+            <div><b>${escapeHTML(x.date)}</b> <span class="pill mini">${escapeHTML(x.type)}</span></div>
+            <div class="small muted">Min ${x.minutes} • sRPE ${x.rpe} • Load <b>${fmt(calcSessionLoad(x), 0)}</b>${x.notes ? ` • ${escapeHTML(x.notes)}` : ""}</div>
+          </div>
+          <div class="itemactions">
+            <button class="btn danger ghost" data-act="delTrain" data-id="${x.id}">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    qsa("button[data-act='delTrain']", list).forEach((b) => {
+      b.addEventListener("click", () => {
+        const id = b.dataset.id;
+        const st = S.getState();
+        st.logs.training = st.logs.training.filter((t) => t.id !== id);
+        S.setState(st);
+        renderTrainingList();
+        refreshDashboard();
+      });
+    });
+  }
+
+  function renderReadinessList() {
+    const list = $("readinessList");
+    if (!list) return;
+    const athleteId = $("readyAthlete")?.value;
+    if (!athleteId) { list.innerHTML = `<div class="empty">Add an athlete first.</div>`; return; }
+    const items = S.listReadiness(athleteId, 30);
+    if (!items.length) { list.innerHTML = `<div class="empty">No check-ins yet.</div>`; return; }
+
+    list.innerHTML = items.map((x) => {
+      const score = calcReadinessScore(x);
+      const injury = x.injuryNote ? ` • ⚠️ ${escapeHTML(x.injuryNote)}` : "";
+      return `
+        <div class="item">
+          <div class="itemmain">
+            <div><b>${escapeHTML(x.date)}</b> <span class="pill mini">Readiness ${fmt(score, 0)}</span></div>
+            <div class="small muted">Sleep ${x.sleepHrs}h • Sore ${x.sore} • Stress ${x.stress} • Energy ${x.energy}${injury}</div>
+          </div>
+          <div class="itemactions">
+            <button class="btn danger ghost" data-act="delReady" data-id="${x.id}">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    qsa("button[data-act='delReady']", list).forEach((b) => {
+      b.addEventListener("click", () => {
+        const id = b.dataset.id;
+        const st = S.getState();
+        st.logs.readiness = st.logs.readiness.filter((t) => t.id !== id);
+        S.setState(st);
+        renderReadinessList();
+        refreshDashboard();
+      });
+    });
+  }
+
+  function wireLog() {
+    $("logMin").addEventListener("input", updateTrainingComputed);
+    $("logRpe").addEventListener("input", updateTrainingComputed);
+
+    $("readySleep").addEventListener("input", updateReadinessComputed);
+    $("readySore").addEventListener("input", updateReadinessComputed);
+    $("readyStress").addEventListener("input", updateReadinessComputed);
+    $("readyEnergy").addEventListener("input", updateReadinessComputed);
+
+    $("btnSaveTraining").addEventListener("click", () => {
+      try {
+        const athleteId = $("logAthlete").value;
+        S.upsertTraining({
+          athleteId,
+          date: $("logDate").value,
+          minutes: $("logMin").value,
+          rpe: $("logRpe").value,
+          type: $("logType").value,
+          notes: $("logNotes").value,
+        });
+        $("logNotes").value = "";
+        renderTrainingList();
+        refreshDashboard();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
+
+    $("btnSaveReadiness").addEventListener("click", () => {
+      try {
+        const athleteId = $("readyAthlete").value;
+        S.upsertReadiness({
+          athleteId,
+          date: $("readyDate").value,
+          sleepHrs: $("readySleep").value,
+          sore: $("readySore").value,
+          stress: $("readyStress").value,
+          energy: $("readyEnergy").value,
+          injuryNote: $("readyInjury").value,
+        });
+        $("readyInjury").value = "";
+        renderReadinessList();
+        refreshDashboard();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
+
+    // Jump sync
+    $("logAthlete").addEventListener("change", () => { renderTrainingList(); });
+    $("readyAthlete").addEventListener("change", () => { renderReadinessList(); });
+  }
+
+  // ---------- DASHBOARD (PIQ + Risk + Heatmap) ----------
+  function refreshDashboard() {
+    syncAllAthleteSelects();
+    const t = S.todayISO();
+    if ($("dashDate") && !$("dashDate").value) $("dashDate").value = t;
+    if ($("riskDate") && !$("riskDate").value) $("riskDate").value = t;
+    if ($("heatStart") && !$("heatStart").value) $("heatStart").value = isoAddDays(t, -20);
+
+    recalcPIQ();
+    // don't auto-run risk; it is user-run
+  }
+
+  function applyBar(idFill, idNum, value) {
+    const el = $(idFill);
+    const num = $(idNum);
+    const v = S.clamp(value, 0, 100);
+    if (el) el.style.width = v + "%";
+    setText(num, fmt(v, 0));
+  }
+
+  function recalcPIQ() {
+    const athleteId = $("dashAthlete")?.value;
+    const dateISO = $("dashDate")?.value;
+    if (!athleteId || !dateISO) {
+      setText($("piqScore"), "—");
+      setText($("piqBand"), "—");
+      return;
+    }
+    const out = calcPIQScore(athleteId, dateISO);
+    setText($("piqScore"), String(out.score));
+    setText($("piqBand"), out.band);
+
+    applyBar("barReadiness","numReadiness", out.subs.readiness);
+    applyBar("barTraining","numTraining", out.subs.training);
+    applyBar("barRecovery","numRecovery", out.subs.recovery);
+    applyBar("barNutrition","numNutrition", out.subs.nutrition);
+    applyBar("barRisk","numRisk", out.subs.risk);
+
+    setText($("piqExplain"), out.explain);
+  }
+
+  function wireDashboard() {
+    $("btnRecalcScore").addEventListener("click", recalcPIQ);
+    $("dashAthlete").addEventListener("change", recalcPIQ);
+    $("dashDate").addEventListener("change", recalcPIQ);
+
+    $("btnRunRisk").addEventListener("click", () => {
+      const athleteId = $("riskAthlete")?.value;
+      const dateISO = $("riskDate")?.value;
+      if (!athleteId || !dateISO) return;
+      const r = calcRiskIndex(athleteId, dateISO);
+
+      setText($("riskSummary"), `${r.band} • Risk Index ${r.risk}/100 • ${r.flags.length ? r.flags[0] : "No major flags."}`);
+
+      const wl = [
+        `Acute (7d avg): ${r.inputs.acute}`,
+        `Chronic (28d avg): ${r.inputs.chronic}`,
+        `ACR: ${r.inputs.acr}`,
+        `Monotony: ${r.inputs.monotony}`,
+        `Strain: ${r.inputs.strain}`,
+        ``,
+        `Flags:`,
+        ...(r.flags.length ? r.flags.map((x) => `- ${x}`) : ["- None"])
+      ].join("\n");
+
+      const rr = [
+        `Readiness: ${r.inputs.readiness === null ? "—" : r.inputs.readiness}`,
+        `Sleep: ${r.inputs.sleep === null ? "—" : r.inputs.sleep}`,
+        `Soreness: ${r.inputs.sore === null ? "—" : r.inputs.sore}`,
+        `Nutrition adherence: ${r.inputs.nutScore === null ? "—" : r.inputs.nutScore}`,
+      ].join("\n");
+
+      setText($("riskWorkload"), wl);
+      setText($("riskReadiness"), rr);
+    });
+
+    $("btnHeatmap").addEventListener("click", renderHeatmap);
+  }
+
+  function metricForCell(metric, athleteId, dateISO) {
+    if (metric === "load") return calcDailyLoad(athleteId, dateISO);
+    if (metric === "readiness") {
+      const r = S.getReadinessForDate(athleteId, dateISO);
+      const s = r ? calcReadinessScore(r) : null;
+      return s === null ? null : Math.round(s);
+    }
+    if (metric === "nutrition") {
+      const n = calcNutritionAdherence(athleteId, dateISO);
+      return n ? n.score : null;
+    }
+    if (metric === "risk") {
+      const r = calcRiskIndex(athleteId, dateISO);
+      return r.risk;
+    }
+    return null;
+  }
+
+  function cellClass(metric, value) {
+    if (value === null || value === undefined) return "cell empty";
+    if (metric === "load") {
+      // normalize to "low/med/high" by rough bands
+      if (value < 200) return "cell l1";
+      if (value < 500) return "cell l2";
+      if (value < 900) return "cell l3";
+      return "cell l4";
+    }
+    // for 0-100 scales
+    if (value < 40) return "cell l1";
+    if (value < 60) return "cell l2";
+    if (value < 80) return "cell l3";
+    return "cell l4";
+  }
+
+  function renderHeatmap() {
+    const table = $("heatTable");
+    if (!table) return;
+    const r = roster();
+    if (!r.length) { table.innerHTML = `<tr><td class="muted small">Add athletes first.</td></tr>`; return; }
+
+    const start = $("heatStart").value || isoAddDays(S.todayISO(), -20);
+    const days = S.clamp($("heatDays").value, 7, 60);
+    const metric = $("heatMetric").value;
+
+    // header row
+    let html = `<tr><th class="stickycol">Athlete</th>`;
+    for (let i = 0; i < days; i++) {
+      const d = isoAddDays(start, i);
+      html += `<th class="datecol">${d.slice(5)}</th>`;
+    }
+    html += `</tr>`;
+
+    r.forEach((a) => {
+      html += `<tr><td class="stickycol"><b>${escapeHTML(a.name)}</b><div class="small muted">${escapeHTML(a.pos || "")}</div></td>`;
+      for (let i = 0; i < days; i++) {
+        const d = isoAddDays(start, i);
+        const val = metricForCell(metric, a.id, d);
+        const cls = cellClass(metric, val);
+        const disp = val === null ? "—" : (metric === "load" ? fmt(val, 0) : fmt(val, 0));
+        html += `<td class="${cls}" data-ath="${a.id}" data-date="${d}" title="Click to jump">${disp}</td>`;
+      }
+      html += `</tr>`;
+    });
+
+    table.innerHTML = html;
+
+    // click to jump to Log view
+    qsa("td.cell", table).forEach((td) => {
+      td.addEventListener("click", () => {
+        const ath = td.dataset.ath;
+        const d = td.dataset.date;
+        if (!ath || !d) return;
+        setView("log");
+        $("logAthlete").value = ath;
+        $("readyAthlete").value = ath;
+        $("logDate").value = d;
+        $("readyDate").value = d;
+        renderTrainingList();
+        renderReadinessList();
+      });
+    });
+  }
+
+  // ---------- NUTRITION (paid + plans) ----------
+  function isElite() {
+    return !!S.getState().entitlements.eliteNutrition;
+  }
+
+  // Simple “unlock” mechanism for demos. Replace with Stripe/Server later.
+  function validUnlock(code) {
+    const c = String(code || "").trim().toUpperCase();
+    // You can rotate this later; also support “ELITE-TEAM”
+    return c === "PIQ-ELITE" || c === "ELITE-TEAM" || c === "UNLOCK";
+  }
+
+  function refreshNutrition() {
+    syncAllAthleteSelects();
+    const t = S.todayISO();
+    if ($("nutDate") && !$("nutDate").value) $("nutDate").value = t;
+
+    // Paywall gating
+    const elite = isElite();
+    setDisplay($("nutPaywall"), elite ? "none" : "block");
+    setDisplay($("nutMain"), elite ? "block" : "none");
+    setDisplay($("targetsBlock"), elite ? "block" : "none");
+    $("unlockHint").textContent = elite ? "" : "Demo unlock codes: PIQ-ELITE, ELITE-TEAM, UNLOCK";
+
+    if (elite) {
+      renderNutritionList();
+      updateNutritionComputed();
+      loadTargetsUI();
+    } else {
+      // still allow athlete selects to show, but nothing else
+      if ($("mealPlanOut")) $("mealPlanOut").textContent = "—";
     }
   }
 
-  window.PIQ.team = window.PIQ.team || {};
-  window.PIQ.team.refreshReadiness = (iso) => refreshTeamReadiness(iso);
+  function updateNutritionComputed() {
+    const athleteId = $("nutAthlete")?.value;
+    const dateISO = $("nutDate")?.value;
+    if (!athleteId || !dateISO) { setText($("nutComputed"), "—"); return; }
 
-  // =========================
-  // Phase 5 — Coach Execution Engine helpers
-  // =========================
-  function ensureTeamSessionSlot(teamId, dateISO) {
-    const tid = String(teamId || "").trim();
-    const d = safeDateISO(dateISO) || todayISO();
-    state.team.sessions = state.team.sessions && typeof state.team.sessions === "object" ? state.team.sessions : {};
-    state.team.sessions[tid] = state.team.sessions[tid] && typeof state.team.sessions[tid] === "object" ? state.team.sessions[tid] : {};
-    state.team.sessions[tid][d] =
-      state.team.sessions[tid][d] && typeof state.team.sessions[tid][d] === "object"
-        ? state.team.sessions[tid][d]
-        : {
-            locked: false,
-            planText: "",
-            createdAtMs: Date.now(),
-            updatedAtMs: Date.now(),
-            source: "manual"
-          };
-    return state.team.sessions[tid][d];
+    const adh = calcNutritionAdherence(athleteId, dateISO);
+    if (!adh) { setText($("nutComputed"), "—"); return; }
+    setText($("nutComputed"), `${adh.score} / 100`);
+    const explain = [
+      `Adherence compares logged macros vs targets.`,
+      `Protein: ${adh.parts.protein.detail}`,
+      `Carbs:   ${adh.parts.carbs.detail}`,
+      `Fat:     ${adh.parts.fat.detail}`,
+      `Water:   ${adh.parts.water.detail}`,
+      ``,
+      `Scoring: each macro gets 0–100 based on deviation; blended (protein weighted slightly higher; hydration important).`
+    ].join("\n");
+    setText($("nutExplain"), explain);
   }
 
-  function ensureTeamAttendanceSlot(teamId, dateISO) {
-    const tid = String(teamId || "").trim();
-    const d = safeDateISO(dateISO) || todayISO();
-    state.team.attendanceByDate =
-      state.team.attendanceByDate && typeof state.team.attendanceByDate === "object" ? state.team.attendanceByDate : {};
-    state.team.attendanceByDate[tid] =
-      state.team.attendanceByDate[tid] && typeof state.team.attendanceByDate[tid] === "object" ? state.team.attendanceByDate[tid] : {};
-    state.team.attendanceByDate[tid][d] =
-      state.team.attendanceByDate[tid][d] && typeof state.team.attendanceByDate[tid][d] === "object"
-        ? state.team.attendanceByDate[tid][d]
-        : {};
-    return state.team.attendanceByDate[tid][d];
+  function renderNutritionList() {
+    const list = $("nutritionList");
+    if (!list) return;
+    const athleteId = $("nutAthlete")?.value;
+    if (!athleteId) { list.innerHTML = `<div class="empty">Add an athlete first.</div>`; return; }
+    const items = S.listNutrition(athleteId, 30);
+    if (!items.length) { list.innerHTML = `<div class="empty">No nutrition logs yet.</div>`; return; }
+
+    list.innerHTML = items.map((x) => {
+      const adh = calcNutritionAdherence(athleteId, x.date);
+      return `
+        <div class="item">
+          <div class="itemmain">
+            <div><b>${escapeHTML(x.date)}</b> <span class="pill mini">Adh ${adh ? adh.score : "—"}</span></div>
+            <div class="small muted">P ${x.p} • C ${x.c} • F ${x.f} • W ${x.w}${x.notes ? ` • ${escapeHTML(x.notes)}` : ""}</div>
+          </div>
+          <div class="itemactions">
+            <button class="btn danger ghost" data-act="delNut" data-id="${x.id}">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    qsa("button[data-act='delNut']", list).forEach((b) => {
+      b.addEventListener("click", () => {
+        const id = b.dataset.id;
+        const st = S.getState();
+        st.logs.nutrition = st.logs.nutrition.filter((t) => t.id !== id);
+        S.setState(st);
+        renderNutritionList();
+        refreshDashboard();
+      });
+    });
   }
 
-  function suggestAttendanceFromGrade(grade) {
-    const g = String(grade || "B").toUpperCase();
-    if (g === "OUT") return "out";
-    if (g === "D") return "limited";
-    return "present";
+  function loadTargetsUI() {
+    const athleteId = $("targetAthlete")?.value || roster()[0]?.id;
+    if (!athleteId) return;
+
+    const t = S.getTargetsForAthlete(athleteId);
+    $("tProt").value = t.p;
+    $("tCarb").value = t.c;
+    $("tFat").value = t.f;
+    $("tWater").value = t.w;
   }
 
-  function generateSessionPlanText({ dateISO, decision, program, weekIndex }) {
-    const d = safeDateISO(dateISO) || todayISO();
-    const rec = decision?.recommendation || "Normal session";
-    const notes = Array.isArray(decision?.notes) ? decision.notes : [];
-    const wk = Number(weekIndex) || 1;
+  function generateMealPlan(athleteId, dayType, dietPref) {
+    // This is intentionally “clean + practical” and avoids pseudo-medical claims.
+    // It uses macro targets and gives food block suggestions + micronutrient focus.
+    const t = S.getTargetsForAthlete(athleteId);
+    const st = S.getState();
+    const a = st.roster.find((x) => x.id === athleteId);
+
+    // Adjust carbs based on day type
+    let carbMultiplier = 1.0;
+    if (dayType === "game") carbMultiplier = 1.15;
+    if (dayType === "recovery") carbMultiplier = 0.85;
+
+    let protein = t.p;
+    let carbs = Math.round(t.c * carbMultiplier);
+    let fat = t.f;
+
+    if (dietPref === "highprotein") protein = Math.round(protein * 1.1);
+    if (dietPref === "lowerfat") fat = Math.round(fat * 0.85);
+
+    // Meal split template
+    const meals = [
+      { name: "Breakfast", pct: 0.25 },
+      { name: "Lunch", pct: 0.30 },
+      { name: "Pre-training snack", pct: 0.12 },
+      { name: "Post-training", pct: 0.15 },
+      { name: "Dinner", pct: 0.18 },
+    ];
+
+    function split(total, pct) { return Math.round(total * pct); }
+
+    const microFocus =
+      dayType === "game"
+        ? ["Sodium + fluids (hydration)", "Carb quality (rice/pasta/fruit)", "Low-fiber pre-game window"]
+        : dayType === "recovery"
+          ? ["Omega-3 sources (salmon/chia)", "Colorful produce (polyphenols)", "Calcium + vitamin D foods"]
+          : ["Iron + B-vitamins (lean meats/beans)", "Potassium (bananas/potatoes)", "Magnesium (nuts/whole grains)"];
+
+    const timing =
+      dayType === "game"
+        ? ["2–3 hrs pre: carb-forward + moderate protein", "0–60 min post: carbs + protein", "Sip fluids throughout"]
+        : dayType === "recovery"
+          ? ["Even protein distribution across meals", "Higher produce + hydration emphasis", "Sleep-supporting dinner routine"]
+          : ["Pre: easy carbs + protein", "Post: protein + carbs within ~2 hrs", "Evening: balanced meal + hydration"];
+
+    const examples = [
+      "Breakfast: eggs + oatmeal + berries",
+      "Lunch: chicken/rice bowl + veggies + olive oil",
+      "Snack: Greek yogurt + banana / or turkey sandwich",
+      "Post: chocolate milk + fruit / or whey + cereal",
+      "Dinner: salmon/potatoes + salad + yogurt",
+    ];
 
     const lines = [];
-    lines.push(`Session Plan — ${d}`);
-    lines.push(`Recommendation: ${rec}`);
-    if (notes.length) lines.push(`Notes: ${notes.map((n) => `• ${n}`).join(" ")}`);
+    lines.push(`Athlete: ${a ? a.name : athleteId}`);
+    lines.push(`Day type: ${dayType} • Preference: ${dietPref}`);
+    lines.push(`Targets (adjusted): Protein ${protein}g • Carbs ${carbs}g • Fat ${fat}g • Water ${t.w}oz`);
     lines.push("");
-
-    const p = program && program.daysPlan ? program : null;
-    if (p) {
-      lines.push(`Program context: Week ${wk} (${String(p.sport || "").toLowerCase()} • ${p.days || "?"} days/wk)`);
-      lines.push("");
-      lines.push("Warmup:");
-      (p.warmup || []).forEach((w) => lines.push(`- ${w}`));
-      lines.push("");
-      lines.push("Main:");
-      lines.push("- Skill / technical block (10–15 min)");
-      lines.push("- Strength / power emphasis (adjust based on recommendation)");
-      lines.push("- Conditioning (adjust volume based on recommendation)");
-      lines.push("");
-      lines.push("Finisher:");
-      (p.finisher || []).forEach((f) => lines.push(`- ${f}`));
-    } else {
-      lines.push("Warmup:");
-      lines.push("- 5–8 min easy cardio");
-      lines.push("- Dynamic mobility + activation");
-      lines.push("");
-      lines.push("Main:");
-      lines.push("- Skill block (10–15 min)");
-      lines.push("- Strength/power OR tempo conditioning");
-      lines.push("- Cooldown + breathing reset");
-    }
-
+    lines.push("Meal split (approx):");
+    meals.forEach((m) => {
+      lines.push(
+        `- ${m.name}: P${split(protein, m.pct)} C${split(carbs, m.pct)} F${split(fat, m.pct)}`
+      );
+    });
     lines.push("");
-    lines.push("Coach checklist:");
-    lines.push("- Remove max-velocity work if team is flagged for recovery/walkthrough.");
-    lines.push("- Modify plyometrics if ≥2 red flags.");
-    lines.push("- Confirm attendance statuses and adjust rotations.");
+    lines.push("Micronutrient focus:");
+    microFocus.forEach((x) => lines.push(`- ${x}`));
+    lines.push("");
+    lines.push("Timing priorities:");
+    timing.forEach((x) => lines.push(`- ${x}`));
+    lines.push("");
+    lines.push("Example food ideas:");
+    examples.forEach((x) => lines.push(`- ${x}`));
 
     return lines.join("\n");
   }
 
-  function buildTeamCSV(teamId, dateISO) {
-    const tid = String(teamId || "").trim();
-    const d = safeDateISO(dateISO) || todayISO();
-    const cache = state.team.cache || {};
-    const members = Array.isArray(cache.members) ? cache.members : [];
-    const readinessByUser = cache.readinessByUser || {};
+  function wireNutrition() {
+    $("btnUnlock").addEventListener("click", () => {
+      const code = $("unlockCode").value;
+      if (validUnlock(code)) {
+        S.enableEliteNutrition();
+        $("unlockCode").value = "";
+        refreshNutrition();
+        refreshDashboard();
+      } else {
+        alert("Invalid unlock code.");
+      }
+    });
 
-    const attendanceMap = ensureTeamAttendanceSlot(tid, d);
-    const session = ensureTeamSessionSlot(tid, d);
+    $("btnSaveNutrition").addEventListener("click", () => {
+      try {
+        const athleteId = $("nutAthlete").value;
+        S.upsertNutrition({
+          athleteId,
+          date: $("nutDate").value,
+          p: $("nutProt").value,
+          c: $("nutCarb").value,
+          f: $("nutFat").value,
+          w: $("nutWater").value,
+          notes: $("nutNotes").value,
+        });
+        $("nutNotes").value = "";
+        renderNutritionList();
+        updateNutritionComputed();
+        refreshDashboard();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
 
-    const athleteMembers = members.filter((m) => String(m?.role_in_team || "").toLowerCase() === "athlete");
-    const rows = [];
+    $("nutAthlete").addEventListener("change", () => {
+      renderNutritionList();
+      updateNutritionComputed();
+      loadTargetsUI();
+    });
+    $("nutDate").addEventListener("change", updateNutritionComputed);
 
-    rows.push([
-      "date",
-      "team_id",
-      "user_id",
-      "athlete_label",
-      "readiness_grade",
-      "readiness_score",
-      "attendance",
-      "recommendation",
-      "session_locked"
-    ]);
+    $("btnSaveTargets").addEventListener("click", () => {
+      try {
+        const athleteId = $("targetAthlete").value;
+        S.setAthleteTargets(athleteId, {
+          p: $("tProt").value,
+          c: $("tCarb").value,
+          f: $("tFat").value,
+          w: $("tWater").value,
+        });
+        loadTargetsUI();
+        refreshNutrition();
+        refreshDashboard();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
 
-    const rec = cache.teamDecision?.recommendation || "";
-    const locked = session.locked ? "true" : "false";
+    $("targetAthlete").addEventListener("change", loadTargetsUI);
 
-    for (const m of athleteMembers) {
-      const uid = String(m?.user_id || "").trim();
-      if (!uid) continue;
-      const r = readinessByUser[uid] || {};
-      const label = r?.athlete?.display_name || `Athlete ${shortId(uid)}`;
-      const grade = r?.grade || "";
-      const score = Number.isFinite(r?.score) ? String(r.score) : "";
-      const att = attendanceMap?.[uid] || "";
-      rows.push([d, tid, uid, label, grade, score, att, rec, locked]);
-    }
+    $("btnQuickMeal").addEventListener("click", () => {
+      try {
+        const athleteId = $("nutAthlete").value;
+        const dateISO = $("nutDate").value;
+        const existing = S.getNutritionForDate(athleteId, dateISO) || { p: 0, c: 0, f: 0, w: 0, notes: "" };
 
-    function esc(v) {
-      const s = String(v ?? "");
-      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-      return s;
-    }
+        S.upsertNutrition({
+          athleteId,
+          date: dateISO,
+          p: (Number(existing.p) || 0) + (Number($("qmProt").value) || 0),
+          c: (Number(existing.c) || 0) + (Number($("qmCarb").value) || 0),
+          f: (Number(existing.f) || 0) + (Number($("qmFat").value) || 0),
+          w: (Number(existing.w) || 0) + (Number($("qmWater").value) || 0),
+          notes: existing.notes || "",
+        });
 
-    return rows.map((r) => r.map(esc).join(",")).join("\n");
+        renderNutritionList();
+        updateNutritionComputed();
+        refreshDashboard();
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
+
+    $("btnGenerateMealPlan").addEventListener("click", () => {
+      const elite = isElite();
+      if (!elite) { alert("Elite Nutrition is locked."); return; }
+      const athleteId = $("targetAthlete").value || $("nutAthlete").value;
+      if (!athleteId) return;
+      const plan = generateMealPlan(athleteId, $("mealDayType").value, $("mealDiet").value);
+      setText($("mealPlanOut"), plan);
+    });
   }
 
-  function downloadTextFile(filename, content, mime) {
-    try {
-      const blob = new Blob([content], { type: mime || "text/plain" });
+  // ---------- PERIODIZATION ----------
+  function refreshPeriodization() {
+    syncAllAthleteSelects();
+    const t = S.todayISO();
+    if ($("perStart") && !$("perStart").value) $("perStart").value = t;
+
+    renderPlanList();
+  }
+
+  function generatePeriodizationPlan(athleteId, startISO, weeks, goal, deloadEvery) {
+    // Creates weekly targets of total load and “session suggestions”
+    const baseChronic = calcChronicLoad(athleteId, startISO, 28);
+    const baseWeekly = baseChronic * 7;
+
+    let goalMult = 1.0;
+    if (goal === "offseason") goalMult = 1.12;
+    if (goal === "rehab") goalMult = 0.72;
+
+    const deloadFreq = Number(deloadEvery || 4);
+    const outWeeks = [];
+
+    for (let w = 1; w <= weeks; w++) {
+      const isDeload = (w % deloadFreq === 0);
+      const weekLoad = Math.round(baseWeekly * goalMult * (isDeload ? 0.7 : 1.05));
+      const intensityNote = isDeload ? "Deload (reduce volume, keep quality)" : "Build (progress volume/intensity)";
+
+      // session template (7 days)
+      // Keep it simple: 4 main sessions + 2 light + 1 off; adjust by goal
+      const sessions = [
+        { day: "Mon", label: "Main", minutes: goal === "rehab" ? 35 : 60, rpe: isDeload ? 5 : 7 },
+        { day: "Tue", label: "Light", minutes: goal === "rehab" ? 25 : 40, rpe: isDeload ? 3 : 4 },
+        { day: "Wed", label: "Main", minutes: goal === "rehab" ? 35 : 60, rpe: isDeload ? 5 : 7 },
+        { day: "Thu", label: "Off", minutes: 0, rpe: 0 },
+        { day: "Fri", label: "Main", minutes: goal === "rehab" ? 30 : 55, rpe: isDeload ? 5 : 7 },
+        { day: "Sat", label: "Main/Skills", minutes: goal === "rehab" ? 30 : 50, rpe: isDeload ? 4 : 6 },
+        { day: "Sun", label: "Recovery", minutes: 25, rpe: 2 },
+      ];
+
+      const planned = sessions.reduce((acc, s) => acc + (s.minutes * s.rpe), 0);
+
+      outWeeks.push({
+        week: w,
+        startISO: isoAddDays(startISO, (w - 1) * 7),
+        isDeload,
+        targetWeeklyLoad: weekLoad,
+        templatePlannedLoad: planned,
+        note: intensityNote,
+        sessions
+      });
+    }
+
+    return outWeeks;
+  }
+
+  function renderPlanList() {
+    const list = $("planList");
+    if (!list) return;
+    const athleteId = $("perAthlete")?.value;
+    if (!athleteId) { list.innerHTML = `<div class="empty">Add an athlete first.</div>`; return; }
+
+    const plans = S.listPlans(athleteId, 5);
+    if (!plans.length) {
+      list.innerHTML = `<div class="empty">No plans yet. Generate one above.</div>`;
+      return;
+    }
+
+    list.innerHTML = plans.map((p) => {
+      return `
+        <div class="item">
+          <div class="itemmain">
+            <div><b>Plan</b> • start ${escapeHTML(p.startISO)} • ${p.weeks} weeks • goal ${escapeHTML(p.goal)} • deload every ${p.deloadEvery}</div>
+            <div class="small muted">Weeks: ${p.weeksData.length} • Created ${escapeHTML(p.createdAt.slice(0,10))}</div>
+          </div>
+          <div class="itemactions">
+            <button class="btn ghost" data-act="viewPlan" data-id="${p.id}">View</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    qsa("button[data-act='viewPlan']", list).forEach((b) => {
+      b.addEventListener("click", () => {
+        const planId = b.dataset.id;
+        const st = S.getState();
+        const plan = st.plans.periodization.find((x) => x.id === planId);
+        if (!plan) return;
+        const detail = plan.weeksData.map((w) => {
+          const s = w.sessions.map((x) => `${x.day}:${x.minutes}×${x.rpe}`).join("  ");
+          return `W${w.week} (${w.startISO}) • target ${w.targetWeeklyLoad} • template ${w.templatePlannedLoad} • ${w.note}\n${s}`;
+        }).join("\n\n");
+        alert(detail);
+      });
+    });
+  }
+
+  function compareWeekToPlan(athleteId, weekStartISO) {
+    const plan = S.getLatestPlan(athleteId);
+    if (!plan) return { ok: false, msg: "No plan found for athlete." };
+
+    const wk = plan.weeksData.find((x) => x.startISO === weekStartISO);
+    if (!wk) return { ok: false, msg: "Week not found in latest plan (pick a week start that matches)." };
+
+    // Actual week load: sum of 7 days from weekStartISO
+    let actual = 0;
+    for (let i = 0; i < 7; i++) actual += calcDailyLoad(athleteId, isoAddDays(weekStartISO, i));
+    const planned = wk.templatePlannedLoad;
+
+    const diff = actual - planned;
+    const pct = planned > 0 ? (actual / planned) : 0;
+
+    let band = "ON TARGET";
+    if (pct >= 1.25) band = "OVER";
+    else if (pct <= 0.75) band = "UNDER";
+
+    return {
+      ok: true,
+      planned,
+      actual: Math.round(actual),
+      diff: Math.round(diff),
+      pct: Number(pct.toFixed(2)),
+      band,
+      wk
+    };
+  }
+
+  function wirePeriodization() {
+    $("btnGeneratePlan").addEventListener("click", () => {
+      try {
+        const athleteId = $("perAthlete").value;
+        const startISO = $("perStart").value;
+        const weeks = Number($("perWeeks").value) || 8;
+        const goal = $("perGoal").value;
+        const deloadEvery = Number($("perDeload").value) || 4;
+
+        const weeksData = generatePeriodizationPlan(athleteId, startISO, weeks, goal, deloadEvery);
+        S.savePeriodizationPlan({ athleteId, startISO, weeks, goal, deloadEvery, weeksData });
+        renderPlanList();
+        // default monitor week to plan start
+        $("monAthlete").value = athleteId;
+        $("monWeek").value = startISO;
+      } catch (e) {
+        alert(e.message || String(e));
+      }
+    });
+
+    $("btnCompareWeek").addEventListener("click", () => {
+      const athleteId = $("monAthlete").value;
+      const weekStart = $("monWeek").value;
+      const res = compareWeekToPlan(athleteId, weekStart);
+      if (!res.ok) {
+        setText($("compareSummary"), res.msg);
+        setText($("compareDetail"), "—");
+        return;
+      }
+      setText($("compareSummary"), `${res.band} • Planned ${res.planned} vs Actual ${res.actual} (x${res.pct})`);
+      setText($("compareDetail"), [
+        `Week: ${res.wk.startISO}`,
+        `Plan note: ${res.wk.note}`,
+        `Diff: ${res.diff}`,
+        ``,
+        `Session template:`,
+        ...res.wk.sessions.map((s) => `- ${s.day} ${s.label}: ${s.minutes} min @ sRPE ${s.rpe} => load ${s.minutes * s.rpe}`)
+      ].join("\n"));
+    });
+  }
+
+  // ---------- SETTINGS + Import/Export ----------
+  function refreshSettings() {
+    const st = S.getState();
+    setText($("appInfo"), `Store=${S.LS_KEY}\nVersion=${st.version}\nUpdated=${st.updatedAt}`);
+    setText($("eliteState"), `Elite Nutrition: ${st.entitlements.eliteNutrition ? "ENABLED" : "DISABLED"}`);
+  }
+
+  function wireSettings() {
+    $("btnWipe").addEventListener("click", () => {
+      if (!confirm("Wipe ALL local data on this device?")) return;
+      S.wipe();
+      location.reload();
+    });
+
+    $("btnEnableElite").addEventListener("click", () => {
+      S.enableEliteNutrition();
+      refreshNutrition();
+      refreshSettings();
+    });
+
+    $("btnDisableElite").addEventListener("click", () => {
+      S.disableEliteNutrition();
+      refreshNutrition();
+      refreshSettings();
+    });
+  }
+
+  function wireImportExport() {
+    $("btnExport").addEventListener("click", () => {
+      const data = S.getState();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = `performanceiq_export_${S.todayISO()}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      return true;
-    } catch (e) {
-      logError("downloadTextFile", e);
-      return false;
-    }
-  }
-
-  // =========================
-  // Renderers
-  // =========================
-  function renderProfile() {
-    const el = $("tab-profile");
-    if (!el) return;
-
-    const role = (state.role || "").trim() || "—";
-    const sport = state.profile?.sport || SPORTS.BASKETBALL;
-    const days = Number.isFinite(state.profile?.days) ? state.profile.days : 4;
-    const name = state.profile?.name || "";
-
-    const b = state.profile?.baselines || {};
-    const baselineText = `Wellness avg: ${Number.isFinite(b.wellnessAvg) ? b.wellnessAvg.toFixed(1) : "—"} • Energy avg: ${
-      Number.isFinite(b.energyAvg) ? b.energyAvg.toFixed(1) : "—"
-    } • SleepQ avg: ${Number.isFinite(b.sleepQualityAvg) ? b.sleepQualityAvg.toFixed(1) : "—"} • Vert avg: ${
-      Number.isFinite(b.vertAvg) ? b.vertAvg.toFixed(1) : "—"
-    }`;
-
-    el.innerHTML = `
-      <h3 style="margin-top:0">Profile</h3>
-      <div class="small">Offline-first. Your profile saves to this device. Sign in only if you want sync.</div>
-      <div class="hr"></div>
-
-      <div class="row">
-        <div class="field">
-          <label for="profileName">Name (optional)</label>
-          <input id="profileName" value="${sanitizeHTML(name)}" placeholder="Athlete name" />
-        </div>
-        <div class="field">
-          <label>Role</label>
-          <div class="pill">${sanitizeHTML(role)}</div>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <div class="field">
-          <label for="profileSport">Sport</label>
-          <select id="profileSport">
-            <option value="${SPORTS.BASKETBALL}">Basketball</option>
-            <option value="${SPORTS.FOOTBALL}">Football</option>
-            <option value="${SPORTS.BASEBALL}">Baseball</option>
-            <option value="${SPORTS.VOLLEYBALL}">Volleyball</option>
-            <option value="${SPORTS.SOCCER}">Soccer</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="profileDays">Days/week</label>
-          <select id="profileDays">
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="btnRow" style="margin-top:12px">
-        <button class="btn" id="btnSaveProfile" type="button">Save Profile</button>
-        <button class="btn secondary" id="btnGenProgram" type="button">Generate / Update Program</button>
-      </div>
-
-      <div class="hr"></div>
-      <div class="small"><b>Baselines (auto from last 3–5 entries)</b></div>
-      <div class="small">${sanitizeHTML(baselineText)}</div>
-    `;
-
-    $("profileSport").value = sport;
-    $("profileDays").value = String(days);
-
-    $("btnSaveProfile")?.addEventListener("click", () => {
-      const nextSport = $("profileSport")?.value || sport;
-      const nextDays = $("profileDays")?.value || days;
-      const nextName = $("profileName")?.value || "";
-      setProfileBasics(nextSport, nextDays, nextName);
-      saveState();
-      setPills();
-      alert("Saved.");
     });
 
-    $("btnGenProgram")?.addEventListener("click", () => {
-      const nextSport = $("profileSport")?.value || sport;
-      const nextDays = $("profileDays")?.value || days;
-      setProfileBasics(nextSport, nextDays, $("profileName")?.value || "");
-      state.week = generateProgram(state.profile.sport, state.profile.days);
-      saveState();
-      showTab("program");
-      renderActiveTab();
-    });
-  }
-
-  function renderProgram() {
-    const el = $("tab-program");
-    if (!el) return;
-
-    const p = state.week;
-    if (!p) {
-      el.innerHTML = `
-        <h3 style="margin-top:0">Program</h3>
-        <div class="small">No program yet. Go to <b>Profile</b> → Generate / Update Program.</div>
-      `;
-      return;
-    }
-
-    const date = todayISO();
-    const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(date) : null;
-    const wk = programWeekIndex(date);
-    const baseProg = programBaseMultiplier(date);
-    const finalProg = r ? r.finalProgressionMultiplier : baseProg;
-
-    const readinessLine = r
-      ? `<div class="small" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
-          Readiness: <b>${sanitizeHTML(r.grade)}</b> (${sanitizeHTML(r.score)}) • ${sanitizeHTML(r.guidance)}
-        </div>`
-      : "";
-
-    const progLine = `
-      <div class="small" style="margin-top:6px">
-        Auto progression: <b>Week ${wk}</b> base multiplier <b>${baseProg.toFixed(2)}x</b> • readiness-adjusted <b>${finalProg.toFixed(2)}x</b>
-      </div>
-    `;
-
-    const daysHtml = (p.daysPlan || [])
-      .map(
-        (day) => `
-      <div class="card" style="margin:16px 0;padding:14px">
-        <div style="font-weight:600;margin-bottom:8px">${sanitizeHTML(day.title)}</div>
-        ${(day.exercises || [])
-          .map(
-            (ex) => `
-          <div style="margin-bottom:10px">
-            <div><b>${sanitizeHTML(ex.tier)}</b> — ${sanitizeHTML(ex.name)}</div>
-            <div class="small">
-              ${ex.sets ? `Sets: ${sanitizeHTML(ex.sets)} • ` : ""}
-              ${ex.reps ? `Reps: ${sanitizeHTML(ex.reps)} • ` : ""}
-              ${ex.rest ? `Rest: ${sanitizeHTML(ex.rest)} • ` : ""}
-              ${ex.rpe ? `RPE: ${sanitizeHTML(ex.rpe)}` : ""}
-            </div>
-          </div>
-        `
-          )
-          .join("")}
-      </div>
-    `
-      )
-      .join("");
-
-    el.innerHTML = `
-      <h3 style="margin-top:0">Program</h3>
-      <div class="small">
-        Sport: <b>${sanitizeHTML(p.sport)}</b> • Days/week: <b>${sanitizeHTML(p.days)}</b>
-      </div>
-      ${progLine}
-      ${readinessLine}
-
-      <div class="hr"></div>
-
-      <div class="small"><b>Warmup</b></div>
-      <ul style="margin:8px 0 16px 18px">
-        ${(p.warmup || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
-      </ul>
-
-      ${daysHtml}
-
-      <div class="small"><b>Finisher</b></div>
-      <ul style="margin:8px 0 0 18px">
-        ${(p.finisher || []).map((x) => `<li>${sanitizeHTML(x)}</li>`).join("")}
-      </ul>
-    `;
-  }
-
-  function renderLog() {
-    const el = $("tab-log");
-    if (!el) return;
-
-    const logs = Array.isArray(state.logs) ? state.logs.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
-
-    el.innerHTML = `
-      <h3 style="margin-top:0">Log</h3>
-      <div class="small">Save a quick daily log. Stored locally; can sync when signed in.</div>
-      <div class="hr"></div>
-
-      <div class="row">
-        <div class="field">
-          <label for="logDate">Date</label>
-          <input id="logDate" type="date" value="${todayISO()}"/>
-        </div>
-        <div class="field">
-          <label for="logTheme">Program day / theme</label>
-          <input id="logTheme" placeholder="e.g., Day 1 — Lower Strength"/>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <div class="field">
-          <label for="wellness">Wellness (1–10)</label>
-          <input id="wellness" inputmode="numeric" placeholder="7" />
-        </div>
-        <div class="field">
-          <label for="energy">Energy (1–10)</label>
-          <input id="energy" inputmode="numeric" placeholder="7" />
-        </div>
-        <div class="field">
-          <label for="sleepQuality">Sleep quality (1–10)</label>
-          <input id="sleepQuality" inputmode="numeric" placeholder="7" />
-        </div>
-        <div class="field">
-          <label for="hydrationLevel">Hydration level</label>
-          <select id="hydrationLevel">
-            <option value="low">Low</option>
-            <option value="ok">OK</option>
-            <option value="good" selected>Good</option>
-            <option value="great">Great</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <div class="field">
-          <label for="injuryFlag">Injury</label>
-          <select id="injuryFlag">
-            <option value="none">None</option>
-            <option value="sore">Sore</option>
-            <option value="minor">Minor</option>
-            <option value="out">Out</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="injuryPain">Pain (0–10)</label>
-          <input id="injuryPain" inputmode="numeric" placeholder="0" />
-        </div>
-      </div>
-
-      <div class="btnRow" style="margin-top:12px">
-        <button class="btn" id="btnSaveLog" type="button">Save Log</button>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="small"><b>Recent logs</b></div>
-      <div id="logList"></div>
-    `;
-
-    function clampIntOrNull(n, min, max) {
-      const x = numOrNull(n);
-      if (x === null) return null;
-      return clamp(x, min, max);
-    }
-
-    $("btnSaveLog")?.addEventListener("click", () => {
-      const dateISO = ($("logDate")?.value || todayISO()).trim();
-      const hydration = ($("hydrationLevel")?.value || "good").trim();
-
-      const wellness = clampIntOrNull($("wellness")?.value, 1, 10);
-      const energy = clampIntOrNull($("energy")?.value, 1, 10);
-      const sleep_quality = clampIntOrNull($("sleepQuality")?.value, 1, 10);
-
-      const injury = ($("injuryFlag")?.value || "none").trim();
-      const injury_pain = clampIntOrNull($("injuryPain")?.value, 0, 10);
-
-      const localLog = {
-        dateISO,
-        theme: $("logTheme")?.value || null,
-        injury,
-        injury_pain,
-        wellness,
-        energy,
-        sleep_quality,
-        hydration,
-        entries: []
-      };
-
-      state.logs = (state.logs || []).filter((l) => l.dateISO !== dateISO);
-      state.logs.push(localLog);
-      state.logs.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
-      saveState();
-
-      window.PIQ?.cloud?.upsertWorkoutLogFromLocal(localLog);
-      alert("Saved.");
-    });
-
-    const list = $("logList");
-    if (!list) return;
-
-    if (!logs.length) {
-      list.innerHTML = `<div class="small">No logs yet.</div>`;
-      return;
-    }
-
-    list.innerHTML = logs
-      .slice(0, 10)
-      .map(
-        (l) => `
-      <div class="card" style="margin:10px 0">
-        <div style="display:flex;justify-content:space-between;gap:10px">
-          <div><b>${sanitizeHTML(l.dateISO)}</b> — ${sanitizeHTML(l.theme || "")}</div>
-          <div class="small">
-            Wellness: ${sanitizeHTML(l.wellness ?? "—")} • Energy: ${sanitizeHTML(l.energy ?? "—")} • SleepQ: ${sanitizeHTML(l.sleep_quality ?? "—")}
-          </div>
-        </div>
-        <div class="small">
-          Hydration: ${sanitizeHTML(l.hydration || "—")} • Injury: ${sanitizeHTML(l.injury || "none")} • Pain: ${sanitizeHTML(l.injury_pain ?? "—")}
-        </div>
-      </div>
-    `
-      )
-      .join("");
-  }
-
-  function renderPerformance() {
-    const el = $("tab-performance");
-    if (!el) return;
-
-    const tests = Array.isArray(state.tests) ? state.tests.slice().sort((a, b) => (b.dateISO || "").localeCompare(a.dateISO || "")) : [];
-
-    el.innerHTML = `
-      <h3 style="margin-top:0">Performance</h3>
-      <div class="small">Track key metrics. Saves locally; syncs when signed in.</div>
-      <div class="hr"></div>
-
-      <div class="row">
-        <div class="field">
-          <label for="testDate">Date</label>
-          <input id="testDate" type="date" value="${todayISO()}"/>
-        </div>
-        <div class="field">
-          <label for="bw">Bodyweight (lbs)</label>
-          <input id="bw" inputmode="decimal" placeholder="145"/>
-        </div>
-        <div class="field">
-          <label for="sleep">Sleep (hours)</label>
-          <input id="sleep" inputmode="decimal" placeholder="8"/>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <div class="field">
-          <label for="vert">Vertical (in)</label>
-          <input id="vert" inputmode="decimal" placeholder="28"/>
-        </div>
-        <div class="field">
-          <label for="sprint10">Sprint (sec)</label>
-          <input id="sprint10" inputmode="decimal" placeholder="1.75"/>
-        </div>
-        <div class="field">
-          <label for="cod">COD (sec)</label>
-          <input id="cod" inputmode="decimal" placeholder="4.30"/>
-        </div>
-      </div>
-
-      <div class="btnRow" style="margin-top:12px">
-        <button class="btn" id="btnSaveTests" type="button">Save Tests</button>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="small"><b>Recent tests</b></div>
-      <div id="testList"></div>
-    `;
-
-    $("btnSaveTests")?.addEventListener("click", () => {
-      const dateISO = ($("testDate")?.value || todayISO()).trim();
-      const test = {
-        dateISO,
-        vert: parseInputNumOrNull("vert"),
-        sprint10: parseInputNumOrNull("sprint10"),
-        cod: parseInputNumOrNull("cod"),
-        bw: parseInputNumOrNull("bw"),
-        sleep: parseInputNumOrNull("sleep")
-      };
-
-      state.tests = (state.tests || []).filter((t) => t.dateISO !== dateISO);
-      state.tests.push(test);
-      state.tests.sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""));
-      saveState();
-
-      window.PIQ?.cloud?.upsertPerformanceMetricFromLocal(test);
-      alert("Saved.");
-    });
-
-    const list = $("testList");
-    if (!list) return;
-
-    if (!tests.length) {
-      list.innerHTML = `<div class="small">No tests yet.</div>`;
-      return;
-    }
-
-    list.innerHTML = tests
-      .slice(0, 10)
-      .map(
-        (t) => `
-      <div class="card" style="margin:10px 0">
-        <div><b>${sanitizeHTML(t.dateISO)}</b></div>
-        <div class="small">
-          Vert: ${sanitizeHTML(t.vert ?? "—")} • Sprint: ${sanitizeHTML(t.sprint10 ?? "—")} • COD: ${sanitizeHTML(t.cod ?? "—")}
-          • BW: ${sanitizeHTML(t.bw ?? "—")} • Sleep: ${sanitizeHTML(t.sleep ?? "—")}
-        </div>
-      </div>
-    `
-      )
-      .join("");
-  }
-
-  function renderDashboard() {
-    const el = $("tab-dashboard");
-    if (!el) return;
-
-    const r = window.PIQ?.readiness?.forDate ? window.PIQ.readiness.forDate(todayISO()) : null;
-
-    const readinessCard = r
-      ? `
-      <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>Readiness today</b></div>
-        <div style="margin-top:6px;color:${sanitizeHTML(r.color)};font-weight:700;font-size:18px">
-          ${sanitizeHTML(r.grade)} (${sanitizeHTML(r.score)})
-        </div>
-        <div class="small" style="margin-top:6px;color:${sanitizeHTML(r.color)}">
-          ${sanitizeHTML(r.guidance)}
-        </div>
-        ${
-          r.reasons && r.reasons.length
-            ? `
-          <div class="small" style="margin-top:8px">
-            ${r.reasons.map((x) => sanitizeHTML(x)).join("<br/>")}
-          </div>
-        `
-            : ``
-        }
-      </div>
-    `
-      : "";
-
-    const isCoach = (state.role || "").trim() === ROLES.COACH;
-    const teamId = String(state.team.selectedTeamId || "").trim();
-    const tc = state.team.cache || {};
-    const hasTeamCard = isCoach && teamId;
-
-    const teamCard = hasTeamCard
-      ? (function () {
-          const summary = tc.teamSummary;
-          const decision = tc.teamDecision;
-          const err = String(tc.error || "").trim();
-
-          if (err) {
-            return `
-          <div class="card" style="margin:10px 0;padding:12px">
-            <div class="small"><b>Team readiness</b></div>
-            <div class="small" style="margin-top:6px;color:#e74c3c">${sanitizeHTML(err)}</div>
-            <div class="btnRow" style="margin-top:10px">
-              <button class="btn secondary" id="btnRefreshTeamReadiness" type="button">Refresh</button>
-              <button class="btn secondary" id="btnGoTeamTab" type="button">Open Team</button>
-            </div>
-          </div>
-        `;
-          }
-
-          if (!summary) {
-            return `
-          <div class="card" style="margin:10px 0;padding:12px">
-            <div class="small"><b>Team readiness</b></div>
-            <div class="small" style="margin-top:6px">No cached team readiness yet.</div>
-            <div class="btnRow" style="margin-top:10px">
-              <button class="btn secondary" id="btnRefreshTeamReadiness" type="button">Refresh</button>
-              <button class="btn secondary" id="btnGoTeamTab" type="button">Open Team</button>
-            </div>
-          </div>
-        `;
-          }
-
-          const total = summary.total || 0;
-          const availability = summary.availabilityPct ?? "—";
-          const avg = summary.avgScore ?? "—";
-          const grades = summary.grades || {};
-          const rec = decision?.recommendation || "—";
-          const notes = (decision?.notes || []).slice(0, 3);
-
-          let teamGrade = "B";
-          if (Number.isFinite(avg)) {
-            if (avg >= 85) teamGrade = "A";
-            else if (avg >= 70) teamGrade = "B";
-            else if (avg >= 55) teamGrade = "C";
-            else teamGrade = "D";
-          }
-          const color = PIQ_Readiness.COLORS[teamGrade] || "#f1c40f";
-
-          return `
-        <div class="card" style="margin:10px 0;padding:12px">
-          <div class="small"><b>Team readiness</b></div>
-          <div style="margin-top:6px;color:${sanitizeHTML(color)};font-weight:800;font-size:18px">
-            ${sanitizeHTML(teamGrade)} (${sanitizeHTML(avg)})
-          </div>
-          <div class="small" style="margin-top:6px">
-            Availability: <b>${sanitizeHTML(availability)}%</b> • Total: <b>${sanitizeHTML(total)}</b><br/>
-            Grades: A ${sanitizeHTML(grades.A || 0)} • B ${sanitizeHTML(grades.B || 0)} • C ${sanitizeHTML(grades.C || 0)} • D ${sanitizeHTML(grades.D || 0)} • OUT ${sanitizeHTML(grades.OUT || 0)}
-          </div>
-          <div class="small" style="margin-top:8px;color:${sanitizeHTML(color)}">
-            Recommendation: <b>${sanitizeHTML(rec)}</b>
-          </div>
-          ${notes.length ? `<div class="small" style="margin-top:6px">${notes.map((x) => sanitizeHTML("• " + x)).join("<br/>")}</div>` : ""}
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="btnRefreshTeamReadiness" type="button">Refresh</button>
-            <button class="btn secondary" id="btnGoTeamTab" type="button">Open Team</button>
-          </div>
-        </div>
-      `;
-        })()
-      : "";
-
-    el.innerHTML = `
-      <h3 style="margin-top:0">Dashboard</h3>
-      <div class="small">Trends + readiness guidance.</div>
-      <div class="hr"></div>
-
-      ${readinessCard}
-      ${teamCard}
-
-      <div class="card" style="margin:10px 0">
-        <div class="small"><b>Wellness trend (last 14)</b></div>
-        <canvas id="chartWellness" width="320" height="140" style="width:100%;max-width:640px"></canvas>
-      </div>
-
-      <div class="card" style="margin:10px 0">
-        <div class="small"><b>Vertical trend (last 14)</b></div>
-        <canvas id="chartVert" width="320" height="140" style="width:100%;max-width:640px"></canvas>
-      </div>
-    `;
-
-    $("btnRefreshTeamReadiness")?.addEventListener("click", async () => {
-      const ok = await refreshTeamReadiness(todayISO());
-      if (!ok) alert(state.team.cache.error || "Refresh failed.");
-      renderActiveTab();
-    });
-
-    $("btnGoTeamTab")?.addEventListener("click", () => {
-      showTab("team");
-      renderActiveTab();
-    });
-
-    function drawLine(canvasId, points) {
-      const c = $(canvasId);
-      if (!c) return;
-      const ctx = c.getContext("2d");
-      if (!ctx) return;
-
-      const w = c.width, h = c.height;
-      ctx.clearRect(0, 0, w, h);
-
-      if (!points || points.length < 2) {
-        ctx.fillText("Not enough data yet.", 8, 18);
-        return;
-      }
-
-      const ys = points.map((p) => p.y);
-      const minY = Math.min(...ys);
-      const maxY = Math.max(...ys);
-      const pad = 10;
-
-      const scaleX = (i) => pad + (i / (points.length - 1)) * (w - pad * 2);
-      const scaleY = (y) => {
-        if (maxY === minY) return h / 2;
-        const t = (y - minY) / (maxY - minY);
-        return h - pad - t * (h - pad * 2);
-      };
-
-      ctx.beginPath();
-      ctx.moveTo(pad, h - pad);
-      ctx.lineTo(w - pad, h - pad);
-      ctx.stroke();
-
-      ctx.beginPath();
-      points.forEach((p, i) => {
-        const x = scaleX(i);
-        const y = scaleY(p.y);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-
-      ctx.fillText(String(minY), pad, h - pad - 2);
-      ctx.fillText(String(maxY), pad, pad + 10);
-    }
-
-    const logs = (state.logs || [])
-      .filter((l) => l && l.dateISO)
-      .slice()
-      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
-      .slice(-14);
-
-    const wellnessPts = logs.map((l, i) => ({ x: i, y: Number(l.wellness) })).filter((p) => Number.isFinite(p.y));
-    drawLine("chartWellness", wellnessPts);
-
-    const tests = (state.tests || [])
-      .filter((t) => t && t.dateISO)
-      .slice()
-      .sort((a, b) => (a.dateISO || "").localeCompare(b.dateISO || ""))
-      .slice(-14);
-
-    const vertPts = tests.map((t, i) => ({ x: i, y: Number(t.vert) })).filter((p) => Number.isFinite(p.y));
-    drawLine("chartVert", vertPts);
-  }
-
-  // =========================
-  // Team tab — Phase 4 + Phase 5 + Phase 6 (join codes)
-  // =========================
-  async function renderTeam() {
-    const el = $("tab-team");
-    if (!el) return;
-
-    const supaOk = isSupabaseReady();
-    const signed = supaOk ? await isSignedIn().catch(() => false) : false;
-
-    const role = String(state.role || "").trim();
-    const isCoach = role === ROLES.COACH;
-
-    const selectedTeamId = String(state.team.selectedTeamId || "").trim();
-    const cache = state.team.cache || {};
-    const err = String(cache.error || "").trim();
-
-    const teams = Array.isArray(state.team.roster) ? state.team.roster : [];
-    const membersLoaded = Array.isArray(state.team.members) ? state.team.members : [];
-
-    const dateDefault = safeDateISO(cache.dateISO) || todayISO();
-    const readinessByUser = cache.readinessByUser || {};
-    const teamSummary = cache.teamSummary;
-    const teamDecision = cache.teamDecision;
-
-    const rosterRows = Array.isArray(cache.members) ? cache.members : [];
-    const athleteMembers = rosterRows.filter((m) => String(m?.role_in_team || "").toLowerCase() === "athlete");
-
-    const selectedTeamObj = selectedTeamId ? teams.find((t) => String(t?.id) === selectedTeamId) : null;
-    const selectedJoinCode = selectedTeamObj?.join_code ? String(selectedTeamObj.join_code) : "";
-
-    const sess = selectedTeamId ? ensureTeamSessionSlot(selectedTeamId, dateDefault) : null;
-
-    el.innerHTML = `
-      <h3 style="margin-top:0">Team</h3>
-      <div class="small">${isCoach ? "Coach tools: teams + roster + readiness + session plan." : "Join a team using a join code."}</div>
-      <div class="hr"></div>
-
-      <div class="card" style="margin:10px 0;padding:12px">
-        <div class="small"><b>Status</b></div>
-        <div class="small" style="margin-top:6px">
-          Supabase: <b>${supaOk ? "Configured" : "Not configured"}</b> •
-          Auth: <b>${signed ? "Signed in" : "Signed out"}</b> •
-          Role: <b>${sanitizeHTML(role || "—")}</b>
-        </div>
-        ${!signed ? `<div class="small" style="margin-top:6px;color:#e67e22">Sign in (Settings tab) to use team features.</div>` : ``}
-        ${err ? `<div class="small" style="margin-top:6px;color:#e74c3c">${sanitizeHTML(err)}</div>` : ``}
-      </div>
-
-      ${
-        isCoach
-          ? `
-        <div class="card" style="margin:10px 0;padding:12px">
-          <div class="small"><b>Teams</b></div>
-          <div class="row" style="margin-top:10px">
-            <div class="field">
-              <label for="teamSelect">Select team</label>
-              <select id="teamSelect" ${signed ? "" : "disabled"}></select>
-            </div>
-            <div class="field">
-              <label for="newTeamName">Create team</label>
-              <input id="newTeamName" placeholder="e.g., Trailblazers 16U" ${signed ? "" : "disabled"} />
-            </div>
-            <div class="field">
-              <label for="newTeamSport">Sport (optional)</label>
-              <input id="newTeamSport" placeholder="basketball" ${signed ? "" : "disabled"} />
-            </div>
-          </div>
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="btnLoadTeams" type="button" ${signed ? "" : "disabled"}>Load teams</button>
-            <button class="btn" id="btnCreateTeam" type="button" ${signed ? "" : "disabled"}>Create team</button>
-            <button class="btn secondary" id="btnSaveTeamSelection" type="button" ${signed ? "" : "disabled"}>Save selection</button>
-          </div>
-
-          <div class="hr"></div>
-          <div class="small"><b>Join code</b></div>
-          <div class="small" style="margin-top:6px">Selected team id: <b>${sanitizeHTML(selectedTeamId || "—")}</b></div>
-          <div class="small" style="margin-top:6px">Join code: <b>${sanitizeHTML(selectedJoinCode || "—")}</b></div>
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="btnCopyJoinCode" type="button" ${signed && selectedJoinCode ? "" : "disabled"}>Copy join code</button>
-            <button class="btn secondary" id="btnRenewJoinCode" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Renew join code</button>
-          </div>
-        </div>
-
-        <div class="card" style="margin:10px 0;padding:12px">
-          <div class="small"><b>Roster (manage)</b></div>
-          <div class="small" style="margin-top:6px">Add by <b>user_id</b> (UUID). RLS must allow coach to add/remove members.</div>
-
-          <div class="row" style="margin-top:10px">
-            <div class="field">
-              <label for="memberUserId">Member user_id</label>
-              <input id="memberUserId" placeholder="UUID" ${signed && selectedTeamId ? "" : "disabled"} />
-            </div>
-            <div class="field">
-              <label for="memberRole">Role</label>
-              <select id="memberRole" ${signed && selectedTeamId ? "" : "disabled"}>
-                <option value="athlete">athlete</option>
-                <option value="parent">parent</option>
-                <option value="manager">manager</option>
-                <option value="coach">coach</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="linkedAthleteId">linked_athlete_id (optional)</label>
-              <input id="linkedAthleteId" placeholder="UUID (for parent linking)" ${signed && selectedTeamId ? "" : "disabled"} />
-            </div>
-          </div>
-
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="btnLoadMembers" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Load roster</button>
-            <button class="btn" id="btnAddMember" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Add member</button>
-          </div>
-
-          <div class="hr"></div>
-          <div id="memberList" class="small" style="margin-top:10px"></div>
-        </div>
-
-        <div class="card" style="margin:10px 0;padding:12px">
-          <div class="small"><b>Team readiness + Session plan</b></div>
-          <div class="row" style="margin-top:10px">
-            <div class="field">
-              <label for="teamDatePick">Date</label>
-              <input id="teamDatePick" type="date" value="${sanitizeHTML(dateDefault)}" ${signed && selectedTeamId ? "" : "disabled"} />
-            </div>
-            <div class="field">
-              <label>Selected team</label>
-              <div class="pill">${sanitizeHTML(selectedTeamId || "—")}</div>
-            </div>
-          </div>
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn" id="btnRefreshTeam" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Refresh readiness</button>
-            <button class="btn secondary" id="btnOpenDashboard" type="button">Open dashboard</button>
-          </div>
-
-          <div class="hr"></div>
-
-          ${
-            teamSummary
-              ? `
-            <div class="small" style="margin-top:6px">
-              Summary — Avg: <b>${sanitizeHTML(teamSummary.avgScore ?? "—")}</b> • Availability: <b>${sanitizeHTML(teamSummary.availabilityPct ?? "—")}%</b> • Total: <b>${sanitizeHTML(teamSummary.total ?? "—")}</b>
-            </div>
-            <div class="small" style="margin-top:4px">
-              Grades: A ${sanitizeHTML(teamSummary.grades?.A || 0)} • B ${sanitizeHTML(teamSummary.grades?.B || 0)} • C ${sanitizeHTML(teamSummary.grades?.C || 0)} • D ${sanitizeHTML(teamSummary.grades?.D || 0)} • OUT ${sanitizeHTML(teamSummary.grades?.OUT || 0)}
-            </div>
-          `
-              : `<div class="small" style="margin-top:6px">No team readiness cached yet. Click “Refresh readiness”.</div>`
-          }
-
-          ${
-            teamDecision
-              ? `
-            <div class="small" style="margin-top:8px">
-              Recommendation: <b>${sanitizeHTML(teamDecision.recommendation || "—")}</b>
-              ${teamDecision.notes?.length ? `<br/>${teamDecision.notes.map((n) => sanitizeHTML("• " + n)).join("<br/>")}` : ""}
-            </div>
-          `
-              : ``
-          }
-
-          <div class="hr"></div>
-
-          <div class="small"><b>Session plan (offline-first)</b></div>
-          <div class="small" style="margin-top:6px">
-            Locked: <b>${sess?.locked ? "Yes" : "No"}</b> • Source: <b>${sanitizeHTML(sess?.source || "—")}</b>
-          </div>
-          <textarea id="sessionPlanText" style="width:100%;min-height:180px;margin-top:8px" ${sess?.locked ? "disabled" : ""}>${
-            sanitizeHTML(sess?.planText || "")
-          }</textarea>
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn secondary" id="btnAutoPlan" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Auto-generate</button>
-            <button class="btn" id="btnSavePlan" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Save plan</button>
-            <button class="btn secondary" id="btnToggleLock" type="button" ${signed && selectedTeamId ? "" : "disabled"}>${sess?.locked ? "Unlock" : "Lock"}</button>
-            <button class="btn secondary" id="btnExportCSV" type="button" ${signed && selectedTeamId ? "" : "disabled"}>Export CSV</button>
-          </div>
-
-          <div class="hr"></div>
-          <div class="small"><b>Athletes (readiness + attendance)</b></div>
-          <div id="teamRosterList" style="margin-top:10px"></div>
-        </div>
-      `
-          : `
-        <div class="card" style="margin:10px 0;padding:12px">
-          <div class="small"><b>Join a team</b></div>
-          <div class="small" style="margin-top:6px">Ask your coach for the <b>join code</b>.</div>
-          <div class="row" style="margin-top:10px">
-            <div class="field">
-              <label for="joinCode">Join code</label>
-              <input id="joinCode" placeholder="e.g., 9X4KQZ2R" ${signed ? "" : "disabled"} />
-            </div>
-            <div class="field">
-              <label for="joinRole">Role</label>
-              <select id="joinRole" ${signed ? "" : "disabled"}>
-                <option value="athlete">athlete</option>
-                <option value="parent">parent</option>
-                <option value="manager">manager</option>
-              </select>
-            </div>
-          </div>
-          <div class="btnRow" style="margin-top:10px">
-            <button class="btn" id="btnJoinTeam" type="button" ${signed ? "" : "disabled"}>Join team</button>
-            <button class="btn secondary" id="btnLeaveTeam" type="button" ${signed ? "" : "disabled"}>Leave selected team</button>
-          </div>
-          <div class="small" style="margin-top:8px">Selected team id (local): <b>${sanitizeHTML(selectedTeamId || "—")}</b></div>
-        </div>
-      `
-      }
-    `;
-
-    const teamSelect = $("teamSelect");
-    if (teamSelect) {
-      teamSelect.innerHTML =
-        `<option value="">—</option>` +
-        teams
-          .filter((t) => t && t.id)
-          .map((t) => `<option value="${sanitizeHTML(t.id)}">${sanitizeHTML(t.name || t.id)}</option>`)
-          .join("");
-      teamSelect.value = selectedTeamId;
-    }
-
-    $("btnLoadTeams")?.addEventListener("click", async () => {
+    $("fileImport").addEventListener("change", async (ev) => {
+      const file = ev.target.files?.[0];
+      if (!file) return;
       try {
-        if (!window.dataStore?.listMyTeams) return alert("Team API not available (dataStore.listMyTeams missing).");
-        const t = await window.dataStore.listMyTeams();
-        state.team.roster = t || [];
-        state.team.cache.error = "";
-        saveState();
-      } catch (e) {
-        logError("loadTeams", e);
-        state.team.cache.error = e?.message || String(e);
-        __saveLocal(state);
-        renderActiveTab();
-      }
-    });
-
-    $("btnCreateTeam")?.addEventListener("click", async () => {
-      try {
-        const name = ($("newTeamName")?.value || "").trim();
-        const sport = ($("newTeamSport")?.value || "").trim();
-        if (!name) return alert("Enter a team name.");
-        if (!window.dataStore?.createTeam) return alert("Team API not available (dataStore.createTeam missing).");
-
-        const team = await window.dataStore.createTeam(name, sport);
-        if (team?.id) state.team.selectedTeamId = String(team.id);
-
-        const t = await window.dataStore.listMyTeams();
-        state.team.roster = t || [];
-        state.team.cache.error = "";
-        saveState();
-
-        const jc = team?.join_code ? `\nJoin code: ${team.join_code}` : "";
-        alert("Team created." + jc);
-      } catch (e) {
-        logError("createTeam", e);
-        alert("Create team failed: " + (e?.message || e));
-      }
-    });
-
-    $("btnSaveTeamSelection")?.addEventListener("click", () => {
-      const v = (teamSelect?.value || "").trim();
-      state.team.selectedTeamId = v;
-      state.team.cache.error = "";
-      state.team.members = [];
-      __saveLocal(state);
-      alert("Saved.");
-      renderActiveTab();
-    });
-
-    $("btnCopyJoinCode")?.addEventListener("click", async () => {
-      try {
-        if (!selectedJoinCode) return;
-        await navigator.clipboard.writeText(selectedJoinCode);
-        alert("Join code copied.");
-      } catch (e) {
-        logError("copyJoinCode", e);
-        alert("Copy failed.");
-      }
-    });
-
-    $("btnRenewJoinCode")?.addEventListener("click", async () => {
-      try {
-        if (!window.dataStore?.renewJoinCode) throw new Error("dataStore.renewJoinCode(teamId) missing");
-        if (!selectedTeamId) return alert("Select a team first.");
-        const updated = await window.dataStore.renewJoinCode(selectedTeamId, { joinCodeLength: 8 });
-        // Refresh teams list to show new join_code in UI
-        if (window.dataStore?.listMyTeams) {
-          state.team.roster = (await window.dataStore.listMyTeams()) || [];
-        }
-        __saveLocal(state);
-        alert("Join code renewed: " + (updated?.join_code || "(unknown)"));
-        renderActiveTab();
-      } catch (e) {
-        logError("renewJoinCode", e);
-        alert("Renew failed: " + (e?.message || e));
-      }
-    });
-
-    async function loadMembers() {
-      if (!window.dataStore?.listTeamMembers) throw new Error("dataStore.listTeamMembers missing");
-      const tid = String(state.team.selectedTeamId || "").trim();
-      if (!tid) throw new Error("Select a team first.");
-      const rows = await window.dataStore.listTeamMembers(tid);
-      state.team.members = rows || [];
-      __saveLocal(state);
-      return state.team.members;
-    }
-
-    $("btnLoadMembers")?.addEventListener("click", async () => {
-      try {
-        await loadMembers();
-        renderActiveTab();
-      } catch (e) {
-        logError("loadMembers", e);
-        alert(e?.message || e);
-      }
-    });
-
-    $("btnAddMember")?.addEventListener("click", async () => {
-      try {
-        const tid = String(state.team.selectedTeamId || "").trim();
-        if (!tid) return alert("Select a team first.");
-
-        const userId = ($("memberUserId")?.value || "").trim();
-        const roleInTeam = ($("memberRole")?.value || "athlete").trim();
-        const linkedAthleteId = ($("linkedAthleteId")?.value || "").trim() || null;
-
-        if (!userId) return alert("Enter member user_id (UUID).");
-        if (!window.dataStore?.addTeamMember) return alert("Team API not available (dataStore.addTeamMember missing).");
-
-        await window.dataStore.addTeamMember(tid, userId, roleInTeam, linkedAthleteId);
-        await loadMembers();
-        alert("Member added.");
-        renderActiveTab();
-      } catch (e) {
-        logError("addMember", e);
-        alert("Add failed: " + (e?.message || e));
-      }
-    });
-
-    const memberList = $("memberList");
-    if (memberList && isCoach) {
-      if (!selectedTeamId) {
-        memberList.innerHTML = "Select a team to manage roster.";
-      } else if (!membersLoaded.length) {
-        memberList.innerHTML = "Roster not loaded yet. Click “Load roster”.";
-      } else {
-        memberList.innerHTML = membersLoaded
-          .map((m) => {
-            return `
-              <div class="card" style="margin:10px 0;padding:10px">
-                <div style="display:flex;justify-content:space-between;gap:10px">
-                  <div>
-                    <div><b>${sanitizeHTML(m.user_id || "—")}</b></div>
-                    <div class="small">
-                      role: ${sanitizeHTML(m.role_in_team || "—")}
-                      ${m.linked_athlete_id ? ` • linked_athlete_id: ${sanitizeHTML(m.linked_athlete_id)}` : ""}
-                    </div>
-                  </div>
-                  <div>
-                    <button class="btn secondary" type="button" data-remove-member="${sanitizeHTML(m.id)}">Remove</button>
-                  </div>
-                </div>
-              </div>
-            `;
-          })
-          .join("");
-
-        memberList.querySelectorAll("[data-remove-member]").forEach((btn) => {
-          btn.addEventListener("click", async () => {
-            try {
-              const mid = btn.getAttribute("data-remove-member");
-              if (!mid) return;
-              if (!confirm("Remove this member from the team?")) return;
-              if (!window.dataStore?.removeTeamMember) throw new Error("dataStore.removeTeamMember missing");
-              await window.dataStore.removeTeamMember(selectedTeamId, mid);
-              await loadMembers();
-              renderActiveTab();
-            } catch (e) {
-              logError("removeMember", e);
-              alert("Remove failed: " + (e?.message || e));
-            }
-          });
-        });
-      }
-    }
-
-    $("btnJoinTeam")?.addEventListener("click", async () => {
-      try {
-        if (!window.PIQ_AuthStore?.getUser) throw new Error("Auth store missing (PIQ_AuthStore.getUser).");
-        if (!window.dataStore?.joinTeamByCode) throw new Error("Team API missing (dataStore.joinTeamByCode).");
-
-        const u = await window.PIQ_AuthStore.getUser();
-        if (!u?.id) throw new Error("Not signed in.");
-
-        const code = ($("joinCode")?.value || "").trim();
-        if (!code) throw new Error("Enter join code.");
-
-        const roleInTeam = ($("joinRole")?.value || "athlete").trim();
-
-        const team = await window.dataStore.joinTeamByCode(code, roleInTeam, null);
-        if (!team?.id) throw new Error("Join succeeded but team id missing.");
-
-        state.team.selectedTeamId = String(team.id);
-        state.team.cache.error = "";
-
-        // Refresh teams list if possible (so the athlete sees their teams)
-        if (window.dataStore?.listMyTeams) {
-          state.team.roster = (await window.dataStore.listMyTeams()) || [];
-        }
-
-        __saveLocal(state);
-
-        alert("Joined team: " + (team.name || team.id));
-        renderActiveTab();
-      } catch (e) {
-        logError("joinTeamByCode", e);
-        alert("Join failed: " + (e?.message || e));
-      }
-    });
-
-    $("btnLeaveTeam")?.addEventListener("click", async () => {
-      try {
-        const tid = String(state.team.selectedTeamId || "").trim();
-        if (!tid) return alert("No selected team.");
-
-        if (!window.PIQ_AuthStore?.getUser) throw new Error("Auth store missing.");
-        const u = await window.PIQ_AuthStore.getUser();
-        if (!u?.id) throw new Error("Not signed in.");
-
-        if (!window.dataStore?.listTeamMembers) throw new Error("dataStore.listTeamMembers missing");
-        if (!window.dataStore?.removeTeamMember) throw new Error("dataStore.removeTeamMember missing");
-
-        const rows = await window.dataStore.listTeamMembers(tid);
-        const mine = (rows || []).find((r) => r && r.user_id === u.id);
-        if (!mine?.id) throw new Error("Could not find your membership row.");
-
-        if (!confirm("Leave this team?")) return;
-        await window.dataStore.removeTeamMember(tid, mine.id);
-
-        state.team.selectedTeamId = "";
-        state.team.members = [];
-        state.team.cache.error = "";
-        __saveLocal(state);
-
-        if (window.dataStore?.listMyTeams) {
-          state.team.roster = (await window.dataStore.listMyTeams()) || [];
-        }
-
-        alert("Left team.");
-        renderActiveTab();
-      } catch (e) {
-        logError("leaveTeam", e);
-        alert("Leave failed: " + (e?.message || e));
-      }
-    });
-
-    $("btnRefreshTeam")?.addEventListener("click", async () => {
-      const d = ($("teamDatePick")?.value || todayISO()).trim();
-      const ok = await refreshTeamReadiness(d);
-      if (!ok) alert(state.team.cache.error || "Refresh failed.");
-      renderActiveTab();
-    });
-
-    $("teamDatePick")?.addEventListener("change", async () => {
-      const d = ($("teamDatePick")?.value || todayISO()).trim();
-      const ok = await refreshTeamReadiness(d);
-      if (!ok) alert(state.team.cache.error || "Refresh failed.");
-      renderActiveTab();
-    });
-
-    $("btnOpenDashboard")?.addEventListener("click", () => {
-      showTab("dashboard");
-      renderActiveTab();
-    });
-
-    $("btnAutoPlan")?.addEventListener("click", () => {
-      if (!selectedTeamId) return;
-      const d = ($("teamDatePick")?.value || todayISO()).trim();
-      const session = ensureTeamSessionSlot(selectedTeamId, d);
-      if (session.locked) return alert("Plan is locked. Unlock to regenerate.");
-      session.planText = generateSessionPlanText({
-        dateISO: d,
-        decision: state.team.cache?.teamDecision,
-        program: state.week,
-        weekIndex: programWeekIndex(d)
-      });
-      session.source = "auto";
-      session.updatedAtMs = Date.now();
-      __saveLocal(state);
-      renderActiveTab();
-    });
-
-    $("btnSavePlan")?.addEventListener("click", () => {
-      if (!selectedTeamId) return;
-      const d = ($("teamDatePick")?.value || todayISO()).trim();
-      const session = ensureTeamSessionSlot(selectedTeamId, d);
-      if (session.locked) return alert("Plan is locked. Unlock to edit.");
-      const txt = $("sessionPlanText")?.value || "";
-      session.planText = txt;
-      session.source = "manual";
-      session.updatedAtMs = Date.now();
-      __saveLocal(state);
-      alert("Plan saved.");
-      renderActiveTab();
-    });
-
-    $("btnToggleLock")?.addEventListener("click", () => {
-      if (!selectedTeamId) return;
-      const d = ($("teamDatePick")?.value || todayISO()).trim();
-      const session = ensureTeamSessionSlot(selectedTeamId, d);
-      session.locked = !session.locked;
-      session.updatedAtMs = Date.now();
-      __saveLocal(state);
-      renderActiveTab();
-    });
-
-    $("btnExportCSV")?.addEventListener("click", () => {
-      if (!selectedTeamId) return;
-      const d = ($("teamDatePick")?.value || todayISO()).trim();
-      const csv = buildTeamCSV(selectedTeamId, d);
-      const ok = downloadTextFile(`team_${shortId(selectedTeamId)}_${d}.csv`, csv, "text/csv");
-      if (!ok) alert("Export failed.");
-    });
-
-    const list = $("teamRosterList");
-    if (list && isCoach) {
-      if (!selectedTeamId) {
-        list.innerHTML = `Select a team first.`;
-      } else if (!athleteMembers.length) {
-        list.innerHTML = `No athletes in this team yet (team_members role_in_team="athlete").`;
-      } else {
-        const date = safeDateISO($("teamDatePick")?.value) || dateDefault;
-        const attMap = ensureTeamAttendanceSlot(selectedTeamId, date);
-
-        list.innerHTML = athleteMembers
-          .map((m) => {
-            const uid = String(m?.user_id || "").trim();
-            const r = readinessByUser[uid];
-            const grade = r?.grade || "—";
-            const score = Number.isFinite(r?.score) ? r.score : "—";
-            const color = r?.color || "#bdc3c7";
-            const guidance = r?.guidance || "";
-            const name = r?.athlete?.display_name || `Athlete ${shortId(uid)}`;
-
-            const att = attMap?.[uid] || "";
-            const attPill = att === "present" ? "Present" : att === "limited" ? "Limited" : att === "out" ? "Out" : "—";
-
-            return `
-              <div class="card" style="margin:10px 0;padding:10px">
-                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-                  <div style="flex:1">
-                    <div style="font-weight:700">${sanitizeHTML(name)}</div>
-                    <div class="small">User: ${sanitizeHTML(shortId(uid))}</div>
-                    <div class="small" style="margin-top:6px">
-                      Attendance:
-                      <select data-att="${sanitizeHTML(uid)}">
-                        <option value="present" ${att === "present" ? "selected" : ""}>Present</option>
-                        <option value="limited" ${att === "limited" ? "selected" : ""}>Limited</option>
-                        <option value="out" ${att === "out" ? "selected" : ""}>Out</option>
-                      </select>
-                      <span class="pill" style="margin-left:8px">${sanitizeHTML(attPill)}</span>
-                    </div>
-                  </div>
-
-                  <div style="text-align:right">
-                    <div style="font-weight:900;color:${sanitizeHTML(color)};font-size:16px">${sanitizeHTML(grade)} (${sanitizeHTML(score)})</div>
-                    <div class="small" style="max-width:240px;color:${sanitizeHTML(color)}">${sanitizeHTML(guidance)}</div>
-                  </div>
-                </div>
-                ${r?.reasons?.length ? `<div class="small" style="margin-top:6px">${r.reasons.slice(0, 3).map((x) => sanitizeHTML(x)).join("<br/>")}</div>` : ``}
-              </div>
-            `;
-          })
-          .join("");
-
-        Array.from(list.querySelectorAll("select[data-att]")).forEach((sel) => {
-          sel.addEventListener("change", () => {
-            const uid = String(sel.getAttribute("data-att") || "").trim();
-            const v = String(sel.value || "").trim();
-            if (!uid) return;
-            ensureTeamAttendanceSlot(selectedTeamId, date);
-            state.team.attendanceByDate[selectedTeamId][date][uid] = v;
-            __saveLocal(state);
-          });
-        });
-      }
-    }
-  }
-
-  function renderParent() {
-    const el = $("tab-parent");
-    if (!el) return;
-    el.innerHTML = `
-      <h3 style="margin-top:0">Parent</h3>
-      <div class="small">Parent view is stubbed for now.</div>
-    `;
-  }
-
-  async function renderSettings() {
-    const el = $("tab-settings");
-    if (!el) return;
-
-    const supaOk = isSupabaseReady();
-    const signed = supaOk ? await isSignedIn() : false;
-
-    el.innerHTML = `
-      <h3 style="margin-top:0">Settings</h3>
-      <div class="small">Status</div>
-      <div class="hr"></div>
-
-      <div class="card" style="margin:10px 0">
-        <div class="small">
-          Supabase: <b>${supaOk ? "Configured" : "Not configured"}</b><br/>
-          Auth: <b>${signed ? "Signed in" : "Signed out"}</b><br/>
-          Last synced: <b>${state.meta.lastSyncedAtMs ? new Date(state.meta.lastSyncedAtMs).toLocaleString() : "—"}</b>
-        </div>
-      </div>
-
-      <div class="btnRow" style="margin-top:12px">
-        <button class="btn secondary" id="btnSettingsSignIn" type="button" ${supaOk ? "" : "disabled"}>Sign in</button>
-        <button class="btn secondary" id="btnSettingsSignOut" type="button" ${(supaOk && signed) ? "" : "disabled"}>Sign out</button>
-        <button class="btn secondary" id="btnSettingsPull" type="button" ${(supaOk && signed) ? "" : "disabled"}>Pull cloud → device</button>
-        <button class="btn secondary" id="btnSettingsPush" type="button" ${(supaOk && signed) ? "" : "disabled"}>Push device → cloud</button>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="btnRow">
-        <button class="btn secondary" id="btnDumpState" type="button">Copy state JSON</button>
-        <button class="btn secondary" id="btnRecalcBaselines" type="button">Rebuild baselines</button>
-      </div>
-
-      <div class="small" style="margin-top:10px">Errors (latest first):</div>
-      <pre style="white-space:pre-wrap;max-height:240px;overflow:auto">${sanitizeHTML(JSON.stringify(errorQueue.slice().reverse().slice(0, 10), null, 2))}</pre>
-    `;
-
-    $("btnSettingsSignIn")?.addEventListener("click", async () => {
-      try {
-        const email = prompt("Enter email for magic-link sign-in:");
-        if (!email) return;
-        await window.PIQ_AuthStore.signInWithOtp(email.trim());
-        alert("Check your email for the sign-in link, then return here.");
-      } catch (e) {
-        logError("settingsSignIn", e);
-        alert("Sign-in failed: " + (e?.message || e));
-      }
-    });
-
-    $("btnSettingsSignOut")?.addEventListener("click", async () => {
-      try {
-        await window.PIQ_AuthStore?.signOut?.();
-        alert("Signed out.");
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!parsed || parsed.version !== 2) throw new Error("Invalid import file (expected version 2).");
+        S.setState(parsed);
+        alert("Import successful.");
         location.reload();
       } catch (e) {
-        logError("settingsSignOut", e);
-        alert("Sign-out failed: " + (e?.message || e));
+        alert("Import failed: " + (e.message || String(e)));
+      } finally {
+        ev.target.value = "";
       }
     });
 
-    $("btnSettingsPull")?.addEventListener("click", async () => {
-      const pulled = await __pullCloudStateIfNewer();
-      alert(pulled ? "Pulled newer cloud state." : "No newer cloud state found.");
-      renderActiveTab();
-    });
-
-    $("btnSettingsPush")?.addEventListener("click", async () => {
-      const ok = await __pushStateNow();
-      alert(ok ? "Pushed current device state to cloud." : "Push skipped (not signed in / offline / error).");
-      renderActiveTab();
-    });
-
-    $("btnDumpState")?.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(JSON.stringify(state, null, 2));
-        alert("Copied.");
-      } catch {
-        alert("Copy failed. (Clipboard permissions)");
-      }
-    });
-
-    $("btnRecalcBaselines")?.addEventListener("click", () => {
-      try {
-        window.PIQ?.readiness?.updateBaselines?.();
-        alert("Baselines rebuilt from recent history.");
-        renderActiveTab();
-      } catch (e) {
-        logError("recalcBaselines", e);
-        alert("Baseline rebuild failed.");
-      }
+    $("btnSeed").addEventListener("click", () => {
+      seedDemo();
     });
   }
 
-  function renderActiveTab() {
-    setPills();
-    switch (activeTab()) {
-      case "profile":
-        renderProfile();
-        break;
-      case "program":
-        renderProgram();
-        break;
-      case "log":
-        renderLog();
-        break;
-      case "performance":
-        renderPerformance();
-        break;
-      case "dashboard":
-        renderDashboard();
-        break;
-      case "team":
-        renderTeam();
-        break;
-      case "parent":
-        renderParent();
-        break;
-      case "settings":
-        renderSettings();
-        break;
-      default:
-        renderProfile();
-        break;
+  // ---------- Seed demo data ----------
+  function seedDemo() {
+    const st = S.getState();
+    if (st.roster.length) {
+      if (!confirm("This will add demo logs to your existing athletes. Continue?")) return;
     }
+    // Ensure at least 3 athletes
+    if (!st.roster.length) {
+      S.addAthlete("Jordan Smith", "PG", 70, 155);
+      S.addAthlete("Avery Johnson", "SG", 72, 165);
+      S.addAthlete("Taylor Reed", "SF", 74, 180);
+    }
+
+    const r = roster();
+    const base = S.todayISO();
+    // 21 days of plausible data
+    for (let i = 0; i < 21; i++) {
+      const d = isoAddDays(base, -i);
+      r.forEach((a, idx) => {
+        const mins = 45 + ((i + idx) % 4) * 15; // 45..90
+        const rpe = 4 + ((i + idx) % 5);        // 4..8
+        const type = (i % 6 === 0) ? "game" : ((i % 3 === 0) ? "lift" : "practice");
+        if (i % 7 !== 0) {
+          S.upsertTraining({ athleteId: a.id, date: d, minutes: mins, rpe, type, notes: "" });
+        }
+        if (i % 2 === 0) {
+          S.upsertReadiness({
+            athleteId: a.id, date: d,
+            sleepHrs: 6.5 + ((idx + i) % 5) * 0.5,
+            sore: ((i + idx) % 7),
+            stress: ((i + 2 * idx) % 6),
+            energy: 5 + ((i + idx) % 5),
+            injuryNote: (i === 10 && idx === 1) ? "ankle tightness" : ""
+          });
+        }
+        if (isElite() || i % 3 === 0) {
+          const t = S.getTargetsForAthlete(a.id);
+          S.upsertNutrition({
+            athleteId: a.id, date: d,
+            p: Math.round(t.p * (0.85 + ((i + idx) % 6) * 0.03)),
+            c: Math.round(t.c * (0.75 + ((i + idx) % 7) * 0.04)),
+            f: Math.round(t.f * (0.8 + ((i + idx) % 5) * 0.05)),
+            w: Math.round(t.w * (0.7 + ((i + idx) % 6) * 0.05)),
+            notes: ""
+          });
+        }
+      });
+    }
+
+    refreshTeam();
+    refreshLog();
+    refreshDashboard();
+    refreshNutrition();
+    alert("Seed complete.");
   }
 
-  // =========================
-  // App start
-  // =========================
-  window.startApp = function () {
-    const role = (state.role || "").trim() || (localStorage.getItem("role") || "").trim();
-    if (!role) {
-      window.showRoleChooser();
-      return;
-    }
-    if (!state.role) setRoleEverywhere(role);
+  // ---------- Utilities ----------
+  function escapeHTML(s) {
+    return String(s || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
 
+  // ---------- App boot ----------
+  function boot() {
+    ensureRoster();
     wireNav();
-    showTab(activeTab());
+    wireTeam();
+    wireLog();
+    wireDashboard();
+    wireNutrition();
+    wirePeriodization();
+    wireSettings();
+    wireImportExport();
 
-    try {
-      PIQ_Readiness.updateBaselinesFromHistory();
-    } catch (e) {
-      logError("baselineInit", e);
-    }
+    // set default dates
+    const t = S.todayISO();
+    if ($("dashDate")) $("dashDate").value = t;
+    if ($("riskDate")) $("riskDate").value = t;
+    if ($("logDate")) $("logDate").value = t;
+    if ($("readyDate")) $("readyDate").value = t;
+    if ($("nutDate")) $("nutDate").value = t;
+    if ($("perStart")) $("perStart").value = t;
+    if ($("heatStart")) $("heatStart").value = isoAddDays(t, -20);
 
-    renderActiveTab();
-    hideSplashNow();
+    refreshTeam();
+    refreshDashboard();
+    refreshLog();
+    refreshNutrition();
+    refreshPeriodization();
+    refreshSettings();
 
-    console.log("PerformanceIQ core started. Role:", state.role || role, "core.js v1.2.3+Phase6");
-  };
+    setView("dashboard");
+    endSplash();
+  }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    $("btnSwitchRole")?.addEventListener("click", () => {
-      try { localStorage.removeItem("role"); } catch {}
-      try { localStorage.removeItem("selectedRole"); } catch {}
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
-      location.reload();
-    });
-  });
-
-  document.addEventListener("DOMContentLoaded", async () => {
-    try {
-      if (isSupabaseReady() && (await isSignedIn())) {
-        await __pullCloudStateIfNewer();
-      }
-    } catch (e) {
-      logError("startupPull", e);
-    }
-
-    setTimeout(hideSplashNow, SPLASH_FAILSAFE_MS);
-    window.addEventListener("click", hideSplashNow, { once: true });
-    window.addEventListener("touchstart", hideSplashNow, { once: true });
-  });
+  window.PIQ_App = { boot };
+  boot();
 })();
-```0
