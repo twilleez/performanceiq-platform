@@ -1,5 +1,6 @@
-// dataStore.js — NEXT PHASE (join codes + clean queries) v1.3.1
+// dataStore.js — NEXT PHASE (join codes + clean queries) v1.4.1
 // Offline-first app still works without Supabase; these APIs require window.supabaseClient.
+//
 // Tables expected (public):
 // - piq_user_state (user_id uuid PK, state jsonb, updated_at timestamptz)
 // - workout_logs (athlete_id uuid, date date, ...)
@@ -8,13 +9,18 @@
 // - team_members (id uuid PK, team_id uuid, user_id uuid, role_in_team text, linked_athlete_id uuid NULL, created_at timestamptz)
 //
 // IMPORTANT (RLS):
-// - To allow non-members to join via code when teams SELECT is restricted,
-//   install RPC: public.get_team_by_join_code(code text)
-//   (see /sql/002_rpc_get_team_by_join_code.sql in your patch)
+// - To allow non-members to join via code, create RPC:
+//   public.get_team_by_join_code(code text)
+//   returning teams rows or minimal fields.
 
 (function () {
   "use strict";
   if (window.dataStore) return;
+
+  // ----------------
+  // Constants
+  // ----------------
+  const JOIN_CODE_LENGTH = 8; // Must match DB migration (random_alnum(8))
 
   function requireClient() {
     if (!window.supabaseClient) throw new Error("supabaseClient not initialized");
@@ -28,17 +34,28 @@
   }
 
   // ----------------
-  // Join code helper
+  // Join code helpers
   // ----------------
+  function normalizeJoinCode(input) {
+    // Allow user to paste messy strings; keep alnum, uppercase.
+    return String(input || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .trim();
+  }
+
   function generateJoinCode(length) {
-    const len = Math.max(6, Math.min(10, Number(length || 6)));
-    // uppercase A-Z0-9 only
-    const raw = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "");
-    return raw.slice(0, len);
+    const len = Math.max(4, Number(length || JOIN_CODE_LENGTH));
+    // Cryptographically random; no ambiguous chars (0/O/1/I removed).
+    // 32-char alphabet keeps modulo bias zero (256 % 32 === 0).
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = crypto.getRandomValues(new Uint8Array(len));
+    return Array.from(bytes, (b) => chars[b % 32]).join("");
   }
 
   async function ensureUniqueJoinCode(supabase, length) {
     // Best practice: enforce UNIQUE(join_code) in DB.
+    // This loop reduces collisions client-side.
     for (let i = 0; i < 25; i++) {
       const code = generateJoinCode(length);
       const { data, error } = await supabase
@@ -93,13 +110,11 @@
     const supabase = requireClient();
     const uid = await getUserId();
     if (!uid) throw new Error("Not signed in");
-
     const payload = { ...row, athlete_id: uid };
 
-    const { error } = await supabase.from("workout_logs").upsert(payload, {
-      onConflict: "athlete_id,date"
-    });
-
+    const { error } = await supabase
+      .from("workout_logs")
+      .upsert(payload, { onConflict: "athlete_id,date" });
     if (error) throw error;
     return true;
   }
@@ -128,13 +143,11 @@
     const supabase = requireClient();
     const uid = await getUserId();
     if (!uid) throw new Error("Not signed in");
-
     const payload = { ...row, athlete_id: uid };
 
-    const { error } = await supabase.from("performance_metrics").upsert(payload, {
-      onConflict: "athlete_id,date"
-    });
-
+    const { error } = await supabase
+      .from("performance_metrics")
+      .upsert(payload, { onConflict: "athlete_id,date" });
     if (error) throw error;
     return true;
   }
@@ -159,7 +172,6 @@
   // -----
   // Teams
   // -----
-
   async function listMyTeams() {
     const supabase = requireClient();
     const uid = await getUserId();
@@ -169,7 +181,6 @@
       .from("team_members")
       .select("team_id")
       .eq("user_id", uid);
-
     if (mErr) throw mErr;
 
     const teamIds = (membership || []).map((x) => x.team_id).filter(Boolean);
@@ -178,7 +189,8 @@
     const { data, error } = await supabase
       .from("teams")
       .select("id,name,sport,join_code,owner_id,coach_id,created_at")
-      .in("id", teamIds);
+      .in("id", teamIds)
+      .order("created_at", { ascending: false });
 
     if (error) throw error;
     return data || [];
@@ -191,11 +203,10 @@
 
     const cleanName = String(name || "").trim();
     if (!cleanName) throw new Error("Team name is required");
-
     const cleanSport = sport ? String(sport).trim() : null;
 
     const opts = options && typeof options === "object" ? options : {};
-    const codeLen = Number(opts.joinCodeLength || 6);
+    const codeLen = Number(opts.joinCodeLength || JOIN_CODE_LENGTH);
 
     const joinCode = await ensureUniqueJoinCode(supabase, codeLen);
 
@@ -206,19 +217,18 @@
         sport: cleanSport,
         owner_id: uid,
         coach_id: uid,
-        join_code: joinCode
+        join_code: joinCode,
       })
       .select("*")
       .single();
 
     if (e1) throw e1;
 
-    // auto-add creator as coach
     const { error: e2 } = await supabase.from("team_members").insert({
       team_id: team.id,
       user_id: uid,
       role_in_team: "coach",
-      linked_athlete_id: null
+      linked_athlete_id: null,
     });
     if (e2) throw e2;
 
@@ -233,12 +243,22 @@
     const tid = String(teamId || "").trim();
     if (!tid) throw new Error("teamId is required");
 
-    const opts = options && typeof options === "object" ? options : {};
-    const codeLen = Number(opts.joinCodeLength || 6);
+    // Ownership check — caller must be owner or coach.
+    const { data: team, error: checkErr } = await supabase
+      .from("teams")
+      .select("owner_id, coach_id")
+      .eq("id", tid)
+      .single();
+    if (checkErr) throw checkErr;
+    if (!team) throw new Error("Team not found");
+    if (team.owner_id !== uid && team.coach_id !== uid) {
+      throw new Error("Not authorized to renew this team's join code");
+    }
 
+    const opts = options && typeof options === "object" ? options : {};
+    const codeLen = Number(opts.joinCodeLength || JOIN_CODE_LENGTH);
     const joinCode = await ensureUniqueJoinCode(supabase, codeLen);
 
-    // RLS should allow only coach/owner to update join_code
     const { data: updated, error } = await supabase
       .from("teams")
       .update({ join_code: joinCode })
@@ -250,22 +270,31 @@
     return updated;
   }
 
+  // Alias for UI compatibility
+  const renewTeamJoinCode = (teamId, options) => renewJoinCode(teamId, options);
+
   async function getTeamByJoinCode(joinCode) {
     const supabase = requireClient();
-    const code = String(joinCode || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const code = normalizeJoinCode(joinCode);
     if (!code) throw new Error("Join code is required");
 
-    // Try RPC first (supports RLS where teams select is blocked for non-members)
-    const { data: rpcData, error: rpcErr } = await supabase.rpc("get_team_by_join_code", { code });
-    if (!rpcErr) {
-      if (Array.isArray(rpcData) && rpcData.length) return rpcData[0];
-      if (rpcData && rpcData.id) return rpcData;
+    // Try RPC first (recommended under RLS).
+    // Expected RPC signature: get_team_by_join_code(code text)
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "get_team_by_join_code",
+      { code }
+    );
+
+    if (!rpcError) {
+      const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      if (!result) throw new Error("Invalid join code");
+      return result;
     }
 
-    // Fallback direct query (may fail under strict RLS)
+    // RPC not available — fall back to direct select (may fail under strict RLS).
     const { data, error } = await supabase
       .from("teams")
-      .select("id,name,sport,join_code,owner_id,coach_id,created_at")
+      .select("*")
       .eq("join_code", code)
       .maybeSingle();
 
@@ -288,13 +317,16 @@
       team_id: team.id,
       user_id: uid,
       role_in_team: role,
-      linked_athlete_id: linkedAthleteId || null
+      linked_athlete_id: linkedAthleteId || null,
     });
-
     if (error) throw error;
+
     return team;
   }
 
+  // -----
+  // Roster
+  // -----
   async function listTeamMembers(teamId) {
     const supabase = requireClient();
     const tid = String(teamId || "").trim();
@@ -321,9 +353,8 @@
       team_id: tid,
       user_id: uid,
       role_in_team: String(roleInTeam || "athlete").trim() || "athlete",
-      linked_athlete_id: linkedAthleteId || null
+      linked_athlete_id: linkedAthleteId || null,
     });
-
     if (error) throw error;
     return true;
   }
@@ -335,17 +366,22 @@
     if (!tid) throw new Error("teamId is required");
     if (!mid) throw new Error("memberId is required");
 
-    const { error } = await supabase.from("team_members").delete().eq("team_id", tid).eq("id", mid);
+    const { error } = await supabase
+      .from("team_members")
+      .delete()
+      .eq("team_id", tid)
+      .eq("id", mid);
     if (error) throw error;
     return true;
   }
 
+  // Export (single source of truth)
   window.dataStore = {
     // state
     pushState,
     pullState,
 
-    // logs/metrics
+    // logs + metrics
     upsertWorkoutLog,
     upsertPerformanceMetric,
     listWorkoutLogsForAthlete,
@@ -355,12 +391,13 @@
     listMyTeams,
     createTeam,
     renewJoinCode,
+    renewTeamJoinCode, // alias
     getTeamByJoinCode,
     joinTeamByCode,
 
     // roster
     listTeamMembers,
     addTeamMember,
-    removeTeamMember
+    removeTeamMember,
   };
 })();
