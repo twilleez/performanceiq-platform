@@ -1,7 +1,12 @@
-// nutritionEngine.js — COMPLETE REPLACEMENT (v1.1.0)
+// nutritionEngine.js — COMPLETE REPLACEMENT (v1.2.0)
 // Elite Nutrition Add-on + Meal Plan Generator (offline-first)
-// Supports day types: training / game / recovery / rest / auto
-// Robust DOM binding + works with PerformanceIQ core.js v2 state (localStorage: "piq_v2_state")
+// Supports: Training / Game / Recovery day types + micronutrient focus + hydration guidance
+// Robust DOM binding + safe localStorage integration with core.js v2 state.
+//
+// Primary assumptions:
+// - core.js uses localStorage key: "piq_v2_state"
+// - targets live at state.targets[athleteId] OR state.team.macroDefaults for defaults
+//
 // No external deps.
 
 (function () {
@@ -36,138 +41,77 @@
   // ---------------------------
   // Storage bridge
   // ---------------------------
-  // core.js v2 uses this:
-  const V2_KEY = "piq_v2_state";
-  // fallback older key:
-  const FALLBACK_KEY = "piq_state_v1";
+  const STORAGE_KEY_PRIMARY = "piq_v2_state"; // core.js v2 key
+  const STORAGE_KEY_FALLBACK = "piq_state_v1"; // older builds fallback
 
-  function readJSON(key) {
+  function getRootState() {
+    // Preferred: core.js exposes PIQ.getState()
+    if (window.PIQ && typeof window.PIQ.getState === "function") {
+      try { return window.PIQ.getState(); } catch {}
+    }
+
+    // Fallback: localStorage
     try {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : null;
+      const raw = localStorage.getItem(STORAGE_KEY_PRIMARY) || localStorage.getItem(STORAGE_KEY_FALLBACK);
+      return raw ? JSON.parse(raw) : {};
     } catch {
-      return null;
+      return {};
     }
   }
 
-  function writeJSON(key, obj) {
+  function saveRootState(state) {
+    // Preferred: core.js exposes PIQ.saveState()
+    if (window.PIQ && typeof window.PIQ.saveState === "function") {
+      try { window.PIQ.saveState(); return true; } catch {}
+    }
+    // Fallback: store full object
     try {
-      localStorage.setItem(key, JSON.stringify(obj));
+      localStorage.setItem(STORAGE_KEY_PRIMARY, JSON.stringify(state));
       return true;
     } catch {
       return false;
     }
   }
 
-  // If core.js ever exposes PIQ.getState/saveState in future, we support it.
-  function getRootState() {
-    if (window.PIQ && typeof window.PIQ.getState === "function") {
-      try { return window.PIQ.getState(); } catch {}
-    }
-
-    // Prefer v2 key
-    const v2 = readJSON(V2_KEY);
-    if (v2 && typeof v2 === "object") return v2;
-
-    const old = readJSON(FALLBACK_KEY);
-    if (old && typeof old === "object") return old;
-
-    return {};
-  }
-
-  function saveRootState(state) {
-    if (window.PIQ && typeof window.PIQ.saveState === "function") {
-      try {
-        window.PIQ.saveState();
-        return true;
-      } catch {}
-    }
-
-    // If it looks like v2 state, save to v2 key.
-    const looksV2 =
-      state &&
-      typeof state === "object" &&
-      state.team &&
-      state.logs &&
-      (state.meta || state.targets || state.periodization);
-
-    if (looksV2) return writeJSON(V2_KEY, state);
-
-    // otherwise fallback
-    return writeJSON(FALLBACK_KEY, state);
-  }
-
   // ---------------------------
-  // Nutrition data model
-  // ---------------------------
-  function ensureNutritionState(state) {
-    // Keep mealPlans inside a dedicated namespace so it doesn't collide with core.js structures.
-    state.nutrition = state.nutrition && typeof state.nutrition === "object" ? state.nutrition : {};
-    state.nutrition.mealPlans =
-      state.nutrition.mealPlans && typeof state.nutrition.mealPlans === "object"
-        ? state.nutrition.mealPlans
-        : {};
-    return state.nutrition;
-  }
-
-  // ---------------------------
-  // Athlete sources (core.js v2 + legacy)
+  // Athlete sources (core.js v2 stores state.athletes)
   // ---------------------------
   function listAthletes(state) {
-    // core.js v2 stores athletes at state.athletes (array)
-    const roster = Array.isArray(state.athletes)
-      ? state.athletes
-      : Array.isArray(state.team?.athletes)
-      ? state.team.athletes
-      : Array.isArray(state.team?.roster)
-      ? state.team.roster
-      : [];
-
-    const out = [];
-    for (const a of roster) {
-      if (!a) continue;
-      const id = String(a.id || a.uuid || a.athleteId || a.user_id || "").trim();
-      const name = String(a.name || a.fullName || a.display_name || a.label || "").trim();
-      out.push({
-        id: id || name || ("ath_" + Math.random().toString(16).slice(2)),
-        name: name || ("Athlete " + (id ? id.slice(0, 8) : "")),
+    const roster = Array.isArray(state?.athletes) ? state.athletes : [];
+    const out = roster
+      .filter(Boolean)
+      .map((a) => ({
+        id: String(a.id || "").trim() || ("ath_" + Math.random().toString(16).slice(2)),
+        name: String(a.name || "Athlete").trim(),
         weightLb: Number(a.weightLb ?? a.weight ?? a.wt ?? NaN),
-        sport: String(a.sport || state?.profile?.sport || "basketball")
-      });
-    }
+        sport: String(a.sport || "basketball")
+      }));
 
     if (!out.length) out.push({ id: "default", name: "Default Athlete", weightLb: NaN, sport: "basketball" });
     return out;
   }
 
   // ---------------------------
-  // Macro target logic
+  // Targets (uses core.js v2 state.targets[athleteId])
   // ---------------------------
-  function defaultTargetsForAthlete(athlete, state) {
-    // core.js v2 defaults: state.team.macroDefaults
-    const def = state.team?.macroDefaults || state.team?.defaults?.macros || null;
-
-    const defProt = Number(def?.protein);
-    const defCarb = Number(def?.carbs);
-    const defFat = Number(def?.fat);
-    const defWater = Number(def?.waterOz);
-
-    const bw = Number(athlete.weightLb);
+  function defaultTargets(state, athlete) {
+    const d = state?.team?.macroDefaults || { protein: 160, carbs: 240, fat: 70, waterOz: 80 };
+    const bw = Number(athlete?.weightLb);
     const hasBW = Number.isFinite(bw) && bw > 60 && bw < 400;
 
-    // Athlete-friendly defaults
-    const protein = Number.isFinite(defProt) ? defProt : (hasBW ? Math.round(clamp(bw * 0.9, 90, 260)) : 160);
-    const fat = Number.isFinite(defFat) ? defFat : (hasBW ? Math.round(clamp(bw * 0.35, 40, 120)) : 70);
-    const carbs = Number.isFinite(defCarb) ? defCarb : (hasBW ? Math.round(clamp(bw * 1.8, 120, 520)) : 240);
-    const waterOz = Number.isFinite(defWater) ? defWater : (hasBW ? Math.round(clamp(bw * 0.7, 60, 160)) : 100);
+    // Practical athlete defaults (simple + effective)
+    const protein = hasBW ? Math.round(clamp(bw * 0.9, 90, 260)) : Number(d.protein || 160);
+    const carbs = hasBW ? Math.round(clamp(bw * 1.8, 140, 520)) : Number(d.carbs || 240);
+    const fat = hasBW ? Math.round(clamp(bw * 0.35, 40, 120)) : Number(d.fat || 70);
+    const waterOz = hasBW ? Math.round(clamp(bw * 0.7, 60, 160)) : Number(d.waterOz || 80);
 
     return { protein, carbs, fat, waterOz };
   }
 
   function getTargets(state, athleteId) {
-    // core.js v2 stores per-athlete targets in state.targets
-    const v2Targets = state.targets && typeof state.targets === "object" ? state.targets : null;
-    const saved = v2Targets ? v2Targets[String(athleteId)] : null;
+    const id = String(athleteId || "default");
+    state.targets = state.targets && typeof state.targets === "object" ? state.targets : {};
+    const saved = state.targets[id];
     if (saved && typeof saved === "object") {
       return {
         protein: clamp(saved.protein, 0, 500),
@@ -176,282 +120,325 @@
         waterOz: clamp(saved.waterOz, 0, 300)
       };
     }
-
-    const athlete = listAthletes(state).find((a) => a.id === athleteId) || { id: athleteId, name: "Athlete", weightLb: NaN };
-    return defaultTargetsForAthlete(athlete, state);
+    const athlete = listAthletes(state).find((a) => a.id === id) || { id, name: "Athlete", weightLb: NaN };
+    return defaultTargets(state, athlete);
   }
 
   // ---------------------------
-  // Micronutrient focus (simple “elite” touch, no database)
+  // Day-type rules (industry-style)
   // ---------------------------
-  function micronutrientFocus(dayType) {
-    // Simple rotation of priorities that are athlete-relevant
+  function applyDayTypeToTargets(baseTargets, dayType) {
+    const t = { ...baseTargets };
+
+    // Carb periodization + fat timing (simple, coach-friendly)
+    if (dayType === "training") {
+      // baseline
+      return t;
+    }
+
     if (dayType === "game") {
-      return {
-        focus: "Sodium + Potassium + Carbs",
-        why: "Support hydration, nerve function, and performance fueling.",
-        examples: ["banana", "salted rice/pasta", "sports drink/electrolytes", "potatoes"]
-      };
+      // Higher carbs, slightly lower fat to prioritize glycogen + digestion
+      t.carbs = Math.round(t.carbs * 1.15);
+      t.fat = Math.round(t.fat * 0.85);
+      return t;
+    }
+
+    if (dayType === "recovery") {
+      // Lower carbs, keep protein high, slightly higher fats for satiety
+      t.carbs = Math.round(t.carbs * 0.75);
+      t.fat = Math.round(t.fat * 1.10);
+      return t;
+    }
+
+    return t;
+  }
+
+  function micronutrientFocus(dayType) {
+    // “Top program” style: keep it actionable without pretending to diagnose deficiency.
+    if (dayType === "game") {
+      return [
+        "Sodium + fluids: pre-game hydration/electrolytes (especially if you sweat heavy)",
+        "Potassium: bananas, potatoes, yogurt",
+        "Magnesium: nuts, seeds, whole grains",
+        "Iron support foods: lean red meat, beans, spinach (pair with vitamin C foods)",
+        "Omega-3s: salmon, tuna, chia/flax (recovery support)"
+      ];
     }
     if (dayType === "recovery") {
-      return {
-        focus: "Omega-3 + Magnesium + Vitamin C",
-        why: "Support recovery, inflammation management, and tissue repair.",
-        examples: ["salmon/tuna", "nuts/seeds", "leafy greens", "berries/citrus"]
-      };
+      return [
+        "Calcium + Vitamin D: dairy/fortified milk, yogurt, sunlight exposure",
+        "Omega-3s: salmon, sardines, chia/flax (inflammation support)",
+        "Magnesium: pumpkin seeds, almonds, oats",
+        "Antioxidant-rich produce: berries, cherries, leafy greens",
+        "Protein quality: lean meat, eggs, Greek yogurt, whey if needed"
+      ];
     }
-    if (dayType === "rest") {
-      return {
-        focus: "Fiber + Iron + Calcium",
-        why: "Support body comp, oxygen transport, and bone health.",
-        examples: ["beans/oats", "lean red meat/spinach", "yogurt/milk", "broccoli"]
-      };
+    // training
+    return [
+      "Carb quality + fiber: oats, rice, potatoes, fruit",
+      "Magnesium: nuts, seeds, whole grains",
+      "Potassium: bananas, potatoes, yogurt",
+      "Iron support foods: lean meats/beans/spinach (pair with vitamin C foods)",
+      "Omega-3s a few times/week (fish or chia/flax)"
+    ];
+  }
+
+  function hydrationGuidance(dayType, targets) {
+    const base = `Daily water target: ~${targets.waterOz} oz (adjust up for heat/sweat).`;
+    if (dayType === "game") {
+      return [
+        base,
+        "Game day: drink consistently earlier in the day (don’t “chug” last minute).",
+        "If sweating a lot: add electrolytes (sodium) and sip during warmups/halftime."
+      ];
     }
-    // training default
-    return {
-      focus: "Carbs + Protein timing + Fluids",
-      why: "Support training output and muscle recovery.",
-      examples: ["oats/rice", "chicken/eggs", "fruit", "water"]
-    };
+    if (dayType === "recovery") {
+      return [
+        base,
+        "Recovery day: keep hydration steady + include sodium with meals if you trained hard yesterday."
+      ];
+    }
+    return [
+      base,
+      "Training day: drink around training and include sodium/electrolytes if sessions are long or sweaty."
+    ];
   }
 
   // ---------------------------
-  // Meal Plan Generator (day types)
+  // Meal plan generator
   // ---------------------------
-  function splitMacros(targets, dayType) {
-    // dayType: training | game | recovery | rest
-    const p = targets.protein;
-    const c = targets.carbs;
-    const f = targets.fat;
+  function splitMeals(targets, dayType) {
+    // 5 feedings: breakfast / lunch / pre / post / dinner
+    // Game day pushes more carbs earlier + pre/post emphasis.
+    const pattern =
+      dayType === "game"
+        ? [
+            { name: "Breakfast", p: 0.25, c: 0.30, f: 0.20 },
+            { name: "Lunch", p: 0.25, c: 0.30, f: 0.20 },
+            { name: "Pre-Game / Snack", p: 0.15, c: 0.20, f: 0.10 },
+            { name: "Post-Game", p: 0.15, c: 0.15, f: 0.10 },
+            { name: "Dinner", p: 0.20, c: 0.05, f: 0.40 }
+          ]
+        : dayType === "recovery"
+        ? [
+            { name: "Breakfast", p: 0.25, c: 0.20, f: 0.30 },
+            { name: "Lunch", p: 0.25, c: 0.25, f: 0.25 },
+            { name: "Snack", p: 0.15, c: 0.15, f: 0.15 },
+            { name: "Snack / Protein", p: 0.15, c: 0.10, f: 0.10 },
+            { name: "Dinner", p: 0.20, c: 0.30, f: 0.20 }
+          ]
+        : [
+            { name: "Breakfast", p: 0.25, c: 0.20, f: 0.25 },
+            { name: "Lunch", p: 0.25, c: 0.25, f: 0.25 },
+            { name: "Pre-Workout / Snack", p: 0.15, c: 0.20, f: 0.10 },
+            { name: "Post-Workout", p: 0.15, c: 0.20, f: 0.10 },
+            { name: "Dinner", p: 0.20, c: 0.15, f: 0.30 }
+          ];
 
-    // Periodization:
-    // game = highest carbs, slightly lower fat (digestion)
-    // training = baseline
-    // recovery = moderate carbs, slightly higher fat
-    // rest = lower carbs, higher fat
-    let carbMult = 1.0;
-    let fatMult = 1.0;
-
-    if (dayType === "game") {
-      carbMult = 1.15;
-      fatMult = 0.90;
-    } else if (dayType === "recovery") {
-      carbMult = 0.90;
-      fatMult = 1.05;
-    } else if (dayType === "rest") {
-      carbMult = 0.75;
-      fatMult = 1.10;
-    }
-
-    const cAdj = Math.round(c * carbMult);
-    const fAdj = Math.round(f * fatMult);
-
-    // 4 meals + 1 snack template
-    const meals = [
-      { name: "Breakfast", p: 0.25, c: 0.20, f: 0.25 },
-      { name: "Lunch", p: 0.25, c: 0.25, f: 0.25 },
-      { name: dayType === "game" ? "Pre-Game / Snack" : "Pre-Workout / Snack", p: 0.15, c: 0.20, f: 0.10 },
-      { name: dayType === "game" ? "Post-Game" : "Post-Workout", p: 0.15, c: 0.20, f: 0.10 },
-      { name: "Dinner", p: 0.20, c: 0.15, f: 0.30 }
-    ];
-
-    const plan = meals.map((m) => ({
+    const plan = pattern.map((m) => ({
       name: m.name,
-      protein: Math.round(p * m.p),
-      carbs: Math.round(cAdj * m.c),
-      fat: Math.round(fAdj * m.f)
+      protein: Math.round(targets.protein * m.p),
+      carbs: Math.round(targets.carbs * m.c),
+      fat: Math.round(targets.fat * m.f)
     }));
 
-    // Fix rounding drift
+    // fix rounding drift
     const sum = (k) => plan.reduce((s, x) => s + (x[k] || 0), 0);
-    plan[0].protein += (p - sum("protein"));
-    plan[0].carbs += (cAdj - sum("carbs"));
-    plan[0].fat += (fAdj - sum("fat"));
+    plan[0].protein += (targets.protein - sum("protein"));
+    plan[0].carbs += (targets.carbs - sum("carbs"));
+    plan[0].fat += (targets.fat - sum("fat"));
 
-    return { dayType, targets: { ...targets, carbs: cAdj, fat: fAdj }, meals: plan };
+    return plan;
   }
 
-  function buildFoodSuggestions(meal, dayType) {
-    const p = meal.protein, c = meal.carbs, f = meal.fat;
+  function mealOptions(mealName, dayType) {
+    const common = [
+      "Lean protein + carb base + fruit/veg (adjust portions)",
+      "Bowl: rice/pasta/potatoes + chicken/turkey/fish + olive oil/avocado",
+      "Greek yogurt + oats + berries + nut butter (adjust portions)"
+    ];
 
-    const opts = [];
-    opts.push(`Option A: Lean protein + carbs + fruit/veg (aim ~P${p}/C${c}/F${f})`);
-    opts.push(`Option B: Bowl: rice/pasta/potatoes + chicken/turkey/fish + olive oil/avocado`);
-    opts.push(`Option C: Greek yogurt + oats + berries + nut butter (adjust portions)`);
+    if (dayType === "game" && /pre|breakfast|lunch/i.test(mealName)) {
+      return [
+        "Easy-digest carbs + lean protein (lower fat): bagel + eggs/egg whites, fruit",
+        "Rice + chicken + fruit (keep it simple)",
+        ...common
+      ];
+    }
 
-    if (dayType === "game" && /Pre-Game|Breakfast/i.test(meal.name)) {
-      opts.push(`Game tip: keep fats/fiber lighter pre-game; choose easy carbs + fluids.`);
+    if (dayType === "recovery" && /dinner|breakfast/i.test(mealName)) {
+      return [
+        "Protein + colorful produce + healthy fats: salmon + veggies + rice/potatoes",
+        "Greek yogurt + berries + granola + chia/flax",
+        ...common
+      ];
     }
-    if (dayType === "recovery" && /Dinner|Lunch/i.test(meal.name)) {
-      opts.push(`Recovery tip: add colorful produce + omega-3 source (fish/nuts) if possible.`);
-    }
-    return opts;
+
+    return common;
   }
 
-  function resolveDayType(mode, dateISO) {
-    const m = String(mode || "auto").trim();
-    if (m === "training" || m === "game" || m === "recovery" || m === "rest") return m;
-
-    // auto heuristic:
-    // weekend = rest, Wednesday = recovery, otherwise training
-    const d = new Date(dateISO + "T00:00:00");
-    const dow = d.getDay(); // 0 Sun .. 6 Sat
-    if (dow === 0 || dow === 6) return "rest";
-    if (dow === 3) return "recovery";
-    return "training";
+  function shoppingListFromMeals(dayType) {
+    const base = [
+      "Lean proteins: chicken, turkey, eggs, Greek yogurt",
+      "Carbs: rice, oats, potatoes, pasta, bread/bagels",
+      "Fats: olive oil, avocado, nuts/nut butter",
+      "Produce: bananas, berries, leafy greens, oranges"
+    ];
+    if (dayType === "game") base.unshift("Electrolytes: sports drink or electrolyte packets (as needed)");
+    if (dayType === "recovery") base.push("Omega-3: salmon/tuna OR chia/flax");
+    return base;
   }
 
-  function generateMealPlan(state, athleteId, startISO, days, mode) {
-    const start = safeISO(startISO) || nowISO();
-    const nDays = clamp(days, 1, 21);
-    const targets = getTargets(state, athleteId);
+  function buildPlan(state, athleteId, dateISO, dayType) {
+    const date = safeISO(dateISO) || nowISO();
+    const baseTargets = getTargets(state, athleteId);
+    const adjustedTargets = applyDayTypeToTargets(baseTargets, dayType);
 
-    const out = [];
-    for (let i = 0; i < nDays; i++) {
-      const d = new Date(Date.parse(start) + i * 86400000).toISOString().slice(0, 10);
-      const dayType = resolveDayType(mode, d);
+    const meals = splitMeals(adjustedTargets, dayType);
 
-      const split = splitMacros(targets, dayType);
-      const micro = micronutrientFocus(dayType);
-
-      const notes =
-        dayType === "game"
-          ? "Game day: carb-forward meals + hydration + lighter fats pre-game."
-          : dayType === "training"
-          ? "Training day: prioritize carbs around session + hydrate."
-          : dayType === "recovery"
-          ? "Recovery day: emphasize protein, micronutrients, and sleep support."
-          : "Rest day: slightly lower carbs, keep protein high.";
-
-      out.push({
-        dateISO: d,
-        ...split,
-        microFocus: micro,
-        notes
-      });
-    }
-
-    const n = ensureNutritionState(state);
-    n.mealPlans[String(athleteId)] = {
-      athleteId: String(athleteId),
-      startISO: start,
-      days: nDays,
-      createdAtMs: Date.now(),
-      mode: String(mode || "auto"),
-      plan: out
+    return {
+      athleteId: String(athleteId || "default"),
+      dateISO: date,
+      dayType,
+      targets: adjustedTargets,
+      micronutrients: micronutrientFocus(dayType),
+      hydration: hydrationGuidance(dayType, adjustedTargets),
+      meals: meals.map((m) => ({
+        ...m,
+        options: mealOptions(m.name, dayType)
+      })),
+      shoppingList: shoppingListFromMeals(dayType),
+      createdAtMs: Date.now()
     };
+  }
 
-    return n.mealPlans[String(athleteId)];
+  // Persist under state.nutrition.mealPlans[athleteId][dateISO]
+  function ensureNutritionBucket(state) {
+    state.nutrition = state.nutrition && typeof state.nutrition === "object" ? state.nutrition : {};
+    state.nutrition.mealPlans = state.nutrition.mealPlans && typeof state.nutrition.mealPlans === "object" ? state.nutrition.mealPlans : {};
+    return state.nutrition;
+  }
+
+  function savePlan(state, plan) {
+    const n = ensureNutritionBucket(state);
+    const a = String(plan.athleteId);
+    n.mealPlans[a] = n.mealPlans[a] && typeof n.mealPlans[a] === "object" ? n.mealPlans[a] : {};
+    n.mealPlans[a][String(plan.dateISO)] = plan;
+    return plan;
   }
 
   // ---------------------------
-  // UI Wiring
+  // Render
+  // ---------------------------
+  function renderPlan(plan, mountEl) {
+    if (!mountEl) return;
+
+    if (!plan) {
+      mountEl.innerHTML = `<div class="small muted">No plan generated yet.</div>`;
+      return;
+    }
+
+    const hdr = `
+      <div style="padding:12px;border:1px solid rgba(255,255,255,.10);border-radius:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+          <div style="font-weight:900">${sanitize(plan.dateISO)} • ${sanitize(String(plan.dayType).toUpperCase())}</div>
+          <div class="small muted">Targets: P${plan.targets.protein} / C${plan.targets.carbs} / F${plan.targets.fat} • Water ${plan.targets.waterOz}oz</div>
+        </div>
+      </div>
+    `;
+
+    const micro = `
+      <div style="padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:16px;margin-bottom:12px">
+        <div style="font-weight:800;margin-bottom:6px">Micronutrient Focus</div>
+        <div class="small muted">
+          ${plan.micronutrients.map((x) => `• ${sanitize(x)}`).join("<br/>")}
+        </div>
+      </div>
+    `;
+
+    const hydro = `
+      <div style="padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:16px;margin-bottom:12px">
+        <div style="font-weight:800;margin-bottom:6px">Hydration</div>
+        <div class="small muted">
+          ${plan.hydration.map((x) => `• ${sanitize(x)}`).join("<br/>")}
+        </div>
+      </div>
+    `;
+
+    const meals = plan.meals
+      .map((m) => {
+        return `
+          <div style="margin:10px 0;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:16px">
+            <div style="font-weight:800">${sanitize(m.name)} — P${m.protein} / C${m.carbs} / F${m.fat}</div>
+            <div class="small muted" style="margin-top:8px">
+              ${m.options.map((x) => `• ${sanitize(x)}`).join("<br/>")}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const shop = `
+      <div style="padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:16px;margin-top:12px">
+        <div style="font-weight:800;margin-bottom:6px">Shopping List (quick)</div>
+        <div class="small muted">
+          ${plan.shoppingList.map((x) => `• ${sanitize(x)}`).join("<br/>")}
+        </div>
+      </div>
+    `;
+
+    mountEl.innerHTML = hdr + micro + hydro + meals + shop;
+  }
+
+  // ---------------------------
+  // UI Wiring (robust binding)
   // ---------------------------
   function fillSelect(selectEl, athletes, selectedId) {
     if (!selectEl) return;
     selectEl.innerHTML = athletes
       .map((a) => `<option value="${sanitize(a.id)}">${sanitize(a.name)}</option>`)
       .join("");
-    if (selectedId && athletes.some((a) => a.id === selectedId)) selectEl.value = selectedId;
+    if (selectedId) selectEl.value = selectedId;
   }
 
-  function renderMealPlan(planObj, mountEl) {
-    if (!mountEl) return;
-    if (!planObj?.plan?.length) {
-      mountEl.innerHTML = `<div class="small muted">No plan generated yet.</div>`;
-      return;
-    }
-
-    mountEl.innerHTML = planObj.plan
-      .map((day) => {
-        const micro = day.microFocus || {};
-        const microExamples = Array.isArray(micro.examples) ? micro.examples : [];
-
-        const mealLines = day.meals
-          .map((m) => {
-            const opts = buildFoodSuggestions(m, day.dayType)
-              .map((x) => `• ${sanitize(x)}`)
-              .join("<br/>");
-
-            return `
-              <div style="margin:10px 0;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:12px">
-                <div style="font-weight:700">${sanitize(m.name)} — P${m.protein} / C${m.carbs} / F${m.fat}</div>
-                <div class="small muted" style="margin-top:6px">${opts}</div>
-              </div>
-            `;
-          })
-          .join("");
-
-        return `
-          <div style="margin:14px 0;padding:12px;border:1px solid rgba(255,255,255,.10);border-radius:16px">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
-              <div style="font-weight:800">${sanitize(day.dateISO)} • ${sanitize(String(day.dayType).toUpperCase())}</div>
-              <div class="small muted">
-                Targets: P${day.targets.protein} / C${day.targets.carbs} / F${day.targets.fat} • Water ${day.targets.waterOz}oz
-              </div>
-            </div>
-
-            <div class="small muted" style="margin-top:6px">${sanitize(day.notes || "")}</div>
-
-            <div style="margin-top:10px;padding:10px;border:1px dashed rgba(255,255,255,.12);border-radius:12px">
-              <div style="font-weight:700">Micronutrient focus: ${sanitize(micro.focus || "—")}</div>
-              <div class="small muted" style="margin-top:6px">${sanitize(micro.why || "")}</div>
-              ${
-                microExamples.length
-                  ? `<div class="small muted" style="margin-top:6px">Examples: ${sanitize(microExamples.join(", "))}</div>`
-                  : ""
-              }
-            </div>
-
-            <div style="margin-top:10px">${mealLines}</div>
-          </div>
-        `;
-      })
-      .join("");
-  }
-
-  function bindMealPlanButton() {
-    const possibleIds = [
+  function bindGenerateButton() {
+    const possibleBtnIds = [
       "btnGenerateMealPlan",
       "btnGenMealPlan",
       "btnMealPlan",
-      "btnGeneratePlanMeal",
       "btnGenerateNutritionPlan",
-      "btnGeneratePlan" // fallback if reused
+      "btnGeneratePlanMeal"
     ];
+    const btn = possibleBtnIds.map((id) => $(id)).find(Boolean) || document.querySelector('[data-action="generate-meal-plan"]');
+    if (!btn) return false;
 
-    const btn = possibleIds.map((id) => $(id)).find(Boolean);
-    const fallbackBtn = document.querySelector('[data-action="generate-meal-plan"]');
-    const targetBtn = btn || fallbackBtn;
-    if (!targetBtn) return false;
+    if (btn.__piqBound) return true;
+    btn.__piqBound = true;
 
-    if (targetBtn.__piqBound) return true;
-    targetBtn.__piqBound = true;
-
-    targetBtn.addEventListener("click", () => {
+    btn.addEventListener("click", () => {
       try {
         const state = getRootState();
-        ensureNutritionState(state);
 
+        // Athlete selection priority: mealAthlete -> nutAthlete -> targetAthlete
+        const athleteSel = $("mealAthlete") || $("nutAthlete") || $("targetAthlete") || $("dashAthlete");
         const athletes = listAthletes(state);
-
-        const athleteSel = $("mealAthlete") || $("nutAthlete") || $("targetAthlete") || $("dashAthlete") || $("logAthlete");
-        const startInp = $("mealStart") || $("mealPlanStart") || $("nutDate") || $("dashDate");
-        const daysInp = $("mealDays") || $("mealPlanDays") || $("planDays");
-        const modeSel = $("mealDayType") || $("mealMode") || $("mealPlanMode");
-
         const athleteId = athleteSel?.value || athletes[0]?.id || "default";
-        const startISO = (startInp?.value || nowISO()).trim();
-        const days = Number(daysInp?.value || 7);
-        const mode = (modeSel?.value || "auto").trim(); // training|game|recovery|rest|auto
 
-        const planObj = generateMealPlan(state, athleteId, startISO, days, mode);
+        // Date input priority: mealDate -> nutDate -> dashDate
+        const dateInp = $("mealDate") || $("mealPlanDate") || $("nutDate") || $("dashDate");
+        const dateISO = safeISO(dateInp?.value) || nowISO();
 
-        const outMount = $("mealPlanOut") || $("mealPlanList") || $("mealPlanOutput");
-        if (outMount) renderMealPlan(planObj, outMount);
-        else alert("Meal plan generated. Add a container with id='mealPlanOut' to display it.");
+        // Day type from your HTML
+        const dayTypeSel = $("mealDayType");
+        const dayType = String(dayTypeSel?.value || "training");
 
+        const plan = buildPlan(state, athleteId, dateISO, dayType);
+        savePlan(state, plan);
         saveRootState(state);
+
+        const mount = $("mealPlanOut") || $("mealPlanList") || $("mealPlanOutput");
+        if (mount) renderPlan(plan, mount);
+        else alert("Meal plan generated. Add a container with id='mealPlanOut' to display it.");
       } catch (e) {
         console.warn("Meal plan generation failed:", e);
         alert("Meal plan generation failed: " + (e?.message || e));
@@ -461,40 +448,31 @@
     return true;
   }
 
-  function initNutritionUI() {
+  function init() {
     const state = getRootState();
-    ensureNutritionState(state);
-
     const athletes = listAthletes(state);
 
-    // Fill known selects (existing UI)
+    // If your UI includes a specific athlete selector for meal planning, populate it
+    fillSelect($("mealAthlete"), athletes);
+    // Also keep these in sync if present
     fillSelect($("nutAthlete"), athletes, $("nutAthlete")?.value);
     fillSelect($("targetAthlete"), athletes, $("targetAthlete")?.value);
 
-    // Fill meal plan generator select + defaults
-    fillSelect($("mealAthlete"), athletes, $("mealAthlete")?.value);
+    // Default date field if present
+    const dateInp = $("mealDate") || $("mealPlanDate") || $("nutDate");
+    if (dateInp && !safeISO(dateInp.value)) dateInp.value = nowISO();
 
-    if ($("nutDate")) $("nutDate").value = $("nutDate").value || nowISO();
-    if ($("mealStart")) $("mealStart").value = $("mealStart").value || nowISO();
-
-    // Bind the meal plan generator button robustly
-    bindMealPlanButton();
+    bindGenerateButton();
   }
 
   // Public API
   window.PIQ_Nutrition = window.PIQ_Nutrition || {};
-  window.PIQ_Nutrition.init = initNutritionUI;
-  window.PIQ_Nutrition.generateMealPlan = function (athleteId, startISO, days, mode) {
-    const state = getRootState();
-    const planObj = generateMealPlan(state, athleteId, startISO, days, mode);
-    saveRootState(state);
-    return planObj;
-  };
+  window.PIQ_Nutrition.init = init;
 
-  // Init after DOM ready + retries (covers late-rendered views)
+  // Init after DOM ready + retry (for view-based rendering / hidden tabs)
   document.addEventListener("DOMContentLoaded", () => {
-    initNutritionUI();
-    setTimeout(initNutritionUI, 250);
-    setTimeout(initNutritionUI, 1000);
+    init();
+    setTimeout(init, 250);
+    setTimeout(init, 1000);
   });
 })();
