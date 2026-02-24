@@ -1,327 +1,374 @@
-// dataStore.js — NEXT PHASE (join codes + clean queries) v1.4.0
-// Offline-first app still works without Supabase; these APIs require window.supabaseClient.
-//
-// Tables expected (public):
-// - piq_user_state (user_id uuid PK, state jsonb, updated_at timestamptz)
-// - workout_logs (athlete_id uuid, date date, ...)
-// - performance_metrics (athlete_id uuid, date date, ...)
-// - teams (id uuid PK, name text, sport text, owner_id uuid, coach_id uuid, join_code text UNIQUE, created_at timestamptz)
-// - team_members (id uuid PK, team_id uuid, user_id uuid, role_in_team text, linked_athlete_id uuid NULL, created_at timestamptz)
-//
-// IMPORTANT (RLS):
-// - To allow non-members to join via code, create RPC:
-//   public.get_team_by_join_code(code text)
-//   returning teams rows or minimal fields.
+// dataStore.js — PerformanceIQ Offline Store (single source of truth)
+// v2.0.0 — supports PIQ Score, Heatmap, Nutrition (paid), Risk, Periodization
 
 (function () {
   "use strict";
-  if (window.dataStore) return;
+  if (window.PIQ_Store) return;
 
-  function requireClient() {
-    if (!window.supabaseClient) throw new Error("supabaseClient not initialized");
-    return window.supabaseClient;
+  const LS_KEY = "piq_state_v2";
+
+  function todayISO() {
+    return new Date().toISOString().slice(0, 10);
   }
 
-  async function getUserId() {
-    if (!window.PIQ_AuthStore?.getUser) return null;
-    const u = await window.PIQ_AuthStore.getUser();
-    return u?.id || null;
+  function uid() {
+    return "id_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   }
 
-  // ----------------
-  // Join code helper
-  // ----------------
-  function generateJoinCode(length) {
-    const len = Math.max(4, Number(length || 6));
-    return Math.random().toString(36).substring(2, 2 + len).toUpperCase();
+  function clamp(n, a, b) {
+    const x = Number(n);
+    if (Number.isNaN(x)) return a;
+    return Math.max(a, Math.min(b, x));
   }
 
-  async function ensureUniqueJoinCode(supabase, length) {
-    for (let i = 0; i < 25; i++) {
-      const code = generateJoinCode(length);
-      const { data, error } = await supabase.from("teams").select("id").eq("join_code", code).maybeSingle();
-      if (error) throw error;
-      if (!data) return code;
-    }
-    throw new Error("Could not generate unique join code. Increase length and retry.");
+  function deepCopy(x) {
+    return JSON.parse(JSON.stringify(x));
   }
 
-  // ---------
-  // State Sync
-  // ---------
-  async function pushState(stateObj) {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
-
-    const { error } = await supabase
-      .from("piq_user_state")
-      .upsert({ user_id: uid, state: stateObj, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
-
-    if (error) throw error;
-    return true;
+  function defaultState() {
+    return {
+      version: 2,
+      updatedAt: new Date().toISOString(),
+      team: {
+        id: "team_default",
+        name: "Default",
+        seasonStart: "",
+        seasonEnd: "",
+        macroDefaults: { p: 160, c: 240, f: 70, w: 96 }, // water oz default
+        weights: { readiness: 30, training: 25, recovery: 20, nutrition: 15, risk: 10 },
+      },
+      entitlements: {
+        eliteNutrition: false,
+        eliteSince: null,
+      },
+      roster: [
+        // {id,name,pos,heightIn,weightLb, targets:{p,c,f,w}}
+      ],
+      logs: {
+        training: [
+          // {id, athleteId, date, minutes, rpe, type, notes}
+        ],
+        readiness: [
+          // {id, athleteId, date, sleepHrs, sore, stress, energy, injuryNote}
+        ],
+        nutrition: [
+          // {id, athleteId, date, p,c,f,w, notes}
+        ],
+      },
+      plans: {
+        periodization: [
+          // {id, athleteId, startISO, weeks, goal, deloadEvery, createdAt, weeksData:[...]}
+        ],
+      },
+    };
   }
 
-  async function pullState() {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
-
-    const { data, error } = await supabase
-      .from("piq_user_state")
-      .select("state, updated_at")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    if (error) throw error;
-    return data ? { state: data.state, updated_at: data.updated_at } : null;
-  }
-
-  // -----------------
-  // Workout Logs CRUD
-  // -----------------
-  async function upsertWorkoutLog(row) {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
-    const payload = { ...row, athlete_id: uid };
-
-    const { error } = await supabase.from("workout_logs").upsert(payload, { onConflict: "athlete_id,date" });
-    if (error) throw error;
-    return true;
-  }
-
-  async function listWorkoutLogsForAthlete(athleteId, upToISO, limit) {
-    const supabase = requireClient();
-    const upTo = String(upToISO || "").slice(0, 10);
-    const lim = Number(limit || 14);
-
-    const { data, error } = await supabase
-      .from("workout_logs")
-      .select("*")
-      .eq("athlete_id", athleteId)
-      .lte("date", upTo)
-      .order("date", { ascending: false })
-      .limit(lim);
-
-    if (error) throw error;
-    return data || [];
-  }
-
-  // -----------------------
-  // Performance Metrics CRUD
-  // -----------------------
-  async function upsertPerformanceMetric(row) {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
-    const payload = { ...row, athlete_id: uid };
-
-    const { error } = await supabase.from("performance_metrics").upsert(payload, { onConflict: "athlete_id,date" });
-    if (error) throw error;
-    return true;
-  }
-
-  async function listMetricsForAthlete(athleteId, upToISO, limit) {
-    const supabase = requireClient();
-    const upTo = String(upToISO || "").slice(0, 10);
-    const lim = Number(limit || 14);
-
-    const { data, error } = await supabase
-      .from("performance_metrics")
-      .select("*")
-      .eq("athlete_id", athleteId)
-      .lte("date", upTo)
-      .order("date", { ascending: false })
-      .limit(lim);
-
-    if (error) throw error;
-    return data || [];
-  }
-
-  // -----
-  // Teams
-  // -----
-  async function listMyTeams() {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
-
-    const { data: membership, error: mErr } = await supabase.from("team_members").select("team_id").eq("user_id", uid);
-    if (mErr) throw mErr;
-
-    const teamIds = (membership || []).map((x) => x.team_id).filter(Boolean);
-    if (!teamIds.length) return [];
-
-    const { data, error } = await supabase
-      .from("teams")
-      .select("id,name,sport,join_code,owner_id,coach_id,created_at")
-      .in("id", teamIds);
-
-    if (error) throw error;
-    return data || [];
-  }
-
-  async function createTeam(name, sport, options) {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
-
-    const cleanName = String(name || "").trim();
-    if (!cleanName) throw new Error("Team name is required");
-    const cleanSport = sport ? String(sport).trim() : null;
-
-    const opts = options && typeof options === "object" ? options : {};
-    const codeLen = Number(opts.joinCodeLength || 6);
-
-    const joinCode = await ensureUniqueJoinCode(supabase, codeLen);
-
-    const { data: team, error: e1 } = await supabase
-      .from("teams")
-      .insert({ name: cleanName, sport: cleanSport, owner_id: uid, coach_id: uid, join_code: joinCode })
-      .select("*")
-      .single();
-
-    if (e1) throw e1;
-
-    const { error: e2 } = await supabase.from("team_members").insert({
-      team_id: team.id,
-      user_id: uid,
-      role_in_team: "coach",
-      linked_athlete_id: null
-    });
-    if (e2) throw e2;
-
-    return team;
-  }
-
-  async function renewJoinCode(teamId, options) {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
-
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId is required");
-
-    const opts = options && typeof options === "object" ? options : {};
-    const codeLen = Number(opts.joinCodeLength || 6);
-    const joinCode = await ensureUniqueJoinCode(supabase, codeLen);
-
-    const { data: updated, error } = await supabase
-      .from("teams")
-      .update({ join_code: joinCode })
-      .eq("id", tid)
-      .select("*")
-      .single();
-
-    if (error) throw error;
-    return updated;
-  }
-
-  async function getTeamByJoinCode(joinCode) {
-    const supabase = requireClient();
-    const code = String(joinCode || "").trim().toUpperCase();
-    if (!code) throw new Error("Join code is required");
-
-    // RPC first (recommended under RLS)
+  function load() {
     try {
-      const { data, error } = await supabase.rpc("get_team_by_join_code", { code });
-      if (!error && Array.isArray(data) && data.length) return data[0];
-    } catch (_) {}
-
-    // fallback direct select (may fail under RLS)
-    const { data, error } = await supabase.from("teams").select("*").eq("join_code", code).maybeSingle();
-    if (error) throw error;
-    if (!data) throw new Error("Invalid join code");
-    return data;
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return defaultState();
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return defaultState();
+      if (!parsed.version) return defaultState();
+      // light migration guard
+      if (parsed.version !== 2) return defaultState();
+      return parsed;
+    } catch (_) {
+      return defaultState();
+    }
   }
 
-  async function joinTeamByCode(joinCode, roleInTeam, linkedAthleteId) {
-    const supabase = requireClient();
-    const uid = await getUserId();
-    if (!uid) throw new Error("Not signed in");
+  let STATE = load();
 
-    const team = await getTeamByJoinCode(joinCode);
-    if (!team?.id) throw new Error("Invalid join code");
-
-    const role = String(roleInTeam || "athlete").trim() || "athlete";
-
-    const { error } = await supabase.from("team_members").insert({
-      team_id: team.id,
-      user_id: uid,
-      role_in_team: role,
-      linked_athlete_id: linkedAthleteId || null
-    });
-    if (error) throw error;
-
-    return team;
+  function save() {
+    STATE.updatedAt = new Date().toISOString();
+    localStorage.setItem(LS_KEY, JSON.stringify(STATE));
   }
 
-  // -----
-  // Roster
-  // -----
-  async function listTeamMembers(teamId) {
-    const supabase = requireClient();
-    const tid = String(teamId || "").trim();
-    if (!tid) throw new Error("teamId is required");
-
-    const { data, error } = await supabase
-      .from("team_members")
-      .select("*")
-      .eq("team_id", tid)
-      .order("created_at", { ascending: true });
-
-    if (error) throw error;
-    return data || [];
+  function getState() {
+    return deepCopy(STATE);
   }
 
-  async function addTeamMember(teamId, userId, roleInTeam, linkedAthleteId) {
-    const supabase = requireClient();
-    const tid = String(teamId || "").trim();
-    const uid = String(userId || "").trim();
-    if (!tid) throw new Error("teamId is required");
-    if (!uid) throw new Error("userId is required");
-
-    const { error } = await supabase.from("team_members").insert({
-      team_id: tid,
-      user_id: uid,
-      role_in_team: String(roleInTeam || "athlete").trim() || "athlete",
-      linked_athlete_id: linkedAthleteId || null
-    });
-    if (error) throw error;
-    return true;
+  function setState(next) {
+    STATE = next && typeof next === "object" ? next : defaultState();
+    save();
   }
 
-  async function removeTeamMember(teamId, memberId) {
-    const supabase = requireClient();
-    const tid = String(teamId || "").trim();
-    const mid = String(memberId || "").trim();
-    if (!tid) throw new Error("teamId is required");
-    if (!mid) throw new Error("memberId is required");
-
-    const { error } = await supabase.from("team_members").delete().eq("team_id", tid).eq("id", mid);
-    if (error) throw error;
-    return true;
+  function wipe() {
+    localStorage.removeItem(LS_KEY);
+    STATE = defaultState();
   }
 
-  window.dataStore = {
-    pushState,
-    pullState,
-    upsertWorkoutLog,
-    upsertPerformanceMetric,
-    listWorkoutLogsForAthlete,
-    listMetricsForAthlete,
+  // -------- TEAM --------
+  function setTeam(patch) {
+    STATE.team = { ...STATE.team, ...(patch || {}) };
+    save();
+  }
 
-    // teams
-    listMyTeams,
-    createTeam,
-    renewJoinCode,
-    getTeamByJoinCode,
-    joinTeamByCode,
+  function setMacroDefaults(p, c, f, w) {
+    STATE.team.macroDefaults = {
+      p: clamp(p, 0, 500),
+      c: clamp(c, 0, 1200),
+      f: clamp(f, 0, 400),
+      w: clamp(w, 0, 300),
+    };
+    save();
+  }
 
-    // roster
-    listTeamMembers,
-    addTeamMember,
-    removeTeamMember
+  function setWeights(w) {
+    const next = {
+      readiness: clamp(w?.readiness, 0, 100),
+      training: clamp(w?.training, 0, 100),
+      recovery: clamp(w?.recovery, 0, 100),
+      nutrition: clamp(w?.nutrition, 0, 100),
+      risk: clamp(w?.risk, 0, 100),
+    };
+    STATE.team.weights = next;
+    save();
+  }
+
+  // -------- ENTITLEMENTS --------
+  function enableEliteNutrition() {
+    STATE.entitlements.eliteNutrition = true;
+    STATE.entitlements.eliteSince = new Date().toISOString();
+    save();
+  }
+  function disableEliteNutrition() {
+    STATE.entitlements.eliteNutrition = false;
+    save();
+  }
+
+  // -------- ROSTER --------
+  function addAthlete(name, pos, heightIn, weightLb) {
+    const clean = String(name || "").trim();
+    if (!clean) throw new Error("Name required");
+    const a = {
+      id: uid(),
+      name: clean,
+      pos: String(pos || "").trim(),
+      heightIn: clamp(heightIn, 40, 96),
+      weightLb: clamp(weightLb, 60, 400),
+      targets: null, // per-athlete macros; if null, uses team defaults
+    };
+    STATE.roster.push(a);
+    save();
+    return deepCopy(a);
+  }
+
+  function removeAthlete(athleteId) {
+    STATE.roster = STATE.roster.filter((a) => a.id !== athleteId);
+    // also prune logs/plans
+    STATE.logs.training = STATE.logs.training.filter((x) => x.athleteId !== athleteId);
+    STATE.logs.readiness = STATE.logs.readiness.filter((x) => x.athleteId !== athleteId);
+    STATE.logs.nutrition = STATE.logs.nutrition.filter((x) => x.athleteId !== athleteId);
+    STATE.plans.periodization = STATE.plans.periodization.filter((x) => x.athleteId !== athleteId);
+    save();
+  }
+
+  function setAthleteTargets(athleteId, targets) {
+    const a = STATE.roster.find((x) => x.id === athleteId);
+    if (!a) throw new Error("Athlete not found");
+    a.targets = {
+      p: clamp(targets?.p, 0, 500),
+      c: clamp(targets?.c, 0, 1200),
+      f: clamp(targets?.f, 0, 400),
+      w: clamp(targets?.w, 0, 300),
+    };
+    save();
+  }
+
+  function getTargetsForAthlete(athleteId) {
+    const a = STATE.roster.find((x) => x.id === athleteId);
+    const def = STATE.team.macroDefaults;
+    const t = a?.targets;
+    return {
+      p: t?.p ?? def.p,
+      c: t?.c ?? def.c,
+      f: t?.f ?? def.f,
+      w: t?.w ?? def.w,
+    };
+  }
+
+  // -------- LOGS --------
+  function upsertTraining(entry) {
+    const e = { ...(entry || {}) };
+    if (!e.athleteId) throw new Error("athleteId required");
+    if (!e.date) throw new Error("date required");
+    const minutes = clamp(e.minutes, 0, 600);
+    const rpe = clamp(e.rpe, 0, 10);
+    const out = {
+      id: e.id || uid(),
+      athleteId: e.athleteId,
+      date: String(e.date).slice(0, 10),
+      minutes,
+      rpe,
+      type: String(e.type || "practice"),
+      notes: String(e.notes || "").slice(0, 240),
+    };
+    // allow multiple sessions/day; upsert by id
+    const idx = STATE.logs.training.findIndex((x) => x.id === out.id);
+    if (idx >= 0) STATE.logs.training[idx] = out;
+    else STATE.logs.training.push(out);
+    save();
+    return deepCopy(out);
+  }
+
+  function upsertReadiness(entry) {
+    const e = { ...(entry || {}) };
+    if (!e.athleteId) throw new Error("athleteId required");
+    if (!e.date) throw new Error("date required");
+    const out = {
+      id: e.id || uid(),
+      athleteId: e.athleteId,
+      date: String(e.date).slice(0, 10),
+      sleepHrs: clamp(e.sleepHrs, 0, 16),
+      sore: clamp(e.sore, 0, 10),
+      stress: clamp(e.stress, 0, 10),
+      energy: clamp(e.energy, 0, 10),
+      injuryNote: String(e.injuryNote || "").slice(0, 120),
+    };
+    // one per day per athlete => upsert by athlete+date
+    const idx = STATE.logs.readiness.findIndex((x) => x.athleteId === out.athleteId && x.date === out.date);
+    if (idx >= 0) STATE.logs.readiness[idx] = { ...STATE.logs.readiness[idx], ...out, id: STATE.logs.readiness[idx].id };
+    else STATE.logs.readiness.push(out);
+    save();
+    return deepCopy(out);
+  }
+
+  function upsertNutrition(entry) {
+    const e = { ...(entry || {}) };
+    if (!e.athleteId) throw new Error("athleteId required");
+    if (!e.date) throw new Error("date required");
+    const out = {
+      id: e.id || uid(),
+      athleteId: e.athleteId,
+      date: String(e.date).slice(0, 10),
+      p: clamp(e.p, 0, 800),
+      c: clamp(e.c, 0, 1500),
+      f: clamp(e.f, 0, 500),
+      w: clamp(e.w, 0, 400),
+      notes: String(e.notes || "").slice(0, 240),
+    };
+    // one per day per athlete
+    const idx = STATE.logs.nutrition.findIndex((x) => x.athleteId === out.athleteId && x.date === out.date);
+    if (idx >= 0) STATE.logs.nutrition[idx] = { ...STATE.logs.nutrition[idx], ...out, id: STATE.logs.nutrition[idx].id };
+    else STATE.logs.nutrition.push(out);
+    save();
+    return deepCopy(out);
+  }
+
+  function listTraining(athleteId, limit = 14) {
+    return deepCopy(
+      STATE.logs.training
+        .filter((x) => x.athleteId === athleteId)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))
+        .slice(0, limit)
+    );
+  }
+
+  function listReadiness(athleteId, limit = 14) {
+    return deepCopy(
+      STATE.logs.readiness
+        .filter((x) => x.athleteId === athleteId)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))
+        .slice(0, limit)
+    );
+  }
+
+  function listNutrition(athleteId, limit = 14) {
+    return deepCopy(
+      STATE.logs.nutrition
+        .filter((x) => x.athleteId === athleteId)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))
+        .slice(0, limit)
+    );
+  }
+
+  function getTrainingForDate(athleteId, dateISO) {
+    const d = String(dateISO).slice(0, 10);
+    return deepCopy(STATE.logs.training.filter((x) => x.athleteId === athleteId && x.date === d));
+  }
+
+  function getReadinessForDate(athleteId, dateISO) {
+    const d = String(dateISO).slice(0, 10);
+    const r = STATE.logs.readiness.find((x) => x.athleteId === athleteId && x.date === d);
+    return r ? deepCopy(r) : null;
+  }
+
+  function getNutritionForDate(athleteId, dateISO) {
+    const d = String(dateISO).slice(0, 10);
+    const n = STATE.logs.nutrition.find((x) => x.athleteId === athleteId && x.date === d);
+    return n ? deepCopy(n) : null;
+  }
+
+  // -------- PLANS --------
+  function savePeriodizationPlan(plan) {
+    const p = { ...(plan || {}) };
+    if (!p.athleteId) throw new Error("athleteId required");
+    if (!p.startISO) throw new Error("startISO required");
+    const out = {
+      id: p.id || uid(),
+      athleteId: p.athleteId,
+      startISO: String(p.startISO).slice(0, 10),
+      weeks: clamp(p.weeks, 2, 24),
+      goal: String(p.goal || "inseason"),
+      deloadEvery: clamp(p.deloadEvery, 3, 5),
+      createdAt: new Date().toISOString(),
+      weeksData: Array.isArray(p.weeksData) ? p.weeksData : [],
+    };
+    const idx = STATE.plans.periodization.findIndex((x) => x.id === out.id);
+    if (idx >= 0) STATE.plans.periodization[idx] = out;
+    else STATE.plans.periodization.unshift(out);
+    save();
+    return deepCopy(out);
+  }
+
+  function listPlans(athleteId, limit = 5) {
+    return deepCopy(STATE.plans.periodization.filter((x) => x.athleteId === athleteId).slice(0, limit));
+  }
+
+  function getLatestPlan(athleteId) {
+    const p = STATE.plans.periodization.find((x) => x.athleteId === athleteId);
+    return p ? deepCopy(p) : null;
+  }
+
+  window.PIQ_Store = {
+    LS_KEY,
+    todayISO,
+    clamp,
+    uid,
+
+    getState,
+    setState,
+    save,
+    wipe,
+
+    setTeam,
+    setMacroDefaults,
+    setWeights,
+
+    enableEliteNutrition,
+    disableEliteNutrition,
+
+    addAthlete,
+    removeAthlete,
+    setAthleteTargets,
+    getTargetsForAthlete,
+
+    upsertTraining,
+    upsertReadiness,
+    upsertNutrition,
+
+    listTraining,
+    listReadiness,
+    listNutrition,
+
+    getTrainingForDate,
+    getReadinessForDate,
+    getNutritionForDate,
+
+    savePeriodizationPlan,
+    listPlans,
+    getLatestPlan,
   };
 })();
