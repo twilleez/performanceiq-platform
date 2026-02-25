@@ -228,12 +228,15 @@
       </div>
     </section>
 
-    <!-- WORKOUTS (Phase 3) -->
+    <!-- WORKOUTS (Milestone upgrade: exercises + completion + deload scaling) -->
     <section id="view-workouts" class="view hidden">
       <h2>Workouts</h2>
 
       <div class="card">
-        <div class="cardhead"><h3>Weekly Builder</h3><span class="muted">Standard vs Advanced</span></div>
+        <div class="cardhead">
+          <h3>Weekly Builder</h3>
+          <span class="muted">Standard vs Advanced + Exercises + Deload-aware</span>
+        </div>
 
         <div class="row gap wrap end">
           <div class="field">
@@ -266,21 +269,28 @@
         </div>
 
         <div class="mini">
-          <div class="minihead">Generated week (click to write-back)</div>
+          <div class="minihead">Week status</div>
+          <div id="wkBadgeOut" class="mono small">—</div>
+        </div>
+
+        <div class="mini">
+          <div class="minihead">Generated week</div>
           <div id="workoutOutput" class="list"></div>
         </div>
 
         <div class="mini">
-          <div class="minihead">Notes</div>
+          <div class="minihead">How to use</div>
           <div class="mono small muted">
-            - “Apply week” writes each day to the Training Log with its calendar date.<br/>
-            - Loads are sRPE × minutes and will update PIQ + Risk.
+            - Expand a day to see <b>exercises</b>.<br/>
+            - Mark <b>Completed</b> to save that day.<br/>
+            - “Add to Log” writes that day’s minutes/RPE as a training session.<br/>
+            - “Apply week to Log” writes all 7 days as sessions (Off days write minimal load).
           </div>
         </div>
       </div>
     </section>
 
-    <!-- PERIODIZATION (Phase 4) -->
+    <!-- PERIODIZATION -->
     <section id="view-periodization" class="view hidden">
       <h2>Periodization</h2>
 
@@ -322,7 +332,7 @@
       </div>
     </section>
 
-    <!-- SETTINGS (coach only) -->
+    <!-- SETTINGS -->
     <section id="view-settings" class="view hidden">
       <h2>Settings</h2>
       <div class="card">
@@ -360,4 +370,4 @@
 
 <script src="core.js"></script>
 </body>
-  </html>
+</html>
