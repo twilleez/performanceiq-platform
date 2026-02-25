@@ -69,6 +69,7 @@
               <h2>PerformanceIQ Score</h2>
               <span class="muted">Brand differentiator</span>
             </div>
+
             <div class="row gap">
               <div class="field">
                 <label>Pick athlete</label>
@@ -131,6 +132,7 @@
               <h2>Risk Detection</h2>
               <span class="muted">Heuristic flags</span>
             </div>
+
             <div class="row gap">
               <div class="field">
                 <label>Pick athlete</label>
@@ -545,7 +547,7 @@
                 </div>
               </div>
 
-              <!-- ✅ CLEAN SINGLE MEAL PLAN GENERATOR (unique IDs) -->
+              <!-- MEAL PLAN GENERATOR (unique IDs) -->
               <div class="mini" id="mealPlanBlock">
                 <div class="minihead">Meal plan generator (Elite)</div>
                 <div class="minibody small muted">
@@ -707,6 +709,19 @@
               <button class="btn danger" id="btnWipe">Wipe all local data</button>
             </div>
 
+            <!-- ✅ Elite toggle (core.js expects these IDs) -->
+            <div class="mini">
+              <div class="minihead">Elite upgrade</div>
+              <div class="minibody small muted">
+                Toggle stored entitlements (for demos / sales calls).
+              </div>
+              <div class="row gap wrap">
+                <button class="btn ghost" id="btnEnableElite">Enable Elite</button>
+                <button class="btn ghost" id="btnDisableElite">Disable Elite</button>
+              </div>
+              <div class="small muted" id="eliteState">—</div>
+            </div>
+
             <div class="mini">
               <div class="minihead">App info</div>
               <div class="minibody mono small" id="appInfo">—</div>
@@ -726,4 +741,4 @@
   <script src="./nutritionEngine.js"></script>
   <script src="./core.js"></script>
 </body>
-                  </html>
+</html>
