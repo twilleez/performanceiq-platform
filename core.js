@@ -1,12 +1,12 @@
-// core.js — v2.5.0 (FULL FILE)
-// Adds: Sport Engine + Workout Builder + writeback + periodization integration.
-// Requires: sportEngine.js, workoutEngine.js, analyticsEngine.js (optional), periodizationEngine.js (optional)
+// core.js — v2.6.0 (FULL FILE)
+// Includes: Dashboard + Team + Log + Workouts + Elite Nutrition + Periodization + Analytics (if analyticsEngine.js present)
+// Offline-first • localStorage
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V250__) return;
-  window.__PIQ_CORE_V250__ = true;
+  if (window.__PIQ_CORE_V260__) return;
+  window.__PIQ_CORE_V260__ = true;
 
-  const APP_VERSION = "2.5.0";
+  const APP_VERSION = "2.6.0";
   const STORAGE_KEY = "piq_v2_state";
   const DEFAULT_TEAM_ID = "default";
 
@@ -48,6 +48,51 @@
     if (el) el.textContent = String(txt ?? "");
   }
 
+  // -------------------------
+  // UX helpers (competitor-grade)
+  // -------------------------
+  function ensureToast() {
+    if ($("piqToast")) return;
+    const t = document.createElement("div");
+    t.id = "piqToast";
+    t.style.position = "fixed";
+    t.style.right = "16px";
+    t.style.bottom = "16px";
+    t.style.zIndex = "99999";
+    t.style.maxWidth = "360px";
+    t.style.display = "none";
+    t.style.padding = "10px 12px";
+    t.style.border = "1px solid var(--border2)";
+    t.style.borderRadius = "6px";
+    t.style.background = "rgba(20,22,26,0.96)";
+    t.style.backdropFilter = "blur(10px)";
+    t.style.color = "var(--text)";
+    t.style.fontFamily = "var(--mono)";
+    t.style.fontSize = "12px";
+    t.style.letterSpacing = "0.02em";
+    t.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
+    document.body.appendChild(t);
+  }
+
+  let toastTimer = null;
+  function toast(msg, kind = "info") {
+    ensureToast();
+    const el = $("piqToast");
+    if (!el) return;
+
+    const border =
+      kind === "danger" ? "rgba(230,57,70,0.7)" :
+      kind === "warn" ? "rgba(255,183,3,0.7)" :
+      kind === "ok" ? "rgba(61,220,132,0.7)" :
+      "var(--border2)";
+
+    el.style.borderColor = border;
+    el.innerHTML = escHTML(msg);
+    el.style.display = "block";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = "none"; }, 2200);
+  }
+
   function onceBind(el, key, fn) {
     if (!el) return;
     const k = `__piq_once_${key}__`;
@@ -63,6 +108,20 @@
     const now = Date.now();
     return {
       meta: { version: 1, updatedAtMs: now, appVersion: APP_VERSION },
+      ui: {
+        lastView: "dashboard",
+        selections: {
+          dashboardAthlete: "",
+          riskAthlete: "",
+          logAthlete: "",
+          readyAthlete: "",
+          nutAthlete: "",
+          targetAthlete: "",
+          perAthlete: "",
+          monAthlete: "",
+          wkAthlete: ""
+        }
+      },
       user: { role: "coach" }, // coach | athlete
       team: {
         id: DEFAULT_TEAM_ID,
@@ -74,9 +133,9 @@
       },
       athletes: [], // {id,name,position,heightIn,weightLb,sportId}
       logs: { training: {}, readiness: {}, nutrition: {} },
-      targets: {},
-      periodization: {}, // existing
-      workouts: {} // { [athleteId]: {sportId, level, startISO, weeks, defaultDayType, weeksPlan[]} }
+      targets: {},          // per athlete macro targets
+      periodization: {},    // per athlete plans
+      workouts: {}          // per athlete workout plans (sport engine)
     };
   }
 
@@ -85,6 +144,10 @@
     if (!s || typeof s !== "object") return d;
 
     s.meta = s.meta && typeof s.meta === "object" ? s.meta : d.meta;
+    s.ui = s.ui && typeof s.ui === "object" ? s.ui : d.ui;
+    s.ui.lastView = s.ui.lastView || "dashboard";
+    s.ui.selections = s.ui.selections && typeof s.ui.selections === "object" ? s.ui.selections : d.ui.selections;
+
     s.user = s.user && typeof s.user === "object" ? s.user : d.user;
     if (!s.user.role) s.user.role = "coach";
 
@@ -124,6 +187,7 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
       console.warn("saveState failed", e);
+      toast("Save failed (storage full?)", "warn");
     }
   }
 
@@ -399,23 +463,20 @@
   }
 
   // -------------------------
-  // Inject Workout view + nav button (no HTML edits needed)
+  // Inject Workout view + nav button (no HTML edits)
   // -------------------------
   function ensureWorkoutViewInjected() {
-    // nav button
     const nav = q(".nav");
     if (nav && !q(".navbtn[data-view='workouts']", nav)) {
       const btn = document.createElement("button");
       btn.className = "navbtn";
       btn.setAttribute("data-view", "workouts");
       btn.textContent = "Workouts";
-      // insert after Log
       const logBtn = q(".navbtn[data-view='log']", nav);
       if (logBtn && logBtn.nextSibling) nav.insertBefore(btn, logBtn.nextSibling);
       else nav.appendChild(btn);
     }
 
-    // view section
     const content = q(".content");
     if (content && !$("view-workouts")) {
       const sec = document.createElement("section");
@@ -518,6 +579,9 @@
     });
     qa(".navbtn").forEach((b) => b.classList.toggle("active", b.getAttribute("data-view") === view));
 
+    state.ui.lastView = view;
+    saveState();
+
     if (view === "dashboard") renderDashboard();
     if (view === "team") renderTeam();
     if (view === "log") renderLog();
@@ -525,8 +589,6 @@
     if (view === "nutrition") renderNutrition();
     if (view === "periodization") renderPeriodization();
     if (view === "settings") renderSettings();
-
-    saveState();
   }
 
   function wireNav() {
@@ -538,7 +600,7 @@
   }
 
   // -------------------------
-  // Analytics injection (same as prior)
+  // Analytics injection (if analyticsEngine.js exists)
   // -------------------------
   function ensureAnalyticsCard() {
     const dash = $("view-dashboard");
@@ -627,7 +689,7 @@
         alertsEl.innerHTML = `<div class="muted small">No alerts.</div>`;
       } else {
         alertsEl.innerHTML = s.alerts.map((a) => {
-          const cls = a.level === "danger" ? "pill danger" : a.level === "warn" ? "pill warn" : "pill";
+          const cls = a.level === "danger" ? "pill danger" : a.level === "warn" ? "pill warn" : a.level === "ok" ? "pill ok" : "pill";
           return `<div class="row gap wrap" style="margin:6px 0"><span class="${cls}">${escHTML(a.level.toUpperCase())}</span><span class="small">${escHTML(a.msg)}</span></div>`;
         }).join("");
       }
@@ -635,21 +697,30 @@
   }
 
   // -------------------------
-  // Dashboard (existing IDs from your HTML)
+  // DASHBOARD
   // -------------------------
   function renderDashboard() {
+    const athletes = getAthletes();
+
     const athSel = $("dashAthlete");
     const dateEl = $("dashDate");
-    fillAthleteSelect(athSel, athSel?.value);
+
+    fillAthleteSelect(athSel, state.ui.selections.dashboardAthlete || athSel?.value);
+    if (athSel) state.ui.selections.dashboardAthlete = athSel.value || "";
     if (dateEl && !safeISO(dateEl.value)) dateEl.value = todayISO();
 
-    fillAthleteSelect($("riskAthlete"), $("riskAthlete")?.value);
+    const riskAthSel = $("riskAthlete");
     const riskDateEl = $("riskDate");
+    fillAthleteSelect(riskAthSel, state.ui.selections.riskAthlete || riskAthSel?.value);
+    if (riskAthSel) state.ui.selections.riskAthlete = riskAthSel.value || "";
     if (riskDateEl && !safeISO(riskDateEl.value)) riskDateEl.value = todayISO();
 
     function updatePIQ() {
       const athleteId = athSel?.value || "";
       const dateISO = safeISO(dateEl?.value) || todayISO();
+      state.ui.selections.dashboardAthlete = athleteId;
+      saveState();
+
       if (!athleteId) {
         setText("piqScore", "—");
         setText("piqBand", "Add athletes in Team tab");
@@ -700,9 +771,17 @@
     updatePIQ();
 
     function updateRisk() {
-      const athleteId = $("riskAthlete")?.value || "";
-      const dateISO = safeISO($("riskDate")?.value) || todayISO();
-      if (!athleteId) return setText("riskSummary", "Add athletes in Team tab");
+      const athleteId = riskAthSel?.value || "";
+      const dateISO = safeISO(riskDateEl?.value) || todayISO();
+      state.ui.selections.riskAthlete = athleteId;
+      saveState();
+
+      if (!athleteId) {
+        setText("riskSummary", "Add athletes in Team tab");
+        setText("riskWorkload", "—");
+        setText("riskReadiness", "—");
+        return;
+      }
       const r = runRiskDetection(athleteId, dateISO);
       setText("riskSummary", `${r.headline} • Risk index ${r.index}/100 • ${r.flags.length ? r.flags.join(", ") : "No major flags"}`);
       setText("riskWorkload",
@@ -712,13 +791,95 @@
     }
 
     onceBind($("btnRunRisk"), "risk", updateRisk);
-    const ra = $("riskAthlete"); if (ra && !ra.__piqBound) { ra.__piqBound = true; ra.addEventListener("change", updateRisk); }
-    const rd = $("riskDate"); if (rd && !rd.__piqBound) { rd.__piqBound = true; rd.addEventListener("change", updateRisk); }
+    if (riskAthSel && !riskAthSel.__piqBound) { riskAthSel.__piqBound = true; riskAthSel.addEventListener("change", updateRisk); }
+    if (riskDateEl && !riskDateEl.__piqBound) { riskDateEl.__piqBound = true; riskDateEl.addEventListener("change", updateRisk); }
     updateRisk();
+
+    // HEATMAP
+    onceBind($("btnHeatmap"), "heatmap", () => {
+      if (!athletes.length) return toast("Add athletes first (Team tab).", "warn");
+      const start = safeISO($("heatStart")?.value) || addDaysISO(todayISO(), -20);
+      const days = clamp(toNum($("heatDays")?.value, 21), 7, 60);
+      const metric = $("heatMetric")?.value || "load";
+      renderHeatmap(start, days, metric);
+    });
+
+    const heatStart = $("heatStart");
+    if (heatStart && !safeISO(heatStart.value)) heatStart.value = addDaysISO(todayISO(), -20);
+  }
+
+  function renderHeatmap(startISO, days, metric) {
+    const table = $("heatTable");
+    if (!table) return;
+
+    const athletes = getAthletes();
+    const dates = Array.from({ length: days }, (_, i) => addDaysISO(startISO, i));
+
+    const getCellValue = (athleteId, dateISO) => {
+      if (metric === "load") {
+        const sessions = getTraining(athleteId).filter((s) => s.dateISO === dateISO);
+        return sessions.reduce((a, s) => a + sessionLoad(s), 0);
+      }
+      if (metric === "readiness") {
+        const row = getReadiness(athleteId).find((r) => r.dateISO === dateISO);
+        return row ? calcReadinessScore(row) : "";
+      }
+      if (metric === "nutrition") {
+        const row = getNutrition(athleteId).find((n) => n.dateISO === dateISO);
+        if (!row) return "";
+        const target = ensureTargetsForAthlete(athleteId);
+        return calcNutritionAdherence(row, target);
+      }
+      if (metric === "risk") {
+        const r = runRiskDetection(athleteId, dateISO);
+        return r.index;
+      }
+      return "";
+    };
+
+    const header = `
+      <tr>
+        <th style="text-align:left">Athlete</th>
+        ${dates.map((d) => `<th>${escHTML(d.slice(5))}</th>`).join("")}
+      </tr>
+    `;
+
+    const rows = athletes.map((a) => {
+      const cells = dates.map((d) => {
+        const v = getCellValue(a.id, d);
+        const num = (v === "" ? "" : Number(v));
+        const intensity = Number.isFinite(num) ? clamp(Math.round(num), 0, 99999) : "";
+        const title = `${a.name} • ${d} • ${metric}: ${intensity}`;
+        const style =
+          (metric === "load" && intensity > 500) ? "background:rgba(255,183,3,0.12)" :
+          (metric === "risk" && intensity >= 60) ? "background:rgba(230,57,70,0.12)" :
+          (metric !== "load" && metric !== "risk" && intensity >= 80) ? "background:rgba(61,220,132,0.10)" :
+          "";
+        return `<td style="${style}; cursor:pointer" data-jump="${escHTML(a.id)}|${escHTML(d)}" title="${escHTML(title)}">${escHTML(intensity)}</td>`;
+      }).join("");
+
+      return `<tr><td style="text-align:left; white-space:nowrap"><b>${escHTML(a.name)}</b></td>${cells}</tr>`;
+    }).join("");
+
+    table.innerHTML = header + rows;
+
+    qa("[data-jump]", table).forEach((td) => {
+      if (td.__b) return; td.__b = true;
+      td.addEventListener("click", () => {
+        const [athId, d] = (td.getAttribute("data-jump") || "").split("|");
+        if (!athId || !d) return;
+        showView("log");
+        if ($("logAthlete")) $("logAthlete").value = athId;
+        if ($("logDate")) $("logDate").value = d;
+        if ($("readyAthlete")) $("readyAthlete").value = athId;
+        if ($("readyDate")) $("readyDate").value = d;
+        renderLog();
+      });
+    });
   }
 
   // -------------------------
-  // Team (adds Sport picker per athlete)
+  // TEAM (adds sport selector)
   // -------------------------
   function renderTeam() {
     const pill = $("activeTeamPill");
@@ -765,6 +926,7 @@
             delete state.periodization[id];
             delete state.workouts[id];
             saveState();
+            toast("Athlete removed.", "ok");
             renderTeam(); renderDashboard();
           });
         });
@@ -775,7 +937,8 @@
             const id = btn.getAttribute("data-edit");
             if (!id) return;
             showView("nutrition");
-            if ($("targetAthlete")) $("targetAthlete").value = id;
+            state.ui.selections.targetAthlete = id;
+            saveState();
             renderNutrition();
           });
         });
@@ -787,6 +950,8 @@
             const a = getAthlete(id);
             if (!a) return;
 
+            if (!sports.length) return toast("sportEngine.js not loaded.", "warn");
+
             const options = sports.map((s) => `${s.id}:${s.label}`).join("\n");
             const pick = prompt(`Set sport for ${a.name}.\nType one id:\n${options}`, a.sportId || "basketball");
             if (!pick) return;
@@ -794,6 +959,7 @@
             if (!ok) return alert("Invalid sport id.");
             a.sportId = pick.trim();
             saveState();
+            toast("Sport updated.", "ok");
             renderTeam();
           });
         });
@@ -805,7 +971,7 @@
       const pos = ($("athPos")?.value || "").trim();
       const ht = toNum($("athHt")?.value, null);
       const wt = toNum($("athWt")?.value, null);
-      if (!name) return alert("Enter athlete full name.");
+      if (!name) return toast("Enter athlete full name.", "warn");
 
       const a = { id: uid("ath"), name, position: pos, heightIn: ht, weightLb: wt, sportId: "basketball" };
       state.athletes.push(a);
@@ -817,23 +983,83 @@
       if ($("athWt")) $("athWt").value = "";
 
       saveState();
+      toast("Athlete added.", "ok");
       renderTeam(); renderDashboard(); renderLog(); renderNutrition(); renderPeriodization();
     });
+
+    // Team settings
+    onceBind($("btnSaveTeam"), "saveTeam", () => {
+      state.team.name = ($("teamName")?.value || state.team.name || "Default").trim() || "Default";
+      state.team.seasonStart = safeISO($("seasonStart")?.value) || "";
+      state.team.seasonEnd = safeISO($("seasonEnd")?.value) || "";
+      saveState();
+      toast("Team saved.", "ok");
+      renderTeam();
+    });
+
+    if ($("teamName")) $("teamName").value = state.team.name || "Default";
+    if ($("seasonStart")) $("seasonStart").value = state.team.seasonStart || "";
+    if ($("seasonEnd")) $("seasonEnd").value = state.team.seasonEnd || "";
+
+    onceBind($("btnSaveMacroDefaults"), "saveMacroDefaults", () => {
+      state.team.macroDefaults = {
+        protein: clamp(toNum($("defProt")?.value, 160), 0, 500),
+        carbs: clamp(toNum($("defCarb")?.value, 240), 0, 1200),
+        fat: clamp(toNum($("defFat")?.value, 70), 0, 400),
+        waterOz: (state.team.macroDefaults?.waterOz ?? 80)
+      };
+      saveState();
+      toast("Macro defaults saved.", "ok");
+    });
+
+    if ($("defProt")) $("defProt").value = state.team.macroDefaults.protein;
+    if ($("defCarb")) $("defCarb").value = state.team.macroDefaults.carbs;
+    if ($("defFat")) $("defFat").value = state.team.macroDefaults.fat;
+
+    onceBind($("btnSaveWeights"), "saveWeights", () => {
+      const w = {
+        readiness: clamp(toNum($("wReadiness")?.value, 30), 0, 100),
+        training: clamp(toNum($("wTraining")?.value, 25), 0, 100),
+        recovery: clamp(toNum($("wRecovery")?.value, 20), 0, 100),
+        nutrition: clamp(toNum($("wNutrition")?.value, 15), 0, 100),
+        risk: clamp(toNum($("wRisk")?.value, 10), 0, 100)
+      };
+      const sum = w.readiness + w.training + w.recovery + w.nutrition + w.risk;
+      if (sum !== 100) {
+        setText("weightsNote", `Weights must total 100. Current: ${sum}`);
+        return toast("Fix weights (must total 100).", "warn");
+      }
+      state.team.piqWeights = w;
+      saveState();
+      setText("weightsNote", "Saved.");
+      toast("Weights saved.", "ok");
+    });
+
+    if ($("wReadiness")) $("wReadiness").value = state.team.piqWeights.readiness;
+    if ($("wTraining")) $("wTraining").value = state.team.piqWeights.training;
+    if ($("wRecovery")) $("wRecovery").value = state.team.piqWeights.recovery;
+    if ($("wNutrition")) $("wNutrition").value = state.team.piqWeights.nutrition;
+    if ($("wRisk")) $("wRisk").value = state.team.piqWeights.risk;
   }
 
   // -------------------------
-  // Log (full list)
+  // LOG (full rendering)
   // -------------------------
   function renderLog() {
     const athletes = getAthletes();
-    fillAthleteSelect($("logAthlete"), $("logAthlete")?.value);
-    fillAthleteSelect($("readyAthlete"), $("readyAthlete")?.value);
+
+    fillAthleteSelect($("logAthlete"), state.ui.selections.logAthlete || $("logAthlete")?.value);
+    fillAthleteSelect($("readyAthlete"), state.ui.selections.readyAthlete || $("readyAthlete")?.value);
 
     if ($("logDate") && !safeISO($("logDate").value)) $("logDate").value = todayISO();
     if ($("readyDate") && !safeISO($("readyDate").value)) $("readyDate").value = todayISO();
 
     const logAthleteId = $("logAthlete")?.value || athletes[0]?.id || "";
     const readyAthleteId = $("readyAthlete")?.value || athletes[0]?.id || "";
+
+    state.ui.selections.logAthlete = logAthleteId;
+    state.ui.selections.readyAthlete = readyAthleteId;
+    saveState();
 
     function updateTrainingPreview() {
       const min = toNum($("logMin")?.value, 0);
@@ -846,15 +1072,15 @@
 
     onceBind($("btnSaveTraining"), "saveTraining", () => {
       const athleteId = $("logAthlete")?.value || "";
-      if (!athleteId) return alert("Select an athlete.");
+      if (!athleteId) return toast("Select an athlete.", "warn");
 
       const dateISO = safeISO($("logDate")?.value) || todayISO();
-      const minutes = toNum($("logMin")?.value, 0);
-      const rpe = toNum($("logRpe")?.value, 0);
+      const minutes = clamp(toNum($("logMin")?.value, 0), 0, 600);
+      const rpe = clamp(toNum($("logRpe")?.value, 0), 0, 10);
       const type = $("logType")?.value || "practice";
       const notes = $("logNotes")?.value || "";
 
-      if (!minutes || !rpe) return alert("Enter minutes and RPE.");
+      if (!minutes || !rpe) return toast("Enter minutes and RPE.", "warn");
 
       addTrainingSession(athleteId, {
         id: uid("sess"),
@@ -867,24 +1093,26 @@
       });
 
       if ($("logNotes")) $("logNotes").value = "";
+      toast("Training saved.", "ok");
       renderLog();
       renderDashboard();
     });
 
     onceBind($("btnSaveReadiness"), "saveReadiness", () => {
       const athleteId = $("readyAthlete")?.value || "";
-      if (!athleteId) return alert("Select an athlete.");
+      if (!athleteId) return toast("Select an athlete.", "warn");
 
       const row = {
         dateISO: safeISO($("readyDate")?.value) || todayISO(),
-        sleep: toNum($("readySleep")?.value, 0),
-        soreness: toNum($("readySore")?.value, 0),
-        stress: toNum($("readyStress")?.value, 0),
-        energy: toNum($("readyEnergy")?.value, 0),
+        sleep: clamp(toNum($("readySleep")?.value, 0), 0, 16),
+        soreness: clamp(toNum($("readySore")?.value, 0), 0, 10),
+        stress: clamp(toNum($("readyStress")?.value, 0), 0, 10),
+        energy: clamp(toNum($("readyEnergy")?.value, 0), 0, 10),
         injury: $("readyInjury")?.value || ""
       };
 
       upsertReadiness(athleteId, row);
+      toast("Readiness saved.", "ok");
       renderLog();
       renderDashboard();
     });
@@ -900,18 +1128,19 @@
           <div class="grow">
             <div><b>${escHTML(s.dateISO)}</b> • ${escHTML(s.type)}</div>
             <div class="muted small">Minutes ${escHTML(s.minutes)} • RPE ${escHTML(s.rpe)} • Load <b>${escHTML(sessionLoad(s))}</b></div>
-            ${s.notes ? `<div class="muted small">${escHTML(s.notes)}</div>` : ""}
+            ${s.notes ? `<div class="muted small" style="white-space:pre-wrap">${escHTML(s.notes)}</div>` : ""}
           </div>
           <button class="btn danger small" data-del-train="${escHTML(s.id)}">Delete</button>
         </div>
       `).join("");
 
-      qa("[data-del-train]").forEach((btn) => {
+      qa("[data-del-train]", list).forEach((btn) => {
         if (btn.__b) return; btn.__b = true;
         btn.addEventListener("click", () => {
           const id = btn.getAttribute("data-del-train");
           state.logs.training[athleteId] = getTraining(athleteId).filter((x) => x.id !== id);
           saveState();
+          toast("Deleted.", "ok");
           renderLog(); renderDashboard();
         });
       });
@@ -937,12 +1166,13 @@
         `;
       }).join("");
 
-      qa("[data-del-ready]").forEach((btn) => {
+      qa("[data-del-ready]", list).forEach((btn) => {
         if (btn.__b) return; btn.__b = true;
         btn.addEventListener("click", () => {
           const d = btn.getAttribute("data-del-ready");
           state.logs.readiness[athleteId] = getReadiness(athleteId).filter((x) => x.dateISO !== d);
           saveState();
+          toast("Deleted.", "ok");
           renderLog(); renderDashboard();
         });
       });
@@ -953,26 +1183,30 @@
   }
 
   // -------------------------
-  // Workouts (NEW)
+  // WORKOUTS (unchanged logic; expects sportEngine.js + workoutEngine.js)
   // -------------------------
   let selectedSession = null;
 
   function renderWorkouts() {
     ensureWorkoutViewInjected();
-    wireNav(); // new button added
+    wireNav();
 
     const athletes = getAthletes();
     const se = window.sportEngine;
     const we = window.workoutEngine;
 
-    fillAthleteSelect($("wkAthlete"), $("wkAthlete")?.value);
+    fillAthleteSelect($("wkAthlete"), state.ui.selections.wkAthlete || $("wkAthlete")?.value);
+    if ($("wkAthlete")) state.ui.selections.wkAthlete = $("wkAthlete").value || "";
+    saveState();
 
     const sportSel = $("wkSport");
     if (sportSel && se?.SPORTS?.length) {
       sportSel.innerHTML = se.SPORTS.map((s) => `<option value="${escHTML(s.id)}">${escHTML(s.label)}</option>`).join("");
     }
 
-    if ($("wkStart") && !safeISO($("wkStart").value)) $("wkStart").value = (we?.weekStartMondayISO ? we.weekStartMondayISO(todayISO()) : todayISO());
+    if ($("wkStart") && !safeISO($("wkStart").value)) {
+      $("wkStart").value = (we?.weekStartMondayISO ? we.weekStartMondayISO(todayISO()) : todayISO());
+    }
 
     const athleteId = $("wkAthlete")?.value || athletes[0]?.id || "";
     if (!athleteId) {
@@ -981,7 +1215,6 @@
       return;
     }
 
-    // defaults from athlete
     const a = getAthlete(athleteId);
     const existing = state.workouts[athleteId] || null;
     const sportId = existing?.sportId || a?.sportId || "basketball";
@@ -990,7 +1223,6 @@
     if (sportSel) sportSel.value = sportId;
     if ($("wkLevel")) $("wkLevel").value = level;
 
-    // if stored plan, show it; else show hint
     const plan = existing;
 
     function updateSummary(planObj) {
@@ -1004,49 +1236,6 @@
         `Start: ${planObj.startISO} • Weeks: ${planObj.weeks}\n` +
         `Total planned load: ${Math.round(total)}`
       );
-    }
-
-    function renderWeeks(planObj) {
-      const out = $("wkWeeksOut");
-      if (!out) return;
-
-      if (!planObj?.weeksPlan?.length) {
-        out.innerHTML = `<div class="muted small">No plan yet. Generate above.</div>`;
-        return;
-      }
-
-      out.innerHTML = planObj.weeksPlan.map((w) => {
-        const pills = w.phase ? `<span class="pill">${escHTML(w.phase)}</span>` : "";
-        return `
-          <div class="item">
-            <div class="grow">
-              <div><b>Week ${escHTML(w.weekIndex1)}</b> • ${escHTML(w.weekStartISO)} ${pills}</div>
-              <div class="muted small">Planned weekly load: <b>${escHTML(w.weeklyLoad)}</b></div>
-              <div class="muted small">Tap a session below:</div>
-              <div class="row gap wrap" style="margin-top:8px">
-                ${w.sessions.map((s) => `
-                  <button class="btn ghost small"
-                    data-wk-sess="${escHTML(s.id)}"
-                    title="Load ${escHTML(s.load)}">
-                    ${escHTML(s.dateISO.slice(5))} • ${escHTML(s.dayType)} • ${escHTML(s.minutes)}m @ ${escHTML(s.rpe)}
-                  </button>
-                `).join("")}
-              </div>
-            </div>
-          </div>
-        `;
-      }).join("");
-
-      qa("[data-wk-sess]", out).forEach((btn) => {
-        if (btn.__b) return; btn.__b = true;
-        btn.addEventListener("click", () => {
-          const id = btn.getAttribute("data-wk-sess");
-          const sess = findSessionById(planObj, id);
-          if (!sess) return;
-          selectedSession = sess;
-          renderSessionDetail(sess);
-        });
-      });
     }
 
     function findSessionById(planObj, id) {
@@ -1096,12 +1285,56 @@
       if (editBtn) editBtn.disabled = false;
     }
 
+    function renderWeeks(planObj) {
+      const out = $("wkWeeksOut");
+      if (!out) return;
+
+      if (!planObj?.weeksPlan?.length) {
+        out.innerHTML = `<div class="muted small">No plan yet. Generate above.</div>`;
+        return;
+      }
+
+      out.innerHTML = planObj.weeksPlan.map((w) => {
+        const pills = w.phase ? `<span class="pill">${escHTML(w.phase)}</span>` : "";
+        return `
+          <div class="item">
+            <div class="grow">
+              <div><b>Week ${escHTML(w.weekIndex1)}</b> • ${escHTML(w.weekStartISO)} ${pills}</div>
+              <div class="muted small">Planned weekly load: <b>${escHTML(w.weeklyLoad)}</b></div>
+              <div class="muted small">Tap a session below:</div>
+              <div class="row gap wrap" style="margin-top:8px">
+                ${w.sessions.map((s) => `
+                  <button class="btn ghost small"
+                    data-wk-sess="${escHTML(s.id)}"
+                    title="Load ${escHTML(s.load)}">
+                    ${escHTML(s.dateISO.slice(5))} • ${escHTML(s.dayType)} • ${escHTML(s.minutes)}m @ ${escHTML(s.rpe)}
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      qa("[data-wk-sess]", out).forEach((btn) => {
+        if (btn.__b) return; btn.__b = true;
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-wk-sess");
+          const sess = findSessionById(planObj, id);
+          if (!sess) return;
+          selectedSession = sess;
+          renderSessionDetail(sess);
+        });
+      });
+    }
+
     onceBind($("btnGenWorkout"), "genWorkout", () => {
-      if (!we?.generate) return alert("workoutEngine.js not loaded.");
-      if (!se?.SPORTS?.length) return alert("sportEngine.js not loaded.");
+      if (!we?.generate) return toast("workoutEngine.js not loaded.", "warn");
+      if (!se?.SPORTS?.length) return toast("sportEngine.js not loaded.", "warn");
 
       const aId = $("wkAthlete")?.value || "";
-      if (!aId) return alert("Select athlete.");
+      if (!aId) return toast("Select athlete.", "warn");
+
       const sportId = $("wkSport")?.value || "basketball";
       const level = $("wkLevel")?.value || "standard";
       const startISO = safeISO($("wkStart")?.value) || todayISO();
@@ -1111,7 +1344,6 @@
       const planObj = we.generate({ athleteId: aId, sportId, level, startISO, weeks, defaultDayType: dayType });
       state.workouts[aId] = planObj;
 
-      // also persist on athlete for convenience
       const ath = getAthlete(aId);
       if (ath) ath.sportId = sportId;
 
@@ -1123,11 +1355,12 @@
 
       updateSummary(planObj);
       renderWeeks(planObj);
-      alert("Workout plan generated.");
+      toast("Workout plan generated.", "ok");
     });
 
     onceBind($("btnLogSession"), "logSession", () => {
       if (!selectedSession) return;
+
       const aId = selectedSession.athleteId;
       const notes = [
         `[WORKOUT PLAN] Sport: ${selectedSession.sportId} • Level: ${selectedSession.level} • Phase: ${selectedSession.phase}`,
@@ -1148,7 +1381,7 @@
         load: selectedSession.load
       });
 
-      alert("Logged to Training Log.");
+      toast("Logged to Training Log.", "ok");
       renderDashboard();
       showView("log");
       if ($("logAthlete")) $("logAthlete").value = aId;
@@ -1166,7 +1399,6 @@
       selectedSession.rpe = newRpe;
       selectedSession.load = Math.round(newMin * newRpe);
 
-      // write back into stored plan object
       const p = state.workouts[selectedSession.athleteId];
       if (p?.weeksPlan) {
         p.weeksPlan.forEach((w) => {
@@ -1181,10 +1413,8 @@
         });
       }
       saveState();
-
-      renderSessionDetail(selectedSession);
-      updateSummary(state.workouts[selectedSession.athleteId]);
-      renderWeeks(state.workouts[selectedSession.athleteId]);
+      toast("Session updated.", "ok");
+      renderWorkouts();
     });
 
     updateSummary(plan);
@@ -1192,14 +1422,467 @@
   }
 
   // -------------------------
-  // Nutrition/Periodization/Settings
-  // (kept compatible with your current HTML; minimal)
+  // NUTRITION (FULL RENDER)
   // -------------------------
-  function renderNutrition() { /* keep your existing nutritionEngine.js if present; leave as-is here */ }
-  function renderPeriodization() { /* your existing periodization UI remains; workouts integrates without breaking it */ }
+  function renderNutrition() {
+    const athletes = getAthletes();
+    const nutAth = $("nutAthlete");
+    const targAth = $("targetAthlete");
 
+    fillAthleteSelect(nutAth, state.ui.selections.nutAthlete || nutAth?.value);
+    fillAthleteSelect(targAth, state.ui.selections.targetAthlete || targAth?.value);
+
+    if (nutAth) state.ui.selections.nutAthlete = nutAth.value || "";
+    if (targAth) state.ui.selections.targetAthlete = targAth.value || "";
+    saveState();
+
+    if ($("nutDate") && !safeISO($("nutDate").value)) $("nutDate").value = todayISO();
+
+    // paywall: keep it simple (always unlocked offline-first)
+    const paywall = $("nutPaywall");
+    const main = $("nutMain");
+    if (paywall) paywall.style.display = "none";
+    if (main) main.style.display = "block";
+
+    function currentAthleteId() {
+      return nutAth?.value || athletes[0]?.id || "";
+    }
+
+    function renderTargetsPanel() {
+      const aid = targAth?.value || athletes[0]?.id || "";
+      if (!aid) return;
+
+      const t = ensureTargetsForAthlete(aid);
+      if ($("tProt")) $("tProt").value = t.protein;
+      if ($("tCarb")) $("tCarb").value = t.carbs;
+      if ($("tFat")) $("tFat").value = t.fat;
+      if ($("tWater")) $("tWater").value = t.waterOz;
+
+      setText("nutExplain",
+        [
+          "Adherence (0–100) is based on deviation from targets.",
+          "Lower deviation = higher score.",
+          "Tracks: protein, carbs, fat, water.",
+          "",
+          "Tip: Set realistic targets per athlete first."
+        ].join("\n")
+      );
+    }
+
+    onceBind($("btnSaveTargets"), "saveTargets", () => {
+      const aid = targAth?.value || "";
+      if (!aid) return toast("Select athlete.", "warn");
+
+      state.targets[aid] = {
+        protein: clamp(toNum($("tProt")?.value, 160), 0, 500),
+        carbs: clamp(toNum($("tCarb")?.value, 240), 0, 1200),
+        fat: clamp(toNum($("tFat")?.value, 70), 0, 400),
+        waterOz: clamp(toNum($("tWater")?.value, 80), 0, 300)
+      };
+      saveState();
+      toast("Targets saved.", "ok");
+      renderNutrition();
+      renderDashboard();
+    });
+
+    function computeNutritionPreview(aid, dateISO) {
+      const target = ensureTargetsForAthlete(aid);
+      const row = {
+        protein: clamp(toNum($("nutProt")?.value, 0), 0, 500),
+        carbs: clamp(toNum($("nutCarb")?.value, 0), 0, 1200),
+        fat: clamp(toNum($("nutFat")?.value, 0), 0, 400),
+        waterOz: clamp(toNum($("nutWater")?.value, 0), 0, 300)
+      };
+      const adh = calcNutritionAdherence(row, target);
+      setText("nutComputed", `${adh}/100`);
+    }
+
+    function renderNutritionList(aid) {
+      const list = $("nutritionList");
+      if (!list) return;
+      const rows = getNutrition(aid).slice().sort((a, b) => String(b.dateISO).localeCompare(String(a.dateISO))).slice(0, 21);
+      if (!rows.length) {
+        list.innerHTML = `<div class="muted small">No nutrition entries yet.</div>`;
+        return;
+      }
+
+      const target = ensureTargetsForAthlete(aid);
+
+      list.innerHTML = rows.map((r) => {
+        const score = calcNutritionAdherence(r, target);
+        return `
+          <div class="item">
+            <div class="grow">
+              <div><b>${escHTML(r.dateISO)}</b> • Adherence <b>${escHTML(score)}</b></div>
+              <div class="muted small">P ${escHTML(r.protein)} • C ${escHTML(r.carbs)} • F ${escHTML(r.fat)} • Water ${escHTML(r.waterOz)}oz</div>
+              ${r.notes ? `<div class="muted small">${escHTML(r.notes)}</div>` : ""}
+            </div>
+            <button class="btn danger small" data-del-nut="${escHTML(r.dateISO)}">Delete</button>
+          </div>
+        `;
+      }).join("");
+
+      qa("[data-del-nut]", list).forEach((btn) => {
+        if (btn.__b) return; btn.__b = true;
+        btn.addEventListener("click", () => {
+          const d = btn.getAttribute("data-del-nut");
+          state.logs.nutrition[aid] = getNutrition(aid).filter((x) => x.dateISO !== d);
+          saveState();
+          toast("Deleted.", "ok");
+          renderNutrition();
+          renderDashboard();
+        });
+      });
+    }
+
+    onceBind($("btnSaveNutrition"), "saveNutrition", () => {
+      const aid = currentAthleteId();
+      if (!aid) return toast("Select athlete.", "warn");
+
+      const dateISO = safeISO($("nutDate")?.value) || todayISO();
+
+      const row = {
+        dateISO,
+        protein: clamp(toNum($("nutProt")?.value, 0), 0, 500),
+        carbs: clamp(toNum($("nutCarb")?.value, 0), 0, 1200),
+        fat: clamp(toNum($("nutFat")?.value, 0), 0, 400),
+        waterOz: clamp(toNum($("nutWater")?.value, 0), 0, 300),
+        notes: ($("nutNotes")?.value || "").trim()
+      };
+
+      upsertNutrition(aid, row);
+      toast("Nutrition saved.", "ok");
+      renderNutrition();
+      renderDashboard();
+    });
+
+    onceBind($("btnQuickMeal"), "quickMeal", () => {
+      const aid = currentAthleteId();
+      if (!aid) return toast("Select athlete.", "warn");
+
+      const d = safeISO($("nutDate")?.value) || todayISO();
+      const existing = getNutrition(aid).find((n) => n.dateISO === d) || { dateISO: d, protein: 0, carbs: 0, fat: 0, waterOz: 0, notes: "" };
+
+      const updated = {
+        ...existing,
+        protein: clamp(toNum(existing.protein) + toNum($("qmProt")?.value, 0), 0, 9999),
+        carbs: clamp(toNum(existing.carbs) + toNum($("qmCarb")?.value, 0), 0, 9999),
+        fat: clamp(toNum(existing.fat) + toNum($("qmFat")?.value, 0), 0, 9999),
+        waterOz: clamp(toNum(existing.waterOz) + toNum($("qmWater")?.value, 0), 0, 9999)
+      };
+
+      upsertNutrition(aid, updated);
+      toast("Added to today.", "ok");
+      renderNutrition();
+      renderDashboard();
+    });
+
+    // Meal plan generator (simple, target-driven)
+    onceBind($("btnGenerateMealPlan"), "mealPlan", () => {
+      const aid = $("mealAthlete")?.value || currentAthleteId();
+      if (!aid) return toast("Select athlete.", "warn");
+
+      const start = safeISO($("mealStart")?.value) || todayISO();
+      const days = clamp(toNum($("mealDays")?.value, 7), 1, 21);
+      const dayType = $("mealDayType")?.value || "training";
+      const diet = $("mealDiet")?.value || "standard";
+
+      const t = ensureTargetsForAthlete(aid);
+      const out = $("mealPlanOut");
+      if (!out) return;
+
+      const lines = [];
+      for (let i = 0; i < days; i++) {
+        const d = addDaysISO(start, i);
+        const type = (dayType === "auto")
+          ? ((new Date(d).getDay() === 0 || new Date(d).getDay() === 6) ? "rest" : "training")
+          : dayType;
+
+        let p = t.protein, c = t.carbs, f = t.fat;
+        if (type === "rest") { c = Math.round(c * 0.85); }
+        if (type === "game") { c = Math.round(c * 1.10); }
+        if (diet === "highprotein") { p = Math.round(p * 1.10); f = Math.round(f * 0.95); }
+        if (diet === "lowerfat") { f = Math.round(f * 0.80); c = Math.round(c * 1.05); }
+
+        lines.push(`
+          <div class="item">
+            <div class="grow">
+              <div><b>${escHTML(d)}</b> • ${escHTML(type.toUpperCase())}</div>
+              <div class="muted small">Targets: P ${p} • C ${c} • F ${f} • Water ${t.waterOz}oz</div>
+              <div class="muted small">Example structure: Breakfast + Lunch + Dinner + 1–2 snacks (hit totals)</div>
+            </div>
+          </div>
+        `);
+      }
+
+      out.innerHTML = lines.join("");
+      toast("Meal plan generated.", "ok");
+    });
+
+    // Sync meal athlete selector list too
+    fillAthleteSelect($("mealAthlete"), state.ui.selections.nutAthlete || currentAthleteId());
+    if ($("mealStart") && !safeISO($("mealStart").value)) $("mealStart").value = todayISO();
+
+    // Bind change events
+    if (nutAth && !nutAth.__b) {
+      nutAth.__b = true;
+      nutAth.addEventListener("change", () => {
+        state.ui.selections.nutAthlete = nutAth.value || "";
+        saveState();
+        renderNutrition();
+      });
+    }
+    if (targAth && !targAth.__b) {
+      targAth.__b = true;
+      targAth.addEventListener("change", () => {
+        state.ui.selections.targetAthlete = targAth.value || "";
+        saveState();
+        renderNutrition();
+      });
+    }
+
+    // Render current day values if already exist
+    const aid = currentAthleteId();
+    const dateISO = safeISO($("nutDate")?.value) || todayISO();
+    const existing = aid ? getNutrition(aid).find((n) => n.dateISO === dateISO) : null;
+
+    if (existing) {
+      if ($("nutProt")) $("nutProt").value = existing.protein ?? 0;
+      if ($("nutCarb")) $("nutCarb").value = existing.carbs ?? 0;
+      if ($("nutFat")) $("nutFat").value = existing.fat ?? 0;
+      if ($("nutWater")) $("nutWater").value = existing.waterOz ?? 0;
+      if ($("nutNotes")) $("nutNotes").value = existing.notes ?? "";
+    }
+
+    // Live adherence preview
+    ["nutProt", "nutCarb", "nutFat", "nutWater"].forEach((id) => {
+      const el = $(id);
+      if (!el || el.__b) return;
+      el.__b = true;
+      el.addEventListener("input", () => computeNutritionPreview(aid, dateISO));
+    });
+    computeNutritionPreview(aid, dateISO);
+
+    renderTargetsPanel();
+    if (aid) renderNutritionList(aid);
+  }
+
+  // -------------------------
+  // PERIODIZATION (FULL RENDER)
+  // -------------------------
+  function renderPeriodization() {
+    const athletes = getAthletes();
+    const perAth = $("perAthlete");
+    const monAth = $("monAthlete");
+
+    fillAthleteSelect(perAth, state.ui.selections.perAthlete || perAth?.value);
+    fillAthleteSelect(monAth, state.ui.selections.monAthlete || monAth?.value);
+
+    if (perAth) state.ui.selections.perAthlete = perAth.value || "";
+    if (monAth) state.ui.selections.monAthlete = monAth.value || "";
+    saveState();
+
+    if ($("perStart") && !safeISO($("perStart").value)) $("perStart").value = todayISO();
+    if ($("monWeek") && !safeISO($("monWeek").value)) $("monWeek").value = todayISO();
+
+    function getPhaseForWeek(weekIndex1, deloadEvery) {
+      const pe = window.periodizationEngine;
+
+      // Force deload based on selected frequency
+      if (deloadEvery && weekIndex1 % deloadEvery === 0) return "DELOAD";
+
+      // Otherwise use engine if present
+      if (pe?.getCurrentPhase) return pe.getCurrentPhase(weekIndex1);
+
+      // fallback
+      if (weekIndex1 % 4 === 0) return "DELOAD";
+      if (weekIndex1 % 8 === 0) return "PEAK";
+      return "ACCUMULATION";
+    }
+
+    function baseWeekTemplate(goal) {
+      // Simple, usable defaults. Coaches can adjust by logging actual sessions.
+      if (goal === "offseason") {
+        return [
+          { day: "Mon", type: "lift", minutes: 75, rpe: 7 },
+          { day: "Tue", type: "skills", minutes: 70, rpe: 6.5 },
+          { day: "Thu", type: "lift", minutes: 75, rpe: 7 },
+          { day: "Sat", type: "conditioning", minutes: 55, rpe: 6.5 }
+        ];
+      }
+      if (goal === "rehab") {
+        return [
+          { day: "Mon", type: "recovery", minutes: 45, rpe: 4.5 },
+          { day: "Wed", type: "skills", minutes: 50, rpe: 5 },
+          { day: "Fri", type: "lift", minutes: 50, rpe: 5.5 }
+        ];
+      }
+      // inseason
+      return [
+        { day: "Mon", type: "practice", minutes: 75, rpe: 6.5 },
+        { day: "Wed", type: "lift", minutes: 55, rpe: 6 },
+        { day: "Fri", type: "practice", minutes: 70, rpe: 6.5 }
+      ];
+    }
+
+    function adjustByPhase(minutes, rpe, phase) {
+      const pe = window.periodizationEngine;
+      let m = minutes, r = rpe;
+
+      if (phase === "DELOAD") { m *= 0.65; r -= 1.0; }
+      if (phase === "ACCUMULATION") { m *= 1.05; r += 0.25; }
+      if (phase === "INTENSIFICATION") { m *= 0.95; r += 0.5; }
+      if (phase === "PEAK") { m *= 0.85; r += 0.25; }
+
+      // allow engine volume adjust
+      if (pe?.adjustVolume) m = pe.adjustVolume(m, phase);
+
+      return { minutes: clamp(Math.round(m), 20, 120), rpe: clamp(Math.round(r * 2) / 2, 3, 10) };
+    }
+
+    function weekStartMondayISO(iso) {
+      const d = new Date(safeISO(iso) || todayISO());
+      const day = d.getDay(); // 0=Sun
+      const diff = (day === 0 ? -6 : 1) - day;
+      d.setDate(d.getDate() + diff);
+      return d.toISOString().slice(0, 10);
+    }
+
+    function generatePlan({ athleteId, startISO, weeks, goal, deloadEvery }) {
+      const start = weekStartMondayISO(startISO);
+      const W = clamp(weeks, 2, 24);
+      const tmpl = baseWeekTemplate(goal);
+
+      const weeksPlan = [];
+      for (let i = 1; i <= W; i++) {
+        const wkStart = addDaysISO(start, (i - 1) * 7);
+        const phase = getPhaseForWeek(i, deloadEvery);
+
+        const sessions = tmpl.map((t) => {
+          const dayIndex =
+            t.day === "Mon" ? 0 :
+            t.day === "Tue" ? 1 :
+            t.day === "Wed" ? 2 :
+            t.day === "Thu" ? 3 :
+            t.day === "Fri" ? 4 :
+            t.day === "Sat" ? 5 : 6;
+
+          const dateISO = addDaysISO(wkStart, dayIndex);
+          const adj = adjustByPhase(t.minutes, t.rpe, phase);
+          const load = Math.round(adj.minutes * adj.rpe);
+
+          return {
+            id: uid("planSess"),
+            dateISO,
+            day: t.day,
+            type: t.type,
+            phase,
+            minutes: adj.minutes,
+            rpe: adj.rpe,
+            load
+          };
+        });
+
+        const weeklyLoad = sessions.reduce((a, s) => a + (s.load || 0), 0);
+        weeksPlan.push({ weekIndex1: i, weekStartISO: wkStart, phase, sessions, weeklyLoad });
+      }
+
+      return { athleteId, startISO: start, weeks: W, goal, deloadEvery, weeksPlan };
+    }
+
+    function renderPlanList(plan) {
+      const list = $("planList");
+      if (!list) return;
+
+      if (!plan?.weeksPlan?.length) {
+        list.innerHTML = `<div class="muted small">No plan yet. Generate above.</div>`;
+        return;
+      }
+
+      list.innerHTML = plan.weeksPlan.map((w) => `
+        <div class="item">
+          <div class="grow">
+            <div><b>Week ${escHTML(w.weekIndex1)}</b> • ${escHTML(w.weekStartISO)} • <span class="pill">${escHTML(w.phase)}</span></div>
+            <div class="muted small">Planned weekly load: <b>${escHTML(w.weeklyLoad)}</b></div>
+            <div class="muted small">Sessions:</div>
+            <div class="row gap wrap" style="margin-top:8px">
+              ${w.sessions.map((s) => `
+                <span class="pill" title="Load ${escHTML(s.load)}">${escHTML(s.day)} • ${escHTML(s.type)} • ${escHTML(s.minutes)}m @ ${escHTML(s.rpe)}</span>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    onceBind($("btnGeneratePlan"), "genPlan", () => {
+      const athleteId = perAth?.value || "";
+      if (!athleteId) return toast("Select athlete.", "warn");
+
+      const startISO = safeISO($("perStart")?.value) || todayISO();
+      const weeks = clamp(toNum($("perWeeks")?.value, 8), 2, 24);
+      const goal = $("perGoal")?.value || "inseason";
+      const deloadEvery = clamp(toNum($("perDeload")?.value, 4), 3, 6);
+
+      const plan = generatePlan({ athleteId, startISO, weeks, goal, deloadEvery });
+      state.periodization[athleteId] = plan;
+      saveState();
+      toast("Periodization plan generated.", "ok");
+      renderPlanList(plan);
+    });
+
+    onceBind($("btnCompareWeek"), "compareWeek", () => {
+      const athleteId = monAth?.value || "";
+      if (!athleteId) return toast("Select athlete.", "warn");
+
+      const wkStart = weekStartMondayISO(safeISO($("monWeek")?.value) || todayISO());
+      const wkEnd = addDaysISO(wkStart, 6);
+
+      const plan = state.periodization[athleteId];
+      const plannedWeek = plan?.weeksPlan?.find((w) => w.weekStartISO === wkStart) || null;
+
+      const actualSessions = getTraining(athleteId).filter((s) => s.dateISO >= wkStart && s.dateISO <= wkEnd);
+      const actualLoad = actualSessions.reduce((a, s) => a + sessionLoad(s), 0);
+
+      const plannedLoad = plannedWeek ? plannedWeek.weeklyLoad : 0;
+
+      const delta = plannedWeek ? Math.round(actualLoad - plannedLoad) : null;
+      const pct = plannedWeek && plannedLoad > 0 ? Math.round((actualLoad / plannedLoad) * 100) : null;
+
+      const summary = plannedWeek
+        ? `Week ${wkStart}: Planned ${plannedLoad} • Actual ${actualLoad} • ${pct}% (${delta >= 0 ? "+" : ""}${delta})`
+        : `Week ${wkStart}: No planned week found • Actual ${actualLoad}`;
+
+      setText("compareSummary", summary);
+
+      const detail = [
+        `Week range: ${wkStart} to ${wkEnd}`,
+        plannedWeek ? `Plan phase: ${plannedWeek.phase}` : `Plan phase: —`,
+        "",
+        "Actual sessions:",
+        actualSessions.length
+          ? actualSessions.map((s) => `- ${s.dateISO} • ${s.type} • ${s.minutes}m @ ${s.rpe} • load ${sessionLoad(s)}`).join("\n")
+          : "- none",
+        "",
+        plannedWeek
+          ? ("Planned sessions:\n" + plannedWeek.sessions.map((s) => `- ${s.dateISO} • ${s.type} • ${s.minutes}m @ ${s.rpe} • load ${s.load}`).join("\n"))
+          : "Planned sessions:\n- none"
+      ].join("\n");
+
+      setText("compareDetail", detail);
+      toast("Week comparison ready.", "ok");
+    });
+
+    // Load existing plan if present
+    const athleteId = perAth?.value || athletes[0]?.id || "";
+    const plan = athleteId ? state.periodization[athleteId] : null;
+    renderPlanList(plan);
+  }
+
+  // -------------------------
+  // SETTINGS
+  // -------------------------
   function renderSettings() {
-    // Inject role toggle into Settings card if missing
     const view = $("view-settings");
     if (view && !$("roleToggleBlock")) {
       const card = q(".card", view);
@@ -1218,8 +1901,8 @@
         `;
         card.appendChild(block);
 
-        onceBind($("btnRoleCoach"), "roleCoach", () => { state.user.role = "coach"; saveState(); renderSettings(); });
-        onceBind($("btnRoleAthlete"), "roleAth", () => { state.user.role = "athlete"; saveState(); renderSettings(); });
+        onceBind($("btnRoleCoach"), "roleCoach", () => { state.user.role = "coach"; saveState(); toast("Role: coach", "ok"); renderSettings(); });
+        onceBind($("btnRoleAthlete"), "roleAth", () => { state.user.role = "athlete"; saveState(); toast("Role: athlete", "ok"); renderSettings(); });
       }
     }
     const roleP = $("rolePill");
@@ -1246,12 +1929,20 @@
   // Boot
   // -------------------------
   function boot() {
+    ensureToast();
     ensureWorkoutViewInjected();
     hideSplash();
     wireNav();
 
-    // default to dashboard
-    showView("dashboard");
+    // If no athletes, push to Team view (competitor-style guided onboarding)
+    if (!state.athletes.length) {
+      toast("Start by adding an athlete (Team tab).", "warn");
+      showView("team");
+      return;
+    }
+
+    // Resume last view
+    showView(state.ui.lastView || "dashboard");
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
