@@ -545,64 +545,40 @@
                 </div>
               </div>
 
-              <div class="mini">
+              <!-- ✅ CLEAN SINGLE MEAL PLAN GENERATOR (unique IDs) -->
+              <div class="mini" id="mealPlanBlock">
                 <div class="minihead">Meal plan generator (Elite)</div>
                 <div class="minibody small muted">
                   Generates a day plan using your macro targets, training day context, and simple micronutrient focus.
                 </div>
-               <div class="mini">
-  <div class="minihead">Meal plan generator (Elite)</div>
-  <div class="minibody small muted">
-    Generates a day plan using your macro targets, training day context, and simple micronutrient focus.
-  </div>
 
-  <div class="row gap wrap">
-    <div class="field">
-      <label>Athlete</label>
-      <select id="mealAthlete"></select>
-    </div>
-
-    <div class="field">
-      <label>Start date</label>
-      <input id="mealStart" type="date" />
-    </div>
-
-    <div class="field">
-      <label>Days</label>
-      <input id="mealDays" type="number" min="1" max="21" step="1" value="7" />
-    </div>
-
-    <div class="field">
-      <label>Day type</label>
-      <select id="mealDayType">
-        <option value="training">Training day</option>
-        <option value="game">Game day</option>
-        <option value="recovery">Recovery day</option>
-        <option value="rest">Rest day</option>
-        <option value="auto">Auto (weekend rest)</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label>&nbsp;</label>
-      <button class="btn" id="btnGenerateMealPlan">Generate Plan</button>
-    </div>
-  </div>
-
-  <div class="mini" style="margin-top:12px">
-    <div class="minihead">Generated plan</div>
-    <div id="mealPlanOut" class="minibody"></div>
-  </div>
-               </div>
                 <div class="row gap wrap">
+                  <div class="field">
+                    <label>Athlete</label>
+                    <select id="mealAthlete"></select>
+                  </div>
+
+                  <div class="field">
+                    <label>Start date</label>
+                    <input id="mealStart" type="date" />
+                  </div>
+
+                  <div class="field">
+                    <label>Days</label>
+                    <input id="mealDays" type="number" min="1" max="21" step="1" value="7" />
+                  </div>
+
                   <div class="field">
                     <label>Day type</label>
                     <select id="mealDayType">
                       <option value="training">Training day</option>
                       <option value="game">Game day</option>
                       <option value="recovery">Recovery day</option>
+                      <option value="rest">Rest day</option>
+                      <option value="auto">Auto (weekend rest)</option>
                     </select>
                   </div>
+
                   <div class="field">
                     <label>Diet preference</label>
                     <select id="mealDiet">
@@ -611,12 +587,17 @@
                       <option value="lowerfat">Lower fat</option>
                     </select>
                   </div>
+
                   <div class="field">
                     <label>&nbsp;</label>
                     <button class="btn" id="btnGenerateMealPlan">Generate Plan</button>
                   </div>
                 </div>
-                <div class="mono small" id="mealPlanOut">—</div>
+
+                <div class="mini" style="margin-top:12px">
+                  <div class="minihead">Generated plan</div>
+                  <div id="mealPlanOut" class="minibody"></div>
+                </div>
               </div>
 
               <details class="explain">
@@ -727,18 +708,6 @@
             </div>
 
             <div class="mini">
-              <div class="minihead">Elite upgrade</div>
-              <div class="minibody small muted">
-                Toggle stored entitlements (for demos / sales calls).
-              </div>
-              <div class="row gap wrap">
-                <button class="btn ghost" id="btnEnableElite">Enable Elite</button>
-                <button class="btn ghost" id="btnDisableElite">Disable Elite</button>
-              </div>
-              <div class="small muted" id="eliteState">—</div>
-            </div>
-
-            <div class="mini">
               <div class="minihead">App info</div>
               <div class="minibody mono small" id="appInfo">—</div>
             </div>
@@ -757,6 +726,4 @@
   <script src="./nutritionEngine.js"></script>
   <script src="./core.js"></script>
 </body>
-</html>
-
-              
+                  </html>
