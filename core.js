@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const KEY = "piqData_v2_3_0";
+  const KEY = "piqData_v2_4_0";
   const DEFAULT_TEAM = "Default";
 
   // ---------- Storage ----------
@@ -25,11 +25,14 @@
     s.logs = Array.isArray(s.logs) ? s.logs : [];                 // {athlete,dateISO,min,rpe,load,source?}
     s.readiness = Array.isArray(s.readiness) ? s.readiness : [];  // {athlete,dateISO,sleep,sore,stress,energy,score}
     s.nutrition = Array.isArray(s.nutrition) ? s.nutrition : [];  // {athlete,dateISO,p,c,f,adherence}
-    s.targets = s.targets && typeof s.targets === "object" ? s.targets : {}; // targets[athlete]
-    s.periodization = s.periodization && typeof s.periodization === "object" ? s.periodization : {}; // per athlete
-    s.workoutWeeks = s.workoutWeeks && typeof s.workoutWeeks === "object" ? s.workoutWeeks : {}; // workoutWeeks[athlete][weekStartISO]
-    s.piqWeights = s.piqWeights || { readiness: 30, training: 25, recovery: 20, nutrition: 15, risk: 10 };
+    s.targets = s.targets && typeof s.targets === "object" ? s.targets : {};
+    s.periodization = s.periodization && typeof s.periodization === "object" ? s.periodization : {};
 
+    // workouts:
+    // workoutWeeks[athlete][weekStartISO] = { athlete, weekStartISO, mode, deloadApplied, sessions:[{day,dateISO,label,minutes,rpe,exercises:[], completed, notes}] }
+    s.workoutWeeks = s.workoutWeeks && typeof s.workoutWeeks === "object" ? s.workoutWeeks : {};
+
+    s.piqWeights = s.piqWeights || { readiness: 30, training: 25, recovery: 20, nutrition: 15, risk: 10 };
     return s;
   }
 
@@ -159,6 +162,7 @@
         renderReadiness();
         renderNutrition();
         renderPeriodization();
+        renderWorkoutWeek();
       };
     });
   }
@@ -403,8 +407,8 @@
     const acuteFrom = addDaysISO(asOf, -6);
     const chronicFrom = addDaysISO(asOf, -27);
 
-    const acute = sumLoads(trainingSessions, acuteFrom, asOf); // 7d sum
-    const chronicTotal = sumLoads(trainingSessions, chronicFrom, asOf); // 28d sum
+    const acute = sumLoads(trainingSessions, acuteFrom, asOf);
+    const chronicTotal = sumLoads(trainingSessions, chronicFrom, asOf);
     const chronicAvg7 = (chronicTotal / 28) * 7;
 
     const acwr = chronicAvg7 > 0 ? acute / chronicAvg7 : null;
@@ -475,7 +479,7 @@
     return { index, headline, flags, workload: w, readinessScore: rScore, nutritionScore: nScore };
   }
 
-  // ---------- PIQ Score Engine ----------
+  // ---------- PIQ Score ----------
   function trainingQualityScore(athlete, dateISO) {
     const asOf = safeISO(dateISO) || todayISO();
     const training = store.logs.filter((x) => x.athlete === athlete);
@@ -626,7 +630,7 @@
   }
 
   // ============================================================
-  // Phase 3 — Workouts (interactive week, write-back to Log)
+  // Milestone — Workouts with Exercises + Completion + Deload
   // ============================================================
 
   const DAY_ORDER = [
@@ -639,40 +643,237 @@
     { key: "Sun", off: 6 }
   ];
 
-  function workoutTemplate(mode) {
-    if (mode === "advanced") {
-      return [
-        { day: "Mon", label: "Strength + Skill", minutes: 75, rpe: 7 },
-        { day: "Tue", label: "Conditioning + Skill", minutes: 70, rpe: 8 },
-        { day: "Wed", label: "Recovery + Mobility", minutes: 40, rpe: 4 },
-        { day: "Thu", label: "Strength + Skill", minutes: 75, rpe: 8 },
-        { day: "Fri", label: "Skill + Game-speed", minutes: 65, rpe: 8 },
-        { day: "Sat", label: "Scrimmage/Live", minutes: 60, rpe: 8 },
-        { day: "Sun", label: "Off / Walk", minutes: 20, rpe: 2 }
-      ];
+  function getThisMondayISO() {
+    const d = new Date();
+    const day = d.getDay(); // Sun=0
+    const diff = (day === 0 ? -6 : 1) - day;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // Exercise blocks (industry standard style: sets/reps/rest/notes)
+  function ex(name, sets, reps, rest, notes = "") {
+    return { name, sets, reps, rest, notes };
+  }
+
+  // Workout library
+  function workoutLibrary(mode) {
+    // Standard: fewer total movements, moderate intensity
+    if (mode === "standard") {
+      return {
+        Mon: {
+          label: "Strength + Skill",
+          minutes: 60,
+          rpe: 6,
+          exercises: [
+            ex("Trap Bar Deadlift", "4", "5", "2–3 min", "Smooth reps, stop 1–2 reps before failure."),
+            ex("DB Bench Press", "4", "8", "90 sec", "Control tempo."),
+            ex("Split Squat", "3", "8/leg", "90 sec", "Knee over toes ok if pain-free."),
+            ex("Core: Dead Bug", "3", "10/side", "45 sec", "Brace hard."),
+            ex("Skill: Form shooting", "10 min", "—", "—", "Perfect reps, slow.")
+          ]
+        },
+        Tue: {
+          label: "Skill + Conditioning",
+          minutes: 60,
+          rpe: 7,
+          exercises: [
+            ex("Ball Handling: 2-ball series", "10 min", "—", "—", "Eyes up, low stance."),
+            ex("Finishing: Mikan + variations", "8 min", "—", "—", "Both hands."),
+            ex("Shooting: Spot-up 5 spots", "5", "10 makes/spot", "as needed", "Track makes."),
+            ex("Conditioning: Tempo runs", "10", "15 sec on / 45 sec off", "—", "Stay under control.")
+          ]
+        },
+        Wed: {
+          label: "Recovery + Mobility",
+          minutes: 30,
+          rpe: 3,
+          exercises: [
+            ex("Mobility flow", "12 min", "—", "—", "Hips/ankles/T-spine."),
+            ex("Zone 2 cardio", "15 min", "—", "—", "Bike or brisk walk."),
+            ex("Breathing reset", "3 min", "—", "—", "Downshift nervous system.")
+          ]
+        },
+        Thu: {
+          label: "Strength + Skill",
+          minutes: 60,
+          rpe: 7,
+          exercises: [
+            ex("Front Squat or Goblet Squat", "4", "6", "2 min", "Upright torso."),
+            ex("Pull-ups / Assisted", "4", "6–10", "90 sec", "Full range."),
+            ex("RDL", "3", "8", "90 sec", "Hinge, neutral spine."),
+            ex("Calf Raises", "3", "12", "60 sec", "Full stretch."),
+            ex("Skill: Catch & shoot", "12 min", "—", "—", "Game footwork.")
+          ]
+        },
+        Fri: {
+          label: "Off / Light Touch",
+          minutes: 20,
+          rpe: 2,
+          exercises: [
+            ex("Walk + stretch", "20 min", "—", "—", "Keep it easy.")
+          ]
+        },
+        Sat: {
+          label: "Game-speed / Live",
+          minutes: 55,
+          rpe: 7,
+          exercises: [
+            ex("Dynamic warm-up", "10 min", "—", "—", "Activate hips/ankles."),
+            ex("Shooting: Game-speed actions", "20 min", "—", "—", "1–2 dribble pullups, relocations."),
+            ex("Finishing: Contact series", "10 min", "—", "—", "Absorb and finish."),
+            ex("Live: 1v1 / 2v2", "15 min", "—", "—", "Compete.")
+          ]
+        },
+        Sun: {
+          label: "Off / Walk",
+          minutes: 20,
+          rpe: 2,
+          exercises: [
+            ex("Walk", "20 min", "—", "—", "Active recovery.")
+          ]
+        }
+      };
     }
-    // Standard (fills Mon/Tue/Thu/Sat; rest days optional)
-    return [
-      { day: "Mon", label: "Strength + Skill", minutes: 60, rpe: 6 },
-      { day: "Tue", label: "Skill + Conditioning", minutes: 60, rpe: 7 },
-      { day: "Thu", label: "Strength + Skill", minutes: 60, rpe: 7 },
-      { day: "Sat", label: "Game-speed / Live", minutes: 55, rpe: 7 }
-    ];
+
+    // Advanced: more volume, more game-speed, more strength density
+    return {
+      Mon: {
+        label: "Strength + Skill (Advanced)",
+        minutes: 75,
+        rpe: 7,
+        exercises: [
+          ex("Trap Bar Deadlift", "5", "3", "2–3 min", "Explosive intent."),
+          ex("DB Bench Press", "5", "6", "90 sec", "Last set hard but clean."),
+          ex("Rear-Foot Elevated Split Squat", "4", "8/leg", "90 sec", "Drive through midfoot."),
+          ex("Nordic Curl (assist if needed)", "3", "5", "2 min", "Hamstring injury-prevention."),
+          ex("Core: Pallof Press", "3", "12/side", "45 sec", "Anti-rotation."),
+          ex("Skill: Shooting (movement)", "15 min", "—", "—", "Sprint into shots.")
+        ]
+      },
+      Tue: {
+        label: "Conditioning + Skill (Advanced)",
+        minutes: 70,
+        rpe: 8,
+        exercises: [
+          ex("Ball handling: pressure series", "12 min", "—", "—", "Change speeds."),
+          ex("Shooting: 3-level ladder", "18 min", "—", "—", "Rim/mid/3."),
+          ex("Plyo: Pogos + bounds", "4", "20 sec", "60 sec", "Elastic ankles."),
+          ex("Conditioning: Repeated sprints", "10", "20 sec", "60 sec", "Quality reps.")
+        ]
+      },
+      Wed: {
+        label: "Recovery + Mobility",
+        minutes: 40,
+        rpe: 4,
+        exercises: [
+          ex("Mobility flow", "15 min", "—", "—", "Hips/ankles/T-spine."),
+          ex("Zone 2 cardio", "20 min", "—", "—", "Stay nasal breathing."),
+          ex("Soft tissue", "5 min", "—", "—", "Quads/calves/glutes.")
+        ]
+      },
+      Thu: {
+        label: "Strength + Skill (Advanced)",
+        minutes: 75,
+        rpe: 8,
+        exercises: [
+          ex("Front Squat", "5", "4", "2–3 min", "Heavy but fast."),
+          ex("Pull-ups (weighted if able)", "5", "5–8", "90 sec", "Full hang to chin."),
+          ex("RDL", "4", "6", "2 min", "Strong hinge."),
+          ex("DB Row", "4", "10/side", "75 sec", "Control."),
+          ex("Calf Raises", "4", "12", "60 sec", "Full ROM."),
+          ex("Skill: Catch/relocate", "15 min", "—", "—", "Game shots.")
+        ]
+      },
+      Fri: {
+        label: "Skill + Film / Light",
+        minutes: 45,
+        rpe: 5,
+        exercises: [
+          ex("Shooting: Weak-side drift", "12 min", "—", "—", "Footwork."),
+          ex("Finishing: Euro/pro-hop", "10 min", "—", "—", "Both sides."),
+          ex("Handle: Change of pace", "10 min", "—", "—", "Read defender."),
+          ex("Mobility reset", "10 min", "—", "—", "Hips/ankles.")
+        ]
+      },
+      Sat: {
+        label: "Scrimmage / Live",
+        minutes: 60,
+        rpe: 8,
+        exercises: [
+          ex("Dynamic warm-up", "10 min", "—", "—", "Activate."),
+          ex("Game-speed shooting", "15 min", "—", "—", "Actions + fatigue."),
+          ex("Live: 1v1 to advantage", "15 min", "—", "—", "Score mentality."),
+          ex("Live: 3v3 / 5v5", "20 min", "—", "—", "Compete.")
+        ]
+      },
+      Sun: {
+        label: "Off / Walk",
+        minutes: 20,
+        rpe: 2,
+        exercises: [
+          ex("Walk", "20 min", "—", "—", "Active recovery.")
+        ]
+      }
+    };
   }
 
-  function normalizeToWeek(weekStartISO, sessions) {
-    const map = {};
-    sessions.forEach((s) => { map[s.day] = s; });
-    return DAY_ORDER.map((d) => {
-      const dateISO = addDaysISO(weekStartISO, d.off);
-      const base = map[d.key] || { day: d.key, label: "Off / Mobility", minutes: 20, rpe: 2 };
-      return { ...base, dateISO };
+  function findPlanWeek(athlete, weekStartISO) {
+    const plan = store.periodization[athlete];
+    if (!plan?.weeks?.length) return null;
+    return plan.weeks.find((w) => w.weekStartISO === weekStartISO) || null;
+  }
+
+  // deload scaling for workouts
+  function applyDeloadScaling(dayObj, deload) {
+    if (!deload) return dayObj;
+    // reduce minutes and/or RPE
+    const scaledMinutes = Math.max(20, Math.round(toNum(dayObj.minutes, 30) * 0.75));
+    const scaledRpe = clamp(toNum(dayObj.rpe, 6) - 1, 2, 10);
+
+    // reduce set volume a bit (only if numeric sets)
+    const scaledExercises = (dayObj.exercises || []).map((e) => {
+      const setsNum = Number(e.sets);
+      if (Number.isFinite(setsNum)) {
+        const newSets = Math.max(2, Math.round(setsNum * 0.75));
+        return { ...e, sets: String(newSets), notes: (e.notes ? e.notes + " " : "") + "(Deload: lighter, crisp reps)" };
+      }
+      return { ...e, notes: (e.notes ? e.notes + " " : "") + "(Deload emphasis)" };
     });
+
+    return { ...dayObj, minutes: scaledMinutes, rpe: scaledRpe, exercises: scaledExercises };
   }
 
-  function saveWorkoutWeek(athlete, weekStartISO, mode, sessions) {
+  function normalizeToWeek(weekStartISO, libByDay, deloadFlag) {
+    const sessions = [];
+    DAY_ORDER.forEach((d) => {
+      const dateISO = addDaysISO(weekStartISO, d.off);
+      const base = libByDay[d.key] || { label: "Off / Mobility", minutes: 20, rpe: 2, exercises: [ex("Walk + stretch", "20 min", "—", "—", "")] };
+      const scaled = applyDeloadScaling(base, deloadFlag);
+      sessions.push({
+        day: d.key,
+        dateISO,
+        label: scaled.label,
+        minutes: scaled.minutes,
+        rpe: scaled.rpe,
+        exercises: scaled.exercises || [],
+        completed: false,
+        notes: ""
+      });
+    });
+    return sessions;
+  }
+
+  function saveWorkoutWeek(athlete, weekStartISO, mode, deloadApplied, sessions) {
     store.workoutWeeks[athlete] = store.workoutWeeks[athlete] || {};
-    store.workoutWeeks[athlete][weekStartISO] = { athlete, weekStartISO, mode, sessions, updatedAt: Date.now() };
+    store.workoutWeeks[athlete][weekStartISO] = {
+      athlete,
+      weekStartISO,
+      mode,
+      deloadApplied: !!deloadApplied,
+      sessions,
+      updatedAt: Date.now()
+    };
     save();
   }
 
@@ -687,11 +888,39 @@
     const wk = safeISO($("wkStart")?.value) || getThisMondayISO();
     const mode = $("mode")?.value || "standard";
 
-    const base = workoutTemplate(mode);
-    const sessions = normalizeToWeek(wk, base);
+    const pWeek = findPlanWeek(athlete, wk);
+    const deload = !!pWeek?.deload;
 
-    saveWorkoutWeek(athlete, wk, mode, sessions);
+    const lib = workoutLibrary(mode);
+    const sessions = normalizeToWeek(wk, lib, deload);
+
+    saveWorkoutWeek(athlete, wk, mode, deload, sessions);
     renderWorkoutWeek();
+  }
+
+  function setWeekBadge(athlete, wk) {
+    const out = $("wkBadgeOut");
+    if (!out) return;
+
+    const planWeek = findPlanWeek(athlete, wk);
+    const w = loadWorkoutWeek(athlete, wk);
+
+    if (planWeek) {
+      out.textContent =
+        `Plan week: ${planWeek.deload ? "DELOAD" : "BUILD"} • Target load: ${planWeek.targetLoad} • ` +
+        `Workout scaling: ${w?.deloadApplied ? "ON" : "OFF"}`;
+    } else {
+      out.textContent = `No plan found for this week start. (Optional) Generate a periodization plan to enable deload scaling.`;
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   }
 
   function renderWorkoutWeek() {
@@ -701,29 +930,98 @@
     const athlete = $("workoutAthlete")?.value || store.athletes[0];
     if (!athlete) {
       out.innerHTML = `<div class="muted small">Add athletes first.</div>`;
+      if ($("wkBadgeOut")) $("wkBadgeOut").textContent = "—";
       return;
     }
 
     const wk = safeISO($("wkStart")?.value) || getThisMondayISO();
     const existing = loadWorkoutWeek(athlete, wk);
-    const sessions = existing?.sessions || normalizeToWeek(wk, workoutTemplate($("mode")?.value || "standard"));
+
+    // if nothing saved, show a preview template (not saved)
+    const mode = $("mode")?.value || existing?.mode || "standard";
+    const pWeek = findPlanWeek(athlete, wk);
+    const deload = !!pWeek?.deload;
+    const preview = normalizeToWeek(wk, workoutLibrary(mode), deload);
+
+    const sessions = existing?.sessions || preview;
+
+    setWeekBadge(athlete, wk);
 
     out.innerHTML = sessions.map((s, idx) => {
       const load = sessionLoad(s.minutes, s.rpe);
+      const exLines = (s.exercises || []).map((e) => {
+        const line = `${e.name} — ${e.sets} × ${e.reps} • Rest: ${e.rest}${e.notes ? ` • ${e.notes}` : ""}`;
+        return `<div class="mono small muted">- ${escapeHtml(line)}</div>`;
+      }).join("");
+
+      const completed = !!s.completed;
+
       return `
         <div class="item">
-          <div class="itemcol">
-            <div><b>${s.day}</b> • ${s.label}</div>
-            <div class="muted">${s.dateISO} • ${s.minutes} min @ RPE ${s.rpe} • Load <b>${load}</b></div>
-          </div>
-          <div class="itemactions">
-            <button class="btn small" data-edit="${idx}">Edit</button>
-            <button class="btn small ghost" data-add="${idx}">Add to Log</button>
+          <div class="itemcol" style="flex:1">
+            <div class="row between wrap" style="gap:10px">
+              <div><b>${s.day}</b> • ${escapeHtml(s.label)}</div>
+              <div class="mono small muted">${s.dateISO} • ${s.minutes} min @ RPE ${s.rpe} • Load <b>${load}</b></div>
+            </div>
+
+            <div class="row gap wrap" style="margin-top:8px">
+              <label class="mono small" style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" data-done="${idx}" ${completed ? "checked" : ""} />
+                Completed
+              </label>
+
+              <button class="btn small ghost" data-toggle="${idx}">Show exercises</button>
+              <button class="btn small" data-add="${idx}">Add to Log</button>
+              <button class="btn small" data-edit="${idx}">Edit mins/RPE</button>
+            </div>
+
+            <div class="mini" data-exwrap="${idx}" style="display:none;margin-top:10px">
+              <div class="minihead">Exercises</div>
+              ${exLines || `<div class="muted small">No exercises listed.</div>`}
+
+              <div class="mini" style="margin-top:10px">
+                <div class="minihead">Notes</div>
+                <input class="input" data-notes="${idx}" placeholder="Add notes (saved locally)" value="${escapeHtml(s.notes || "")}" />
+              </div>
+            </div>
           </div>
         </div>
       `;
     }).join("");
 
+    // toggle exercises
+    qa("[data-toggle]", out).forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.getAttribute("data-toggle"));
+        const box = out.querySelector(`[data-exwrap="${idx}"]`);
+        if (!box) return;
+        const isOpen = box.style.display !== "none";
+        box.style.display = isOpen ? "none" : "block";
+        btn.textContent = isOpen ? "Show exercises" : "Hide exercises";
+      };
+    });
+
+    // mark completed
+    qa("[data-done]", out).forEach((cb) => {
+      cb.onchange = () => {
+        const idx = Number(cb.getAttribute("data-done"));
+        if (!existing) return; // only saved weeks persist completion
+        existing.sessions[idx].completed = !!cb.checked;
+        saveWorkoutWeek(athlete, wk, existing.mode, existing.deloadApplied, existing.sessions);
+      };
+    });
+
+    // notes write
+    qa("[data-notes]", out).forEach((inp) => {
+      inp.oninput = () => {
+        const idx = Number(inp.getAttribute("data-notes"));
+        if (!existing) return;
+        existing.sessions[idx].notes = String(inp.value || "");
+        saveWorkoutWeek(athlete, wk, existing.mode, existing.deloadApplied, existing.sessions);
+      };
+    });
+
+    // add to log
     qa("[data-add]", out).forEach((btn) => {
       btn.onclick = () => {
         const idx = Number(btn.getAttribute("data-add"));
@@ -735,21 +1033,24 @@
       };
     });
 
+    // edit mins/rpe
     qa("[data-edit]", out).forEach((btn) => {
       btn.onclick = () => {
         const idx = Number(btn.getAttribute("data-edit"));
         const s = sessions[idx];
 
-        const label = prompt("Session label", s.label);
-        if (label === null) return;
-
         const minutes = clamp(toNum(prompt("Minutes", String(s.minutes)), s.minutes), 0, 300);
         const rpe = clamp(toNum(prompt("sRPE (0-10)", String(s.rpe)), s.rpe), 0, 10);
 
-        sessions[idx] = { ...s, label: label.trim() || s.label, minutes, rpe };
+        s.minutes = minutes;
+        s.rpe = rpe;
 
-        // persist
-        saveWorkoutWeek(athlete, wk, existing?.mode || ($("mode")?.value || "standard"), sessions);
+        // persist only if week exists
+        if (existing) {
+          existing.sessions[idx] = s;
+          saveWorkoutWeek(athlete, wk, existing.mode, existing.deloadApplied, existing.sessions);
+        }
+
         renderWorkoutWeek();
       };
     });
@@ -763,7 +1064,6 @@
     const w = loadWorkoutWeek(athlete, wk);
     if (!w?.sessions?.length) return alert("Generate the week first.");
 
-    // write each day to log
     w.sessions.forEach((s) => {
       upsertSession(athlete, s.dateISO, s.minutes, s.rpe, "workout");
     });
@@ -773,18 +1073,7 @@
     alert("Workout week applied to Log.");
   }
 
-  function getThisMondayISO() {
-    const d = new Date();
-    const day = d.getDay(); // Sun=0
-    const diff = (day === 0 ? -6 : 1) - day;
-    d.setDate(d.getDate() + diff);
-    return d.toISOString().slice(0, 10);
-  }
-
-  // ============================================================
-  // Phase 4 — Periodization + Plan-to-Load Monitor
-  // ============================================================
-
+  // ---------- Periodization ----------
   function generatePlan() {
     const athlete = $("perAthlete")?.value || store.athletes[0];
     if (!athlete) return alert("Add athletes first.");
@@ -804,6 +1093,7 @@
     store.periodization[athlete] = { athlete, startISO: start, deloadEvery, weeks, updatedAt: Date.now() };
     save();
     renderPeriodization();
+    renderWorkoutWeek(); // so deload badge updates
     alert("Generated plan.");
   }
 
@@ -834,12 +1124,6 @@
         </div>
       `;
     }).join("");
-  }
-
-  function findPlanWeek(athlete, weekStartISO) {
-    const plan = store.periodization[athlete];
-    if (!plan?.weeks?.length) return null;
-    return plan.weeks.find((w) => w.weekStartISO === weekStartISO) || null;
   }
 
   function compareWeek() {
@@ -877,9 +1161,8 @@
     lines.push(`Planned: ${plannedLoad || "—"} ${planned ? (planned.deload ? "(DELOAD)" : "(BUILD)") : ""}`);
     lines.push(`Actual:  ${actualLoad}`);
     lines.push(`Delta:   ${plannedLoad ? (delta >= 0 ? "+" : "") + delta : "—"}`);
-
-    // daily breakdown
     lines.push(``);
+
     lines.push(`Daily actual loads:`);
     DAY_ORDER.forEach((d) => {
       const dateISO = addDaysISO(weekStart, d.off);
@@ -889,11 +1172,10 @@
       lines.push(`- ${d.key} ${dateISO}: ${load}`);
     });
 
-    // simple coach guidance
     lines.push(``);
     if (plannedLoad > 0) {
-      if (pct > 1.25) lines.push(`Guidance: Consider pulling volume/intensity next 1–2 days or add recovery if readiness drops.`);
-      else if (pct < 0.80) lines.push(`Guidance: If readiness is good, add a small session (20–30 min @ RPE 6–7) to close the gap.`);
+      if (pct > 1.25) lines.push(`Guidance: Pull volume/intensity next 1–2 days or add recovery if readiness drops.`);
+      else if (pct < 0.80) lines.push(`Guidance: If readiness is good, add a small session (20–30 min @ RPE 6–7).`);
       else lines.push(`Guidance: Keep steady. Watch monotony (avoid repeating same intensity 4+ days).`);
     } else {
       lines.push(`Guidance: Generate a plan to enable planned vs actual comparison.`);
@@ -930,7 +1212,7 @@
         `Sessions: ${store.logs.length}\n` +
         `Readiness: ${store.readiness.length}\n` +
         `Nutrition: ${store.nutrition.length}\n` +
-        `Workout weeks: ${Object.keys(store.workoutWeeks || {}).length}`;
+        `Workout athletes: ${Object.keys(store.workoutWeeks || {}).length}`;
     }
   }
 
@@ -938,7 +1220,6 @@
   function hideSplash() {
     const s = $("splash");
     if (!s) return;
-    // use your CSS .hidden transition
     s.classList.add("hidden");
     setTimeout(() => (s.style.display = "none"), 650);
   }
@@ -1028,18 +1309,16 @@
     $("dashAthlete")?.addEventListener("change", renderDashboard);
     $("dashDate")?.addEventListener("change", renderDashboard);
 
-    // workouts (phase 3)
+    // workouts
     $("wkStart") && ($("wkStart").value = getThisMondayISO());
     $("workoutAthlete")?.addEventListener("change", renderWorkoutWeek);
     $("wkStart")?.addEventListener("change", renderWorkoutWeek);
-    $("mode")?.addEventListener("change", () => {
-      // rebuild template on mode change (but preserve if already saved)
-      renderWorkoutWeek();
-    });
+    $("mode")?.addEventListener("change", renderWorkoutWeek);
+
     $("buildWorkout") && ($("buildWorkout").onclick = buildWorkout);
     $("applyWorkoutWeek") && ($("applyWorkoutWeek").onclick = applyWorkoutWeekToLog);
 
-    // periodization (phase 4)
+    // periodization
     $("perStart") && ($("perStart").value = todayISO());
     $("generatePlan") && ($("generatePlan").onclick = generatePlan);
 
@@ -1066,7 +1345,6 @@
 
     applyRoleNav();
     refreshAthleteDropdowns();
-
     wire();
 
     if (!store.athletes.length && store.role === "coach") switchView("team");
