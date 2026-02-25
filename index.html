@@ -8,10 +8,10 @@
 </head>
 <body>
 
-<div id="splash" class="splash">
+<div id="splash" class="splash" aria-hidden="false">
   <div class="splash-card">
     <h1>PerformanceIQ</h1>
-    <p id="splashText">Loading...</p>
+    <p id="splashText">Loading…</p>
   </div>
 </div>
 
@@ -24,8 +24,7 @@
 </header>
 
 <div class="app">
-
-  <nav class="sidebar" id="nav">
+  <nav class="sidebar" id="nav" role="navigation" aria-label="Primary">
     <button data-view="dashboard">Dashboard</button>
     <button data-view="team" data-role="coach">Team</button>
     <button data-view="log">Log</button>
@@ -66,9 +65,9 @@
 
           <div class="scoreWrap">
             <div class="scoreBig">
-              <div class="muted small">PIQ</div>
+              <div class="muted small mono">PIQ</div>
               <div id="piqScore" class="scoreNum">—</div>
-              <div id="piqBand" class="muted small">—</div>
+              <div id="piqBand" class="muted small mono">—</div>
             </div>
 
             <div class="scoreBars">
@@ -104,14 +103,6 @@
               <pre id="riskFlags" class="mono small"></pre>
             </div>
           </div>
-
-          <details class="details">
-            <summary>What this means</summary>
-            <div class="small muted">
-              This is a heuristic model using your own load trends + check-ins + nutrition adherence.
-              It can highlight patterns, but it is not medical advice and cannot confirm injury risk.
-            </div>
-          </details>
         </div>
       </div>
 
@@ -120,7 +111,7 @@
           <h3>7-Day Trend Snapshot</h3>
           <span class="muted">Loads + readiness + PIQ</span>
         </div>
-        <div id="trendOut" class="mono small"></div>
+        <pre id="trendOut" class="mono small"></pre>
       </div>
     </section>
 
@@ -128,48 +119,31 @@
     <section id="view-team" class="view hidden">
       <h2>Team</h2>
       <div class="card">
-        <div class="cardhead">
-          <h3>Roster</h3>
-          <span class="muted">Coach manages athletes</span>
-        </div>
+        <div class="cardhead"><h3>Roster</h3><span class="muted">Coach manages athletes</span></div>
         <div class="row gap wrap">
           <input id="athleteName" class="input" placeholder="Athlete name"/>
           <button id="addAthlete" class="btn">Add Athlete</button>
         </div>
-        <div id="roster" class="list"></div>
+        <div class="mini">
+          <div class="minihead">Roster</div>
+          <div id="roster" class="list"></div>
+        </div>
       </div>
     </section>
 
     <!-- LOG -->
     <section id="view-log" class="view hidden">
+      <h2>Log</h2>
       <div class="grid2">
         <div class="card">
-          <div class="cardhead">
-            <h3>Training Log</h3>
-            <span class="muted">sRPE × minutes</span>
-          </div>
+          <div class="cardhead"><h3>Training Log</h3><span class="muted">sRPE × minutes</span></div>
 
-          <div class="row gap wrap">
-            <div class="field">
-              <label>Athlete</label>
-              <select id="logAthlete"></select>
-            </div>
-            <div class="field">
-              <label>Date</label>
-              <input id="logDate" type="date"/>
-            </div>
-            <div class="field">
-              <label>Minutes</label>
-              <input type="number" id="logMinutes" value="60" min="0" max="600"/>
-            </div>
-            <div class="field">
-              <label>sRPE</label>
-              <input type="number" id="logRpe" value="6" min="0" max="10"/>
-            </div>
-            <div class="field">
-              <label>&nbsp;</label>
-              <button id="saveLog" class="btn">Save</button>
-            </div>
+          <div class="row gap wrap end">
+            <div class="field"><label>Athlete</label><select id="logAthlete"></select></div>
+            <div class="field"><label>Date</label><input id="logDate" type="date"/></div>
+            <div class="field"><label>Minutes</label><input type="number" id="logMinutes" value="60" min="0" max="600"/></div>
+            <div class="field"><label>sRPE</label><input type="number" id="logRpe" value="6" min="0" max="10"/></div>
+            <div class="field"><label>&nbsp;</label><button id="saveLog" class="btn">Save</button></div>
           </div>
 
           <div class="mini">
@@ -177,66 +151,45 @@
             <div id="logComputed" class="mono small">Load: —</div>
           </div>
 
-          <div id="logList" class="list"></div>
+          <div class="mini">
+            <div class="minihead">Recent sessions</div>
+            <div id="logList" class="list"></div>
+          </div>
         </div>
 
         <div class="card">
-          <div class="cardhead">
-            <h3>Readiness Check-in</h3>
-            <span class="muted">Daily</span>
-          </div>
+          <div class="cardhead"><h3>Readiness Check-in</h3><span class="muted">Daily</span></div>
 
-          <div class="row gap wrap">
-            <div class="field">
-              <label>Athlete</label>
-              <select id="readyAthlete"></select>
-            </div>
-            <div class="field">
-              <label>Date</label>
-              <input id="readyDate" type="date"/>
-            </div>
-            <div class="field">
-              <label>Sleep (hrs)</label>
-              <input id="readySleep" type="number" step="0.5" min="0" max="16" value="8"/>
-            </div>
-            <div class="field">
-              <label>Soreness (0-10)</label>
-              <input id="readySore" type="number" min="0" max="10" value="3"/>
-            </div>
-            <div class="field">
-              <label>Stress (0-10)</label>
-              <input id="readyStress" type="number" min="0" max="10" value="3"/>
-            </div>
-            <div class="field">
-              <label>Energy (0-10)</label>
-              <input id="readyEnergy" type="number" min="0" max="10" value="7"/>
-            </div>
-            <div class="field">
-              <label>&nbsp;</label>
-              <button id="saveReadiness" class="btn">Save</button>
-            </div>
+          <div class="row gap wrap end">
+            <div class="field"><label>Athlete</label><select id="readyAthlete"></select></div>
+            <div class="field"><label>Date</label><input id="readyDate" type="date"/></div>
+            <div class="field"><label>Sleep (hrs)</label><input id="readySleep" type="number" step="0.5" min="0" max="16" value="8"/></div>
+            <div class="field"><label>Soreness (0-10)</label><input id="readySore" type="number" min="0" max="10" value="3"/></div>
+            <div class="field"><label>Stress (0-10)</label><input id="readyStress" type="number" min="0" max="10" value="3"/></div>
+            <div class="field"><label>Energy (0-10)</label><input id="readyEnergy" type="number" min="0" max="10" value="7"/></div>
+            <div class="field"><label>&nbsp;</label><button id="saveReadiness" class="btn">Save</button></div>
           </div>
 
           <div class="mini">
-            <div class="minihead">Readiness Score</div>
+            <div class="minihead">Readiness score</div>
             <div id="readyComputed" class="mono small">—</div>
           </div>
 
-          <div id="readyList" class="list"></div>
+          <div class="mini">
+            <div class="minihead">Recent check-ins</div>
+            <div id="readyList" class="list"></div>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- NUTRITION -->
     <section id="view-nutrition" class="view hidden">
+      <h2>Nutrition</h2>
       <div class="grid2">
         <div class="card">
-          <div class="cardhead">
-            <h3>Nutrition Log</h3>
-            <span class="muted">Macros</span>
-          </div>
-
-          <div class="row gap wrap">
+          <div class="cardhead"><h3>Nutrition Log</h3><span class="muted">Macros</span></div>
+          <div class="row gap wrap end">
             <div class="field"><label>Athlete</label><select id="nutAthlete"></select></div>
             <div class="field"><label>Date</label><input id="nutDate" type="date"/></div>
             <div class="field"><label>Protein</label><input type="number" id="protein" value="0" min="0" max="500"/></div>
@@ -250,16 +203,15 @@
             <div id="nutAdherence" class="mono small">—</div>
           </div>
 
-          <div id="nutList" class="list"></div>
+          <div class="mini">
+            <div class="minihead">Recent nutrition</div>
+            <div id="nutList" class="list"></div>
+          </div>
         </div>
 
         <div class="card">
-          <div class="cardhead">
-            <h3>Targets</h3>
-            <span class="muted">Per athlete</span>
-          </div>
-
-          <div class="row gap wrap">
+          <div class="cardhead"><h3>Targets</h3><span class="muted">Per athlete</span></div>
+          <div class="row gap wrap end">
             <div class="field"><label>Athlete</label><select id="targetAthlete"></select></div>
             <div class="field"><label>Protein</label><input id="tP" type="number" value="160"/></div>
             <div class="field"><label>Carbs</label><input id="tC" type="number" value="240"/></div>
@@ -276,20 +228,24 @@
       </div>
     </section>
 
-    <!-- WORKOUTS -->
+    <!-- WORKOUTS (Phase 3) -->
     <section id="view-workouts" class="view hidden">
       <h2>Workouts</h2>
-      <div class="card">
-        <div class="cardhead">
-          <h3>Weekly Builder</h3>
-          <span class="muted">Standard vs Advanced</span>
-        </div>
 
-        <div class="row gap wrap">
+      <div class="card">
+        <div class="cardhead"><h3>Weekly Builder</h3><span class="muted">Standard vs Advanced</span></div>
+
+        <div class="row gap wrap end">
           <div class="field">
             <label>Athlete</label>
             <select id="workoutAthlete"></select>
           </div>
+
+          <div class="field">
+            <label>Week start (Mon)</label>
+            <input id="wkStart" type="date"/>
+          </div>
+
           <div class="field">
             <label>Mode</label>
             <select id="mode">
@@ -297,61 +253,82 @@
               <option value="advanced">Advanced</option>
             </select>
           </div>
+
           <div class="field">
             <label>&nbsp;</label>
-            <button id="buildWorkout" class="btn">Build Week</button>
+            <button id="buildWorkout" class="btn">Generate week</button>
+          </div>
+
+          <div class="field">
+            <label>&nbsp;</label>
+            <button id="applyWorkoutWeek" class="btn ghost">Apply week to Log</button>
           </div>
         </div>
 
         <div class="mini">
-          <div class="minihead">Generated week</div>
-          <div id="workoutOutput" class="mono small"></div>
+          <div class="minihead">Generated week (click to write-back)</div>
+          <div id="workoutOutput" class="list"></div>
         </div>
 
-        <div class="small muted">
-          Tip: Use the “Add to Training Log” buttons to record sessions (writes back to Log + affects PIQ/Risk).
+        <div class="mini">
+          <div class="minihead">Notes</div>
+          <div class="mono small muted">
+            - “Apply week” writes each day to the Training Log with its calendar date.<br/>
+            - Loads are sRPE × minutes and will update PIQ + Risk.
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- PERIODIZATION -->
+    <!-- PERIODIZATION (Phase 4) -->
     <section id="view-periodization" class="view hidden">
       <h2>Periodization</h2>
 
-      <div class="card">
-        <div class="cardhead">
-          <h3>8-Week Plan Generator</h3>
-          <span class="muted">Progression + deload</span>
-        </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="cardhead"><h3>8-Week Plan Generator</h3><span class="muted">Progression + deload</span></div>
 
-        <div class="row gap wrap">
-          <div class="field"><label>Athlete</label><select id="perAthlete"></select></div>
-          <div class="field"><label>Start</label><input id="perStart" type="date"/></div>
-          <div class="field"><label>Deload every</label>
-            <select id="perDeload">
-              <option value="4">4th week</option>
-              <option value="3">3rd week</option>
-              <option value="5">5th week</option>
-            </select>
+          <div class="row gap wrap end">
+            <div class="field"><label>Athlete</label><select id="perAthlete"></select></div>
+            <div class="field"><label>Start</label><input id="perStart" type="date"/></div>
+            <div class="field"><label>Deload every</label>
+              <select id="perDeload">
+                <option value="4">4th week</option>
+                <option value="3">3rd week</option>
+                <option value="5">5th week</option>
+              </select>
+            </div>
+            <div class="field"><label>&nbsp;</label><button id="generatePlan" class="btn">Generate</button></div>
           </div>
-          <div class="field"><label>&nbsp;</label><button id="generatePlan" class="btn">Generate</button></div>
+
+          <div class="mini">
+            <div class="minihead">Plan output</div>
+            <div id="planOutput" class="list"></div>
+          </div>
         </div>
 
-        <div id="planOutput" class="list"></div>
+        <div class="card">
+          <div class="cardhead"><h3>Plan-to-Load Monitor</h3><span class="muted">Planned vs actual</span></div>
+
+          <div class="row gap wrap end">
+            <div class="field"><label>Athlete</label><select id="monAthlete"></select></div>
+            <div class="field"><label>Week start (Mon)</label><input id="monWeek" type="date"/></div>
+            <div class="field"><label>&nbsp;</label><button id="btnCompareWeek" class="btn">Compare</button></div>
+          </div>
+
+          <div id="compareSummary" class="callout">—</div>
+          <pre id="compareDetail" class="mono small"></pre>
+        </div>
       </div>
     </section>
 
     <!-- SETTINGS (coach only) -->
     <section id="view-settings" class="view hidden">
       <h2>Settings</h2>
-
       <div class="card">
-        <div class="cardhead">
-          <h3>Role</h3>
-          <span class="muted">Coach vs Athlete views</span>
-        </div>
+        <div class="cardhead"><h3>Role</h3><span class="muted">Coach vs Athlete views</span></div>
 
-        <div class="row gap wrap">
+        <div class="row gap wrap end">
           <div class="field">
             <label>Role</label>
             <select id="roleSelect">
@@ -359,10 +336,12 @@
               <option value="athlete">Athlete</option>
             </select>
           </div>
+
           <div class="field">
             <label>&nbsp;</label>
             <button id="saveRole" class="btn">Save</button>
           </div>
+
           <div class="field">
             <label>&nbsp;</label>
             <button id="wipeData" class="btn danger">Wipe All Data</button>
@@ -377,9 +356,8 @@
     </section>
 
   </main>
-
 </div>
 
 <script src="core.js"></script>
 </body>
-</html>
+  </html>
