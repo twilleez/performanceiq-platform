@@ -1,19 +1,15 @@
-// core.js — v2.3.0 (FULL FILE) — Offline-first • Role-based views • Athlete can see Nutrition + Periodization
-// Self-contained app logic for your current index.html structure.
-//
-// Roles:
-// - athlete: can use Dashboard, Log, Nutrition, Periodization, Settings (no Team management)
-// - coach/admin: full access
-//
-// NOTE: Client-only role gating. True security requires backend auth + RLS.
+// core.js — FULL REPLACEMENT — v2.3.1
+// Offline-first PerformanceIQ
+// Adds: Meal Plan Generator day-type (training/game/recovery/rest/auto) + diet preference (standard/highprotein/lowerfat)
+// Fixes: duplicate event binding (bind-once pattern), fills mealAthlete + mealStart, stores plans at state.nutritionAddon.mealPlans.
 
 (function () {
   "use strict";
 
-  if (window.__PIQ_V23_LOADED__) return;
-  window.__PIQ_V23_LOADED__ = true;
+  if (window.__PIQ_CORE_V231__) return;
+  window.__PIQ_CORE_V231__ = true;
 
-  const APP_VERSION = "2.3.0";
+  const APP_VERSION = "2.3.1";
   const STORAGE_KEY = "piq_v2_state";
   const DEFAULT_TEAM_ID = "default";
 
@@ -23,7 +19,18 @@
   const $ = (id) => document.getElementById(id);
   const q = (sel, root = document) => root.querySelector(sel);
   const qa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-  const clamp = (n, a, b) => Math.min(Math.max(Number(n) || 0, a), b);
+  const clamp = (n, a, b) => Math.min(Math.max(n, a), b);
+
+  function bindOnce(el, type, handler, key = "default") {
+    if (!el) return;
+    const k = `__piq_bound_${type}_${key}__`;
+    if (el[k]) return;
+    el[k] = true;
+    el.addEventListener(type, handler);
+  }
+  function bindOnceById(id, type, handler, key = "default") {
+    bindOnce($(id), type, handler, key);
+  }
 
   function safeISO(d) {
     const s = String(d || "").trim();
@@ -60,10 +67,6 @@
     const now = Date.now();
     return {
       meta: { version: 1, updatedAtMs: now, appVersion: APP_VERSION },
-      auth: {
-        role: "coach",          // athlete | coach | admin
-        coachPin: ""            // optional gate for switching into coach/admin
-      },
       team: {
         id: DEFAULT_TEAM_ID,
         name: "Default",
@@ -74,13 +77,15 @@
       },
       athletes: [],
       logs: {
-        training: {},  // training[athleteId] -> array of sessions
-        readiness: {}, // readiness[athleteId] -> array of daily check-ins
-        nutrition: {}  // nutrition[athleteId] -> array of daily nutrition logs
+        training: {},
+        readiness: {},
+        nutrition: {}
       },
-      targets: {},        // targets[athleteId] = {protein, carbs, fat, waterOz}
-      periodization: {},  // periodization[athleteId] = plan
-      nutritionPlans: {}  // nutritionPlans[athleteId] = generated meal plan object
+      targets: {},
+      periodization: {},
+      nutritionAddon: {
+        mealPlans: {} // mealPlans[athleteId] = { ... }
+      }
     };
   }
 
@@ -89,14 +94,13 @@
     if (!s || typeof s !== "object") return d;
 
     s.meta = s.meta && typeof s.meta === "object" ? s.meta : d.meta;
-
-    s.auth = s.auth && typeof s.auth === "object" ? s.auth : d.auth;
-    s.auth.role = ["athlete", "coach", "admin"].includes(s.auth.role) ? s.auth.role : "coach";
-    s.auth.coachPin = typeof s.auth.coachPin === "string" ? s.auth.coachPin : "";
-
     s.team = s.team && typeof s.team === "object" ? s.team : d.team;
-    s.team.macroDefaults = s.team.macroDefaults && typeof s.team.macroDefaults === "object" ? s.team.macroDefaults : d.team.macroDefaults;
-    s.team.piqWeights = s.team.piqWeights && typeof s.team.piqWeights === "object" ? s.team.piqWeights : d.team.piqWeights;
+
+    s.team.macroDefaults =
+      s.team.macroDefaults && typeof s.team.macroDefaults === "object" ? s.team.macroDefaults : d.team.macroDefaults;
+
+    s.team.piqWeights =
+      s.team.piqWeights && typeof s.team.piqWeights === "object" ? s.team.piqWeights : d.team.piqWeights;
 
     if (!Array.isArray(s.athletes)) s.athletes = [];
 
@@ -106,8 +110,11 @@
     if (!s.logs.nutrition || typeof s.logs.nutrition !== "object") s.logs.nutrition = {};
 
     s.targets = s.targets && typeof s.targets === "object" ? s.targets : {};
+
     s.periodization = s.periodization && typeof s.periodization === "object" ? s.periodization : {};
-    s.nutritionPlans = s.nutritionPlans && typeof s.nutritionPlans === "object" ? s.nutritionPlans : {};
+
+    s.nutritionAddon = s.nutritionAddon && typeof s.nutritionAddon === "object" ? s.nutritionAddon : { mealPlans: {} };
+    if (!s.nutritionAddon.mealPlans || typeof s.nutritionAddon.mealPlans !== "object") s.nutritionAddon.mealPlans = {};
 
     return s;
   }
@@ -134,10 +141,11 @@
     }
   }
 
-  // Expose bridge for add-ons (nutritionEngine.js, etc.)
+  // Expose minimal API for addons (nutritionEngine.js)
   window.PIQ = window.PIQ || {};
   window.PIQ.getState = () => state;
   window.PIQ.saveState = () => saveState();
+  window.PIQ.version = APP_VERSION;
 
   // -------------------------
   // Splash safety
@@ -151,51 +159,14 @@
     s.style.display = "none";
     try { s.remove(); } catch {}
   }
-  window.hideSplashNow = hideSplash;
 
   // -------------------------
-  // Role gating (workflow)
-  // -------------------------
-  const ROLE = () => state.auth?.role || "coach";
-  const canManageTeam = () => ROLE() === "coach" || ROLE() === "admin";
-
-  function applyRoleUI() {
-    // Nav gating: athlete cannot see Team tab (but CAN see nutrition+periodization)
-    qa(".navbtn").forEach((btn) => {
-      const v = btn.getAttribute("data-view");
-      if (!v) return;
-
-      if (v === "team") {
-        btn.style.display = canManageTeam() ? "" : "none";
-      } else {
-        btn.style.display = "";
-      }
-    });
-
-    // Team view itself
-    const teamView = $("view-team");
-    if (teamView) teamView.hidden = !canManageTeam() && currentView === "team";
-
-    // Pill: role label
-    const pill = $("activeTeamPill");
-    if (pill) pill.title = `Active role: ${ROLE()}`;
-  }
-
-  // -------------------------
-  // View switching
+  // Views
   // -------------------------
   const VIEWS = ["dashboard", "team", "log", "nutrition", "periodization", "settings"];
-  let currentView = "dashboard";
 
   function showView(name) {
-    let view = String(name || "dashboard");
-    if (!VIEWS.includes(view)) view = "dashboard";
-
-    // athlete cannot open team
-    if (view === "team" && !canManageTeam()) view = "dashboard";
-
-    currentView = view;
-
+    const view = String(name || "dashboard");
     VIEWS.forEach((v) => {
       const el = $(`view-${v}`);
       if (!el) return;
@@ -207,9 +178,6 @@
       b.classList.toggle("active", v === view);
     });
 
-    applyRoleUI();
-
-    // Render target view
     if (view === "dashboard") renderDashboard();
     if (view === "team") renderTeam();
     if (view === "log") renderLog();
@@ -222,22 +190,18 @@
 
   function wireNav() {
     qa(".navbtn").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      bindOnce(btn, "click", () => {
         const v = btn.getAttribute("data-view") || "dashboard";
         showView(v);
-      });
+      }, "nav");
     });
   }
 
   // -------------------------
-  // Athlete helpers
+  // Athletes helpers
   // -------------------------
-  function getAthletes() {
-    return state.athletes.slice();
-  }
-  function getAthlete(id) {
-    return state.athletes.find((a) => a && a.id === id) || null;
-  }
+  function getAthletes() { return state.athletes.slice(); }
+  function getAthlete(id) { return state.athletes.find((a) => a && a.id === id) || null; }
 
   function ensureTargetsForAthlete(athleteId) {
     if (!athleteId) return null;
@@ -264,7 +228,9 @@
       selectEl.value = "";
       return;
     }
-    selectEl.innerHTML = athletes.map((a) => `<option value="${escHTML(a.id)}">${escHTML(athleteLabel(a))}</option>`).join("");
+    selectEl.innerHTML = athletes
+      .map((a) => `<option value="${escHTML(a.id)}">${escHTML(athleteLabel(a))}</option>`)
+      .join("");
     if (selectedId && athletes.some((a) => a.id === selectedId)) selectEl.value = selectedId;
     else selectEl.value = athletes[0].id;
   }
@@ -333,6 +299,7 @@
     const c = Math.abs(toNum(total.carbs) - toNum(target.carbs)) / Math.max(1, toNum(target.carbs));
     const f = Math.abs(toNum(total.fat) - toNum(target.fat)) / Math.max(1, toNum(target.fat));
     const w = Math.abs(toNum(total.waterOz) - toNum(target.waterOz)) / Math.max(1, toNum(target.waterOz));
+
     const dev = (clamp(p, 0, 1) + clamp(c, 0, 1) + clamp(f, 0, 1) + clamp(w, 0, 1)) / 4;
     const score = 100 - dev * 100;
     return clamp(Math.round(score), 0, 100);
@@ -406,7 +373,8 @@
 
   function trainingScore(trainingSessions, asOfISO) {
     const m = workloadRiskIndex(trainingSessions, asOfISO);
-    return clamp(Math.round(100 - m.index), 0, 100);
+    const score = 100 - m.index;
+    return clamp(Math.round(score), 0, 100);
   }
 
   function recoveryScore(readinessRow) {
@@ -494,7 +462,7 @@
 
     const flags = [];
     if (w.acwr !== null && w.acwr > 1.5) flags.push("High ACWR spike");
-    if (w.monotony >= 2.5) flags.push("High monotony");
+    if (w.monotony >= 2.5) flags.push("High monotony (same load day-to-day)");
     if (w.strain >= 12000) flags.push("High training strain");
     if (rScore < 55) flags.push("Low readiness");
     if (readinessRow && toNum(readinessRow.sleep) < 6.5) flags.push("Sleep low");
@@ -512,7 +480,7 @@
   }
 
   // -------------------------
-  // Heatmap styles
+  // Heatmap helpers
   // -------------------------
   function heatColorClass(v) {
     const x = clamp(toNum(v, 0), 0, 100);
@@ -537,6 +505,181 @@
       .heat4 { background: rgba(46, 204, 113, 0.30); }
     `;
     document.head.appendChild(style);
+  }
+
+  // -------------------------
+  // Meal Plan Generator (core)
+  // -------------------------
+  function normalizeDayType(input, dateISO) {
+    const allowed = ["training", "game", "recovery", "rest", "auto"];
+    const raw = allowed.includes(String(input || "")) ? String(input) : "training";
+    if (raw !== "auto") return raw;
+
+    // auto => weekend rest
+    try {
+      const d = new Date(dateISO + "T00:00:00");
+      const day = d.getDay(); // 0 Sun .. 6 Sat
+      return (day === 0 || day === 6) ? "rest" : "training";
+    } catch {
+      return "training";
+    }
+  }
+
+  function splitMacrosByDayType(targets, dayType, diet) {
+    // Targets baseline
+    let p = toNum(targets?.protein, 160);
+    let c = toNum(targets?.carbs, 240);
+    let f = toNum(targets?.fat, 70);
+
+    // Diet preference adjustments
+    diet = String(diet || "standard");
+    let pAdj = p, cAdjBase = c, fAdj = f;
+
+    if (diet === "highprotein") {
+      pAdj = Math.round(p * 1.10);
+      cAdjBase = Math.round(c * 0.95);
+    } else if (diet === "lowerfat") {
+      fAdj = Math.round(f * 0.85);
+      cAdjBase = Math.round(c * 1.05);
+    }
+
+    // Day type carb periodization
+    let carbMult = 1.0;
+    if (dayType === "rest") carbMult = 0.75;
+    if (dayType === "recovery") carbMult = 0.85;
+    if (dayType === "game") carbMult = 1.10;
+
+    const cAdj = Math.max(0, Math.round(cAdjBase * carbMult));
+    const waterOz = toNum(targets?.waterOz, 80);
+
+    // 4 meals + 1 snack distribution
+    const meals = [
+      { name: "Breakfast", p: 0.25, c: 0.22, f: 0.25 },
+      { name: "Lunch", p: 0.25, c: 0.26, f: 0.25 },
+      { name: "Pre / Snack", p: 0.15, c: 0.20, f: 0.10 },
+      { name: "Post", p: 0.15, c: 0.20, f: 0.10 },
+      { name: "Dinner", p: 0.20, c: 0.12, f: 0.30 }
+    ];
+
+    const plan = meals.map((m) => ({
+      name: m.name,
+      protein: Math.round(pAdj * m.p),
+      carbs: Math.round(cAdj * m.c),
+      fat: Math.round(fAdj * m.f)
+    }));
+
+    // Fix rounding drift
+    const sum = (k) => plan.reduce((s, x) => s + (x[k] || 0), 0);
+    plan[0].protein += (pAdj - sum("protein"));
+    plan[0].carbs += (cAdj - sum("carbs"));
+    plan[0].fat += (fAdj - sum("fat"));
+
+    // Micronutrient “focus” (simple, readable)
+    const microFocus =
+      dayType === "game" ? ["sodium + fluids", "easy carbs", "potassium"] :
+      dayType === "recovery" ? ["omega-3 fats", "colorful produce", "magnesium"] :
+      dayType === "rest" ? ["fiber", "veg volume", "iron + zinc"] :
+      ["protein quality", "carb timing", "hydration"];
+
+    return {
+      dayType,
+      diet,
+      targets: { protein: pAdj, carbs: cAdj, fat: fAdj, waterOz },
+      microFocus,
+      meals: plan
+    };
+  }
+
+  function buildFoodSuggestions(meal, dayType) {
+    const p = meal.protein, c = meal.carbs, f = meal.fat;
+    const options = [];
+
+    options.push(`Option A: Lean protein + starch + fruit/veg (aim ~P${p}/C${c}/F${f})`);
+
+    if (dayType === "game") {
+      options.push(`Option B: Pre-game: rice + chicken + low-fiber veg (keep it simple)`);
+      options.push(`Option C: Post-game: chocolate milk + sandwich + fruit`);
+    } else if (dayType === "recovery") {
+      options.push(`Option B: Salmon/tuna + potatoes + greens + olive oil`);
+      options.push(`Option C: Greek yogurt + oats + berries + chia`);
+    } else {
+      options.push(`Option B: Bowl: rice/pasta/potatoes + chicken/turkey/fish + olive oil/avocado`);
+      options.push(`Option C: Greek yogurt + oats + berries + nut butter (adjust portions)`);
+    }
+    return options;
+  }
+
+  function generateMealPlan(athleteId, startISO, days, dayTypeInput, diet) {
+    const start = safeISO(startISO) || todayISO();
+    const nDays = clamp(toNum(days, 7), 1, 21);
+    const t = ensureTargetsForAthlete(athleteId);
+
+    const plan = [];
+    for (let i = 0; i < nDays; i++) {
+      const d = addDaysISO(start, i);
+      const dt = normalizeDayType(dayTypeInput, d);
+      const split = splitMacrosByDayType(t, dt, diet);
+
+      const notes =
+        dt === "game"
+          ? "Game day: higher carbs + fluids/sodium. Keep pre-game meals familiar."
+          : dt === "recovery"
+            ? "Recovery day: moderate carbs, emphasize protein + micronutrients."
+            : dt === "rest"
+              ? "Rest day: lower carbs, keep protein high, prioritize fiber."
+              : "Training day: prioritize carbs around session + hydrate.";
+
+      plan.push({
+        dateISO: d,
+        ...split,
+        notes
+      });
+    }
+
+    state.nutritionAddon.mealPlans[String(athleteId)] = {
+      athleteId: String(athleteId),
+      startISO: start,
+      days: nDays,
+      createdAtMs: Date.now(),
+      mode: String(dayTypeInput || "training"),
+      diet: String(diet || "standard"),
+      plan
+    };
+
+    saveState();
+    return state.nutritionAddon.mealPlans[String(athleteId)];
+  }
+
+  function renderMealPlan(planObj, mountEl) {
+    if (!mountEl) return;
+    if (!planObj?.plan?.length) {
+      mountEl.innerHTML = `<div class="small muted">No plan generated yet.</div>`;
+      return;
+    }
+
+    mountEl.innerHTML = planObj.plan.map((day) => {
+      const mealsHtml = day.meals.map((m) => {
+        const opts = buildFoodSuggestions(m, day.dayType).map((x) => `• ${escHTML(x)}`).join("<br/>");
+        return `
+          <div style="margin:10px 0;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:12px">
+            <div style="font-weight:700">${escHTML(m.name)} — P${escHTML(m.protein)} / C${escHTML(m.carbs)} / F${escHTML(m.fat)}</div>
+            <div class="small muted" style="margin-top:6px">${opts}</div>
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div style="margin:14px 0;padding:12px;border:1px solid rgba(255,255,255,.10);border-radius:16px">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="font-weight:800">${escHTML(day.dateISO)} • ${escHTML(String(day.dayType).toUpperCase())} • ${escHTML(String(day.diet || "standard").toUpperCase())}</div>
+            <div class="small muted">Targets: P${escHTML(day.targets.protein)} / C${escHTML(day.targets.carbs)} / F${escHTML(day.targets.fat)} • Water ${escHTML(day.targets.waterOz)}oz</div>
+          </div>
+          <div class="small muted" style="margin-top:6px">${escHTML(day.notes || "")}</div>
+          <div class="small muted" style="margin-top:6px"><b>Micro-focus:</b> ${escHTML((day.microFocus || []).join(", "))}</div>
+          <div style="margin-top:10px">${mealsHtml}</div>
+        </div>
+      `;
+    }).join("");
   }
 
   // -------------------------
@@ -575,7 +718,13 @@
 
       const weekStart = addDaysISO(start, (i - 1) * 7);
 
-      weeksPlan.push({ week: i, weekStartISO: weekStart, deload: isDeload, targetLoad, sessions: scaled });
+      weeksPlan.push({
+        week: i,
+        weekStartISO: weekStart,
+        deload: isDeload,
+        targetLoad,
+        sessions: scaled
+      });
     }
 
     state.periodization[athleteId] = { athleteId, startISO: start, weeks: W, goal, deloadEvery: deloadN, weeksPlan };
@@ -584,8 +733,10 @@
   }
 
   function plannedLoadForWeek(plan, weekStartISO) {
-    const wk = plan?.weeksPlan?.find((w) => w.weekStartISO === weekStartISO);
-    return wk ? (wk.targetLoad || 0) : 0;
+    if (!plan?.weeksPlan) return 0;
+    const wk = plan.weeksPlan.find((w) => w.weekStartISO === weekStartISO);
+    if (!wk) return 0;
+    return wk.targetLoad || 0;
   }
 
   function actualLoadForWeek(trainingSessions, weekStartISO) {
@@ -593,132 +744,6 @@
     if (!start) return 0;
     const end = addDaysISO(start, 6);
     return sumLoads(trainingSessions, start, end);
-  }
-
-  // -------------------------
-  // Elite Meal Plan Generator (inside core.js)
-  // -------------------------
-  function splitMacrosByDayType(targets, dayType) {
-    const p = targets.protein;
-    const f = targets.fat;
-    const c = targets.carbs;
-
-    let carbMult = 1.0;
-    if (dayType === "recovery") carbMult = 0.80;
-    if (dayType === "game") carbMult = 1.15;
-
-    const cAdj = Math.round(c * carbMult);
-
-    const meals = [
-      { name: "Breakfast", p: 0.25, c: 0.22, f: 0.25 },
-      { name: "Lunch", p: 0.25, c: 0.26, f: 0.25 },
-      { name: "Pre-session / Snack", p: 0.15, c: 0.22, f: 0.10 },
-      { name: "Post-session", p: 0.15, c: 0.22, f: 0.10 },
-      { name: "Dinner", p: 0.20, c: 0.08, f: 0.30 }
-    ];
-
-    const plan = meals.map((m) => ({
-      name: m.name,
-      protein: Math.round(p * m.p),
-      carbs: Math.round(cAdj * m.c),
-      fat: Math.round(f * m.f)
-    }));
-
-    const sum = (k) => plan.reduce((s, x) => s + (x[k] || 0), 0);
-    plan[0].protein += (p - sum("protein"));
-    plan[0].carbs += (cAdj - sum("carbs"));
-    plan[0].fat += (f - sum("fat"));
-
-    const microFocus =
-      dayType === "game"
-        ? "Micronutrient focus: sodium + potassium (sweat), vitamin C foods, easy-to-digest carbs."
-        : dayType === "recovery"
-        ? "Micronutrient focus: omega-3 foods, magnesium-rich foods, colorful fruit/veg for antioxidants."
-        : "Micronutrient focus: iron + B-vitamins, calcium + vitamin D, hydrate consistently.";
-
-    const timing =
-      dayType === "game"
-        ? "Timing: carb-forward earlier; avoid heavy fats close to game."
-        : dayType === "recovery"
-        ? "Timing: steady protein across meals; carbs moderate; prioritize sleep support."
-        : "Timing: place carbs around training; protein evenly spaced.";
-
-    return { dayType, targets: { ...targets, carbs: cAdj }, meals: plan, microFocus, timing };
-  }
-
-  function buildFoodSuggestions(meal, dayType) {
-    const p = meal.protein, c = meal.carbs, f = meal.fat;
-    const easy = dayType === "game" ? " (game-day lighter fiber)" : "";
-    return [
-      `Option A: Lean protein + carbs + fruit/veg${easy} (aim ~P${p}/C${c}/F${f})`,
-      `Option B: Bowl: rice/potatoes/pasta + chicken/turkey/fish + olive oil/avocado`,
-      `Option C: Greek yogurt + oats + berries + nut butter (adjust portions)`
-    ];
-  }
-
-  function generateMealPlan(athleteId, startISO, days, dayType) {
-    const start = safeISO(startISO) || todayISO();
-    const nDays = clamp(days, 1, 21);
-    const t = ensureTargetsForAthlete(athleteId);
-
-    const out = [];
-    for (let i = 0; i < nDays; i++) {
-      const d = addDaysISO(start, i);
-      const dt = ["training", "game", "recovery"].includes(dayType) ? dayType : "training";
-      const split = splitMacrosByDayType(t, dt);
-
-      out.push({
-        dateISO: d,
-        dayType: split.dayType,
-        targets: split.targets,
-        microFocus: split.microFocus,
-        timing: split.timing,
-        meals: split.meals
-      });
-    }
-
-    state.nutritionPlans[String(athleteId)] = {
-      athleteId: String(athleteId),
-      startISO: start,
-      days: nDays,
-      dayType: dayType || "training",
-      createdAtMs: Date.now(),
-      plan: out
-    };
-    saveState();
-    return state.nutritionPlans[String(athleteId)];
-  }
-
-  function renderMealPlan(planObj, mountEl) {
-    if (!mountEl) return;
-    if (!planObj?.plan?.length) {
-      mountEl.innerHTML = `<div class="small muted">No plan generated yet.</div>`;
-      return;
-    }
-
-    mountEl.innerHTML = planObj.plan.map((day) => {
-      const mealLines = day.meals.map((m) => {
-        const opts = buildFoodSuggestions(m, day.dayType).map((x) => `• ${escHTML(x)}`).join("<br/>");
-        return `
-          <div style="margin:10px 0;padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:12px">
-            <div style="font-weight:700">${escHTML(m.name)} — P${escHTML(m.protein)} / C${escHTML(m.carbs)} / F${escHTML(m.fat)}</div>
-            <div class="small muted" style="margin-top:6px">${opts}</div>
-          </div>
-        `;
-      }).join("");
-
-      return `
-        <div style="margin:14px 0;padding:12px;border:1px solid rgba(255,255,255,.10);border-radius:16px">
-          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
-            <div style="font-weight:800">${escHTML(day.dateISO)} • ${escHTML(String(day.dayType).toUpperCase())}</div>
-            <div class="small muted">Targets: P${escHTML(day.targets.protein)} / C${escHTML(day.targets.carbs)} / F${escHTML(day.targets.fat)} • Water ${escHTML(day.targets.waterOz)}oz</div>
-          </div>
-          <div class="small muted" style="margin-top:6px">${escHTML(day.timing || "")}</div>
-          <div class="small muted" style="margin-top:6px">${escHTML(day.microFocus || "")}</div>
-          <div style="margin-top:10px">${mealLines}</div>
-        </div>
-      `;
-    }).join("");
   }
 
   // -------------------------
@@ -744,11 +769,12 @@
       const dateISO = safeISO(dateEl?.value) || todayISO();
       if (!athleteId) {
         $("piqScore").textContent = "—";
-        $("piqBand").textContent = canManageTeam() ? "Add athletes in Team tab" : "Ask coach to add you to roster";
+        $("piqBand").textContent = "Add athletes in Team tab";
         return;
       }
 
       const r = calcPIQScore(athleteId, dateISO);
+
       $("piqScore").textContent = String(r.final);
       $("piqBand").textContent = `${r.band} • ${r.dateISO}`;
 
@@ -787,16 +813,16 @@
       $("piqExplain").textContent = explain;
     }
 
-    $("btnRecalcScore")?.addEventListener("click", updatePIQ);
-    athSel?.addEventListener("change", updatePIQ);
-    dateEl?.addEventListener("change", updatePIQ);
+    bindOnceById("btnRecalcScore", "click", updatePIQ, "piq");
+    bindOnce(athSel, "change", updatePIQ, "piq");
+    bindOnce(dateEl, "change", updatePIQ, "piq");
     updatePIQ();
 
     function updateRisk() {
       const athleteId = $("riskAthlete")?.value || "";
       const dateISO = safeISO($("riskDate")?.value) || todayISO();
       if (!athleteId) {
-        $("riskSummary").textContent = canManageTeam() ? "Add athletes in Team tab" : "Ask coach to add you to roster";
+        $("riskSummary").textContent = "Add athletes in Team tab";
         return;
       }
       const r = runRiskDetection(athleteId, dateISO);
@@ -818,9 +844,9 @@
         `Flags:\n- ${r.flags.length ? r.flags.join("\n- ") : "None"}`;
     }
 
-    $("btnRunRisk")?.addEventListener("click", updateRisk);
-    $("riskAthlete")?.addEventListener("change", updateRisk);
-    $("riskDate")?.addEventListener("change", updateRisk);
+    bindOnceById("btnRunRisk", "click", updateRisk, "risk");
+    bindOnce($("riskAthlete"), "change", updateRisk, "risk");
+    bindOnce($("riskDate"), "change", updateRisk, "risk");
 
     function renderHeatmap() {
       const start = safeISO($("heatStart")?.value) || addDaysISO(todayISO(), -14);
@@ -863,7 +889,8 @@
             const row = nutrition.find((n) => n.dateISO === d);
             val = row ? calcNutritionAdherence(row, target) : 0;
           } else if (metric === "risk") {
-            val = clamp(runRiskDetection(a.id, d).index, 0, 100);
+            const r = runRiskDetection(a.id, d);
+            val = clamp(r.index, 0, 100);
           }
 
           const cls = heatColorClass(val);
@@ -875,7 +902,7 @@
       tbl.innerHTML = html;
 
       qa("td[data-ath][data-date]", tbl).forEach((cell) => {
-        cell.addEventListener("click", () => {
+        bindOnce(cell, "click", () => {
           const ath = cell.getAttribute("data-ath");
           const d = cell.getAttribute("data-date");
           if (!ath || !d) return;
@@ -885,27 +912,20 @@
           if ($("readyAthlete")) $("readyAthlete").value = ath;
           if ($("readyDate")) $("readyDate").value = d;
           renderLog();
-        });
+        }, `heat_${cell.getAttribute("data-ath")}_${cell.getAttribute("data-date")}`);
       });
     }
 
-    $("btnHeatmap")?.addEventListener("click", renderHeatmap);
+    bindOnceById("btnHeatmap", "click", renderHeatmap, "heat");
     renderHeatmap();
-    updateRisk();
   }
 
   // -------------------------
-  // Render: Team (coach/admin only)
+  // Render: Team
   // -------------------------
   function renderTeam() {
-    if (!canManageTeam()) {
-      // Safety: if athlete somehow lands here
-      showView("dashboard");
-      return;
-    }
-
     const pill = $("activeTeamPill");
-    if (pill) pill.textContent = `Team: ${state.team?.name || "Default"} • Role: ${ROLE()}`;
+    if (pill) pill.textContent = `Team: ${state.team?.name || "Default"}`;
 
     const list = $("rosterList");
     const athletes = getAthletes();
@@ -913,27 +933,25 @@
       if (!athletes.length) {
         list.innerHTML = `<div class="muted small">No athletes yet. Add one above or click “Seed Demo”.</div>`;
       } else {
-        list.innerHTML = athletes
-          .map((a) => {
-            const t = ensureTargetsForAthlete(a.id);
-            return `
-              <div class="item">
-                <div>
-                  <div><b>${escHTML(a.name || "—")}</b> <span class="muted small">${escHTML(a.position || "")}</span></div>
-                  <div class="muted small">Ht: ${escHTML(a.heightIn ?? "—")} in • Wt: ${escHTML(a.weightLb ?? "—")} lb</div>
-                  <div class="muted small">Targets: P ${escHTML(t.protein)} / C ${escHTML(t.carbs)} / F ${escHTML(t.fat)} • Water ${escHTML(t.waterOz)}oz</div>
-                </div>
-                <div class="row gap">
-                  <button class="btn ghost" data-edit="${escHTML(a.id)}">Edit targets</button>
-                  <button class="btn danger" data-del="${escHTML(a.id)}">Remove</button>
-                </div>
+        list.innerHTML = athletes.map((a) => {
+          const t = ensureTargetsForAthlete(a.id);
+          return `
+            <div class="item">
+              <div>
+                <div><b>${escHTML(a.name || "—")}</b> <span class="muted small">${escHTML(a.position || "")}</span></div>
+                <div class="muted small">Ht: ${escHTML(a.heightIn ?? "—")} in • Wt: ${escHTML(a.weightLb ?? "—")} lb</div>
+                <div class="muted small">Targets: P ${escHTML(t.protein)} / C ${escHTML(t.carbs)} / F ${escHTML(t.fat)} • Water ${escHTML(t.waterOz)}oz</div>
               </div>
-            `;
-          })
-          .join("");
+              <div class="row gap">
+                <button class="btn ghost" data-edit="${escHTML(a.id)}">Edit targets</button>
+                <button class="btn danger" data-del="${escHTML(a.id)}">Remove</button>
+              </div>
+            </div>
+          `;
+        }).join("");
 
         qa("[data-del]", list).forEach((btn) => {
-          btn.addEventListener("click", () => {
+          bindOnce(btn, "click", () => {
             const id = btn.getAttribute("data-del");
             if (!id) return;
             if (!confirm("Remove athlete and all their logs?")) return;
@@ -943,27 +961,27 @@
             delete state.logs.nutrition[id];
             delete state.targets[id];
             delete state.periodization[id];
-            delete state.nutritionPlans[id];
+            delete state.nutritionAddon.mealPlans[id];
             saveState();
             renderTeam();
             renderDashboard();
-          });
+          }, `del_${btn.getAttribute("data-del")}`);
         });
 
         qa("[data-edit]", list).forEach((btn) => {
-          btn.addEventListener("click", () => {
+          bindOnce(btn, "click", () => {
             const id = btn.getAttribute("data-edit");
             if (!id) return;
             showView("nutrition");
             if ($("targetAthlete")) $("targetAthlete").value = id;
+            if ($("mealAthlete")) $("mealAthlete").value = id;
             renderNutrition();
-          });
+          }, `edit_${btn.getAttribute("data-edit")}`);
         });
       }
     }
 
-    // Add athlete
-    $("btnAddAthlete")?.addEventListener("click", () => {
+    bindOnceById("btnAddAthlete", "click", () => {
       const name = ($("athName")?.value || "").trim();
       const pos = ($("athPos")?.value || "").trim();
       const ht = toNum($("athHt")?.value, null);
@@ -985,43 +1003,40 @@
       renderLog();
       renderNutrition();
       renderPeriodization();
-    });
+    }, "addAthlete");
 
-    // Team settings
     if ($("teamName")) $("teamName").value = state.team?.name || "Default";
     if ($("seasonStart")) $("seasonStart").value = state.team?.seasonStart || "";
     if ($("seasonEnd")) $("seasonEnd").value = state.team?.seasonEnd || "";
 
-    $("btnSaveTeam")?.addEventListener("click", () => {
+    bindOnceById("btnSaveTeam", "click", () => {
       state.team.name = ($("teamName")?.value || "Default").trim() || "Default";
       state.team.seasonStart = safeISO($("seasonStart")?.value) || "";
       state.team.seasonEnd = safeISO($("seasonEnd")?.value) || "";
       saveState();
       renderTeam();
       alert("Saved team settings.");
-    });
+    }, "saveTeam");
 
-    // Macro defaults
     if ($("defProt")) $("defProt").value = state.team.macroDefaults.protein;
     if ($("defCarb")) $("defCarb").value = state.team.macroDefaults.carbs;
     if ($("defFat")) $("defFat").value = state.team.macroDefaults.fat;
 
-    $("btnSaveMacroDefaults")?.addEventListener("click", () => {
+    bindOnceById("btnSaveMacroDefaults", "click", () => {
       state.team.macroDefaults.protein = clamp(toNum($("defProt")?.value, 160), 0, 400);
       state.team.macroDefaults.carbs = clamp(toNum($("defCarb")?.value, 240), 0, 800);
       state.team.macroDefaults.fat = clamp(toNum($("defFat")?.value, 70), 0, 300);
       saveState();
       alert("Saved macro defaults.");
-    });
+    }, "saveMacroDefaults");
 
-    // PIQ weights
     if ($("wReadiness")) $("wReadiness").value = state.team.piqWeights.readiness;
     if ($("wTraining")) $("wTraining").value = state.team.piqWeights.training;
     if ($("wRecovery")) $("wRecovery").value = state.team.piqWeights.recovery;
     if ($("wNutrition")) $("wNutrition").value = state.team.piqWeights.nutrition;
     if ($("wRisk")) $("wRisk").value = state.team.piqWeights.risk;
 
-    $("btnSaveWeights")?.addEventListener("click", () => {
+    bindOnceById("btnSaveWeights", "click", () => {
       const w = {
         readiness: clamp(toNum($("wReadiness")?.value, 30), 0, 100),
         training: clamp(toNum($("wTraining")?.value, 25), 0, 100),
@@ -1030,12 +1045,12 @@
         risk: clamp(toNum($("wRisk")?.value, 10), 0, 100)
       };
       const total = w.readiness + w.training + w.recovery + w.nutrition + w.risk;
-      $("weightsNote").textContent = total === 100 ? "OK (totals 100)" : `Totals ${total} (should be 100)`;
+      if ($("weightsNote")) $("weightsNote").textContent = total === 100 ? "OK (totals 100)" : `Totals ${total} (should be 100)`;
       state.team.piqWeights = w;
       saveState();
       alert("Saved weights.");
       renderDashboard();
-    });
+    }, "saveWeights");
   }
 
   // -------------------------
@@ -1060,13 +1075,13 @@
       const el = $("logComputed");
       if (el) el.textContent = `Load: ${load}`;
     }
-    $("logMin")?.addEventListener("input", updateTrainingComputed);
-    $("logRpe")?.addEventListener("input", updateTrainingComputed);
+    bindOnceById("logMin", "input", updateTrainingComputed, "trainComp");
+    bindOnceById("logRpe", "input", updateTrainingComputed, "trainComp");
     updateTrainingComputed();
 
-    $("btnSaveTraining")?.addEventListener("click", () => {
+    bindOnceById("btnSaveTraining", "click", () => {
       const athleteId = $("logAthlete")?.value || "";
-      if (!athleteId) return alert(canManageTeam() ? "Add athletes first (Team tab)." : "Ask coach to add you to roster.");
+      if (!athleteId) return alert("Add athletes first (Team tab).");
 
       const dateISO = safeISO($("logDate")?.value) || todayISO();
       const minutes = clamp(toNum($("logMin")?.value, 0), 0, 600);
@@ -1074,26 +1089,18 @@
       const type = String($("logType")?.value || "practice");
       const notes = ($("logNotes")?.value || "").trim();
 
-      addTrainingSession(athleteId, {
-        id: uid("sess"),
-        dateISO,
-        minutes,
-        rpe,
-        type,
-        notes,
-        load: Math.round(minutes * rpe)
-      });
-
-      $("logNotes").value = "";
+      const sess = { id: uid("sess"), dateISO, minutes, rpe, type, notes, load: Math.round(minutes * rpe) };
+      addTrainingSession(athleteId, sess);
+      if ($("logNotes")) $("logNotes").value = "";
       updateTrainingComputed();
       renderLog();
       renderDashboard();
-    });
+    }, "saveTraining");
 
     const tList = $("trainingList");
     if (tList) {
       if (!logAthleteId) {
-        tList.innerHTML = `<div class="muted small">${canManageTeam() ? "Add athletes in Team tab." : "Ask coach to add you to roster."}</div>`;
+        tList.innerHTML = `<div class="muted small">Add athletes in Team tab.</div>`;
       } else {
         const sessions = getTraining(logAthleteId).slice(0, 20);
         tList.innerHTML = sessions.length
@@ -1109,14 +1116,14 @@
           : `<div class="muted small">No sessions yet.</div>`;
 
         qa("[data-del-session]", tList).forEach((btn) => {
-          btn.addEventListener("click", () => {
+          bindOnce(btn, "click", () => {
             const id = btn.getAttribute("data-del-session");
             if (!id) return;
             state.logs.training[logAthleteId] = getTraining(logAthleteId).filter((x) => x.id !== id);
             saveState();
             renderLog();
             renderDashboard();
-          });
+          }, `delSess_${btn.getAttribute("data-del-session")}`);
         });
       }
     }
@@ -1132,32 +1139,33 @@
       const el = $("readyComputed");
       if (el) el.textContent = `${score}`;
     }
-    ["readySleep", "readySore", "readyStress", "readyEnergy"].forEach((id) => $(id)?.addEventListener("input", updateReadinessComputed));
+
+    ["readySleep", "readySore", "readyStress", "readyEnergy"].forEach((id) => bindOnceById(id, "input", updateReadinessComputed, "readyComp"));
     updateReadinessComputed();
 
-    $("btnSaveReadiness")?.addEventListener("click", () => {
+    bindOnceById("btnSaveReadiness", "click", () => {
       const athleteId = $("readyAthlete")?.value || "";
-      if (!athleteId) return alert(canManageTeam() ? "Add athletes first (Team tab)." : "Ask coach to add you to roster.");
+      if (!athleteId) return alert("Add athletes first (Team tab).");
 
       const dateISO = safeISO($("readyDate")?.value) || todayISO();
-      upsertReadiness(athleteId, {
+      const row = {
         dateISO,
         sleep: clamp(toNum($("readySleep")?.value, 0), 0, 16),
         soreness: clamp(toNum($("readySore")?.value, 0), 0, 10),
         stress: clamp(toNum($("readyStress")?.value, 0), 0, 10),
         energy: clamp(toNum($("readyEnergy")?.value, 0), 0, 10),
         injuryNote: ($("readyInjury")?.value || "").trim()
-      });
-
-      $("readyInjury").value = "";
+      };
+      upsertReadiness(athleteId, row);
+      if ($("readyInjury")) $("readyInjury").value = "";
       renderLog();
       renderDashboard();
-    });
+    }, "saveReadiness");
 
     const rList = $("readinessList");
     if (rList) {
       if (!readyAthleteId) {
-        rList.innerHTML = `<div class="muted small">${canManageTeam() ? "Add athletes in Team tab." : "Ask coach to add you to roster."}</div>`;
+        rList.innerHTML = `<div class="muted small">Add athletes in Team tab.</div>`;
       } else {
         const rows = getReadiness(readyAthleteId).slice().sort((a, b) => String(b.dateISO).localeCompare(String(a.dateISO))).slice(0, 14);
         rList.innerHTML = rows.length
@@ -1179,25 +1187,30 @@
           : `<div class="muted small">No readiness check-ins yet.</div>`;
 
         qa("[data-del-ready]", rList).forEach((btn) => {
-          btn.addEventListener("click", () => {
+          bindOnce(btn, "click", () => {
             const d = btn.getAttribute("data-del-ready");
             state.logs.readiness[readyAthleteId] = getReadiness(readyAthleteId).filter((x) => x.dateISO !== d);
             saveState();
             renderLog();
             renderDashboard();
-          });
+          }, `delReady_${btn.getAttribute("data-del-ready")}`);
         });
       }
     }
   }
 
   // -------------------------
-  // Render: Nutrition (athlete + coach/admin)
+  // Render: Nutrition
   // -------------------------
   function renderNutrition() {
     const athletes = getAthletes();
+
     fillAthleteSelect($("nutAthlete"), $("nutAthlete")?.value);
     fillAthleteSelect($("targetAthlete"), $("targetAthlete")?.value);
+
+    // ✅ Meal plan controls
+    fillAthleteSelect($("mealAthlete"), $("mealAthlete")?.value);
+    if ($("mealStart") && !safeISO($("mealStart").value)) $("mealStart").value = todayISO();
 
     if ($("nutDate") && !safeISO($("nutDate").value)) $("nutDate").value = todayISO();
 
@@ -1225,60 +1238,67 @@
         waterOz: toNum($("nutWater")?.value, 0)
       };
       const score = calcNutritionAdherence(row, t);
-      $("nutComputed").textContent = String(score);
+      if ($("nutComputed")) $("nutComputed").textContent = String(score);
 
-      $("nutExplain").textContent =
-        `Adherence compares daily totals vs targets.\n` +
-        `Deviation is averaged across Protein/Carbs/Fat/Water.\n` +
-        `Score = 100 - avgDeviation% (capped).\n\n` +
-        `Targets for this athlete:\nP ${t.protein} / C ${t.carbs} / F ${t.fat} • Water ${t.waterOz}oz`;
+      if ($("nutExplain")) {
+        $("nutExplain").textContent =
+          `Adherence compares daily totals vs targets.\n` +
+          `Deviation is averaged across Protein/Carbs/Fat/Water.\n` +
+          `Score = 100 - avgDeviation% (capped).\n\n` +
+          `Targets for this athlete:\nP ${t.protein} / C ${t.carbs} / F ${t.fat} • Water ${t.waterOz}oz`;
+      }
     }
 
-    ["nutProt", "nutCarb", "nutFat", "nutWater"].forEach((id) => $(id)?.addEventListener("input", updateNutComputed));
-    $("nutAthlete")?.addEventListener("change", () => { updateNutComputed(); renderNutrition(); });
-    $("nutDate")?.addEventListener("change", renderNutrition);
+    ["nutProt", "nutCarb", "nutFat", "nutWater"].forEach((id) => bindOnceById(id, "input", updateNutComputed, "nutComp"));
+
+    bindOnce($("nutAthlete"), "change", () => {
+      updateNutComputed();
+      renderNutrition();
+    }, "nutAthleteChange");
+
+    bindOnce($("nutDate"), "change", renderNutrition, "nutDateChange");
 
     if (athleteId) {
       const existing = getNutrition(athleteId).find((n) => n.dateISO === dateISO);
       if (existing) {
-        $("nutProt").value = toNum(existing.protein, 0);
-        $("nutCarb").value = toNum(existing.carbs, 0);
-        $("nutFat").value = toNum(existing.fat, 0);
-        $("nutWater").value = toNum(existing.waterOz, 0);
-        $("nutNotes").value = existing.notes || "";
+        if ($("nutProt")) $("nutProt").value = toNum(existing.protein, 0);
+        if ($("nutCarb")) $("nutCarb").value = toNum(existing.carbs, 0);
+        if ($("nutFat")) $("nutFat").value = toNum(existing.fat, 0);
+        if ($("nutWater")) $("nutWater").value = toNum(existing.waterOz, 0);
+        if ($("nutNotes")) $("nutNotes").value = existing.notes || "";
       } else {
-        $("nutProt").value = 0;
-        $("nutCarb").value = 0;
-        $("nutFat").value = 0;
-        $("nutWater").value = 0;
-        $("nutNotes").value = "";
+        if ($("nutProt")) $("nutProt").value = 0;
+        if ($("nutCarb")) $("nutCarb").value = 0;
+        if ($("nutFat")) $("nutFat").value = 0;
+        if ($("nutWater")) $("nutWater").value = 0;
+        if ($("nutNotes")) $("nutNotes").value = "";
       }
     }
 
     updateNutComputed();
 
-    $("btnSaveNutrition")?.addEventListener("click", () => {
+    bindOnceById("btnSaveNutrition", "click", () => {
       const a = $("nutAthlete")?.value || "";
-      if (!a) return alert(canManageTeam() ? "Add athletes first (Team tab)." : "Ask coach to add you to roster.");
+      if (!a) return alert("Add athletes first (Team tab).");
       const d = safeISO($("nutDate")?.value) || todayISO();
 
-      upsertNutrition(a, {
+      const row = {
         dateISO: d,
         protein: clamp(toNum($("nutProt")?.value, 0), 0, 500),
         carbs: clamp(toNum($("nutCarb")?.value, 0), 0, 1000),
         fat: clamp(toNum($("nutFat")?.value, 0), 0, 400),
         waterOz: clamp(toNum($("nutWater")?.value, 0), 0, 300),
         notes: ($("nutNotes")?.value || "").trim()
-      });
-
+      };
+      upsertNutrition(a, row);
       renderNutrition();
       renderDashboard();
       alert("Saved.");
-    });
+    }, "saveNutrition");
 
-    $("btnQuickMeal")?.addEventListener("click", () => {
+    bindOnceById("btnQuickMeal", "click", () => {
       const a = $("nutAthlete")?.value || "";
-      if (!a) return alert(canManageTeam() ? "Add athletes first (Team tab)." : "Ask coach to add you to roster.");
+      if (!a) return alert("Add athletes first (Team tab).");
       const d = safeISO($("nutDate")?.value) || todayISO();
 
       const cur = getNutrition(a).find((n) => n.dateISO === d) || { dateISO: d, protein: 0, carbs: 0, fat: 0, waterOz: 0, notes: "" };
@@ -1300,10 +1320,9 @@
       upsertNutrition(a, next);
       renderNutrition();
       renderDashboard();
-    });
+    }, "quickMeal");
 
-    // Targets editing: athlete CAN edit their targets (top-tier workflow)
-    $("btnSaveTargets")?.addEventListener("click", () => {
+    bindOnceById("btnSaveTargets", "click", () => {
       const a = $("targetAthlete")?.value || "";
       if (!a) return alert("Select an athlete.");
       state.targets[a] = {
@@ -1316,38 +1335,34 @@
       alert("Saved targets.");
       renderNutrition();
       renderDashboard();
-    });
+    }, "saveTargets");
 
-    // Meal plan generator wiring (Elite)
-    $("btnGenerateMealPlan")?.addEventListener("click", () => {
-      const a =
-        $("mealAthlete")?.value ||
-        $("nutAthlete")?.value ||
-        $("targetAthlete")?.value ||
-        "";
+    // ✅ Meal Plan button
+    bindOnceById("btnGenerateMealPlan", "click", () => {
+      const a = $("mealAthlete")?.value || $("nutAthlete")?.value || athletes[0]?.id || "";
+      if (!a) return alert("Add athletes first (Team tab).");
 
-      const athleteIdResolved = a || (athletes[0]?.id || "");
-      if (!athleteIdResolved) return alert(canManageTeam() ? "Add athletes first (Team tab)." : "Ask coach to add you to roster.");
-
-      const start =
-        safeISO($("mealStart")?.value) ||
-        safeISO($("nutDate")?.value) ||
-        todayISO();
-
+      const start = safeISO($("mealStart")?.value) || todayISO();
       const days = clamp(toNum($("mealDays")?.value, 7), 1, 21);
-      const dayType = String($("mealDayType")?.value || "training"); // training | game | recovery
+      const dayType = String($("mealDayType")?.value || "training");
+      const diet = String($("mealDiet")?.value || "standard");
 
-      const planObj = generateMealPlan(athleteIdResolved, start, days, dayType);
-      const out = $("mealPlanOut") || $("mealPlanList") || $("mealPlanOutput");
-      if (out) renderMealPlan(planObj, out);
-      else alert("Meal plan generated. Add a container with id='mealPlanOut' to display it.");
-    });
+      const planObj = generateMealPlan(a, start, days, dayType, diet);
+      renderMealPlan(planObj, $("mealPlanOut"));
+    }, "genMealPlan");
 
-    // List logs
+    // Render stored plan for selected athlete if exists
+    const storedAth = $("mealAthlete")?.value || athleteId;
+    if (storedAth && state.nutritionAddon?.mealPlans?.[storedAth]) {
+      renderMealPlan(state.nutritionAddon.mealPlans[storedAth], $("mealPlanOut"));
+    } else if ($("mealPlanOut")) {
+      $("mealPlanOut").innerHTML = `<div class="small muted">No plan generated yet.</div>`;
+    }
+
     const list = $("nutritionList");
     if (list) {
       if (!athleteId) {
-        list.innerHTML = `<div class="muted small">${canManageTeam() ? "Add athletes in Team tab." : "Ask coach to add you to roster."}</div>`;
+        list.innerHTML = `<div class="muted small">Add athletes in Team tab.</div>`;
       } else {
         const rows = getNutrition(athleteId).slice().sort((a, b) => String(b.dateISO).localeCompare(String(a.dateISO))).slice(0, 14);
         const t = ensureTargetsForAthlete(athleteId);
@@ -1370,28 +1385,20 @@
           : `<div class="muted small">No nutrition entries yet.</div>`;
 
         qa("[data-del-nut]", list).forEach((btn) => {
-          btn.addEventListener("click", () => {
+          bindOnce(btn, "click", () => {
             const d = btn.getAttribute("data-del-nut");
             state.logs.nutrition[athleteId] = getNutrition(athleteId).filter((x) => x.dateISO !== d);
             saveState();
             renderNutrition();
             renderDashboard();
-          });
+          }, `delNut_${btn.getAttribute("data-del-nut")}`);
         });
       }
     }
-
-    // If a plan already exists, render it
-    const existingPlan = athleteId ? state.nutritionPlans[String(athleteId)] : null;
-    const out = $("mealPlanOut") || $("mealPlanList") || $("mealPlanOutput");
-    if (existingPlan && out) renderMealPlan(existingPlan, out);
-
-    // Allow nutritionEngine.js to hook in if present
-    try { window.PIQ_Nutrition?.init?.(); } catch {}
   }
 
   // -------------------------
-  // Render: Periodization (athlete + coach/admin)
+  // Render: Periodization
   // -------------------------
   function renderPeriodization() {
     const athletes = getAthletes();
@@ -1401,9 +1408,9 @@
     if ($("perStart") && !safeISO($("perStart").value)) $("perStart").value = todayISO();
     if ($("monWeek") && !safeISO($("monWeek").value)) $("monWeek").value = todayISO();
 
-    $("btnGeneratePlan")?.addEventListener("click", () => {
+    bindOnceById("btnGeneratePlan", "click", () => {
       const athleteId = $("perAthlete")?.value || "";
-      if (!athleteId) return alert(canManageTeam() ? "Add athletes first (Team tab)." : "Ask coach to add you to roster.");
+      if (!athleteId) return alert("Add athletes first (Team tab).");
 
       const startISO = safeISO($("perStart")?.value) || todayISO();
       const weeks = clamp(toNum($("perWeeks")?.value, 8), 2, 24);
@@ -1413,7 +1420,7 @@
       generatePeriodizationPlan({ athleteId, startISO, weeks, goal, deloadEvery });
       renderPeriodization();
       alert("Plan generated.");
-    });
+    }, "genPerPlan");
 
     const planList = $("planList");
     const athleteId = $("perAthlete")?.value || (athletes[0]?.id || "");
@@ -1421,7 +1428,7 @@
 
     if (planList) {
       if (!athleteId) {
-        planList.innerHTML = `<div class="muted small">${canManageTeam() ? "Add athletes in Team tab." : "Ask coach to add you to roster."}</div>`;
+        planList.innerHTML = `<div class="muted small">Add athletes in Team tab.</div>`;
       } else if (!plan || !plan.weeksPlan?.length) {
         planList.innerHTML = `<div class="muted small">No plan yet. Generate one above.</div>`;
       } else {
@@ -1439,7 +1446,7 @@
       }
     }
 
-    $("btnCompareWeek")?.addEventListener("click", () => {
+    bindOnceById("btnCompareWeek", "click", () => {
       const a = $("monAthlete")?.value || "";
       if (!a) return alert("Select an athlete.");
       const weekStart = safeISO($("monWeek")?.value) || todayISO();
@@ -1450,10 +1457,12 @@
       const actual = actualLoadForWeek(training, weekStart);
       const diff = planned ? Math.round(((actual - planned) / planned) * 100) : null;
 
-      $("compareSummary").textContent =
-        planned
-          ? `Planned ${planned} vs Actual ${actual} (${diff >= 0 ? "+" : ""}${diff}% )`
-          : `No planned week found starting ${weekStart}. Generate plan first.`;
+      if ($("compareSummary")) {
+        $("compareSummary").textContent =
+          planned
+            ? `Planned ${planned} vs Actual ${actual} (${diff >= 0 ? "+" : ""}${diff}% )`
+            : `No planned week found starting ${weekStart}. Generate plan first.`;
+      }
 
       const details = [];
       details.push(`Week: ${weekStart} → ${addDaysISO(weekStart, 6)}`);
@@ -1468,102 +1477,28 @@
           details.push(`- ${s.dateISO}: ${s.minutes}min @ RPE ${s.rpe} (${sessionLoad(s)}) • ${s.type}`);
         });
 
-      $("compareDetail").textContent = details.join("\n");
-    });
+      if ($("compareDetail")) $("compareDetail").textContent = details.join("\n");
+    }, "compareWeek");
   }
 
   // -------------------------
-  // Render: Settings (role switch + wipe)
+  // Render: Settings
   // -------------------------
   function renderSettings() {
     const info = $("appInfo");
     if (info) {
       info.textContent =
         `PerformanceIQ v${APP_VERSION}\n` +
-        `Role: ${ROLE()}\n` +
         `LocalStorage key: ${STORAGE_KEY}\n` +
         `Updated: ${new Date(state.meta.updatedAtMs || Date.now()).toLocaleString()}\n` +
         `Athletes: ${state.athletes.length}`;
     }
 
-    // Inject role switch UI if missing
-    const settingsView = $("view-settings");
-    if (settingsView && !q("#piqRolePanel", settingsView)) {
-      const panel = document.createElement("div");
-      panel.className = "mini";
-      panel.id = "piqRolePanel";
-      panel.innerHTML = `
-        <div class="minihead">Role & Access</div>
-        <div class="minibody small muted">
-          Offline-first demo roles. For real security, use auth + server rules (RLS).
-        </div>
-        <div class="row gap wrap">
-          <div class="field">
-            <label>Current role</label>
-            <select id="roleSelect">
-              <option value="athlete">Athlete</option>
-              <option value="coach">Coach</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Coach/Admin PIN (optional)</label>
-            <input id="rolePin" type="password" placeholder="Set or enter PIN" />
-          </div>
-          <div class="field">
-            <label>&nbsp;</label>
-            <button class="btn" id="btnApplyRole">Apply Role</button>
-          </div>
-        </div>
-        <div class="small muted" id="roleNote"></div>
-        <hr class="sep" />
-      `;
-      // Add at top of Settings card
-      const card = q(".card", settingsView);
-      if (card) {
-        const grid = q(".grid2", card) || card;
-        grid.prepend(panel);
-      } else {
-        settingsView.prepend(panel);
-      }
-    }
-
-    const sel = $("roleSelect");
-    const pin = $("rolePin");
-    const note = $("roleNote");
-    if (sel) sel.value = ROLE();
-    if (note) note.textContent = state.auth.coachPin ? "PIN is set for coach/admin switching." : "No PIN set yet (optional).";
-
-    $("btnApplyRole")?.addEventListener("click", () => {
-      const nextRole = String(sel?.value || "athlete");
-      const entered = String(pin?.value || "");
-
-      // If switching into coach/admin and pin is set, require it
-      if ((nextRole === "coach" || nextRole === "admin") && state.auth.coachPin) {
-        if (entered !== state.auth.coachPin) {
-          alert("Incorrect PIN for coach/admin.");
-          return;
-        }
-      }
-
-      // If user entered a new pin while currently coach/admin, allow setting it
-      if (canManageTeam() && entered && entered.length >= 4) {
-        state.auth.coachPin = entered;
-      }
-
-      state.auth.role = ["athlete", "coach", "admin"].includes(nextRole) ? nextRole : "athlete";
-      saveState();
-      if (pin) pin.value = "";
-      applyRoleUI();
-      alert(`Role set to ${state.auth.role}.`);
-      showView("dashboard");
-    });
-
-    $("btnWipe")?.addEventListener("click", () => {
+    bindOnceById("btnWipe", "click", () => {
       if (!confirm("Wipe ALL local data? This cannot be undone.")) return;
       try { localStorage.removeItem(STORAGE_KEY); } catch {}
       location.reload();
-    });
+    }, "wipe");
   }
 
   // -------------------------
@@ -1591,6 +1526,7 @@
         const type = ["practice", "lift", "skills", "conditioning"][(i + idx) % 4];
         addTrainingSession(a.id, { id: uid("sess"), dateISO: d, minutes, rpe, type, notes: "", load: minutes * rpe });
       }
+
       for (let i = 0; i < 21; i++) {
         const d = addDaysISO(start, i);
         upsertReadiness(a.id, {
@@ -1602,6 +1538,7 @@
           injuryNote: ""
         });
       }
+
       const t = ensureTargetsForAthlete(a.id);
       for (let i = 0; i < 21; i++) {
         const d = addDaysISO(start, i);
@@ -1618,7 +1555,7 @@
 
     saveState();
     alert("Seeded demo data.");
-    if (canManageTeam()) renderTeam();
+    renderTeam();
     renderDashboard();
     renderLog();
     renderNutrition();
@@ -1657,22 +1594,21 @@
   }
 
   // -------------------------
-  // Boot entry
+  // Boot
   // -------------------------
   function boot() {
     hideSplash();
     wireNav();
-    applyRoleUI();
 
-    $("btnSeed")?.addEventListener("click", seedDemo);
-    $("btnExport")?.addEventListener("click", exportJSON);
+    bindOnceById("btnSeed", "click", seedDemo, "seed");
+    bindOnceById("btnExport", "click", exportJSON, "export");
 
-    $("fileImport")?.addEventListener("change", (e) => {
+    bindOnce($("fileImport"), "change", (e) => {
       const file = e.target?.files?.[0];
       if (!file) return;
       importJSON(file);
       e.target.value = "";
-    });
+    }, "import");
 
     if ($("dashDate")) $("dashDate").value = todayISO();
     if ($("riskDate")) $("riskDate").value = todayISO();
@@ -1680,11 +1616,8 @@
     showView("dashboard");
   }
 
-  // Expose startApp for boot.js
-  window.startApp = boot;
-
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot, { once: true });
+    document.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }
