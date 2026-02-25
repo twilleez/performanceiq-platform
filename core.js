@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const KEY = "piqData_v2";
+  const KEY = "piqData_v2_3_0";
   const DEFAULT_TEAM = "Default";
 
   // ---------- Storage ----------
@@ -22,12 +22,14 @@
     s.role = s.role || "coach";
 
     s.athletes = Array.isArray(s.athletes) ? s.athletes : [];
-    s.logs = Array.isArray(s.logs) ? s.logs : [];               // {athlete,dateISO,min,rpe,load}
-    s.readiness = Array.isArray(s.readiness) ? s.readiness : []; // {athlete,dateISO,sleep,sore,stress,energy,score}
-    s.nutrition = Array.isArray(s.nutrition) ? s.nutrition : []; // {athlete,dateISO,p,c,f,adherence}
-    s.targets = s.targets && typeof s.targets === "object" ? s.targets : {}; // targets[athlete]={p,c,f,w}
-    s.periodization = s.periodization && typeof s.periodization === "object" ? s.periodization : {}; // per athlete: weeks[]
+    s.logs = Array.isArray(s.logs) ? s.logs : [];                 // {athlete,dateISO,min,rpe,load,source?}
+    s.readiness = Array.isArray(s.readiness) ? s.readiness : [];  // {athlete,dateISO,sleep,sore,stress,energy,score}
+    s.nutrition = Array.isArray(s.nutrition) ? s.nutrition : [];  // {athlete,dateISO,p,c,f,adherence}
+    s.targets = s.targets && typeof s.targets === "object" ? s.targets : {}; // targets[athlete]
+    s.periodization = s.periodization && typeof s.periodization === "object" ? s.periodization : {}; // per athlete
+    s.workoutWeeks = s.workoutWeeks && typeof s.workoutWeeks === "object" ? s.workoutWeeks : {}; // workoutWeeks[athlete][weekStartISO]
     s.piqWeights = s.piqWeights || { readiness: 30, training: 25, recovery: 20, nutrition: 15, risk: 10 };
+
     return s;
   }
 
@@ -70,8 +72,8 @@
   // ---------- Role gating ----------
   function applyRoleNav() {
     const role = store.role || "coach";
-    $("rolePill").textContent = `Role: ${role[0].toUpperCase() + role.slice(1)}`;
-    $("teamPill").textContent = `Team: ${store.team?.name || DEFAULT_TEAM}`;
+    if ($("rolePill")) $("rolePill").textContent = `Role: ${role[0].toUpperCase() + role.slice(1)}`;
+    if ($("teamPill")) $("teamPill").textContent = `Team: ${store.team?.name || DEFAULT_TEAM}`;
 
     qa("#nav button[data-role]").forEach((btn) => {
       const required = btn.getAttribute("data-role");
@@ -86,8 +88,6 @@
     if (store.athletes.includes(name)) return alert("Athlete already exists.");
 
     store.athletes.push(name);
-
-    // set default targets for athlete
     if (!store.targets[name]) store.targets[name] = { p: 160, c: 240, f: 70, w: 80 };
 
     save();
@@ -98,7 +98,7 @@
   }
 
   function refreshAthleteDropdowns() {
-    const ids = ["dashAthlete", "logAthlete", "readyAthlete", "nutAthlete", "targetAthlete", "workoutAthlete", "perAthlete"];
+    const ids = ["dashAthlete","logAthlete","readyAthlete","nutAthlete","targetAthlete","workoutAthlete","perAthlete","monAthlete"];
     ids.forEach((id) => {
       const el = $(id);
       if (!el) return;
@@ -106,8 +106,7 @@
       el.innerHTML = "";
       store.athletes.forEach((a) => {
         const o = document.createElement("option");
-        o.value = a;
-        o.textContent = a;
+        o.value = a; o.textContent = a;
         el.appendChild(o);
       });
       if (store.athletes.length) el.value = store.athletes.includes(cur) ? cur : store.athletes[0];
@@ -117,22 +116,26 @@
   function renderRoster() {
     const box = $("roster");
     if (!box) return;
+
     if (!store.athletes.length) {
       box.innerHTML = `<div class="muted small">No athletes yet.</div>`;
       return;
     }
-    box.innerHTML = store.athletes
-      .map(
-        (a) => `
+
+    box.innerHTML = store.athletes.map((a) => {
+      const t = store.targets?.[a] || { p: 160, c: 240, f: 70 };
+      return `
         <div class="item">
-          <div>
-            <b>${a}</b>
-            <div class="muted small">Targets: P${store.targets?.[a]?.p ?? 160} C${store.targets?.[a]?.c ?? 240} F${store.targets?.[a]?.f ?? 70}</div>
+          <div class="itemcol">
+            <div><b>${a}</b></div>
+            <div class="muted">Targets: P${t.p} C${t.c} F${t.f}</div>
           </div>
-          <button class="btn danger" data-del="${a}">Remove</button>
-        </div>`
-      )
-      .join("");
+          <div class="itemactions">
+            <button class="btn danger" data-del="${a}">Remove</button>
+          </div>
+        </div>
+      `;
+    }).join("");
 
     qa("[data-del]", box).forEach((btn) => {
       btn.onclick = () => {
@@ -146,6 +149,7 @@
         store.nutrition = store.nutrition.filter((x) => x.athlete !== a);
         delete store.targets[a];
         delete store.periodization[a];
+        delete store.workoutWeeks[a];
 
         save();
         refreshAthleteDropdowns();
@@ -161,14 +165,22 @@
 
   // ---------- Training ----------
   function sessionLoad(min, rpe) {
-    return clamp(Math.round(toNum(min) * toNum(rpe)), 0, 6000);
+    return clamp(Math.round(toNum(min) * toNum(rpe)), 0, 9000);
   }
 
-  function upsertSession(athlete, dateISO, min, rpe) {
-    store.logs = store.logs.filter((x) => !(x.athlete === athlete && x.dateISO === dateISO));
-    store.logs.push({ athlete, dateISO, min, rpe, load: sessionLoad(min, rpe) });
+  function upsertSession(athlete, dateISO, min, rpe, source = "manual") {
+    store.logs = store.logs.filter((x) => !(x.athlete === athlete && x.dateISO === dateISO && x.source === source));
+    store.logs.push({ athlete, dateISO, min, rpe, load: sessionLoad(min, rpe), source });
     store.logs.sort((a, b) => (a.dateISO < b.dateISO ? 1 : -1));
     save();
+  }
+
+  function sumLoadsForRange(athlete, fromISO, toISOInclusive) {
+    const f = safeISO(fromISO), t = safeISO(toISOInclusive);
+    if (!f || !t) return 0;
+    return store.logs
+      .filter((s) => s.athlete === athlete && s.dateISO >= f && s.dateISO <= t)
+      .reduce((acc, s) => acc + toNum(s.load, 0), 0);
   }
 
   function renderLogs() {
@@ -182,26 +194,23 @@
     }
 
     const rows = store.logs.filter((x) => x.athlete === athlete).slice(0, 20);
-    list.innerHTML = rows.length
-      ? rows
-          .map(
-            (r) => `
-            <div class="item">
-              <div>
-                <b>${r.dateISO}</b> • ${r.min} min @ RPE ${r.rpe}
-                <div class="muted small">Load: <b>${r.load}</b></div>
-              </div>
-              <button class="btn danger" data-del-log="${r.athlete}|${r.dateISO}">Delete</button>
-            </div>`
-          )
-          .join("")
-      : `<div class="muted small">No sessions logged.</div>`;
+    list.innerHTML = rows.length ? rows.map((r) => `
+      <div class="item">
+        <div class="itemcol">
+          <div><b>${r.dateISO}</b> • ${r.min} min @ RPE ${r.rpe}</div>
+          <div class="muted">Load: <b>${r.load}</b> • Source: ${r.source || "manual"}</div>
+        </div>
+        <div class="itemactions">
+          <button class="btn danger" data-del-log="${r.athlete}|${r.dateISO}|${r.source || "manual"}">Delete</button>
+        </div>
+      </div>
+    `).join("") : `<div class="muted small">No sessions logged.</div>`;
 
     qa("[data-del-log]", list).forEach((btn) => {
       btn.onclick = () => {
         const key = btn.getAttribute("data-del-log");
-        const [a, d] = String(key).split("|");
-        store.logs = store.logs.filter((x) => !(x.athlete === a && x.dateISO === d));
+        const [a, d, src] = String(key).split("|");
+        store.logs = store.logs.filter((x) => !(x.athlete === a && x.dateISO === d && (x.source || "manual") === src));
         save();
         renderLogs();
         renderDashboard();
@@ -212,7 +221,7 @@
   function updateTrainingComputed() {
     const min = clamp(toNum($("logMinutes")?.value, 0), 0, 600);
     const rpe = clamp(toNum($("logRpe")?.value, 0), 0, 10);
-    $("logComputed").textContent = `Load: ${sessionLoad(min, rpe)}`;
+    if ($("logComputed")) $("logComputed").textContent = `Load: ${sessionLoad(min, rpe)}`;
   }
 
   // ---------- Readiness ----------
@@ -250,20 +259,17 @@
     }
 
     const rows = store.readiness.filter((x) => x.athlete === athlete).slice(0, 14);
-    list.innerHTML = rows.length
-      ? rows
-          .map(
-            (r) => `
-            <div class="item">
-              <div>
-                <b>${r.dateISO}</b> • Readiness <b>${r.score}</b>
-                <div class="muted small">Sleep ${r.sleep}h • Sore ${r.sore} • Stress ${r.stress} • Energy ${r.energy}</div>
-              </div>
-              <button class="btn danger" data-del-ready="${r.athlete}|${r.dateISO}">Delete</button>
-            </div>`
-          )
-          .join("")
-      : `<div class="muted small">No readiness check-ins yet.</div>`;
+    list.innerHTML = rows.length ? rows.map((r) => `
+      <div class="item">
+        <div class="itemcol">
+          <div><b>${r.dateISO}</b> • Readiness <b>${r.score}</b></div>
+          <div class="muted">Sleep ${r.sleep}h • Sore ${r.sore} • Stress ${r.stress} • Energy ${r.energy}</div>
+        </div>
+        <div class="itemactions">
+          <button class="btn danger" data-del-ready="${r.athlete}|${r.dateISO}">Delete</button>
+        </div>
+      </div>
+    `).join("") : `<div class="muted small">No readiness check-ins yet.</div>`;
 
     qa("[data-del-ready]", list).forEach((btn) => {
       btn.onclick = () => {
@@ -282,7 +288,7 @@
     const sore = clamp(toNum($("readySore")?.value, 3), 0, 10);
     const stress = clamp(toNum($("readyStress")?.value, 3), 0, 10);
     const energy = clamp(toNum($("readyEnergy")?.value, 7), 0, 10);
-    $("readyComputed").textContent = String(calcReadinessScore({ sleep, sore, stress, energy }));
+    if ($("readyComputed")) $("readyComputed").textContent = String(calcReadinessScore({ sleep, sore, stress, energy }));
   }
 
   // ---------- Nutrition ----------
@@ -320,20 +326,17 @@
     }
 
     const rows = store.nutrition.filter((x) => x.athlete === athlete).slice(0, 14);
-    list.innerHTML = rows.length
-      ? rows
-          .map(
-            (r) => `
-            <div class="item">
-              <div>
-                <b>${r.dateISO}</b> • Adherence <b>${r.adherence}</b>
-                <div class="muted small">P ${r.p} • C ${r.c} • F ${r.f}</div>
-              </div>
-              <button class="btn danger" data-del-nut="${r.athlete}|${r.dateISO}">Delete</button>
-            </div>`
-          )
-          .join("")
-      : `<div class="muted small">No nutrition entries yet.</div>`;
+    list.innerHTML = rows.length ? rows.map((r) => `
+      <div class="item">
+        <div class="itemcol">
+          <div><b>${r.dateISO}</b> • Adherence <b>${r.adherence}</b></div>
+          <div class="muted">P ${r.p} • C ${r.c} • F ${r.f}</div>
+        </div>
+        <div class="itemactions">
+          <button class="btn danger" data-del-nut="${r.athlete}|${r.dateISO}">Delete</button>
+        </div>
+      </div>
+    `).join("") : `<div class="muted small">No nutrition entries yet.</div>`;
 
     qa("[data-del-nut]", list).forEach((btn) => {
       btn.onclick = () => {
@@ -355,11 +358,13 @@
     const c = toNum($("carbs")?.value, 0);
     const f = toNum($("fat")?.value, 0);
     const score = calcNutritionAdherence({ p, c, f }, t);
-    $("nutAdherence").textContent = `${score} (Targets P${t.p} C${t.c} F${t.f})`;
-    $("nutExplain").textContent =
-      `Adherence compares totals vs targets.\n` +
-      `Deviation averaged across P/C/F.\n` +
-      `Score = 100 - avgDeviation% (capped).`;
+    if ($("nutAdherence")) $("nutAdherence").textContent = `${score} (Targets P${t.p} C${t.c} F${t.f})`;
+    if ($("nutExplain")) {
+      $("nutExplain").textContent =
+        `Adherence compares totals vs targets.\n` +
+        `Deviation averaged across P/C/F.\n` +
+        `Score = 100 - avgDeviation% (capped).`;
+    }
   }
 
   function syncTargetsUI() {
@@ -404,7 +409,6 @@
 
     const acwr = chronicAvg7 > 0 ? acute / chronicAvg7 : null;
 
-    // monotony/strain from last 7 daily loads
     const daily = dailyLoads(trainingSessions, acuteFrom, 7);
     const vals = Object.values(daily);
     const mean = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
@@ -414,7 +418,6 @@
     const strain = acute * monotony;
 
     let idx = 0;
-
     if (acwr === null) idx += 10;
     else if (acwr < 0.6) idx += 20;
     else if (acwr <= 1.3) idx += 10;
@@ -444,13 +447,11 @@
 
     const rRow =
       store.readiness.find((r) => r.athlete === athlete && r.dateISO === asOf) ||
-      store.readiness.find((r) => r.athlete === athlete) ||
-      null;
+      store.readiness.find((r) => r.athlete === athlete) || null;
 
     const nRow =
       store.nutrition.find((n) => n.athlete === athlete && n.dateISO === asOf) ||
-      store.nutrition.find((n) => n.athlete === athlete) ||
-      null;
+      store.nutrition.find((n) => n.athlete === athlete) || null;
 
     const rScore = rRow ? toNum(rRow.score, 60) : 60;
     const nScore = nRow ? toNum(nRow.adherence, 50) : 50;
@@ -476,7 +477,6 @@
 
   // ---------- PIQ Score Engine ----------
   function trainingQualityScore(athlete, dateISO) {
-    // inverse of workload risk index (stability rewarded)
     const asOf = safeISO(dateISO) || todayISO();
     const training = store.logs.filter((x) => x.athlete === athlete);
     const w = workloadRiskIndex(training, asOf);
@@ -501,13 +501,11 @@
 
     const rRow =
       store.readiness.find((r) => r.athlete === athlete && r.dateISO === asOf) ||
-      store.readiness.find((r) => r.athlete === athlete) ||
-      null;
+      store.readiness.find((r) => r.athlete === athlete) || null;
 
     const nRow =
       store.nutrition.find((n) => n.athlete === athlete && n.dateISO === asOf) ||
-      store.nutrition.find((n) => n.athlete === athlete) ||
-      null;
+      store.nutrition.find((n) => n.athlete === athlete) || null;
 
     const readiness = rRow ? toNum(rRow.score, 60) : 60;
     const nutrition = nRow ? toNum(nRow.adherence, 50) : 50;
@@ -517,7 +515,6 @@
     const risk = runRiskDetection(athlete, asOf);
     const riskScore = clamp(100 - risk.index, 0, 100);
 
-    // weights
     const w = store.piqWeights || { readiness: 30, training: 25, recovery: 20, nutrition: 15, risk: 10 };
     const totalW = (w.readiness + w.training + w.recovery + w.nutrition + w.risk) || 100;
 
@@ -551,12 +548,11 @@
     if (!out) return;
 
     const lines = [];
-    lines.push(`Date       Load   Readiness  Nutrition  PIQ`);
-    lines.push(`----------------------------------------------`);
+    lines.push(`Date       Load   Ready  Nutri  PIQ`);
+    lines.push(`------------------------------------`);
 
     for (let i = 6; i >= 0; i--) {
       const d = addDaysISO(asOf, -i);
-
       const load = store.logs
         .filter((x) => x.athlete === athlete && x.dateISO === d)
         .reduce((a, b) => a + toNum(b.load, 0), 0);
@@ -566,10 +562,9 @@
 
       const r = rRow ? rRow.score : 0;
       const n = nRow ? nRow.adherence : 0;
-
       const piq = calcPIQ(athlete, d).final;
 
-      lines.push(`${d}  ${String(load).padStart(4)}   ${String(r).padStart(3)}       ${String(n).padStart(3)}      ${String(piq).padStart(3)}`);
+      lines.push(`${d}  ${String(load).padStart(4)}   ${String(r).padStart(3)}   ${String(n).padStart(3)}   ${String(piq).padStart(3)}`);
     }
 
     out.textContent = lines.join("\n");
@@ -580,12 +575,12 @@
     const asOf = safeISO($("dashDate")?.value) || todayISO();
 
     if (!store.athletes.length) {
-      $("piqScore").textContent = "—";
-      $("piqBand").textContent = "Add athletes (Team)";
-      $("riskHeadline").textContent = "—";
-      $("riskWorkload").textContent = "";
-      $("riskFlags").textContent = "";
-      $("trendOut").textContent = "";
+      if ($("piqScore")) $("piqScore").textContent = "—";
+      if ($("piqBand")) $("piqBand").textContent = "Add athletes (Team)";
+      if ($("riskHeadline")) $("riskHeadline").textContent = "—";
+      if ($("riskWorkload")) $("riskWorkload").textContent = "";
+      if ($("riskFlags")) $("riskFlags").textContent = "";
+      if ($("trendOut")) $("trendOut").textContent = "";
       return;
     }
 
@@ -601,10 +596,12 @@
     setBar("barRisk", "numRisk", r.subs.risk);
 
     const w = r.meta.risk.workload;
-    $("riskHeadline").textContent = `${r.meta.risk.headline} • Risk ${r.meta.risk.index}/100 • (Lower is better)`;
+
+    $("riskHeadline").textContent = `${r.meta.risk.headline} • Risk ${r.meta.risk.index}/100 (lower is better)`;
+
     $("riskWorkload").textContent =
       `Acute (7d): ${w.acute}\n` +
-      `Chronic avg(7d-eq): ${w.chronicAvg7}\n` +
+      `Chronic avg (7d-eq): ${w.chronicAvg7}\n` +
       `ACWR: ${w.acwr === null ? "—" : w.acwr}\n` +
       `Monotony: ${w.monotony}\n` +
       `Strain: ${w.strain}\n` +
@@ -628,11 +625,21 @@
     renderTrend(athlete, asOf);
   }
 
-  // ---------- Workouts (interactive, writes to log) ----------
+  // ============================================================
+  // Phase 3 — Workouts (interactive week, write-back to Log)
+  // ============================================================
+
+  const DAY_ORDER = [
+    { key: "Mon", off: 0 },
+    { key: "Tue", off: 1 },
+    { key: "Wed", off: 2 },
+    { key: "Thu", off: 3 },
+    { key: "Fri", off: 4 },
+    { key: "Sat", off: 5 },
+    { key: "Sun", off: 6 }
+  ];
+
   function workoutTemplate(mode) {
-    // Basketball-friendly weekly structure
-    // Standard: 4 sessions
-    // Advanced: 5–6 sessions with higher density
     if (mode === "advanced") {
       return [
         { day: "Mon", label: "Strength + Skill", minutes: 75, rpe: 7 },
@@ -644,6 +651,7 @@
         { day: "Sun", label: "Off / Walk", minutes: 20, rpe: 2 }
       ];
     }
+    // Standard (fills Mon/Tue/Thu/Sat; rest days optional)
     return [
       { day: "Mon", label: "Strength + Skill", minutes: 60, rpe: 6 },
       { day: "Tue", label: "Skill + Conditioning", minutes: 60, rpe: 7 },
@@ -652,56 +660,131 @@
     ];
   }
 
+  function normalizeToWeek(weekStartISO, sessions) {
+    const map = {};
+    sessions.forEach((s) => { map[s.day] = s; });
+    return DAY_ORDER.map((d) => {
+      const dateISO = addDaysISO(weekStartISO, d.off);
+      const base = map[d.key] || { day: d.key, label: "Off / Mobility", minutes: 20, rpe: 2 };
+      return { ...base, dateISO };
+    });
+  }
+
+  function saveWorkoutWeek(athlete, weekStartISO, mode, sessions) {
+    store.workoutWeeks[athlete] = store.workoutWeeks[athlete] || {};
+    store.workoutWeeks[athlete][weekStartISO] = { athlete, weekStartISO, mode, sessions, updatedAt: Date.now() };
+    save();
+  }
+
+  function loadWorkoutWeek(athlete, weekStartISO) {
+    return store.workoutWeeks?.[athlete]?.[weekStartISO] || null;
+  }
+
   function buildWorkout() {
     const athlete = $("workoutAthlete")?.value || store.athletes[0];
-    const mode = $("mode")?.value || "standard";
     if (!athlete) return alert("Add athletes first.");
 
-    const week = workoutTemplate(mode);
+    const wk = safeISO($("wkStart")?.value) || getThisMondayISO();
+    const mode = $("mode")?.value || "standard";
+
+    const base = workoutTemplate(mode);
+    const sessions = normalizeToWeek(wk, base);
+
+    saveWorkoutWeek(athlete, wk, mode, sessions);
+    renderWorkoutWeek();
+  }
+
+  function renderWorkoutWeek() {
     const out = $("workoutOutput");
-    const html = [];
+    if (!out) return;
 
-    html.push(`Mode: ${mode.toUpperCase()}\n`);
+    const athlete = $("workoutAthlete")?.value || store.athletes[0];
+    if (!athlete) {
+      out.innerHTML = `<div class="muted small">Add athletes first.</div>`;
+      return;
+    }
 
-    week.forEach((w) => {
-      const load = sessionLoad(w.minutes, w.rpe);
-      html.push(
-        `${w.day} — ${w.label}\n` +
-        `  ${w.minutes} min @ RPE ${w.rpe} (Load ${load})\n` +
-        `  [Add to Training Log]\n`
-      );
-    });
+    const wk = safeISO($("wkStart")?.value) || getThisMondayISO();
+    const existing = loadWorkoutWeek(athlete, wk);
+    const sessions = existing?.sessions || normalizeToWeek(wk, workoutTemplate($("mode")?.value || "standard"));
 
-    // render as buttons for write-back
-    out.innerHTML = week
-      .map((w, idx) => {
-        const load = sessionLoad(w.minutes, w.rpe);
-        return `
-          <div class="item">
-            <div>
-              <b>${w.day}</b> • ${w.label}
-              <div class="muted small">${w.minutes} min @ RPE ${w.rpe} • Load <b>${load}</b></div>
-            </div>
-            <button class="btn" data-add-workout="${idx}">Add to Log</button>
+    out.innerHTML = sessions.map((s, idx) => {
+      const load = sessionLoad(s.minutes, s.rpe);
+      return `
+        <div class="item">
+          <div class="itemcol">
+            <div><b>${s.day}</b> • ${s.label}</div>
+            <div class="muted">${s.dateISO} • ${s.minutes} min @ RPE ${s.rpe} • Load <b>${load}</b></div>
           </div>
-        `;
-      })
-      .join("");
+          <div class="itemactions">
+            <button class="btn small" data-edit="${idx}">Edit</button>
+            <button class="btn small ghost" data-add="${idx}">Add to Log</button>
+          </div>
+        </div>
+      `;
+    }).join("");
 
-    qa("[data-add-workout]", out).forEach((btn) => {
+    qa("[data-add]", out).forEach((btn) => {
       btn.onclick = () => {
-        const idx = Number(btn.getAttribute("data-add-workout"));
-        const w = week[idx];
-        const date = todayISO(); // quick-add as today; periodization plan uses dates
-        upsertSession(athlete, date, w.minutes, w.rpe);
+        const idx = Number(btn.getAttribute("data-add"));
+        const s = sessions[idx];
+        upsertSession(athlete, s.dateISO, s.minutes, s.rpe, "workout");
         renderLogs();
         renderDashboard();
-        alert(`Added ${w.day} session to Log (date ${date}).`);
+        alert(`Added ${s.day} to Log (${s.dateISO}).`);
+      };
+    });
+
+    qa("[data-edit]", out).forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.getAttribute("data-edit"));
+        const s = sessions[idx];
+
+        const label = prompt("Session label", s.label);
+        if (label === null) return;
+
+        const minutes = clamp(toNum(prompt("Minutes", String(s.minutes)), s.minutes), 0, 300);
+        const rpe = clamp(toNum(prompt("sRPE (0-10)", String(s.rpe)), s.rpe), 0, 10);
+
+        sessions[idx] = { ...s, label: label.trim() || s.label, minutes, rpe };
+
+        // persist
+        saveWorkoutWeek(athlete, wk, existing?.mode || ($("mode")?.value || "standard"), sessions);
+        renderWorkoutWeek();
       };
     });
   }
 
-  // ---------- Periodization ----------
+  function applyWorkoutWeekToLog() {
+    const athlete = $("workoutAthlete")?.value || store.athletes[0];
+    if (!athlete) return alert("Add athletes first.");
+    const wk = safeISO($("wkStart")?.value) || getThisMondayISO();
+
+    const w = loadWorkoutWeek(athlete, wk);
+    if (!w?.sessions?.length) return alert("Generate the week first.");
+
+    // write each day to log
+    w.sessions.forEach((s) => {
+      upsertSession(athlete, s.dateISO, s.minutes, s.rpe, "workout");
+    });
+
+    renderLogs();
+    renderDashboard();
+    alert("Workout week applied to Log.");
+  }
+
+  function getThisMondayISO() {
+    const d = new Date();
+    const day = d.getDay(); // Sun=0
+    const diff = (day === 0 ? -6 : 1) - day;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // ============================================================
+  // Phase 4 — Periodization + Plan-to-Load Monitor
+  // ============================================================
+
   function generatePlan() {
     const athlete = $("perAthlete")?.value || store.athletes[0];
     if (!athlete) return alert("Add athletes first.");
@@ -718,7 +801,7 @@
       weeks.push({ week: i, weekStartISO: addDaysISO(start, (i - 1) * 7), deload, targetLoad });
     }
 
-    store.periodization[athlete] = { athlete, startISO: start, deloadEvery, weeks };
+    store.periodization[athlete] = { athlete, startISO: start, deloadEvery, weeks, updatedAt: Date.now() };
     save();
     renderPeriodization();
     alert("Generated plan.");
@@ -740,18 +823,83 @@
       return;
     }
 
-    out.innerHTML = plan.weeks
-      .map((w) => {
-        return `
-          <div class="item">
-            <div>
-              <b>Week ${w.week}</b> • ${w.weekStartISO} ${w.deload ? `<span class="muted">• DELOAD</span>` : ""}
-              <div class="muted small">Target load: <b>${w.targetLoad}</b></div>
-            </div>
+    out.innerHTML = plan.weeks.map((w) => {
+      const badge = w.deload ? `<span class="badge warn">DELOAD</span>` : `<span class="badge ok">BUILD</span>`;
+      return `
+        <div class="item">
+          <div class="itemcol">
+            <div><b>Week ${w.week}</b> • ${w.weekStartISO} ${badge}</div>
+            <div class="muted">Target load: <b>${w.targetLoad}</b></div>
           </div>
-        `;
-      })
-      .join("");
+        </div>
+      `;
+    }).join("");
+  }
+
+  function findPlanWeek(athlete, weekStartISO) {
+    const plan = store.periodization[athlete];
+    if (!plan?.weeks?.length) return null;
+    return plan.weeks.find((w) => w.weekStartISO === weekStartISO) || null;
+  }
+
+  function compareWeek() {
+    const athlete = $("monAthlete")?.value || store.athletes[0];
+    if (!athlete) return alert("Add athletes first.");
+
+    const weekStart = safeISO($("monWeek")?.value) || getThisMondayISO();
+    const weekEnd = addDaysISO(weekStart, 6);
+
+    const planned = findPlanWeek(athlete, weekStart);
+    const plannedLoad = planned ? toNum(planned.targetLoad, 0) : 0;
+
+    const actualLoad = sumLoadsForRange(athlete, weekStart, weekEnd);
+
+    const delta = actualLoad - plannedLoad;
+    const pct = plannedLoad > 0 ? (actualLoad / plannedLoad) : 0;
+
+    let status = "No plan";
+    let badge = "warn";
+    if (plannedLoad > 0) {
+      if (pct >= 0.90 && pct <= 1.10) { status = "On target"; badge = "ok"; }
+      else if (pct > 1.10 && pct <= 1.25) { status = "Above target"; badge = "warn"; }
+      else if (pct > 1.25) { status = "Too high"; badge = "danger"; }
+      else { status = "Below target"; badge = "warn"; }
+    }
+
+    $("compareSummary").innerHTML =
+      `<span class="badge ${badge}">${status}</span> ` +
+      `Planned <b>${plannedLoad || "—"}</b> vs Actual <b>${actualLoad}</b> • ` +
+      `${plannedLoad ? `${Math.round(pct * 100)}%` : ""}`;
+
+    const lines = [];
+    lines.push(`Week: ${weekStart} → ${weekEnd}`);
+    lines.push(`Athlete: ${athlete}`);
+    lines.push(`Planned: ${plannedLoad || "—"} ${planned ? (planned.deload ? "(DELOAD)" : "(BUILD)") : ""}`);
+    lines.push(`Actual:  ${actualLoad}`);
+    lines.push(`Delta:   ${plannedLoad ? (delta >= 0 ? "+" : "") + delta : "—"}`);
+
+    // daily breakdown
+    lines.push(``);
+    lines.push(`Daily actual loads:`);
+    DAY_ORDER.forEach((d) => {
+      const dateISO = addDaysISO(weekStart, d.off);
+      const load = store.logs
+        .filter((x) => x.athlete === athlete && x.dateISO === dateISO)
+        .reduce((a, b) => a + toNum(b.load, 0), 0);
+      lines.push(`- ${d.key} ${dateISO}: ${load}`);
+    });
+
+    // simple coach guidance
+    lines.push(``);
+    if (plannedLoad > 0) {
+      if (pct > 1.25) lines.push(`Guidance: Consider pulling volume/intensity next 1–2 days or add recovery if readiness drops.`);
+      else if (pct < 0.80) lines.push(`Guidance: If readiness is good, add a small session (20–30 min @ RPE 6–7) to close the gap.`);
+      else lines.push(`Guidance: Keep steady. Watch monotony (avoid repeating same intensity 4+ days).`);
+    } else {
+      lines.push(`Guidance: Generate a plan to enable planned vs actual comparison.`);
+    }
+
+    $("compareDetail").textContent = lines.join("\n");
   }
 
   // ---------- View switching ----------
@@ -762,13 +910,12 @@
 
     qa("#nav button[data-view]").forEach((b) => b.classList.toggle("active", b.getAttribute("data-view") === view));
 
-    // render view-specific
     if (view === "dashboard") renderDashboard();
     if (view === "team") renderRoster();
     if (view === "log") { renderLogs(); renderReadiness(); updateTrainingComputed(); updateReadinessComputed(); }
     if (view === "nutrition") { renderNutrition(); syncTargetsUI(); renderNutritionComputed(); }
-    if (view === "workouts") buildWorkout();
-    if (view === "periodization") renderPeriodization();
+    if (view === "workouts") { renderWorkoutWeek(); }
+    if (view === "periodization") { renderPeriodization(); }
     if (view === "settings") renderSettings();
   }
 
@@ -782,7 +929,8 @@
         `Athletes: ${store.athletes.length}\n` +
         `Sessions: ${store.logs.length}\n` +
         `Readiness: ${store.readiness.length}\n` +
-        `Nutrition: ${store.nutrition.length}`;
+        `Nutrition: ${store.nutrition.length}\n` +
+        `Workout weeks: ${Object.keys(store.workoutWeeks || {}).length}`;
     }
   }
 
@@ -790,7 +938,9 @@
   function hideSplash() {
     const s = $("splash");
     if (!s) return;
-    setTimeout(() => (s.style.display = "none"), 400);
+    // use your CSS .hidden transition
+    s.classList.add("hidden");
+    setTimeout(() => (s.style.display = "none"), 650);
   }
 
   function wire() {
@@ -802,7 +952,7 @@
     // team
     $("addAthlete") && ($("addAthlete").onclick = addAthlete);
 
-    // log
+    // log defaults
     $("logDate") && ($("logDate").value = todayISO());
     $("readyDate") && ($("readyDate").value = todayISO());
 
@@ -814,12 +964,12 @@
       const dateISO = safeISO($("logDate")?.value) || todayISO();
       const min = clamp(toNum($("logMinutes")?.value, 0), 0, 600);
       const rpe = clamp(toNum($("logRpe")?.value, 0), 0, 10);
-      upsertSession(athlete, dateISO, min, rpe);
+      upsertSession(athlete, dateISO, min, rpe, "manual");
       renderLogs();
       renderDashboard();
     });
 
-    ["readySleep", "readySore", "readyStress", "readyEnergy"].forEach((id) =>
+    ["readySleep","readySore","readyStress","readyEnergy"].forEach((id) =>
       $(id)?.addEventListener("input", updateReadinessComputed)
     );
 
@@ -836,7 +986,7 @@
       renderDashboard();
     });
 
-    // nutrition
+    // nutrition defaults
     $("nutDate") && ($("nutDate").value = todayISO());
     ["protein", "carbs", "fat"].forEach((id) => $(id)?.addEventListener("input", renderNutritionComputed));
     $("nutAthlete")?.addEventListener("change", () => { renderNutrition(); renderNutritionComputed(); });
@@ -878,19 +1028,29 @@
     $("dashAthlete")?.addEventListener("change", renderDashboard);
     $("dashDate")?.addEventListener("change", renderDashboard);
 
-    // workouts
+    // workouts (phase 3)
+    $("wkStart") && ($("wkStart").value = getThisMondayISO());
+    $("workoutAthlete")?.addEventListener("change", renderWorkoutWeek);
+    $("wkStart")?.addEventListener("change", renderWorkoutWeek);
+    $("mode")?.addEventListener("change", () => {
+      // rebuild template on mode change (but preserve if already saved)
+      renderWorkoutWeek();
+    });
     $("buildWorkout") && ($("buildWorkout").onclick = buildWorkout);
+    $("applyWorkoutWeek") && ($("applyWorkoutWeek").onclick = applyWorkoutWeekToLog);
 
-    // periodization
+    // periodization (phase 4)
     $("perStart") && ($("perStart").value = todayISO());
     $("generatePlan") && ($("generatePlan").onclick = generatePlan);
+
+    $("monWeek") && ($("monWeek").value = getThisMondayISO());
+    $("btnCompareWeek") && ($("btnCompareWeek").onclick = compareWeek);
 
     // settings
     $("saveRole") && ($("saveRole").onclick = () => {
       store.role = $("roleSelect")?.value || "coach";
       save();
       applyRoleNav();
-      // ensure athlete can see nutrition + periodization
       switchView("dashboard");
     });
 
@@ -909,15 +1069,14 @@
 
     wire();
 
-    // if no athletes, coach sees Team first
     if (!store.athletes.length && store.role === "coach") switchView("team");
     else switchView("dashboard");
 
-    // safe extra render pass
     setTimeout(() => {
       applyRoleNav();
       refreshAthleteDropdowns();
       renderDashboard();
     }, 250);
   });
+
 })();
