@@ -1,8 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    TOKENS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 :root {
   --bg:       #0d0e10;
   --surface:  #14161a;
@@ -23,13 +23,11 @@
   --transition: 180ms cubic-bezier(0.4,0,0.2,1);
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    RESET + BASE
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
 html { font-size: 15px; scroll-behavior: smooth; }
-
 body {
   background: var(--bg);
   color: var(--text);
@@ -40,9 +38,20 @@ body {
   overflow-x: hidden;
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* helpers */
+.muted { color: var(--muted); }
+.small { font-size: 0.78rem; }
+.mono  { font-family: var(--mono); }
+pre.mono { white-space: pre-wrap; word-break: break-word; }
+hr.sep {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1rem 0;
+}
+
+/* ═════════════════════════════════════════════════════════════
    SPLASH SCREEN
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .splash {
   position: fixed;
   inset: 0;
@@ -53,18 +62,15 @@ body {
   justify-content: center;
   transition: opacity 0.5s ease, visibility 0.5s ease;
 }
-
 .splash.hidden {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
-
 .splash-card {
   text-align: center;
   animation: splashIn 0.6s cubic-bezier(0.16,1,0.3,1) both;
 }
-
 .splash-card h1 {
   font-family: var(--display);
   font-size: 5rem;
@@ -73,7 +79,6 @@ body {
   line-height: 1;
   position: relative;
 }
-
 .splash-card h1::after {
   content: '';
   display: block;
@@ -82,7 +87,6 @@ body {
   margin-top: 8px;
   animation: scanline 1.2s ease-in-out infinite alternate;
 }
-
 .splash-card p {
   margin-top: 1rem;
   font-family: var(--mono);
@@ -92,30 +96,19 @@ body {
   text-transform: uppercase;
   animation: blink 1s step-end infinite;
 }
-
 @keyframes splashIn {
   from { opacity: 0; transform: translateY(20px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes scanline { from { width: 0; } to { width: 100%; } }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-@keyframes scanline {
-  from { width: 0; }
-  to   { width: 100%; }
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0; }
-}
-
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    TOPBAR
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .topbar {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 0; left: 0; right: 0;
   z-index: 100;
   height: 52px;
   background: rgba(13,14,16,0.92);
@@ -126,20 +119,13 @@ body {
   justify-content: space-between;
   padding: 0 1.5rem;
 }
-
 .brand {
   font-family: var(--display);
   font-size: 1.6rem;
   letter-spacing: 0.12em;
   color: var(--accent);
 }
-
-.topbar .right {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
+.topbar .right { display: flex; gap: 0.5rem; align-items: center; }
 .pill {
   font-family: var(--mono);
   font-size: 0.68rem;
@@ -151,18 +137,14 @@ body {
   background: var(--surface2);
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    APP LAYOUT
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
-.app {
-  display: flex;
-  padding-top: 52px;
-  min-height: 100vh;
-}
+═════════════════════════════════════════════════════════════ */
+.app { display: flex; padding-top: 52px; min-height: 100vh; }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    SIDEBAR
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .sidebar {
   width: 200px;
   flex-shrink: 0;
@@ -178,7 +160,6 @@ body {
   gap: 2px;
   overflow-y: auto;
 }
-
 .sidebar button {
   all: unset;
   cursor: pointer;
@@ -192,22 +173,20 @@ body {
   transition: all var(--transition);
   position: relative;
 }
-
 .sidebar button:hover {
   color: var(--text);
   background: var(--surface2);
   border-left-color: var(--border2);
 }
-
 .sidebar button.active {
   color: var(--accent);
   background: linear-gradient(90deg, rgba(245,200,66,0.08) 0%, transparent 100%);
   border-left-color: var(--accent);
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    CONTENT
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .content {
   margin-left: 200px;
   flex: 1;
@@ -215,20 +194,20 @@ body {
   max-width: 1200px;
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    VIEWS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .view { animation: fadeSlideIn 0.3s cubic-bezier(0.16,1,0.3,1) both; }
 .view.hidden { display: none; }
-
+.hidden { display: none; } /* safety */
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    HEADINGS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 h2 {
   font-family: var(--display);
   font-size: 2.2rem;
@@ -237,7 +216,6 @@ h2 {
   line-height: 1;
   margin-bottom: 1.5rem;
 }
-
 h3 {
   font-family: var(--sans);
   font-size: 0.85rem;
@@ -247,9 +225,9 @@ h3 {
   color: var(--text);
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    CARDS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -259,7 +237,6 @@ h3 {
   position: relative;
   overflow: hidden;
 }
-
 .card::before {
   content: '';
   position: absolute;
@@ -267,7 +244,6 @@ h3 {
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--border2), transparent);
 }
-
 .cardhead {
   display: flex;
   align-items: center;
@@ -277,43 +253,34 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    GRIDS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-bottom: 1rem;
 }
-
 @media (max-width: 900px) {
   .grid2 { grid-template-columns: 1fr; }
   .sidebar { width: 160px; }
   .content { margin-left: 160px; }
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    ROWS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
-.row {
-  display: flex;
-  align-items: center;
-}
-
+═════════════════════════════════════════════════════════════ */
+.row { display: flex; align-items: center; }
 .row.gap { gap: 0.75rem; }
 .row.wrap { flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
+.row.end { align-items: flex-end; }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    FORM ELEMENTS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
+═════════════════════════════════════════════════════════════ */
+.field { display: flex; flex-direction: column; gap: 4px; }
 label {
   font-family: var(--mono);
   font-size: 0.65rem;
@@ -321,7 +288,6 @@ label {
   letter-spacing: 0.12em;
   color: var(--muted);
 }
-
 input[type="text"],
 input[type="number"],
 input[type="date"],
@@ -340,12 +306,10 @@ select {
   appearance: none;
   min-width: 100px;
 }
-
 input:focus, select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(245,200,66,0.12);
 }
-
 select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -353,15 +317,11 @@ select {
   padding-right: 28px;
   cursor: pointer;
 }
+select option { background: var(--surface2); color: var(--text); }
 
-select option {
-  background: var(--surface2);
-  color: var(--text);
-}
-
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    BUTTONS
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+═════════════════════════════════════════════════════════════ */
 .btn {
   font-family: var(--mono);
   font-size: 0.72rem;
@@ -377,54 +337,34 @@ select option {
   transition: all var(--transition);
   white-space: nowrap;
 }
-
 .btn:hover {
   background: #ffe066;
   transform: translateY(-1px);
   box-shadow: 0 4px 16px rgba(245,200,66,0.25);
 }
-
 .btn:active { transform: translateY(0); }
-
 .btn.danger {
   background: transparent;
   color: var(--danger);
   border: 1px solid var(--danger);
 }
-
 .btn.danger:hover {
   background: var(--danger);
   color: #fff;
   box-shadow: 0 4px 16px rgba(230,57,70,0.3);
 }
-
-.btn.small {
-  font-size: 0.62rem;
-  padding: 4px 10px;
-}
-
+.btn.small { font-size: 0.62rem; padding: 4px 10px; }
 .btn.ghost {
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--border);
 }
+.btn.ghost:hover { color: var(--text); border-color: var(--border2); box-shadow: none; }
 
-.btn.ghost:hover {
-  color: var(--text);
-  border-color: var(--border2);
-  box-shadow: none;
-}
-
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+/* ═════════════════════════════════════════════════════════════
    PIQ SCORE
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
-.scoreWrap {
-  display: flex;
-  gap: 2rem;
-  align-items: flex-start;
-  margin: 1rem 0;
-}
-
+═════════════════════════════════════════════════════════════ */
+.scoreWrap { display: flex; gap: 2rem; align-items: flex-start; margin: 1rem 0; }
 .scoreBig {
   text-align: center;
   min-width: 90px;
@@ -434,7 +374,6 @@ select option {
   border-radius: var(--radius);
   position: relative;
 }
-
 .scoreNum {
   font-family: var(--display);
   font-size: 3.5rem;
@@ -443,14 +382,7 @@ select option {
   text-shadow: 0 0 20px rgba(245,200,66,0.4);
   transition: all 0.5s ease;
 }
-
-.scoreBars {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+.scoreBars { flex: 1; display: flex; flex-direction: column; gap: 8px; }
 .barRow {
   display: grid;
   grid-template-columns: 80px 1fr 36px;
@@ -460,15 +392,7 @@ select option {
   font-size: 0.68rem;
   color: var(--muted);
 }
-
-.bar {
-  height: 6px;
-  background: var(--surface2);
-  border-radius: 3px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
+.bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
 .fill {
   height: 100%;
   background: var(--accent);
@@ -477,8 +401,100 @@ select option {
   transition: width 0.8s cubic-bezier(0.16,1,0.3,1);
 }
 
-/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-   CALLOUT
-\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+/* ═════════════════════════════════════════════════════════════
+   CALLOUT + STATUS
+═════════════════════════════════════════════════════════════ */
 .callout {
-  background: var(--surface2
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: rgba(255,255,255,0.03);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.badge.ok { border-color: rgba(61,220,132,0.35); color: var(--ok); }
+.badge.warn { border-color: rgba(255,183,3,0.35); color: var(--warn); }
+.badge.danger { border-color: rgba(230,57,70,0.35); color: var(--danger); }
+
+/* ═════════════════════════════════════════════════════════════
+   LISTS + ITEMS
+═════════════════════════════════════════════════════════════ */
+.list { display: flex; flex-direction: column; gap: 10px; }
+.item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.item .muted { font-size: 0.72rem; }
+.itemcol { display: flex; flex-direction: column; gap: 4px; }
+.itemactions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ═════════════════════════════════════════════════════════════
+   MINI PANELS + DETAILS
+═════════════════════════════════════════════════════════════ */
+.mini {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  margin-top: 0.75rem;
+}
+.minihead {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.details summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-top: 0.75rem;
+}
+.details summary:hover { color: var(--text); }
+.details pre { margin-top: 0.75rem; }
+
+/* ═════════════════════════════════════════════════════════════
+   TABLE (optional)
+═════════════════════════════════════════════════════════════ */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.table th, .table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.table th { color: var(--text); background: var(--surface2); text-transform: uppercase; letter-spacing: 0.08em; }
+.table tr:last-child td { border-bottom: none; }
