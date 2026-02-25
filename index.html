@@ -36,6 +36,7 @@
         <span class="appmark-title">PerformanceIQ</span>
       </div>
       <span class="pill" id="activeTeamPill" title="Active team">Team: Default</span>
+      <span class="pill" id="activeRolePill" title="Active role">Role: Coach</span>
     </div>
 
     <div class="topbar-right">
@@ -52,7 +53,7 @@
     <!-- Nav -->
     <nav class="nav" role="navigation" aria-label="Primary">
       <button class="navbtn" data-view="dashboard">Dashboard</button>
-      <button class="navbtn" data-view="team">Team</button>
+      <button class="navbtn" data-view="team" data-requires="coach">Team</button>
       <button class="navbtn" data-view="log">Log</button>
       <button class="navbtn" data-view="nutrition">Elite Nutrition</button>
       <button class="navbtn" data-view="workouts">Workouts</button>
@@ -64,23 +65,25 @@
     <section class="content">
       <!-- DASHBOARD -->
       <section class="view" id="view-dashboard" data-view>
-        <!-- (unchanged: your Dashboard HTML stays exactly as you already have it) -->
-        <!-- ✅ Keep your existing Dashboard section here -->
+        <!-- ✅ Keep your existing Dashboard section exactly as you already have it -->
+        <!-- (Your full dashboard content is unchanged; this file is a full replacement shell with the same IDs.) -->
+
+        <!-- NOTE: If you previously pasted full Dashboard HTML above, keep it here. -->
       </section>
 
       <!-- TEAM -->
       <section class="view" id="view-team" data-view hidden>
-        <!-- ✅ Keep your existing Team section here (unchanged) -->
+        <!-- ✅ Keep your existing Team section exactly as you already have it -->
       </section>
 
       <!-- LOG -->
       <section class="view" id="view-log" data-view hidden>
-        <!-- ✅ Keep your existing Log section here (unchanged) -->
+        <!-- ✅ Keep your existing Log section exactly as you already have it -->
       </section>
 
       <!-- ELITE NUTRITION -->
       <section class="view" id="view-nutrition" data-view hidden>
-        <!-- ✅ Keep your existing Nutrition section here (unchanged, using your cleaned IDs) -->
+        <!-- ✅ Keep your existing Nutrition section exactly as you already have it (your cleaned mealPlanBlock version) -->
       </section>
 
       <!-- WORKOUTS (NEW) -->
@@ -89,7 +92,7 @@
           <div class="card">
             <div class="cardhead">
               <h2>Workout Plan</h2>
-              <span class="muted">Standard vs Advanced • pushes into Training Log</span>
+              <span class="muted">Standard vs Advanced • write-back • push to log</span>
             </div>
 
             <div class="row gap wrap">
@@ -127,14 +130,16 @@
             </div>
 
             <div class="mini">
-              <div class="minihead">Week sessions</div>
+              <div class="minihead">Week sessions (editable)</div>
               <div class="minibody small muted">
-                Edit minutes/RPE, then push to the Training Log. Load = minutes × sRPE.
+                Edit minutes/RPE/type/notes, then write-back to Periodization and/or push to Training Log.
               </div>
+
               <div id="workoutWeekOut" class="minobody"></div>
 
               <div class="row gap wrap" style="margin-top:12px">
                 <button class="btn" id="btnPushWeekToLog">Push week into Training Log</button>
+                <button class="btn ghost" id="btnWriteBackToPeriodization">Write back to Periodization</button>
                 <button class="btn ghost" id="btnSaveWorkoutPrefs">Save preferences</button>
               </div>
 
@@ -145,7 +150,7 @@
           <div class="card">
             <div class="cardhead">
               <h2>Periodization Integration</h2>
-              <span class="muted">Planned vs actual (week)</span>
+              <span class="muted">Planned vs actual • risk guardrails</span>
             </div>
 
             <div class="mini">
@@ -159,9 +164,14 @@
             </div>
 
             <div class="mini">
-              <div class="minihead">Advanced options (applied only in Advanced mode)</div>
+              <div class="minihead">Risk guardrails (preview)</div>
+              <div class="minibody mono small" id="workoutRiskPreview">—</div>
+            </div>
+
+            <div class="mini">
+              <div class="minihead">Advanced options (Advanced mode only)</div>
               <div class="minibody small muted">
-                These are defaults. You can edit each session after building the week.
+                Defaults applied when building a week. You can still edit each session.
               </div>
               <div class="row gap wrap">
                 <div class="field">
@@ -188,12 +198,53 @@
 
       <!-- PERIODIZATION -->
       <section class="view" id="view-periodization" data-view hidden>
-        <!-- ✅ Keep your existing Periodization section here (unchanged) -->
+        <!-- ✅ Keep your existing Periodization section exactly as you already have it -->
       </section>
 
       <!-- SETTINGS -->
       <section class="view" id="view-settings" data-view hidden>
-        <!-- ✅ Keep your existing Settings section here (unchanged) -->
+        <div class="card">
+          <div class="cardhead">
+            <h2>Settings</h2>
+            <span class="muted">Storage + role</span>
+          </div>
+
+          <div class="grid2">
+            <div class="mini">
+              <div class="minihead">Role</div>
+              <div class="minibody small muted">
+                Coach can manage roster. Athlete is restricted from admin views.
+              </div>
+              <div class="row gap wrap">
+                <div class="field">
+                  <label>Active role</label>
+                  <select id="roleSelect">
+                    <option value="coach">Coach</option>
+                    <option value="athlete">Athlete</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>&nbsp;</label>
+                  <button class="btn" id="btnSaveRole">Save role</button>
+                </div>
+              </div>
+              <div class="small muted" id="roleNote" style="margin-top:8px"></div>
+            </div>
+
+            <div class="mini">
+              <div class="minihead">Local storage</div>
+              <div class="minibody small muted">
+                Everything is saved in your browser on this device.
+              </div>
+              <button class="btn danger" id="btnWipe">Wipe all local data</button>
+            </div>
+
+            <div class="mini">
+              <div class="minihead">App info</div>
+              <div class="minibody mono small" id="appInfo">—</div>
+            </div>
+          </div>
+        </div>
       </section>
 
     </section>
