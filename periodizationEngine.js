@@ -6,16 +6,11 @@
 
   function adjustVolume(baseVolume, phase) {
     switch (phase) {
-      case "ACCUMULATION":
-        return baseVolume * 1.1;
-      case "INTENSIFICATION":
-        return baseVolume * 0.9;
-      case "DELOAD":
-        return baseVolume * 0.6;
-      case "PEAK":
-        return baseVolume * 0.75;
-      default:
-        return baseVolume;
+      case "ACCUMULATION": return baseVolume * 1.1;
+      case "INTENSIFICATION": return baseVolume * 0.9;
+      case "DELOAD": return baseVolume * 0.6;
+      case "PEAK": return baseVolume * 0.75;
+      default: return baseVolume;
     }
   }
 
@@ -25,8 +20,5 @@
     return "ACCUMULATION";
   }
 
-  window.periodizationEngine = {
-    adjustVolume,
-    getCurrentPhase
-  };
+  window.periodizationEngine = { adjustVolume, getCurrentPhase };
 })();
