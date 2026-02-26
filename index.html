@@ -14,8 +14,8 @@
   <!-- Splash -->
   <div id="splash" class="splash" aria-hidden="false">
     <div class="splash-card">
-      <div class="brandblock">
-        <div class="brandmark" aria-hidden="true"></div>
+      <div class="brand">
+        <div class="logo-dot"></div>
         <div>
           <div class="brand-title">PerformanceIQ</div>
           <div class="brand-sub">Offline-first • Team-ready</div>
@@ -35,14 +35,13 @@
         <span class="appmark-dot" aria-hidden="true"></span>
         <span class="appmark-title">PerformanceIQ</span>
       </div>
-      <span class="pill" id="activeTeamPill" title="Active team">Team: —</span>
-      <span class="pill" id="modePill" title="Mode">Mode: Coach</span>
+      <span class="pill" id="activeTeamPill" title="Active team">Team: Default</span>
       <span class="pill" id="cloudPill" title="Cloud status">Cloud: Local</span>
+      <span class="pill" id="devicePill" title="Device mode">Device: —</span>
     </div>
 
     <div class="topbar-right">
-      <button class="btn ghost" id="btnMode">Switch Mode</button>
-      <button class="btn ghost" id="btnAuth">Sign in</button>
+      <button class="btn ghost" id="btnOnboard">Onboarding</button>
       <button class="btn ghost" id="btnSeed">Seed Demo</button>
       <button class="btn" id="btnExport">Export</button>
       <label class="btn ghost filebtn">
@@ -52,162 +51,50 @@
     </div>
   </header>
 
-  <!-- Mobile bottom nav -->
-  <nav class="mnav" id="mnav" aria-label="Mobile navigation" hidden>
-    <button class="mnavbtn" data-view="dashboard">Dash</button>
-    <button class="mnavbtn" data-view="log">Log</button>
-    <button class="mnavbtn" data-view="workouts">Work</button>
-    <button class="mnavbtn" data-view="nutrition">Fuel</button>
-    <button class="mnavbtn" data-view="settings">Set</button>
-  </nav>
-
-  <!-- Auth Modal -->
-  <div id="authModal" class="modal" hidden>
-    <div class="modal-card">
-      <div class="row between">
-        <div>
-          <div class="modal-title">Cloud Sign-in</div>
-          <div class="small muted">Supabase Auth (email + password)</div>
-        </div>
-        <button class="btn ghost" id="btnCloseAuth">Close</button>
-      </div>
-
-      <!-- NOTE: No dev/setup help shown here in production UI -->
-      <div class="grid2" style="margin-top:12px">
-        <div class="mini">
-          <div class="minihead">Sign in</div>
-          <div class="row gap wrap">
-            <div class="field grow">
-              <label>Email</label>
-              <input id="authEmail" type="text" placeholder="you@email.com" />
-            </div>
-            <div class="field grow">
-              <label>Password</label>
-              <input id="authPass" type="password" placeholder="password" />
-            </div>
-          </div>
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn" id="btnSignIn">Sign in</button>
-            <button class="btn ghost" id="btnSignUp">Create account</button>
-          </div>
-          <div class="small muted" id="authMsg" style="margin-top:8px">—</div>
-        </div>
-
-        <div class="mini">
-          <div class="minihead">Session</div>
-          <div class="minibody mono small" id="authState">—</div>
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn danger" id="btnSignOut">Sign out</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Onboarding Wizard -->
+  <!-- Onboarding Wizard Modal -->
   <div id="onboardModal" class="modal" hidden>
     <div class="modal-card">
       <div class="row between">
         <div>
-          <div class="modal-title">Athlete Onboarding</div>
-          <div class="small muted">Pick sport → goals → training days. Takes 45 seconds.</div>
+          <div class="modal-title">Welcome to PerformanceIQ</div>
+          <div class="small muted">Set up your experience (takes ~60 seconds)</div>
         </div>
         <button class="btn ghost" id="btnCloseOnboard">Close</button>
       </div>
 
-      <div class="grid2" style="margin-top:12px">
-        <div class="mini">
-          <div class="minihead">Basics</div>
-          <div class="row gap wrap">
-            <div class="field grow">
-              <label>Name</label>
-              <input id="obName" type="text" placeholder="Athlete name" />
-            </div>
-            <div class="field grow">
-              <label>Sport</label>
-              <select id="obSport">
-                <option value="basketball">Basketball</option>
-                <option value="football">Football</option>
-                <option value="soccer">Soccer</option>
-                <option value="baseball">Baseball</option>
-                <option value="volleyball">Volleyball</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="row gap wrap" style="margin-top:10px">
-            <div class="field grow">
-              <label>Primary Focus</label>
-              <select id="obPrimary">
-                <option value="speed">Speed</option>
-                <option value="strength">Strength</option>
-                <option value="power">Power</option>
-                <option value="conditioning">Conditioning</option>
-                <option value="mobility">Mobility</option>
-              </select>
-            </div>
-            <div class="field grow">
-              <label>Secondary Focus</label>
-              <select id="obSecondary">
-                <option value="mobility">Mobility</option>
-                <option value="conditioning">Conditioning</option>
-                <option value="power">Power</option>
-                <option value="strength">Strength</option>
-                <option value="speed">Speed</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="row gap wrap" style="margin-top:10px">
-            <div class="field grow">
-              <label>Training Days / Week</label>
-              <select id="obDays">
-                <option value="3">3 days</option>
-                <option value="4" selected>4 days</option>
-                <option value="5">5 days</option>
-              </select>
-            </div>
-            <div class="field grow">
-              <label>Level</label>
-              <select id="obLevel">
-                <option value="middle_school">Middle School</option>
-                <option value="high_school" selected>High School</option>
-                <option value="college">College</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="row gap wrap" style="margin-top:12px">
-            <button class="btn" id="btnFinishOnboard">Finish + Build Plan</button>
-            <button class="btn ghost" id="btnDemoAthlete">Use Demo Athlete</button>
-          </div>
-          <div class="small muted" id="obMsg" style="margin-top:8px">—</div>
+      <div class="wizbar" style="margin-top:12px">
+        <div class="wizstep" data-step="1">
+          <div class="wizdot"></div><div class="wizlabel">Role</div>
         </div>
-
-        <div class="mini">
-          <div class="minihead">What you’ll get</div>
-          <div class="minibody small">
-            <ul class="ul">
-              <li>Sport-specific weekly plan</li>
-              <li>Today’s workout + quick log</li>
-              <li>Nutrition target + adherence</li>
-              <li>Auto deload + load spike flags</li>
-              <li>Coach dashboard summary cards</li>
-            </ul>
-          </div>
+        <div class="wizline"></div>
+        <div class="wizstep" data-step="2">
+          <div class="wizdot"></div><div class="wizlabel">Athlete</div>
+        </div>
+        <div class="wizline"></div>
+        <div class="wizstep" data-step="3">
+          <div class="wizdot"></div><div class="wizlabel">Defaults</div>
         </div>
       </div>
 
+      <div id="wizBody" style="margin-top:14px"></div>
+
+      <div class="row between" style="margin-top:14px">
+        <button class="btn ghost" id="btnWizBack">Back</button>
+        <div class="row gap wrap">
+          <button class="btn ghost" id="btnWizSkip">Skip</button>
+          <button class="btn" id="btnWizNext">Next</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <main class="layout">
-    <!-- Desktop Nav -->
-    <nav class="nav" role="navigation" aria-label="Primary" id="nav">
+    <!-- Nav -->
+    <nav class="nav" role="navigation" aria-label="Primary">
       <button class="navbtn" data-view="dashboard">Dashboard</button>
       <button class="navbtn" data-view="team">Team</button>
       <button class="navbtn" data-view="log">Log</button>
-      <button class="navbtn" data-view="nutrition">Elite Nutrition</button>
+      <button class="navbtn" data-view="nutrition">Nutrition</button>
       <button class="navbtn" data-view="workouts">Workouts</button>
       <button class="navbtn" data-view="periodization">Periodization</button>
       <button class="navbtn" data-view="analytics">Analytics</button>
@@ -251,11 +138,6 @@
     <span class="muted">PerformanceIQ • Offline-first build</span>
   </footer>
 
-  <!-- Supabase UMD (no bundler). App guards usage if missing/offline. -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <!-- VERIFIED execution order -->
-  <script src="./sportEngine.js"></script>
   <script src="./dataStore.js"></script>
   <script src="./nutritionEngine.js"></script>
   <script src="./periodizationEngine.js"></script>
