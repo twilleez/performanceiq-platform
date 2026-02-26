@@ -1,47 +1,44 @@
-// supabaseClient.js — PRODUCTION-READY (FULL FILE) v1.2.1
-// Initializes window.supabaseClient ONLY if URL + anon key are provided.
-// Otherwise stays offline-first (supabaseClient = null).
+// supabaseClient.js — v1.0.0 (optional cloud)
+// Safe: if supabase-js isn't loaded OR credentials missing => no-op.
 
 (function () {
   "use strict";
+  if (window.supabaseClient) return;
 
-  function getCfg() {
-    const fromCfg = window.PIQ_CONFIG?.supabase || {};
-    const url =
-      (typeof fromCfg.url === "string" && fromCfg.url.trim()) ||
-      (typeof window.PIQ_SUPABASE_URL === "string" && window.PIQ_SUPABASE_URL.trim()) ||
-      "";
+  // ✅ Fill these in from your Supabase project settings (API)
+  const SUPABASE_URL = "https://znhxaqlvkpcskvzljiev.supabase.co";      // e.g. https://xxxxx.supabase.co
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuaHhhcWx2a3Bjc2t2emxqaWV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxNjM5MzksImV4cCI6MjA4NTczOTkzOX0.ReYzuZuGEI6aqcrXc_jIAXnamtgwCILMwcTsVYAtII0"; // e.g. eyJhbGciOiJIUzI1NiIsInR5cCI...
 
-    const anonKey =
-      (typeof fromCfg.anonKey === "string" && fromCfg.anonKey.trim()) ||
-      (typeof window.PIQ_SUPABASE_ANON_KEY === "string" && window.PIQ_SUPABASE_ANON_KEY.trim()) ||
-      "";
-
-    return { url: url.trim(), anonKey: anonKey.trim() };
+  function hasCreds() {
+    return !!(SUPABASE_URL && SUPABASE_ANON_KEY);
   }
 
-  function canInit(url, anonKey) {
-    return !!(
-      typeof window.supabase !== "undefined" &&
-      window.supabase &&
-      typeof window.supabase.createClient === "function" &&
-      typeof url === "string" &&
-      url &&
-      typeof anonKey === "string" &&
-      anonKey
-    );
+  function canInit() {
+    return typeof window.supabase !== "undefined" && typeof window.supabase.createClient === "function";
   }
 
-  try {
-    const { url, anonKey } = getCfg();
+  let client = null;
 
-    if (canInit(url, anonKey)) {
-      window.supabaseClient = window.supabase.createClient(url, anonKey);
-    } else {
-      window.supabaseClient = null;
-    }
-  } catch (e) {
-    console.warn("[supabaseClient-init]", e);
-    window.supabaseClient = null;
+  function init() {
+    if (client) return client;
+    if (!hasCreds()) return null;
+    if (!canInit()) return null;
+
+    client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+
+    return client;
   }
+
+  window.supabaseClient = {
+    getClient: () => init(),
+    hasCreds,
+    canInit,
+    url: SUPABASE_URL ? SUPABASE_URL : "(not set)"
+  };
 })();
