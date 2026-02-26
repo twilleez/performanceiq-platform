@@ -1,8 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-/* =========================================================
-   TOKENS
-========================================================= */
 :root{
   --bg:#0d0e10;
   --surface:#14161a;
@@ -29,9 +26,6 @@
   --mobileNavH:64px;
 }
 
-/* =========================================================
-   RESET + BASE
-========================================================= */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:15px;scroll-behavior:smooth}
 body{
@@ -51,108 +45,36 @@ a{color:inherit}
 .grow{flex:1}
 .wrap{flex-wrap:wrap}
 
-/* =========================================================
-   SPLASH
-========================================================= */
 .splash{
-  position:fixed;
-  inset:0;
-  z-index:9999;
+  position:fixed; inset:0; z-index:9999;
   background:var(--bg);
-  display:flex;
-  align-items:center;
-  justify-content:center;
+  display:flex; align-items:center; justify-content:center;
   transition:opacity .45s ease, visibility .45s ease;
 }
-.splash.hidden{
-  opacity:0;
-  visibility:hidden;
-  pointer-events:none;
-}
-.splash-card{
-  text-align:center;
-  padding:20px;
-  animation:splashIn .6s cubic-bezier(0.16,1,0.3,1) both;
-}
-.brand{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:12px;
-  margin-bottom:14px;
-}
-.logo-dot{
-  width:14px;height:14px;border-radius:999px;
-  background:var(--accent);
-  box-shadow:0 0 22px rgba(245,200,66,.35);
-}
-.brand-title{
-  font-family:var(--display);
-  font-size:3.2rem;
-  letter-spacing:.08em;
-  color:var(--accent);
-  line-height:1;
-}
-.brand-sub{
-  margin-top:6px;
-  font-family:var(--mono);
-  font-size:.75rem;
-  color:var(--muted);
-  letter-spacing:.16em;
-  text-transform:uppercase;
-}
-.splash-loading{
-  margin-top:14px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-}
-.spinner{
-  width:16px;height:16px;border-radius:999px;
-  border:2px solid rgba(245,200,66,.25);
-  border-top-color:var(--accent);
-  animation:spin 1s linear infinite;
-}
+.splash.hidden{opacity:0;visibility:hidden;pointer-events:none}
+.splash-card{text-align:center;padding:20px;animation:splashIn .6s cubic-bezier(0.16,1,0.3,1) both}
+.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:14px}
+.logo-dot{width:14px;height:14px;border-radius:999px;background:var(--accent);box-shadow:0 0 22px rgba(245,200,66,.35)}
+.brand-title{font-family:var(--display);font-size:3.2rem;letter-spacing:.08em;color:var(--accent);line-height:1}
+.brand-sub{margin-top:6px;font-family:var(--mono);font-size:.75rem;color:var(--muted);letter-spacing:.16em;text-transform:uppercase}
+.splash-loading{margin-top:14px;display:flex;align-items:center;justify-content:center;gap:10px}
+.spinner{width:16px;height:16px;border-radius:999px;border:2px solid rgba(245,200,66,.25);border-top-color:var(--accent);animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes splashIn{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 
-/* =========================================================
-   TOPBAR
-========================================================= */
 .topbar{
-  position:fixed;
-  top:0;left:0;right:0;
-  z-index:100;
+  position:fixed; top:0; left:0; right:0; z-index:100;
   height:var(--topbarH);
   background:rgba(13,14,16,0.92);
   backdrop-filter:blur(12px);
   border-bottom:1px solid var(--border);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
+  display:flex; align-items:center; justify-content:space-between;
   padding:0 1rem;
 }
-.topbar-left,.topbar-right{
-  display:flex;
-  align-items:center;
-  gap:.6rem;
-}
-.appmark{
-  display:flex;
-  align-items:center;
-  gap:.5rem;
-}
-.appmark-dot{
-  width:10px;height:10px;border-radius:999px;
-  background:var(--accent);
-  box-shadow:0 0 18px rgba(245,200,66,.35);
-}
-.appmark-title{
-  font-family:var(--display);
-  letter-spacing:.10em;
-  font-size:1.35rem;
-}
+.topbar-left,.topbar-right{display:flex;align-items:center;gap:.6rem}
+.appmark{display:flex;align-items:center;gap:.5rem}
+.appmark-dot{width:10px;height:10px;border-radius:999px;background:var(--accent);box-shadow:0 0 18px rgba(245,200,66,.35)}
+.appmark-title{font-family:var(--display);letter-spacing:.10em;font-size:1.35rem}
 .pill{
   font-family:var(--mono);
   font-size:.68rem;
@@ -165,32 +87,21 @@ a{color:inherit}
   white-space:nowrap;
 }
 
-/* =========================================================
-   LAYOUT
-========================================================= */
-.layout{
-  display:flex;
-  padding-top:var(--topbarH);
-  min-height:100vh;
-}
+.layout{display:flex;padding-top:var(--topbarH);min-height:100vh}
 .nav{
   width:var(--navW);
   flex-shrink:0;
   position:fixed;
-  top:var(--topbarH);
-  bottom:0;
-  left:0;
+  top:var(--topbarH); bottom:0; left:0;
   background:var(--surface);
   border-right:1px solid var(--border);
-  display:flex;
-  flex-direction:column;
+  display:flex; flex-direction:column;
   padding:1rem 0;
   gap:2px;
   overflow:auto;
 }
 .navbtn{
-  all:unset;
-  cursor:pointer;
+  all:unset; cursor:pointer;
   font-family:var(--mono);
   font-size:.72rem;
   text-transform:uppercase;
@@ -200,73 +111,36 @@ a{color:inherit}
   border-left:3px solid transparent;
   transition:all var(--transition);
 }
-.navbtn:hover{
-  color:var(--text);
-  background:var(--surface2);
-  border-left-color:var(--border2);
-}
+.navbtn:hover{color:var(--text);background:var(--surface2);border-left-color:var(--border2)}
 .navbtn.active{
   color:var(--accent);
   background:linear-gradient(90deg, rgba(245,200,66,0.08) 0%, transparent 100%);
   border-left-color:var(--accent);
 }
 
-.content{
-  margin-left:var(--navW);
-  flex:1;
-  padding:1.5rem 1.5rem 3rem;
-  max-width:1200px;
-}
-
-/* =========================================================
-   VIEWS / ANIMATION
-========================================================= */
+.content{margin-left:var(--navW);flex:1;padding:1.5rem 1.5rem 3rem;max-width:1200px}
 .view{animation:fadeSlideIn .26s cubic-bezier(0.16,1,0.3,1) both}
-@keyframes fadeSlideIn{
-  from{opacity:0;transform:translateY(10px)}
-  to{opacity:1;transform:translateY(0)}
-}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
-/* =========================================================
-   TYPOGRAPHY
-========================================================= */
-h2{
-  font-family:var(--display);
-  font-size:2.1rem;
-  letter-spacing:.08em;
-  line-height:1;
-}
-h3{
-  font-family:var(--sans);
-  font-size:.85rem;
-  font-weight:600;
-  text-transform:uppercase;
-  letter-spacing:.08em;
-}
+h2{font-family:var(--display);font-size:2.1rem;letter-spacing:.08em;line-height:1}
+h3{font-family:var(--sans);font-size:.85rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
 
-/* =========================================================
-   CARDS / UI
-========================================================= */
 .card{
   background:var(--surface);
   border:1px solid var(--border);
   border-radius:var(--radius);
   padding:1.1rem 1.25rem;
   margin-bottom:1rem;
-  position:relative;
-  overflow:hidden;
+  position:relative; overflow:hidden;
 }
 .card::before{
   content:'';
-  position:absolute;
-  top:0;left:0;right:0;
+  position:absolute; top:0; left:0; right:0;
   height:1px;
   background:linear-gradient(90deg, transparent, var(--border2), transparent);
 }
 .cardhead{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
+  display:flex; align-items:center; justify-content:space-between;
   gap:1rem;
   margin-bottom:.9rem;
   padding-bottom:.7rem;
@@ -289,22 +163,12 @@ h3{
 .minibody{color:var(--text)}
 .sep{border:none;border-top:1px solid var(--border);margin:1rem 0}
 
-/* =========================================================
-   GRID / ROWS
-========================================================= */
-.grid2{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:1rem;
-}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 .row{display:flex;align-items:center}
 .row.gap{gap:.75rem}
 .row.between{justify-content:space-between}
 .row.wrap{flex-wrap:wrap}
 
-/* =========================================================
-   FORMS
-========================================================= */
 .field{display:flex;flex-direction:column;gap:4px;min-width:140px}
 label{
   font-family:var(--mono);
@@ -323,14 +187,10 @@ input[type="text"],input[type="number"],input[type="date"],input[type="password"
   padding:7px 10px;
   outline:none;
   transition:border-color var(--transition), box-shadow var(--transition);
-  -webkit-appearance:none;
-  appearance:none;
+  -webkit-appearance:none; appearance:none;
 }
 textarea{min-height:84px;resize:vertical}
-input:focus,select:focus,textarea:focus{
-  border-color:var(--accent);
-  box-shadow:0 0 0 2px rgba(245,200,66,0.12);
-}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(245,200,66,0.12)}
 select{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");
   background-repeat:no-repeat;
@@ -340,9 +200,6 @@ select{
 }
 select option{background:var(--surface2);color:var(--text)}
 
-/* =========================================================
-   BUTTONS
-========================================================= */
 .btn{
   font-family:var(--mono);
   font-size:.72rem;
@@ -358,47 +215,18 @@ select option{background:var(--surface2);color:var(--text)}
   transition:all var(--transition);
   white-space:nowrap;
 }
-.btn:hover{
-  background:#ffe066;
-  transform:translateY(-1px);
-  box-shadow:0 4px 16px rgba(245,200,66,0.25);
-}
+.btn:hover{background:#ffe066;transform:translateY(-1px);box-shadow:0 4px 16px rgba(245,200,66,0.25)}
 .btn:active{transform:translateY(0)}
-.btn.ghost{
-  background:transparent;
-  color:var(--muted);
-  border:1px solid var(--border);
-  box-shadow:none;
-}
-.btn.ghost:hover{
-  color:var(--text);
-  border-color:var(--border2);
-  transform:none;
-}
-.btn.danger{
-  background:transparent;
-  color:var(--danger);
-  border:1px solid var(--danger);
-}
-.btn.danger:hover{
-  background:var(--danger);
-  color:#fff;
-  box-shadow:0 4px 16px rgba(230,57,70,0.3);
-}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--border);box-shadow:none}
+.btn.ghost:hover{color:var(--text);border-color:var(--border2);transform:none}
+.btn.danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.btn.danger:hover{background:var(--danger);color:#fff;box-shadow:0 4px 16px rgba(230,57,70,0.3)}
 .filebtn{position:relative;overflow:hidden}
-.filebtn input{
-  position:absolute; inset:0;
-  opacity:0; cursor:pointer;
-}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 
-/* =========================================================
-   LIST / ITEMS
-========================================================= */
 .list{display:flex;flex-direction:column;gap:.6rem}
 .item{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
+  display:flex; align-items:flex-start; justify-content:space-between;
   gap:1rem;
   background:var(--surface2);
   border:1px solid var(--border);
@@ -407,9 +235,7 @@ select option{background:var(--surface2);color:var(--text)}
 }
 .item b{font-family:var(--mono)}
 .pilltag{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
+  display:inline-flex; align-items:center; gap:6px;
   padding:2px 10px;
   border:1px solid var(--border2);
   border-radius:999px;
@@ -417,16 +243,13 @@ select option{background:var(--surface2);color:var(--text)}
   font-size:.66rem;
   color:var(--muted);
 }
-
-/* =========================================================
-   CALLOUT / TOAST
-========================================================= */
 .callout{
   background:rgba(245,200,66,0.08);
   border:1px solid rgba(245,200,66,0.25);
   border-radius:var(--radius);
   padding:.85rem 1rem;
 }
+
 .toast{
   position:fixed;
   left:50%;
@@ -444,17 +267,10 @@ select option{background:var(--surface2);color:var(--text)}
   box-shadow:0 10px 30px rgba(0,0,0,.35);
 }
 
-/* =========================================================
-   MODAL
-========================================================= */
 .modal{
-  position:fixed;
-  inset:0;
-  z-index:200;
+  position:fixed; inset:0; z-index:200;
   background:rgba(0,0,0,.55);
-  display:flex;
-  align-items:center;
-  justify-content:center;
+  display:flex; align-items:center; justify-content:center;
   padding:16px;
 }
 .modal[hidden]{display:none !important}
@@ -465,24 +281,59 @@ select option{background:var(--surface2);color:var(--text)}
   border-radius:var(--radius);
   padding:1.1rem 1.2rem;
 }
-.modal-title{
-  font-family:var(--display);
-  font-size:1.6rem;
-  letter-spacing:.08em;
-}
+.modal-title{font-family:var(--display);font-size:1.6rem;letter-spacing:.08em}
 
-/* =========================================================
-   FOOTER
-========================================================= */
+/* ================================
+   Week 3–4: Wizard UI
+================================ */
+.wizbar{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:10px 12px;
+}
+.wizstep{display:flex;align-items:center;gap:8px}
+.wizdot{
+  width:12px;height:12px;border-radius:999px;
+  border:1px solid var(--border2);
+  background:transparent;
+}
+.wizlabel{
+  font-family:var(--mono);
+  font-size:.68rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.wizline{flex:1;height:1px;background:var(--border)}
+.wizstep.active .wizdot{background:var(--accent);border-color:var(--accent)}
+.wizstep.active .wizlabel{color:var(--text)}
+.wizstep.done .wizdot{background:var(--ok);border-color:var(--ok)}
+.wizstep.done .wizlabel{color:var(--text)}
+
+/* ================================
+   Athlete Today tiles
+================================ */
+.tilegrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:1rem;
+}
+@media (max-width:900px){ .tilegrid{grid-template-columns:1fr} }
+
+/* Footer */
 .footer{
   padding:18px 14px;
   border-top:1px solid var(--border);
   margin-left:var(--navW);
 }
 
-/* =========================================================
-   MOBILE MODE (BOTTOM NAV) — mobile only
-========================================================= */
+/* ================================
+   Mobile mode (bottom nav)
+================================ */
 body.is-mobile .nav{
   position:fixed;
   left:0;right:0;bottom:0;
