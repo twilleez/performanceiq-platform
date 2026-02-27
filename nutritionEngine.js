@@ -1,48 +1,34 @@
-// nutritionEngine.js — v2.0.0
-
+// nutritionEngine.js — v2.0.0 (auto macro targets)
 (function () {
   "use strict";
   if (window.nutritionEngine) return;
 
-  function calcTargets(profile) {
-    // Simple, stable, offline-first targets.
-    // You can later replace with sport/phase tuned equations without changing UI contracts.
-    const days = Number(profile.days_per_week || 4);
-    const baseCals = 2400 + (days - 4) * 150;
+  // Simple, practical defaults (can be upgraded later)
+  // Inputs: weight_lbs, goal ("maintain"|"gain"|"cut"), activity ("low"|"med"|"high")
+  function macroTargets({ weight_lbs = 160, goal = "maintain", activity = "med" } = {}) {
+    const w = Math.max(80, Number(weight_lbs) || 160);
 
-    // Macro split:
-    const protein_g = 160;
-    const fat_g = 70;
-    const calsFromPF = protein_g * 4 + fat_g * 9;
-    const carbs_g = Math.max(200, Math.round((baseCals - calsFromPF) / 4));
+    // Protein: athletes ~0.8–1.0 g/lb baseline
+    const protein = Math.round(w * (goal === "cut" ? 1.0 : 0.9));
 
-    return { calories: baseCals, protein_g, carbs_g, fat_g };
+    // Fats: ~0.3 g/lb baseline
+    const fat = Math.round(w * 0.3);
+
+    // Calories estimate (very rough; tuned for usability)
+    let cal = w * 15; // base
+    if (activity === "high") cal += 250;
+    if (activity === "low") cal -= 200;
+    if (goal === "gain") cal += 250;
+    if (goal === "cut") cal -= 300;
+
+    // Carbs fill remaining calories
+    const proteinCals = protein * 4;
+    const fatCals = fat * 9;
+    const remaining = Math.max(0, cal - proteinCals - fatCals);
+    const carbs = Math.round(remaining / 4);
+
+    return { calories: Math.round(cal), protein_g: protein, carbs_g: carbs, fat_g: fat };
   }
 
-  function adherenceFromLog(targets, log) {
-    if (!log) return { score: 0, flags: ["No nutrition logged"] };
-    const p = Number(log.protein_g || 0);
-    const c = Number(log.carbs_g || 0);
-    const f = Number(log.fat_g || 0);
-    const cal = Number(log.calories || 0);
-
-    const pct = (a, b) => (b <= 0 ? 0 : (a / b) * 100);
-    const pPct = pct(p, targets.protein_g);
-    const cPct = pct(c, targets.carbs_g);
-    const fPct = pct(f, targets.fat_g);
-    const calPct = pct(cal, targets.calories);
-
-    const score = Math.round((clamp01(pPct/100) + clamp01(cPct/100) + clamp01(fPct/100) + clamp01(calPct/100)) / 4 * 100);
-
-    const flags = [];
-    if (pPct < 80) flags.push("Protein low");
-    if (calPct < 80) flags.push("Calories low");
-    if (calPct > 120) flags.push("Calories high");
-    if (cPct < 70) flags.push("Carbs low");
-    return { score, flags };
-  }
-
-  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
-
-  window.nutritionEngine = { calcTargets, adherenceFromLog };
+  window.nutritionEngine = { macroTargets };
 })();
