@@ -37,6 +37,59 @@
     </div>
   </header>
 
+  <!-- Onboarding Modal (Dropdown) -->
+  <div id="onboardingModal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="row between">
+        <div>
+          <div class="modal-title">Welcome</div>
+          <div class="small muted">Set your role + sport. You can change these later in Profile.</div>
+        </div>
+      </div>
+
+      <div class="onboard-grid" style="margin-top:14px">
+        <div class="mini">
+          <div class="minihead">Role</div>
+          <div class="small muted">This controls the layout and what features you see first.</div>
+          <div class="field" style="margin-top:10px">
+            <label>Select role</label>
+            <select id="obRole">
+              <option value="coach">Coach</option>
+              <option value="athlete">Athlete</option>
+              <option value="parent">Parent</option>
+            </select>
+          </div>
+          <div class="small muted" style="margin-top:8px">
+            Coach = team tools • Athlete = daily logging • Parent = view-focused
+          </div>
+        </div>
+
+        <div class="mini">
+          <div class="minihead">Sport Theme</div>
+          <div class="small muted">Sets accent colors + future workout defaults.</div>
+          <div class="field" style="margin-top:10px">
+            <label>Select sport</label>
+            <select id="obSport">
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="soccer">Soccer</option>
+            </select>
+          </div>
+          <div class="small muted" style="margin-top:8px">
+            You can switch sport anytime in Team tab.
+          </div>
+        </div>
+      </div>
+
+      <div class="row between" style="margin-top:14px">
+        <div class="small muted" id="obMsg">—</div>
+        <div class="row gap wrap">
+          <button class="btn" id="obContinue">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Auth Modal -->
   <div id="authModal" class="modal" hidden>
     <div class="modal-card">
@@ -116,7 +169,6 @@
   </div>
 
   <main class="layout">
-    <!-- Primary 4 Tabs -->
     <nav class="nav" role="navigation" aria-label="Primary">
       <button class="navbtn" data-view="home">Home</button>
       <button class="navbtn" data-view="team">Team</button>
@@ -134,9 +186,7 @@
 
   <div id="tooltip" class="tooltip" hidden></div>
 
-  <!-- Supabase UMD (safe; app guards usage if offline/unconfigured) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <script src="./cloudSync.js"></script>
   <script src="./automationEngine.js"></script>
   <script src="./core.js"></script>
