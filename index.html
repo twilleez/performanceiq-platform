@@ -73,17 +73,23 @@
 
           <div class="grid2" style="margin-top:12px">
             <div class="mini">
-              <div class="minihead">Today</div>
+              <div class="minihead row between">
+                <span>Today</span>
+                <button class="iconbtn" id="tipToday" title="What is Today?">?</button>
+              </div>
               <div class="minibody" id="todayBlock">—</div>
+
               <div style="margin-top:10px">
-                <!-- Today single-button workflow -->
                 <button class="btn" id="todayButton">Generate → Start → Log</button>
                 <div id="todayTimer" class="small muted" style="margin-top:8px">No timer running</div>
               </div>
             </div>
 
             <div class="mini">
-              <div class="minihead">Quick actions</div>
+              <div class="minihead row between">
+                <span>Quick actions</span>
+                <button class="iconbtn" id="tipQuick" title="Quick actions?">?</button>
+              </div>
               <div class="row gap wrap">
                 <button class="btn" id="qaTrain">Open Train</button>
                 <button class="btn ghost" id="qaTeam">Manage Team</button>
@@ -95,7 +101,10 @@
 
       <section class="view" id="view-team" data-view hidden>
         <div class="card">
-          <div class="card-title">Team</div>
+          <div class="card-title row between">
+            <span>Team</span>
+            <button class="iconbtn" id="tipTeam" title="Team help">?</button>
+          </div>
           <div class="small muted">Roster, join codes, and access.</div>
           <div id="teamBody" style="margin-top:12px"></div>
         </div>
@@ -103,7 +112,10 @@
 
       <section class="view" id="view-train" data-view hidden>
         <div class="card">
-          <div class="card-title">Train</div>
+          <div class="card-title row between">
+            <span>Train</span>
+            <button class="iconbtn" id="tipTrain" title="Train help">?</button>
+          </div>
           <div class="small muted" id="trainSub">Workouts tailored to the selected sport.</div>
           <div id="trainBody" style="margin-top:12px"></div>
         </div>
@@ -111,7 +123,10 @@
 
       <section class="view" id="view-profile" data-view hidden>
         <div class="card">
-          <div class="card-title">Profile</div>
+          <div class="card-title row between">
+            <span>Profile</span>
+            <button class="iconbtn" id="tipProfile" title="Profile help">?</button>
+          </div>
           <div class="small muted">Your role, sport, preferences, and account.</div>
           <div id="profileBody" style="margin-top:12px"></div>
         </div>
@@ -127,7 +142,26 @@
     <button class="tab" data-view="profile"><span class="tablbl">Profile</span></button>
   </nav>
 
-  <!-- Account Drawer (never traps user) -->
+  <!-- Floating Action Button (Phase 1) -->
+  <button class="fab" id="fab">＋</button>
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+  <div class="sheet" id="fabSheet" hidden>
+    <div class="sheet-head">
+      <div>
+        <div class="sheet-title">Quick Log</div>
+        <div class="small muted">3 taps from anywhere.</div>
+      </div>
+      <button class="btn ghost" id="btnCloseSheet">Close</button>
+    </div>
+    <div class="sheet-body">
+      <button class="btn" id="fabLogWorkout">Log workout</button>
+      <button class="btn ghost" id="fabLogNutrition">Log nutrition</button>
+      <button class="btn ghost" id="fabLogWellness">Log wellness</button>
+      <div class="small muted" style="margin-top:10px">Tip: Use Train → Save session for detailed logs.</div>
+    </div>
+  </div>
+
+  <!-- Account Drawer -->
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
   <aside class="drawer" id="accountDrawer" aria-hidden="true">
     <div class="drawer-head">
@@ -140,7 +174,10 @@
 
     <div class="drawer-body">
       <div class="card subtle">
-        <div class="card-title">Role & Sport</div>
+        <div class="card-title row between">
+          <span>Role & Sport</span>
+          <button class="iconbtn" id="tipRoleSport" title="Role & sport help">?</button>
+        </div>
 
         <div class="grid2" style="margin-top:10px">
           <div class="field">
@@ -229,9 +266,12 @@
         <div class="small muted" id="syncMsg" style="margin-top:8px">—</div>
       </div>
 
-      <!-- Data Management added -->
+      <!-- ✅ DATA MANAGEMENT (restored) -->
       <div class="card subtle" style="margin-top:12px">
-        <div class="card-title">Data Management</div>
+        <div class="card-title row between">
+          <span>Data Management</span>
+          <button class="iconbtn" id="tipDataMgmt" title="Data Management help">?</button>
+        </div>
         <div class="small muted">Export, import, or reset this device. Undo is available for 6 seconds.</div>
 
         <div class="row gap wrap" style="margin-top:10px">
@@ -248,7 +288,6 @@
         <div class="small muted" id="dataMsg" style="margin-top:8px">—</div>
       </div>
 
-      <!-- QA / Grade button -->
       <div style="margin-top:14px">
         <button class="btn ghost" id="btnRunGrade">Run QA Grade</button>
         <div id="gradeReport" class="small muted" style="margin-top:8px">—</div>
@@ -256,11 +295,30 @@
     </div>
   </aside>
 
-  <!-- Help tooltip layer (micro tours hook) -->
+  <!-- Help drawer (Phase 1) -->
+  <div class="drawer-backdrop" id="helpBackdrop" hidden></div>
+  <aside class="drawer drawer-help" id="helpDrawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <div class="drawer-title">Help</div>
+        <div class="small muted">Search help (Ctrl/⌘+K)</div>
+      </div>
+      <button class="btn ghost" id="btnCloseHelp">Close</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field">
+        <label>Search</label>
+        <input id="helpSearch" type="text" placeholder="Search: Today, Train, sRPE, injuries, export…" />
+      </div>
+      <div id="helpResults" style="margin-top:10px"></div>
+    </div>
+  </aside>
+
+  <!-- Toasts -->
   <div class="toast" id="toast" hidden></div>
   <div class="toast" id="undoToast" hidden></div>
 
-  <!-- Supabase UMD (safe if offline; guarded usage) -->
+  <!-- Supabase UMD -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script src="./dataStore.js"></script>
@@ -268,4 +326,4 @@
   <script src="./periodizationEngine.js"></script>
   <script src="./core.js"></script>
 </body>
-</html>
+  </html>
