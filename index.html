@@ -4,196 +4,37 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0b0f14" />
-  <meta name="description" content="PerformanceIQ \u2014 Offline-first team performance tracking" />
-  <meta name="color-scheme" content="dark light" />
-
-  <!-- Security: prevent clickjacking and XSS vectors -->
-  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-
   <title>PerformanceIQ</title>
-
   <link rel="icon" href="./icon-192.png" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
-
-  <!-- Manifest for PWA installability -->
-  <link rel="manifest" href="./manifest.json" />
-
-  <!-- Typography: dns-prefetch as fallback if preconnect unsupported -->
-  <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&display=swap"
-        rel="stylesheet" media="print" onload="this.media='all'" />
-  <!-- Noscript fallback for font -->
-  <noscript>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&display=swap" rel="stylesheet" />
-  </noscript>
-
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
   <!-- Splash -->
-  <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading PerformanceIQ">
+  <div id="splash" class="splash" aria-hidden="false">
     <div class="splash-card">
       <div class="brand">
-        <div class="logo-dot" aria-hidden="true"></div>
+        <div class="logo-dot"></div>
         <div>
           <div class="brand-title">PerformanceIQ</div>
-          <div class="brand-sub">Offline-first \u2022 Team-ready</div>
+          <div class="brand-sub">Offline-first • Team-ready</div>
         </div>
       </div>
 
-      <div class="splash-loading" aria-hidden="true">
+      <div class="splash-loading">
         <div class="skeleton"></div>
         <div class="skeleton"></div>
         <div class="skeleton"></div>
+        <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace…</div>
       </div>
-      <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace\u2026</div>
     </div>
   </div>
 
   <!-- Topbar -->
-  <header class="topbar" role="banner">
+  <header class="topbar">
     <div class="topbar-left">
-      <div class="appmark" aria-label="PerformanceIQ">
-        <span class="appmark-dot" aria-hidden="true"></span>
-        <span class="appmark-title">PerformanceIQ</span>
-      </div>
-
-      <span class="pill" id="savePill" title="Data status" aria-live="polite" aria-label="Save status">
-        <span class="dot" id="saveDot" aria-hidden="true"></span>
-        <span id="saveText">Local saved</span>
-      </span>
-
-      <span class="pill" id="teamPill" title="Active team" aria-live="polite" aria-label="Active team">Team: \u2014</span>
-      <span class="pill" id="cloudPill" title="Cloud status" aria-live="polite" aria-label="Cloud status">Cloud: Local</span>
-    </div>
-
-    <div class="topbar-right">
-      <button class="btn ghost" id="btnHelp" type="button" aria-label="Help">Help</button>
-      <button class="btn" id="btnAccount" type="button" aria-haspopup="dialog" aria-controls="accountDrawer">Account</button>
-    </div>
-  </header>
-
-  <!-- Layout -->
-  <main class="layout" id="mainContent">
-    <!-- Desktop nav -->
-    <nav class="nav" role="navigation" aria-label="Primary navigation" id="desktopNav">
-      <button class="navbtn" data-view="home" type="button" aria-current="page">Home</button>
-      <button class="navbtn" data-view="team" type="button">Team</button>
-      <button class="navbtn" data-view="train" type="button">Train</button>
-      <button class="navbtn" data-view="profile" type="button">Profile</button>
-    </nav>
-
-    <!-- Content -->
-    <section class="content" aria-live="polite" aria-atomic="false">
-
-      <section class="view" id="view-home" role="region" aria-label="Home" tabindex="-1">
-        <div class="card">
-          <div class="card-title" role="heading" aria-level="1">Home</div>
-          <div class="small muted" id="homeSub">Welcome back.</div>
-
-          <div class="grid2" style="margin-top:12px">
-            <div class="mini">
-              <div class="minihead" role="heading" aria-level="2">Today</div>
-              <div class="minibody" id="todayBlock" aria-live="polite">\u2014</div>
-            </div>
-
-            <div class="mini">
-              <div class="minihead" role="heading" aria-level="2">Quick actions</div>
-              <div class="row gap wrap">
-                <button class="btn" id="qaTrain" type="button">Open Train</button>
-                <button class="btn ghost" id="qaTeam" type="button">Manage Team</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="view" id="view-team" role="region" aria-label="Team" tabindex="-1" hidden>
-        <div class="card">
-          <div class="card-title" role="heading" aria-level="1">Team</div>
-          <div class="small muted">Roster, join codes, and access.</div>
-          <div id="teamBody" style="margin-top:12px" aria-live="polite"></div>
-        </div>
-      </section>
-
-      <section class="view" id="view-train" role="region" aria-label="Train" tabindex="-1" hidden>
-        <div class="card">
-          <div class="card-title" role="heading" aria-level="1">Train</div>
-          <div class="small muted" id="trainSub">Workouts tailored to the selected sport.</div>
-          <div id="trainBody" style="margin-top:12px" aria-live="polite"></div>
-        </div>
-      </section>
-
-      <section class="view" id="view-profile" role="region" aria-label="Profile" tabindex="-1" hidden>
-        <div class="card">
-          <div class="card-title" role="heading" aria-level="1">Profile</div>
-          <div class="small muted">Your role, sport, preferences, and help.</div>
-          <div id="cloudCardBody" style="margin-top:12px" aria-live="polite"></div>
-          <div id="profileBody" style="margin-top:12px" aria-live="polite"></div>
-        </div>
-      </section>
-
-    </section>
-  </main>
-
-  <!-- Mobile bottom nav -->
-  <nav class="bottomnav" id="bottomNav" aria-label="Bottom navigation">
-    <button class="tab" data-view="home" type="button" aria-current="page"><span class="tablbl">Home</span></button>
-    <button class="tab" data-view="team" type="button"><span class="tablbl">Team</span></button>
-    <button class="tab" data-view="train" type="button"><span class="tablbl">Train</span></button>
-    <button class="tab" data-view="profile" type="button"><span class="tablbl">Profile</span></button>
-  </nav>
-
-  <!-- Account Drawer -->
-  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
-  <aside class="drawer" id="accountDrawer"
-         role="dialog"
-         aria-modal="true"
-         aria-label="Account settings"
-         aria-hidden="true">
-
-    <div class="drawer-head">
-      <div>
-        <div class="drawer-title" id="drawerTitle">Account</div>
-        <div class="small muted">Cloud sync is optional (local mode always works)</div>
-      </div>
-      <button class="btn ghost" id="btnCloseDrawer" type="button" aria-label="Close account drawer">Close</button>
-    </div>
-
-    <div class="drawer-body">
-
-      <!-- Role & Sport -->
-      <div class="card subtle" role="group" aria-labelledby="sectionRoleSport">
-        <div class="card-title" id="sectionRoleSport" role="heading" aria-level="2">Role &amp; Sport</div>
-
-        <div class="grid2" style="margin-top:10px">
-          <div class="field">
-            <label for="roleSelect">Role</label>
-            <select id="roleSelect" autocomplete="off">
-              <option value="coach">Coach</option>
-              <option value="athlete">Athlete</option>
-              <option value="parent">Parent</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label for="sportSelect">Sport</label>
-            <select id="sportSelect" autocomplete="off">
-              <option value="basketball">Basketball</option>
-              <option value="football">Football</option>
-              <option value="soccer">Soccer</option>
-              <option value="baseball">Baseball</option>
-              <option value="volleyball">Volleyball</option>
-              <option value="track">Track</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn" id="btn      <div class="appmark">
+      <div class="appmark">
         <span class="appmark-dot" aria-hidden="true"></span>
         <span class="appmark-title">PerformanceIQ</span>
       </div>
@@ -234,6 +75,11 @@
             <div class="mini">
               <div class="minihead">Today</div>
               <div class="minibody" id="todayBlock">—</div>
+              <div style="margin-top:10px">
+                <!-- Today single-button workflow -->
+                <button class="btn" id="todayButton">Generate → Start → Log</button>
+                <div id="todayTimer" class="small muted" style="margin-top:8px">No timer running</div>
+              </div>
             </div>
 
             <div class="mini">
@@ -382,11 +228,37 @@
 
         <div class="small muted" id="syncMsg" style="margin-top:8px">—</div>
       </div>
+
+      <!-- Data Management added -->
+      <div class="card subtle" style="margin-top:12px">
+        <div class="card-title">Data Management</div>
+        <div class="small muted">Export, import, or reset this device. Undo is available for 6 seconds.</div>
+
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn ghost" id="btnExport">Export JSON</button>
+
+          <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px">
+            Import JSON
+            <input id="fileImport" type="file" accept="application/json" style="display:none" />
+          </label>
+
+          <button class="btn danger" id="btnResetLocal">Seed Demo / Reset</button>
+        </div>
+
+        <div class="small muted" id="dataMsg" style="margin-top:8px">—</div>
+      </div>
+
+      <!-- QA / Grade button -->
+      <div style="margin-top:14px">
+        <button class="btn ghost" id="btnRunGrade">Run QA Grade</button>
+        <div id="gradeReport" class="small muted" style="margin-top:8px">—</div>
+      </div>
     </div>
   </aside>
 
   <!-- Help tooltip layer (micro tours hook) -->
   <div class="toast" id="toast" hidden></div>
+  <div class="toast" id="undoToast" hidden></div>
 
   <!-- Supabase UMD (safe if offline; guarded usage) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
