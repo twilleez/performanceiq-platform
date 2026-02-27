@@ -1,10 +1,13 @@
-// nutritionEngine.js — v2.0.0 (auto macro targets)
+// nutritionEngine.js — v2.1.0 (auto macro targets)
 (function () {
   "use strict";
   if (window.nutritionEngine) return;
 
-  // Simple, practical defaults (can be upgraded later)
-  // Inputs: weight_lbs, goal ("maintain"|"gain"|"cut"), activity ("low"|"med"|"high")
+  // Simple, practical defaults (upgradeable later)
+  // Inputs:
+  // - weight_lbs
+  // - goal: "maintain" | "gain" | "cut"
+  // - activity: "low" | "med" | "high"
   function macroTargets({ weight_lbs = 160, goal = "maintain", activity = "med" } = {}) {
     const w = Math.max(80, Number(weight_lbs) || 160);
 
@@ -14,8 +17,8 @@
     // Fats: ~0.3 g/lb baseline
     const fat = Math.round(w * 0.3);
 
-    // Calories estimate (very rough; tuned for usability)
-    let cal = w * 15; // base
+    // Calories estimate (rough; tuned for usability)
+    let cal = w * 15;
     if (activity === "high") cal += 250;
     if (activity === "low") cal -= 200;
     if (goal === "gain") cal += 250;
