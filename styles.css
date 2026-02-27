@@ -5,7 +5,7 @@
   --text:#e8edf2;
   --muted:#8b98a7;
 
-  --accent:#2e7cff;      /* default: basketball */
+  --accent:#2e7cff;
   --accent2:#1b56b8;
   --danger:#ff4d4d;
   --warn:#ffb020;
@@ -108,7 +108,7 @@ h2,h3{
   border:none;
   background:transparent;
   color:var(--muted);
-  font-weight:700;
+  font-weight:800;
   letter-spacing:.2px;
   font-size:13px;
 }
@@ -151,13 +151,15 @@ h2,h3{
   min-width:160px;
 }
 .field.grow{flex:1; min-width:220px}
+
 label{
   font-size:11px;
-  font-weight:700;
+  font-weight:800;
   color:var(--muted);
   letter-spacing:.08em;
   text-transform:uppercase;
 }
+
 input,select,textarea{
   background:#0f141b;
   border:1px solid var(--border);
@@ -165,7 +167,7 @@ input,select,textarea{
   padding:12px;
   border-radius:10px;
   width:100%;
-  font-size:16px; /* mobile-friendly */
+  font-size:16px;
   outline:none;
 }
 input:focus,select:focus,textarea:focus{
@@ -177,7 +179,7 @@ input:focus,select:focus,textarea:focus{
   border:none;
   border-radius:10px;
   padding:10px 14px;
-  font-weight:800;
+  font-weight:900;
   background:var(--accent);
   color:#071019;
 }
@@ -204,7 +206,7 @@ input:focus,select:focus,textarea:focus{
 .minihead{
   font-family:'Barlow Condensed',sans-serif;
   font-size:18px;
-  font-weight:700;
+  font-weight:800;
   margin-bottom:8px;
 }
 .minibody{color:var(--text)}
@@ -228,7 +230,7 @@ input:focus,select:focus,textarea:focus{
   color:var(--muted);
   padding:8px 10px;
   border-radius:999px;
-  font-weight:800;
+  font-weight:900;
   font-size:12px;
   white-space:nowrap;
 }
@@ -273,7 +275,17 @@ input:focus,select:focus,textarea:focus{
 .modal-title{
   font-family:'Barlow Condensed',sans-serif;
   font-size:22px;
-  font-weight:800;
+  font-weight:900;
+}
+
+/* Onboarding modal layout */
+.onboard-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+@media (max-width:900px){
+  .onboard-grid{grid-template-columns:1fr}
 }
 
 /* Skeleton splash */
@@ -302,7 +314,7 @@ input:focus,select:focus,textarea:focus{
   to{background-position:-200% 0}
 }
 
-/* Mobile: turn nav into bottom tab bar automatically */
+/* Mobile: bottom tab bar */
 @media (max-width: 720px){
   .nav{
     position:fixed;
