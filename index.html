@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,7 +21,6 @@
           <div class="brand-sub">Offline-first • Team-ready</div>
         </div>
       </div>
-
       <div class="splash-loading">
         <div class="skeleton"></div>
         <div class="skeleton"></div>
@@ -49,6 +48,7 @@
     </div>
 
     <div class="topbar-right">
+      <button class="btn ghost" id="btnThemeToggle" title="Toggle dark/light">Theme</button>
       <button class="btn ghost" id="btnHelp">Help</button>
       <button class="btn" id="btnAccount">Account</button>
     </div>
@@ -142,7 +142,7 @@
     <button class="tab" data-view="profile"><span class="tablbl">Profile</span></button>
   </nav>
 
-  <!-- Floating Action Button (Phase 1) -->
+  <!-- Floating Action Button -->
   <button class="fab" id="fab">＋</button>
   <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
   <div class="sheet" id="fabSheet" hidden>
@@ -174,6 +174,39 @@
 
     <div class="drawer-body">
       <div class="card subtle">
+        <div class="card-title row between">
+          <span>Appearance</span>
+          <button class="iconbtn" id="tipTheme" title="Theme help">?</button>
+        </div>
+
+        <div class="grid2" style="margin-top:10px">
+          <div class="field">
+            <label>Mode</label>
+            <select id="themeModeSelect">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Sport theme accent</label>
+            <select id="themeSportSelect">
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="soccer">Soccer</option>
+              <option value="baseball">Baseball</option>
+              <option value="volleyball">Volleyball</option>
+              <option value="track">Track</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn" id="btnSaveTheme">Save theme</button>
+        </div>
+      </div>
+
+      <div class="card subtle" style="margin-top:12px">
         <div class="card-title row between">
           <span>Role & Sport</span>
           <button class="iconbtn" id="tipRoleSport" title="Role & sport help">?</button>
@@ -266,7 +299,7 @@
         <div class="small muted" id="syncMsg" style="margin-top:8px">—</div>
       </div>
 
-      <!-- ✅ DATA MANAGEMENT (restored) -->
+      <!-- Data Management -->
       <div class="card subtle" style="margin-top:12px">
         <div class="card-title row between">
           <span>Data Management</span>
@@ -295,7 +328,7 @@
     </div>
   </aside>
 
-  <!-- Help drawer (Phase 1) -->
+  <!-- Help drawer -->
   <div class="drawer-backdrop" id="helpBackdrop" hidden></div>
   <aside class="drawer drawer-help" id="helpDrawer" aria-hidden="true">
     <div class="drawer-head">
@@ -326,4 +359,4 @@
   <script src="./periodizationEngine.js"></script>
   <script src="./core.js"></script>
 </body>
-  </html>
+</html>
