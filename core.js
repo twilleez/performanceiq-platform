@@ -1,18 +1,18 @@
-// core.js — v13.0.1 (Onboarding dropdown modal; no prompt())
-// 4-tab UX + Cloud Accounts + Team Separation + Cloud Pull/Push
+// core.js — v13.1.0 (Role-based guided tours + Skip + Replay in Profile)
+// Offline-first + optional cloud sync. No prompt() popups.
 (function () {
   "use strict";
 
-  if (window.__PIQ_CORE_V13_1__) return;
-  window.__PIQ_CORE_V13_1__ = true;
+  if (window.__PIQ_CORE_V13_1_0__) return;
+  window.__PIQ_CORE_V13_1_0__ = true;
 
-  const APP_VERSION = "13.0.1";
+  const APP_VERSION = "13.1.0";
   const STORAGE_KEY = "piq_state_v13_local";
   const PUSH_DEBOUNCE_MS = 900;
+  const TOUR_VERSION = 1;
 
   const $ = (id) => document.getElementById(id);
   const qa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
   const todayISO = () => new Date().toISOString().slice(0, 10);
   const uid = (p="id") => `${p}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 
@@ -23,11 +23,7 @@
     return {
       meta: { teamId, name, createdAt: Date.now(), updatedAt: Date.now() },
       athletes: [],
-      logs: {
-        readiness: {},
-        training: {},
-        nutrition: {},
-      },
+      logs: { readiness: {}, training: {}, nutrition: {} },
       workouts: {},
       periodization: {}
     };
@@ -36,18 +32,17 @@
   function defaultAppState() {
     const localTeamId = uid("team");
     return {
-      meta: { appVersion: APP_VERSION, updatedAt: Date.now(), onboarded: false },
+      meta: {
+        appVersion: APP_VERSION,
+        updatedAt: Date.now(),
+        onboarded: false,
+        tour: { completed: false, version: 0, role: "coach" }
+      },
       role: "coach",
       sport: "basketball",
       activeTeamId: localTeamId,
-      teams: {
-        [localTeamId]: defaultTeamState(localTeamId, "My Team")
-      },
-      cloud: {
-        enabled: false,
-        lastPulledAt: 0,
-        lastPushedAt: 0
-      }
+      teams: { [localTeamId]: defaultTeamState(localTeamId, "My Team") },
+      cloud: { enabled: false, lastPulledAt: 0, lastPushedAt: 0 }
     };
   }
 
@@ -57,6 +52,10 @@
 
     s.meta = s.meta && typeof s.meta === "object" ? s.meta : d.meta;
     if (typeof s.meta.onboarded !== "boolean") s.meta.onboarded = false;
+    if (!s.meta.tour || typeof s.meta.tour !== "object") s.meta.tour = { completed:false, version:0, role:"coach" };
+    if (typeof s.meta.tour.completed !== "boolean") s.meta.tour.completed = false;
+    if (typeof s.meta.tour.version !== "number") s.meta.tour.version = 0;
+    if (typeof s.meta.tour.role !== "string") s.meta.tour.role = "coach";
 
     s.role = typeof s.role === "string" ? s.role : d.role;
     s.sport = typeof s.sport === "string" ? s.sport : d.sport;
@@ -154,15 +153,9 @@
     }
 
     const res = await window.cloudSync.pullTeamState(teamId);
-    if (!res.ok) {
-      setSync("error", "Pull failed");
-      return res;
-    }
+    if (!res.ok) { setSync("error", "Pull failed"); return res; }
 
-    if (!res.row?.state) {
-      setSync("cloud", "Cloud");
-      return { ok: true, empty: true };
-    }
+    if (!res.row?.state) { setSync("cloud", "Cloud"); return { ok: true, empty: true }; }
 
     const cloudState = res.row.state;
     const localTeam = state.teams[teamId];
@@ -173,7 +166,7 @@
 
     if (cloudUpdated >= localUpdated) {
       state.teams[teamId] = cloudState;
-      if (!state.teams[teamId].meta) state.teams[teamId].meta = {};
+      state.teams[teamId].meta = state.teams[teamId].meta || {};
       state.teams[teamId].meta.teamId = teamId;
       state.teams[teamId].meta.updatedAt = Date.now();
       state.cloud.lastPulledAt = Date.now();
@@ -207,10 +200,8 @@
     teamState.meta.teamId = teamId;
 
     const res = await window.cloudSync.pushTeamState(teamId, teamState);
-    if (!res.ok) {
-      setSync("error", "Sync failed");
-      return res;
-    }
+    if (!res.ok) { setSync("error", "Sync failed"); return res; }
+
     state.cloud.lastPushedAt = Date.now();
     saveLocal();
     setSync("cloud", "Cloud");
@@ -253,7 +244,7 @@
 
   qa(".navbtn").forEach(btn => btn.addEventListener("click", () => showView(btn.dataset.view)));
 
-  // Tooltip system (for elements with data-tip)
+  // Tooltip system (data-tip)
   document.addEventListener("mouseover", (e) => {
     const el = e.target?.closest?.("[data-tip]");
     const tip = el?.getAttribute?.("data-tip");
@@ -268,7 +259,7 @@
   document.addEventListener("mouseout", () => { const t = $("tooltip"); if (t) t.hidden = true; });
 
   // ---------------------------
-  // Helpers: Team + Athletes
+  // Team + Athletes
   // ---------------------------
   function activeTeam() { return state.teams[state.activeTeamId]; }
 
@@ -315,6 +306,160 @@
   }
 
   // ---------------------------
+  // Guided Tour (Role-based)
+  // ---------------------------
+  let tourSteps = [];
+  let tourIndex = 0;
+  let highlighted = null;
+
+  function clearHighlight() {
+    if (highlighted) {
+      try { highlighted.classList.remove("tour-highlight"); } catch {}
+      highlighted = null;
+    }
+  }
+
+  function getRoleTour(role) {
+    const common = [
+      {
+        title: "Navigation",
+        body: "Use the 4 tabs to move fast: Home (overview), Team (roster), Train (logging), Profile (settings).",
+        selector: ".nav"
+      },
+      {
+        title: "Saved vs Cloud",
+        body: "The dot near the top shows your status. If you’re local-only it will say Saved/Local. If you sign in, it becomes Cloud.",
+        selector: ".sync-status"
+      }
+    ];
+
+    if (role === "athlete") {
+      return [
+        { title: "Athlete Home", body: "Home gives you a quick summary and what to do next.", selector: "[data-view='home']" },
+        { title: "Train tab", body: "Train is your main workflow. Log sessions first; nutrition expands next.", selector: "[data-view='train']" },
+        { title: "Log a session", body: "Pick your name, date, minutes and sRPE. Load auto-calculates.", selector: "#view-train" },
+        ...common,
+        { title: "Replay anytime", body: "You can replay this tour from Profile → Help & Tour.", selector: "[data-view='profile']" }
+      ];
+    }
+
+    if (role === "parent") {
+      return [
+        { title: "Parent Home", body: "Home shows key highlights (readiness/trends will expand).", selector: "[data-view='home']" },
+        { title: "Team roster", body: "Team lets you view athletes and switch the active team.", selector: "[data-view='team']" },
+        { title: "Train view", body: "Train lets you see logs and history (editing is limited by role).", selector: "[data-view='train']" },
+        ...common,
+        { title: "Replay anytime", body: "Replay this tour from Profile → Help & Tour.", selector: "[data-view='profile']" }
+      ];
+    }
+
+    // coach default
+    return [
+      { title: "Coach Home", body: "Home summarizes what matters most. Highlights will expand with more analytics.", selector: "[data-view='home']" },
+      { title: "Team: your foundation", body: "Create teams, add athletes, and manage roster in Team.", selector: "[data-view='team']" },
+      { title: "Train: your workflow", body: "Train is where you log sessions and review recent activity.", selector: "[data-view='train']" },
+      ...common,
+      { title: "Replay anytime", body: "Replay this tour from Profile → Help & Tour.", selector: "[data-view='profile']" }
+    ];
+  }
+
+  function setTourVisible(on) {
+    const o = $("tourOverlay");
+    if (!o) return;
+    o.hidden = !on;
+    o.setAttribute("aria-hidden", on ? "false" : "true");
+    if (!on) clearHighlight();
+  }
+
+  function renderTourStep() {
+    const title = $("tourTitle");
+    const body = $("tourBody");
+    const prog = $("tourProgress");
+    const back = $("tourBack");
+    const next = $("tourNext");
+
+    const step = tourSteps[tourIndex];
+    if (!step) return;
+
+    if (title) title.textContent = step.title || "Tour";
+    if (body) body.textContent = step.body || "";
+    if (prog) prog.textContent = `Step ${tourIndex + 1} of ${tourSteps.length}`;
+
+    if (back) back.disabled = (tourIndex === 0);
+    if (next) next.textContent = (tourIndex === tourSteps.length - 1) ? "Finish" : "Next";
+
+    // highlight target
+    clearHighlight();
+    if (step.selector) {
+      const el = document.querySelector(step.selector);
+      if (el) {
+        highlighted = el;
+        try {
+          highlighted.classList.add("tour-highlight");
+          highlighted.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+        } catch {}
+      }
+    }
+  }
+
+  function startTour(role, fromProfile=false) {
+    const r = (role === "athlete" || role === "parent") ? role : "coach";
+    tourSteps = getRoleTour(r);
+    tourIndex = 0;
+
+    setTourVisible(true);
+    renderTourStep();
+
+    // if launched from onboarding, move user to Home for orientation
+    if (!fromProfile) showView("home");
+  }
+
+  function finishTour() {
+    state.meta.tour = state.meta.tour || { completed:false, version:0, role:state.role || "coach" };
+    state.meta.tour.completed = true;
+    state.meta.tour.version = TOUR_VERSION;
+    state.meta.tour.role = state.role || "coach";
+    saveLocal();
+    setTourVisible(false);
+  }
+
+  function skipTour() {
+    // mark as completed so it doesn't nag; user can replay anytime
+    finishTour();
+  }
+
+  function wireTourUI() {
+    $("btnHelp")?.addEventListener("click", () => startTour(state.role, true));
+
+    $("tourClose")?.addEventListener("click", () => setTourVisible(false));
+    $("tourSkip")?.addEventListener("click", () => skipTour());
+
+    $("tourBack")?.addEventListener("click", () => {
+      if (tourIndex > 0) {
+        tourIndex -= 1;
+        renderTourStep();
+      }
+    });
+
+    $("tourNext")?.addEventListener("click", () => {
+      if (tourIndex >= tourSteps.length - 1) {
+        finishTour();
+        return;
+      }
+      tourIndex += 1;
+      renderTourStep();
+    });
+
+    // close tour on ESC
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        const o = $("tourOverlay");
+        if (o && !o.hidden) setTourVisible(false);
+      }
+    });
+  }
+
+  // ---------------------------
   // Render: HOME
   // ---------------------------
   function renderHome() {
@@ -322,8 +467,6 @@
     if (!el) return;
 
     const t = activeTeam();
-    const badges = window.automationEngine?.computeAutoBadges?.(t) || [];
-
     const role = state.role;
     const teamName = t?.meta?.name || "—";
     const athleteCount = t?.athletes?.length || 0;
@@ -335,22 +478,13 @@
       </div>
     `;
 
-    if (badges.length) {
-      body += `
-        <div class="card">
-          <h3>Highlights</h3>
-          ${badges.map(b => `<div class="callout" style="margin-top:10px">${escapeHTML(b.text)}</div>`).join("")}
-        </div>
-      `;
-    }
-
     if (role === "coach") {
       body += `
         <div class="grid2">
           <div class="card">
             <h3>Roster</h3>
             <div class="small muted">${athleteCount} athletes</div>
-            <div class="small muted" style="margin-top:8px">Use Team tab to add athletes and manage teams.</div>
+            <div class="small muted" style="margin-top:8px">Use Team to add athletes and manage teams.</div>
           </div>
           <div class="card">
             <h3>Quick actions</h3>
@@ -365,7 +499,7 @@
       body += `
         <div class="card">
           <h3>Today</h3>
-          <div class="small muted">Open Train tab to log your session and nutrition.</div>
+          <div class="small muted">Open Train to log your session.</div>
           <div class="row gap wrap" style="margin-top:10px">
             <button class="btn" id="goTrain2">Go to Train</button>
           </div>
@@ -393,7 +527,7 @@
     el.innerHTML = `
       <div class="card">
         <h2>Team</h2>
-        <div class="small muted">Manage teams and roster (coach). Athletes can view roster.</div>
+        <div class="small muted">Manage teams and roster (coach). Athletes/parents can view roster.</div>
       </div>
 
       <div class="grid2">
@@ -408,7 +542,7 @@
             </div>
             <div class="field grow">
               <label>Sport</label>
-              <select id="sportSelect" data-tip="Changes theme + sport defaults for future workout engine">
+              <select id="sportSelect" data-tip="Changes theme + sport defaults">
                 <option value="basketball"${state.sport==="basketball"?" selected":""}>Basketball</option>
                 <option value="football"${state.sport==="football"?" selected":""}>Football</option>
                 <option value="soccer"${state.sport==="soccer"?" selected":""}>Soccer</option>
@@ -506,7 +640,7 @@
     el.innerHTML = `
       <div class="card">
         <h2>Train</h2>
-        <div class="small muted">Log training + nutrition (more modules expand in later weeks).</div>
+        <div class="small muted">Log training + nutrition.</div>
       </div>
 
       <div class="subnav" role="tablist" aria-label="Train modules">
@@ -538,7 +672,7 @@
       panel.innerHTML = `
         <div class="card">
           <h3>Nutrition</h3>
-          <div class="small muted">Macro auto-calculation comes in the next build cycle.</div>
+          <div class="small muted">Macro auto-calculation is staged next. (Tour will guide you to what’s live now.)</div>
         </div>
       `;
       return;
@@ -547,7 +681,7 @@
     panel.innerHTML = `
       <div class="card">
         <h3>${escapeHTML(activeTrainTab.charAt(0).toUpperCase()+activeTrainTab.slice(1))}</h3>
-        <div class="small muted">This module is staged for the next build weeks. Core is ready.</div>
+        <div class="small muted">This module is staged next. Core workflow is ready.</div>
       </div>
     `;
   }
@@ -559,7 +693,7 @@
 
   function renderLogModule(athletes) {
     if (!athletes.length) {
-      return `<div class="card"><h3>Log</h3><div class="small muted">Add athletes in Team tab first.</div></div>`;
+      return `<div class="card"><h3>Log</h3><div class="small muted">Add athletes in Team first.</div></div>`;
     }
 
     return `
@@ -690,16 +824,20 @@
   }
 
   // ---------------------------
-  // Render: PROFILE
+  // Render: PROFILE (Replay tour)
   // ---------------------------
   function renderProfile() {
     const el = $("view-profile");
     if (!el) return;
 
+    const tourDone = !!state.meta?.tour?.completed;
+    const tourRole = state.meta?.tour?.role || "—";
+    const tourVer = state.meta?.tour?.version || 0;
+
     el.innerHTML = `
       <div class="card">
         <h2>Profile</h2>
-        <div class="small muted">Account + preferences.</div>
+        <div class="small muted">Preferences + help.</div>
       </div>
 
       <div class="grid2">
@@ -715,6 +853,15 @@
                 <option value="parent"${state.role==="parent"?" selected":""}>Parent</option>
               </select>
             </div>
+          </div>
+
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn" id="btnReplayTour">Replay guided tour</button>
+            <button class="btn ghost" id="btnResetTour" data-tip="Shows onboarding again next time you open the app">Reset onboarding</button>
+          </div>
+
+          <div class="small muted" style="margin-top:8px">
+            Tour: <b>${tourDone ? "completed" : "not completed"}</b> • Last role: <b>${escapeHTML(tourRole)}</b> • Version: <b>${escapeHTML(String(tourVer))}</b>
           </div>
         </div>
 
@@ -733,6 +880,15 @@
       state.role = e.target.value;
       saveLocal();
       renderAll();
+    });
+
+    $("btnReplayTour")?.addEventListener("click", () => startTour(state.role, true));
+    $("btnResetTour")?.addEventListener("click", () => {
+      if (!confirm("Reset onboarding? This will show the Welcome setup again.")) return;
+      state.meta.onboarded = false;
+      state.meta.tour = { completed: false, version: 0, role: state.role || "coach" };
+      saveLocal();
+      openOnboarding(); // immediately show
     });
 
     updateProfileCloudState();
@@ -769,10 +925,7 @@
       await refreshAuthState();
     });
 
-    $("btnAuthClose")?.addEventListener("click", () => {
-      const m = $("authModal");
-      if (m) m.hidden = true;
-    });
+    $("btnAuthClose")?.addEventListener("click", () => { const m = $("authModal"); if (m) m.hidden = true; });
 
     $("btnSaveCloud")?.addEventListener("click", async () => {
       const url = ($("sbUrl")?.value || "").trim();
@@ -856,11 +1009,7 @@
     }
 
     const res = await window.cloudSync.getSession();
-    if (!res.ok) {
-      el.textContent = `Cloud session error: ${res.reason || "unknown"}`;
-      setSync("error", "Cloud error");
-      return;
-    }
+    if (!res.ok) { el.textContent = `Cloud session error`; setSync("error", "Cloud error"); return; }
 
     if (!res.session) {
       el.textContent = "Signed out.";
@@ -868,25 +1017,24 @@
       return;
     }
 
-    el.textContent = `Signed in as:\n${res.session.user?.email || "user"}\nUser ID:\n${res.session.user?.id || "—"}`;
+    el.textContent = `Signed in as:\n${res.session.user?.email || "user"}`;
     setSync("cloud", "Cloud");
   }
 
   // ---------------------------
-  // Onboarding (Dropdown modal)
+  // Onboarding (Dropdown modal) + auto tour
   // ---------------------------
   function openOnboarding() {
     const m = $("onboardingModal");
     if (!m) return;
 
-    // defaults from state
     if ($("obRole")) $("obRole").value = state.role || "coach";
     if ($("obSport")) $("obSport").value = state.sport || "basketball";
 
-    $("obMsg").textContent = "Choose your role and sport, then Continue.";
+    $("obMsg").textContent = "Choose role and sport. Continue to start your guided tour.";
     m.hidden = false;
 
-    $("obContinue")?.addEventListener("click", () => {
+    const onContinue = () => {
       const role = ($("obRole")?.value || "coach").toLowerCase();
       const sport = ($("obSport")?.value || "basketball").toLowerCase();
 
@@ -901,10 +1049,26 @@
       m.hidden = true;
       renderAll();
       showView("home");
-    }, { once: true });
 
-    // preview theme as you change sport
+      // start tour if not completed or older version
+      const t = state.meta.tour || { completed:false, version:0, role:state.role };
+      const needsTour = (!t.completed) || (t.version < TOUR_VERSION) || (t.role !== state.role);
+      if (needsTour) startTour(state.role, false);
+    };
+
+    const onSkip = () => {
+      state.meta.onboarded = true;
+      saveLocal();
+      m.hidden = true;
+      renderAll();
+      showView("home");
+    };
+
+    // preview theme on sport change
     $("obSport")?.addEventListener("change", (e) => applySportTheme(e.target.value));
+
+    $("obContinue")?.addEventListener("click", onContinue, { once: true });
+    $("obSkip")?.addEventListener("click", onSkip, { once: true });
   }
 
   // ---------------------------
@@ -932,6 +1096,7 @@
   // ---------------------------
   async function boot() {
     wireAuthModal();
+    wireTourUI();
     await tryInitCloud();
 
     if (window.cloudSync?.isReady?.()) {
@@ -946,11 +1111,9 @@
       });
     }
 
-    // Render immediately (avoid blank screen)
     showView("home");
     renderAll();
 
-    // Replace prompt() onboarding with dropdown modal
     if (!state.meta?.onboarded) {
       openOnboarding();
     }
