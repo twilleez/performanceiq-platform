@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,6 +21,7 @@
           <div class="brand-sub">Offline-first • Team-ready</div>
         </div>
       </div>
+
       <div class="splash-loading">
         <div class="skeleton"></div>
         <div class="skeleton"></div>
@@ -45,10 +46,11 @@
 
       <span class="pill" id="teamPill" title="Active team">Team: —</span>
       <span class="pill" id="cloudPill" title="Cloud status">Cloud: Local</span>
+
+      <button class="iconbtn" id="btnThemeToggle" title="Toggle dark/light">☾</button>
     </div>
 
     <div class="topbar-right">
-      <button class="btn ghost" id="btnThemeToggle" title="Toggle dark/light">Theme</button>
       <button class="btn ghost" id="btnHelp">Help</button>
       <button class="btn" id="btnAccount">Account</button>
     </div>
@@ -68,27 +70,31 @@
     <section class="content">
       <section class="view" id="view-home" data-view>
         <div class="card">
-          <div class="card-title">Home</div>
-          <div class="small muted" id="homeSub">Welcome back.</div>
+          <div class="row between" style="gap:10px;flex-wrap:wrap">
+            <div>
+              <div class="card-title">Home</div>
+              <div class="small muted" id="homeSub">Welcome back.</div>
+            </div>
+            <div class="row gap wrap">
+              <button class="btn" id="todayButton">Generate → Start → Log</button>
+              <span class="pill" id="todayTimer">No timer running</span>
+              <button class="iconbtn" id="tipToday" title="Help">?</button>
+            </div>
+          </div>
 
           <div class="grid2" style="margin-top:12px">
             <div class="mini">
-              <div class="minihead row between">
-                <span>Today</span>
-                <button class="iconbtn" id="tipToday" title="What is Today?">?</button>
+              <div class="row between">
+                <div class="minihead">Today</div>
+                <button class="iconbtn" id="tipQuick" title="Help">?</button>
               </div>
               <div class="minibody" id="todayBlock">—</div>
-
-              <div style="margin-top:10px">
-                <button class="btn" id="todayButton">Generate → Start → Log</button>
-                <div id="todayTimer" class="small muted" style="margin-top:8px">No timer running</div>
-              </div>
             </div>
 
             <div class="mini">
-              <div class="minihead row between">
-                <span>Quick actions</span>
-                <button class="iconbtn" id="tipQuick" title="Quick actions?">?</button>
+              <div class="row between">
+                <div class="minihead">Quick actions</div>
+                <button class="iconbtn" id="tipTrain" title="Help">?</button>
               </div>
               <div class="row gap wrap">
                 <button class="btn" id="qaTrain">Open Train</button>
@@ -101,33 +107,39 @@
 
       <section class="view" id="view-team" data-view hidden>
         <div class="card">
-          <div class="card-title row between">
-            <span>Team</span>
-            <button class="iconbtn" id="tipTeam" title="Team help">?</button>
+          <div class="row between">
+            <div>
+              <div class="card-title">Team</div>
+              <div class="small muted">Roster, join codes, and access.</div>
+            </div>
+            <button class="iconbtn" id="tipTeam" title="Help">?</button>
           </div>
-          <div class="small muted">Roster, join codes, and access.</div>
           <div id="teamBody" style="margin-top:12px"></div>
         </div>
       </section>
 
       <section class="view" id="view-train" data-view hidden>
         <div class="card">
-          <div class="card-title row between">
-            <span>Train</span>
-            <button class="iconbtn" id="tipTrain" title="Train help">?</button>
+          <div class="row between">
+            <div>
+              <div class="card-title">Train</div>
+              <div class="small muted" id="trainSub">Workouts tailored to the selected sport.</div>
+            </div>
+            <button class="iconbtn" id="tipTrain2" title="Help">?</button>
           </div>
-          <div class="small muted" id="trainSub">Workouts tailored to the selected sport.</div>
           <div id="trainBody" style="margin-top:12px"></div>
         </div>
       </section>
 
       <section class="view" id="view-profile" data-view hidden>
         <div class="card">
-          <div class="card-title row between">
-            <span>Profile</span>
-            <button class="iconbtn" id="tipProfile" title="Profile help">?</button>
+          <div class="row between">
+            <div>
+              <div class="card-title">Profile</div>
+              <div class="small muted">Your role, sport, preferences, reports, periodization, and insights.</div>
+            </div>
+            <button class="iconbtn" id="tipProfile" title="Help">?</button>
           </div>
-          <div class="small muted">Your role, sport, preferences, and account.</div>
           <div id="profileBody" style="margin-top:12px"></div>
         </div>
       </section>
@@ -142,22 +154,18 @@
     <button class="tab" data-view="profile"><span class="tablbl">Profile</span></button>
   </nav>
 
-  <!-- Floating Action Button -->
-  <button class="fab" id="fab">＋</button>
+  <!-- FAB + sheet -->
+  <button class="fab" id="fab" aria-label="Quick add">+</button>
   <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
   <div class="sheet" id="fabSheet" hidden>
     <div class="sheet-head">
-      <div>
-        <div class="sheet-title">Quick Log</div>
-        <div class="small muted">3 taps from anywhere.</div>
-      </div>
+      <div class="sheet-title">Quick log</div>
       <button class="btn ghost" id="btnCloseSheet">Close</button>
     </div>
     <div class="sheet-body">
       <button class="btn" id="fabLogWorkout">Log workout</button>
       <button class="btn ghost" id="fabLogNutrition">Log nutrition</button>
       <button class="btn ghost" id="fabLogWellness">Log wellness</button>
-      <div class="small muted" style="margin-top:10px">Tip: Use Train → Save session for detailed logs.</div>
     </div>
   </div>
 
@@ -167,51 +175,15 @@
     <div class="drawer-head">
       <div>
         <div class="drawer-title">Account</div>
-        <div class="small muted">Sign in & sync across devices (optional)</div>
+        <div class="small muted">Preferences • appearance • data management • cloud (optional)</div>
       </div>
       <button class="btn ghost" id="btnCloseDrawer">Close</button>
     </div>
 
     <div class="drawer-body">
+      <!-- Role & Sport -->
       <div class="card subtle">
-        <div class="card-title row between">
-          <span>Appearance</span>
-          <button class="iconbtn" id="tipTheme" title="Theme help">?</button>
-        </div>
-
-        <div class="grid2" style="margin-top:10px">
-          <div class="field">
-            <label>Mode</label>
-            <select id="themeModeSelect">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>Sport theme accent</label>
-            <select id="themeSportSelect">
-              <option value="basketball">Basketball</option>
-              <option value="football">Football</option>
-              <option value="soccer">Soccer</option>
-              <option value="baseball">Baseball</option>
-              <option value="volleyball">Volleyball</option>
-              <option value="track">Track</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn" id="btnSaveTheme">Save theme</button>
-        </div>
-      </div>
-
-      <div class="card subtle" style="margin-top:12px">
-        <div class="card-title row between">
-          <span>Role & Sport</span>
-          <button class="iconbtn" id="tipRoleSport" title="Role & sport help">?</button>
-        </div>
-
+        <div class="card-title">Role & Sport</div>
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label>Role</label>
@@ -235,113 +207,96 @@
           </div>
         </div>
 
+        <div class="field" style="margin-top:10px">
+          <label>Preferred session type</label>
+          <select id="preferredSessionSelect">
+            <option value="strength">Strength</option>
+            <option value="speed">Speed</option>
+            <option value="conditioning">Conditioning</option>
+            <option value="skill">Skill</option>
+            <option value="recovery">Recovery</option>
+          </select>
+        </div>
+
         <div class="row gap wrap" style="margin-top:10px">
           <button class="btn" id="btnSaveProfile">Save</button>
           <button class="btn ghost" id="btnRunTour">Tour this tab</button>
         </div>
       </div>
 
+      <!-- Appearance -->
       <div class="card subtle" style="margin-top:12px">
-        <div class="card-title">Cloud settings</div>
-        <div class="small muted">If not set, the app stays local-only.</div>
-
+        <div class="card-title">Appearance (Phase 2)</div>
         <div class="grid2" style="margin-top:10px">
           <div class="field">
-            <label>Supabase URL</label>
-            <input id="sbUrl" type="text" placeholder="https://xxxx.supabase.co" />
+            <label>Mode</label>
+            <select id="themeModeSelect">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
           </div>
           <div class="field">
-            <label>Anon key</label>
-            <input id="sbAnon" type="password" placeholder="eyJ..." />
+            <label>Accent sport</label>
+            <select id="themeSportSelect">
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="soccer">Soccer</option>
+              <option value="baseball">Baseball</option>
+              <option value="volleyball">Volleyball</option>
+              <option value="track">Track</option>
+            </select>
           </div>
         </div>
-
         <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn" id="btnSaveCloud">Save cloud settings</button>
-          <button class="btn ghost" id="btnTestCloud">Test</button>
+          <button class="btn" id="btnSaveTheme">Save theme</button>
         </div>
-
-        <div class="small muted" id="cloudMsg" style="margin-top:8px">—</div>
       </div>
 
+      <!-- Data Management (Phase 0/1 trust) -->
       <div class="card subtle" style="margin-top:12px">
-        <div class="card-title">Sign in / Sign up</div>
-
-        <div class="grid2" style="margin-top:10px">
-          <div class="field">
-            <label>Email</label>
-            <input id="authEmail" type="email" placeholder="you@email.com" />
-          </div>
-          <div class="field">
-            <label>Password</label>
-            <input id="authPass" type="password" placeholder="••••••••" />
-          </div>
-        </div>
-
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn" id="btnSignIn">Sign in</button>
-          <button class="btn ghost" id="btnSignUp">Create account</button>
-          <button class="btn danger" id="btnSignOut">Sign out</button>
-        </div>
-
-        <div class="small muted" id="authMsg" style="margin-top:8px">—</div>
-      </div>
-
-      <div class="card subtle" style="margin-top:12px">
-        <div class="card-title">Sync</div>
-        <div class="small muted">Sync is optional. You can always keep using local mode.</div>
-
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn ghost" id="btnPull">Pull from cloud</button>
-          <button class="btn" id="btnPush">Push to cloud</button>
-        </div>
-
-        <div class="small muted" id="syncMsg" style="margin-top:8px">—</div>
-      </div>
-
-      <!-- Data Management -->
-      <div class="card subtle" style="margin-top:12px">
-        <div class="card-title row between">
-          <span>Data Management</span>
-          <button class="iconbtn" id="tipDataMgmt" title="Data Management help">?</button>
-        </div>
-        <div class="small muted">Export, import, or reset this device. Undo is available for 6 seconds.</div>
+        <div class="card-title">Data Management</div>
+        <div class="small muted">Export/Import/Reset are here (not in header). Undo is offered for risky actions.</div>
 
         <div class="row gap wrap" style="margin-top:10px">
           <button class="btn ghost" id="btnExport">Export JSON</button>
-
-          <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px">
+          <label class="btn ghost" style="cursor:pointer">
             Import JSON
             <input id="fileImport" type="file" accept="application/json" style="display:none" />
           </label>
+          <button class="btn danger" id="btnResetLocal">Reset local</button>
+        </div>
 
-          <button class="btn danger" id="btnResetLocal">Seed Demo / Reset</button>
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn" id="btnRunGrade">Run QA Grade</button>
         </div>
 
         <div class="small muted" id="dataMsg" style="margin-top:8px">—</div>
+        <pre id="gradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px">—</pre>
       </div>
 
-      <div style="margin-top:14px">
-        <button class="btn ghost" id="btnRunGrade">Run QA Grade</button>
-        <div id="gradeReport" class="small muted" style="margin-top:8px">—</div>
+      <!-- Cloud placeholder -->
+      <div class="card subtle" style="margin-top:12px">
+        <div class="card-title">Cloud (optional)</div>
+        <div class="small muted">This build focuses Phase 2–3 offline stability. Cloud is reintroduced later.</div>
+        <div class="small muted" style="margin-top:8px">—</div>
       </div>
     </div>
   </aside>
 
-  <!-- Help drawer -->
+  <!-- Help Drawer -->
   <div class="drawer-backdrop" id="helpBackdrop" hidden></div>
   <aside class="drawer drawer-help" id="helpDrawer" aria-hidden="true">
     <div class="drawer-head">
       <div>
         <div class="drawer-title">Help</div>
-        <div class="small muted">Search help (Ctrl/⌘+K)</div>
+        <div class="small muted">Searchable guidance (Ctrl/⌘+K)</div>
       </div>
       <button class="btn ghost" id="btnCloseHelp">Close</button>
     </div>
     <div class="drawer-body">
       <div class="field">
         <label>Search</label>
-        <input id="helpSearch" type="text" placeholder="Search: Today, Train, sRPE, injuries, export…" />
+        <input id="helpSearch" type="text" placeholder="Try: today, session types, injury, report, periodization..." />
       </div>
       <div id="helpResults" style="margin-top:10px"></div>
     </div>
@@ -349,10 +304,7 @@
 
   <!-- Toasts -->
   <div class="toast" id="toast" hidden></div>
-  <div class="toast" id="undoToast" hidden></div>
-
-  <!-- Supabase UMD -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <div id="undoToast" hidden></div>
 
   <script src="./dataStore.js"></script>
   <script src="./nutritionEngine.js"></script>
