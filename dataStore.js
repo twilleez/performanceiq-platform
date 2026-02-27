@@ -1,4 +1,4 @@
-// dataStore.js — v2.1.0 (offline-first, safe, expanded training model)
+// dataStore.js — v2.2.0 (offline-first, safe, Phase 3-ready)
 (function () {
   "use strict";
   if (window.dataStore) return;
@@ -13,21 +13,33 @@
 
   function baseState() {
     return {
-      meta: { updated_at: nowISO(), version: "2.1.0" },
+      meta: { updated_at: nowISO(), version: "2.2.0" },
       profile: {
         role: "coach",
         sport: "basketball",
+        preferred_session_type: "strength",
+        injuries: [],
         weight_lbs: 160,
-        goal: "maintain",     // maintain | gain | cut
-        activity: "med"       // low | med | high
+        goal: "maintain",
+        activity: "med"
       },
       team: { active_team_id: null, teams: [] },
 
-      // training history
-      sessions: [], // unified session log
-      // nutrition logs (optional, later)
-      nutrition: [],
-      // UI
+      // Core records
+      sessions: [],
+
+      // Phase 3 planning
+      periodization: {
+        plan: null,  // generated plan object
+        updated_at: null
+      },
+
+      // Cached rollups (optional)
+      insights: {
+        weekly: [],
+        updated_at: null
+      },
+
       ui: { view: "home" }
     };
   }
@@ -37,29 +49,27 @@
     const base = baseState();
     if (!raw) return base;
     const parsed = safeParse(raw, base);
-    // merge but preserve base defaults
-    const out = Object.assign({}, base, parsed);
-    out.profile = Object.assign({}, base.profile, parsed.profile || {});
-    out.team = Object.assign({}, base.team, parsed.team || {});
-    out.ui = Object.assign({}, base.ui, parsed.ui || {});
-    out.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : base.sessions;
-    out.nutrition = Array.isArray(parsed.nutrition) ? parsed.nutrition : base.nutrition;
-    out.meta = Object.assign({}, base.meta, parsed.meta || {});
-    return out;
+    const merged = Object.assign(base, parsed);
+
+    merged.profile = merged.profile || base.profile;
+    merged.profile.injuries = Array.isArray(merged.profile.injuries) ? merged.profile.injuries : [];
+    merged.sessions = Array.isArray(merged.sessions) ? merged.sessions : [];
+    merged.team = merged.team || base.team;
+    merged.periodization = merged.periodization || base.periodization;
+    merged.insights = merged.insights || base.insights;
+    merged.ui = merged.ui || base.ui;
+
+    return merged;
   }
 
   function save(state) {
-    const s = state && typeof state === "object" ? state : baseState();
-    s.meta = s.meta || {};
-    s.meta.updated_at = nowISO();
-    if (!s.meta.version) s.meta.version = "2.1.0";
-    localStorage.setItem(KEY, JSON.stringify(s));
+    state.meta = state.meta || {};
+    state.meta.updated_at = nowISO();
+    localStorage.setItem(KEY, JSON.stringify(state));
     return true;
   }
 
-  function exportJSON() {
-    return JSON.stringify(load(), null, 2);
-  }
+  function exportJSON() { return JSON.stringify(load(), null, 2); }
 
   function importJSON(text) {
     const parsed = safeParse(text, null);
