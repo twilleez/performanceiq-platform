@@ -1,4 +1,5 @@
 // core.js — v2.1.0 (production UX, no trap screens, mobile onboarding dropdown, safe cloud UX)
+// UPDATED: Expanded “Strength” sections with detailed exercise menus (sets/reps + options)
 (function () {
   "use strict";
   if (window.__PIQ_CORE__) return;
@@ -250,6 +251,53 @@
     });
   }
 
+  // NEW: helper to keep Strength sections consistent and richer
+  function strengthMenu(opts) {
+    // opts: { focus: "lower"|"upper"|"full", sportKey: string }
+    // Keep it readable in a single list item (UI is a simple ordered list)
+    const base = {
+      lower: [
+        "A1) Split Squat (rear-foot elevated optional) — 3×6–10/leg (slow down, drive up)",
+        "A2) Romanian Deadlift — 3×6–10 (hips back, shins vertical, flat back)",
+        "B1) Front Squat / Goblet Squat — 3×5–8 (brace, elbows up)",
+        "B2) Hamstring: Nordic regression / slider curls — 2–3×6–10",
+        "C) Calves: seated + straight-leg — 2×12–20 each",
+        "Finisher: Core anti-rotation (Pallof) — 2×10–14/side"
+      ],
+      upper: [
+        "A1) Bench / DB Press — 3×5–10 (controlled, full range)",
+        "A2) Row (chest-supported / cable) — 3×8–12 (squeeze shoulder blade)",
+        "B1) Overhead Press / Landmine Press — 3×6–10",
+        "B2) Pull-ups / Lat pulldown — 3×6–12",
+        "C) Shoulders: lateral raise — 2×12–20",
+        "D) Arms: curls + triceps — 2×10–15 each"
+      ],
+      full: [
+        "A1) Trap Bar Deadlift / Hinge — 3×4–8 (fast up, clean form)",
+        "A2) DB Bench / Push-ups weighted — 3×6–12",
+        "B1) Split Squat / Step-up — 3×6–10/leg",
+        "B2) Row / Pulldown — 3×8–12",
+        "C) Core: dead bug / plank — 2–3 sets (quality reps)"
+      ]
+    };
+
+    // Sport-specific swaps to feel “real”
+    const sportTweaks = {
+      basketball: "Swap option: add 2×6–8 pogo→split squat contrast OR 2×5 jump squats (light).",
+      football: "Swap option: add 3×5 heavy push (sled) OR 3×3–5 power clean (advanced).",
+      soccer: "Swap option: add 2×6–8 Copenhagen planks OR 2×8–12 adductor machine.",
+      baseball: "Swap option: add 2×8–12 single-arm cable row + 2×8–12 face pulls (scap).",
+      volleyball: "Swap option: add 2×6–8 trap bar jumps (light) OR 2×5 box squat (speed).",
+      track: "Swap option: add 3×3–5 heavy hinge + 2×6 single-leg RDL for stiffness."
+    };
+
+    const lines = (base[opts.focus] || base.full).slice();
+    const tweak = sportTweaks[opts.sportKey];
+    if (tweak) lines.push(tweak);
+
+    return "Strength (menu): " + lines.join(" • ");
+  }
+
   function sportWorkoutCard(sport) {
     const map = {
       basketball: {
@@ -257,7 +305,7 @@
         list: [
           "Warm-up: ankle/hip mobility + pogo hops (10 min)",
           "Speed/Agility: 5-10-5 + closeout slides (12 min)",
-          "Strength: split squats, RDL, push press (20 min)",
+          strengthMenu({ focus: "lower", sportKey: "basketball" }),
           "Plyos: approach jumps + lateral bounds (10 min)",
           "Conditioning: tempo runs or court suicides (8–10 min)",
           "Cool-down: breathing + calves/hips (5 min)"
@@ -268,7 +316,7 @@
         list: [
           "Warm-up: thoracic/hip + skips (10 min)",
           "Acceleration: 10–20 yd sprints (10 min)",
-          "Strength: trap bar or squat, bench, rows (25 min)",
+          strengthMenu({ focus: "full", sportKey: "football" }),
           "Power: medball throws + broad jumps (10 min)",
           "Conditioning: short burst intervals (8–10 min)",
           "Cool-down: hamstrings/hips (5 min)"
@@ -279,7 +327,7 @@
         list: [
           "Warm-up: adductors/ankles + A-skips (10 min)",
           "Speed: flying 10s + change of direction (12 min)",
-          "Strength: split squat, Nordic regressions, rows (20 min)",
+          strengthMenu({ focus: "lower", sportKey: "soccer" }),
           "Plyos: pogo series + decel drops (10 min)",
           "Conditioning: repeated sprint ability (10 min)",
           "Cool-down: calves/adductors (5 min)"
@@ -290,7 +338,7 @@
         list: [
           "Warm-up: shoulders/hips + band work (10 min)",
           "Power: medball rotational throws (10 min)",
-          "Strength: hinge, squat pattern, pull (20 min)",
+          strengthMenu({ focus: "upper", sportKey: "baseball" }),
           "Sprint: 10–30 yd accelerations (10 min)",
           "Arm care: cuff + scap work (8 min)",
           "Cool-down: breathing (3–5 min)"
@@ -301,7 +349,7 @@
         list: [
           "Warm-up: ankles/hips + jumps prep (10 min)",
           "Jump work: approach jumps + landing mechanics (12 min)",
-          "Strength: squat pattern, RDL, presses (22 min)",
+          strengthMenu({ focus: "lower", sportKey: "volleyball" }),
           "Power: lateral bounds + block jumps (10 min)",
           "Conditioning: short court shuttles (8–10 min)",
           "Cool-down: calves/quads (5 min)"
@@ -312,7 +360,7 @@
         list: [
           "Warm-up: mobility + drills (10–12 min)",
           "Speed: sprint work by event (12–18 min)",
-          "Strength: hinge + single-leg + pulls (18–22 min)",
+          strengthMenu({ focus: "full", sportKey: "track" }),
           "Plyos: low contacts + stiffness (8–10 min)",
           "Conditioning: tempo/strides (8–12 min)",
           "Cool-down: hamstrings/hips (5 min)"
