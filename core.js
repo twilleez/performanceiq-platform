@@ -94,6 +94,19 @@
     return (prefix ? prefix + "_" : "") + Math.random().toString(36).slice(2, 9);
   }
 
+  /** Parse a date value safely; returns null if invalid instead of throwing */
+  function safeDate(val) {
+    if (!val) return null;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /** Parse a date to YYYY-MM-DD string safely; returns null if invalid */
+  function safeDateISO(val) {
+    const d = safeDate(val);
+    return d ? d.toISOString().slice(0, 10) : null;
+  }
+
   // ---------- Status pill ----------
   function setDataStatusLabel(text, color) {
     const dot = $("saveDot");
@@ -720,7 +733,7 @@
     const byWeek   = {};
 
     sessions.forEach(s => {
-      const d      = new Date(s.created_at || s.generated_at || nowISO());
+      const d      = safeDate(s.created_at) || safeDate(s.generated_at) || new Date();
       const y      = d.getUTCFullYear();
       const onejan = new Date(Date.UTC(y, 0, 1));
       const weekNo = Math.ceil((((d - onejan) / 86400000) + onejan.getUTCDay() + 1) / 7);
@@ -777,12 +790,16 @@
   function computeStreak() {
     const sessions = (state.sessions || [])
       .slice()
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      .sort((a, b) => (safeDate(b.created_at) || 0) - (safeDate(a.created_at) || 0));
 
     if (!sessions.length) return 0;
 
-    // De-duplicate to unique date strings in descending order, then count consecutive days
-    const uniqueDates = [...new Set(sessions.map(s => new Date(s.created_at).toISOString().slice(0, 10)))];
+    // Filter out sessions with invalid dates, de-duplicate to unique YYYY-MM-DD strings
+    const uniqueDates = [...new Set(
+      sessions
+        .map(s => safeDateISO(s.created_at))
+        .filter(Boolean)
+    )];
 
     let streak = 0;
     let cursor = uniqueDates[0];
