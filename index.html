@@ -5,143 +5,179 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0b0f14" />
   <title>PerformanceIQ</title>
-
   <link rel="icon" href="./icon-192.png" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
   <link rel="stylesheet" href="./styles.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 
 <body>
-  <!-- Skeleton Splash -->
+  <!-- Splash -->
   <div id="splash" class="splash" aria-hidden="false">
-    <div class="skeleton-card">
-      <div class="skeleton-bar large"></div>
-      <div class="skeleton-bar"></div>
-      <div class="skeleton-bar short"></div>
-      <div class="skeleton-bar"></div>
-    </div>
-  </div>
-
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-title">PerformanceIQ</span>
-      <span id="activeTeamPill" class="pill">Team: —</span>
-    </div>
-
-    <div class="topbar-right">
-      <div class="sync-status" title="Save / Sync status">
-        <span id="syncIndicator" class="sync-dot offline"></span>
-        <span id="syncText">Local</span>
-      </div>
-      <button class="btn ghost" id="btnHelp" data-tip="Help & guided tour">Help</button>
-      <button class="btn ghost" id="btnAuthOpen">Account</button>
-    </div>
-  </header>
-
-  <!-- Onboarding Modal (Dropdown) -->
-  <div id="onboardingModal" class="modal" hidden>
-    <div class="modal-card">
-      <div class="row between">
+    <div class="splash-card">
+      <div class="brand">
+        <div class="logo-dot"></div>
         <div>
-          <div class="modal-title">Welcome</div>
-          <div class="small muted">Set your role + sport. Start with a guided tour (recommended).</div>
+          <div class="brand-title">PerformanceIQ</div>
+          <div class="brand-sub">Offline-first • Team-ready</div>
         </div>
       </div>
 
-      <div class="onboard-grid" style="margin-top:14px">
-        <div class="mini">
-          <div class="minihead">Role</div>
-          <div class="small muted">Controls layout and what you see first.</div>
-          <div class="field" style="margin-top:10px">
-            <label>Select role</label>
-            <select id="obRole">
+      <div class="splash-loading">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="appmark">
+        <span class="appmark-dot" aria-hidden="true"></span>
+        <span class="appmark-title">PerformanceIQ</span>
+      </div>
+
+      <span class="pill" id="savePill" title="Save status">
+        <span class="dot" id="saveDot"></span>
+        <span id="saveText">Saved</span>
+      </span>
+
+      <span class="pill" id="teamPill" title="Active team">Team: —</span>
+      <span class="pill" id="cloudPill" title="Cloud status">Cloud: Local</span>
+    </div>
+
+    <div class="topbar-right">
+      <button class="btn ghost" id="btnHelp">Help</button>
+      <button class="btn" id="btnAccount">Account</button>
+    </div>
+  </header>
+
+  <!-- Layout -->
+  <main class="layout">
+    <!-- Desktop nav -->
+    <nav class="nav" role="navigation" aria-label="Primary" id="desktopNav">
+      <button class="navbtn" data-view="home">Home</button>
+      <button class="navbtn" data-view="team">Team</button>
+      <button class="navbtn" data-view="train">Train</button>
+      <button class="navbtn" data-view="profile">Profile</button>
+    </nav>
+
+    <!-- Content -->
+    <section class="content">
+      <section class="view" id="view-home" data-view>
+        <div class="card">
+          <div class="card-title">Home</div>
+          <div class="small muted" id="homeSub">Welcome back.</div>
+
+          <div class="grid2" style="margin-top:12px">
+            <div class="mini">
+              <div class="minihead">Today</div>
+              <div class="minibody" id="todayBlock">—</div>
+            </div>
+
+            <div class="mini">
+              <div class="minihead">Quick actions</div>
+              <div class="row gap wrap">
+                <button class="btn" id="qaTrain">Open Train</button>
+                <button class="btn ghost" id="qaTeam">Manage Team</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-team" data-view hidden>
+        <div class="card">
+          <div class="card-title">Team</div>
+          <div class="small muted">Roster, join codes, and access.</div>
+          <div id="teamBody" style="margin-top:12px"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-train" data-view hidden>
+        <div class="card">
+          <div class="card-title">Train</div>
+          <div class="small muted" id="trainSub">Workouts tailored to the selected sport.</div>
+          <div id="trainBody" style="margin-top:12px"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-profile" data-view hidden>
+        <div class="card">
+          <div class="card-title">Profile</div>
+          <div class="small muted">Your role, sport, preferences, and account.</div>
+          <div id="profileBody" style="margin-top:12px"></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- Mobile bottom nav -->
+  <nav class="bottomnav" id="bottomNav" aria-label="Bottom Navigation">
+    <button class="tab" data-view="home"><span class="tablbl">Home</span></button>
+    <button class="tab" data-view="team"><span class="tablbl">Team</span></button>
+    <button class="tab" data-view="train"><span class="tablbl">Train</span></button>
+    <button class="tab" data-view="profile"><span class="tablbl">Profile</span></button>
+  </nav>
+
+  <!-- Account Drawer (never traps user) -->
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <aside class="drawer" id="accountDrawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <div class="drawer-title">Account</div>
+        <div class="small muted">Sign in & sync across devices (optional)</div>
+      </div>
+      <button class="btn ghost" id="btnCloseDrawer">Close</button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="card subtle">
+        <div class="card-title">Role & Sport</div>
+
+        <div class="grid2" style="margin-top:10px">
+          <div class="field">
+            <label>Role</label>
+            <select id="roleSelect">
               <option value="coach">Coach</option>
               <option value="athlete">Athlete</option>
               <option value="parent">Parent</option>
             </select>
           </div>
-          <div class="small muted" style="margin-top:8px">
-            Coach = team tools • Athlete = daily logging • Parent = view-focused
-          </div>
-        </div>
 
-        <div class="mini">
-          <div class="minihead">Sport Theme</div>
-          <div class="small muted">Sets accent colors + future defaults.</div>
-          <div class="field" style="margin-top:10px">
-            <label>Select sport</label>
-            <select id="obSport">
+          <div class="field">
+            <label>Sport</label>
+            <select id="sportSelect">
               <option value="basketball">Basketball</option>
               <option value="football">Football</option>
               <option value="soccer">Soccer</option>
+              <option value="baseball">Baseball</option>
+              <option value="volleyball">Volleyball</option>
+              <option value="track">Track</option>
             </select>
           </div>
-          <div class="small muted" style="margin-top:8px">
-            You can switch sport anytime in Team.
-          </div>
-        </div>
-      </div>
-
-      <div class="row between" style="margin-top:14px">
-        <div class="small muted" id="obMsg">—</div>
-        <div class="row gap wrap">
-          <button class="btn ghost" id="obSkip">Skip</button>
-          <button class="btn" id="obContinue">Continue</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Guided Tour Overlay -->
-  <div id="tourOverlay" class="tour" hidden aria-hidden="true">
-    <div class="tour-dim"></div>
-
-    <div class="tour-card" role="dialog" aria-modal="true" aria-label="Guided tour">
-      <div class="row between">
-        <div>
-          <div class="tour-title" id="tourTitle">—</div>
-          <div class="small muted" id="tourProgress">—</div>
-        </div>
-        <button class="btn ghost" id="tourClose">Close</button>
-      </div>
-
-      <div class="tour-body" id="tourBody">—</div>
-
-      <div class="row between" style="margin-top:14px">
-        <button class="btn ghost" id="tourSkip">Skip tour</button>
-        <div class="row gap wrap">
-          <button class="btn ghost" id="tourBack">Back</button>
-          <button class="btn" id="tourNext">Next</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Auth Modal -->
-  <div id="authModal" class="modal" hidden>
-    <div class="modal-card">
-      <div class="row between">
-        <div>
-          <div class="modal-title">Account</div>
-          <div class="small muted">Sign in to sync across devices</div>
-        </div>
-        <button class="btn ghost" id="btnAuthClose">Close</button>
-      </div>
-
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Cloud settings</div>
-        <div class="minibody small muted">
-          Enter Supabase project URL + anon key. If not set, app stays local-only.
         </div>
 
         <div class="row gap wrap" style="margin-top:10px">
-          <div class="field grow">
+          <button class="btn" id="btnSaveProfile">Save</button>
+          <button class="btn ghost" id="btnRunTour">Tour this tab</button>
+        </div>
+      </div>
+
+      <div class="card subtle" style="margin-top:12px">
+        <div class="card-title">Cloud settings</div>
+        <div class="small muted">If not set, the app stays local-only.</div>
+
+        <div class="grid2" style="margin-top:10px">
+          <div class="field">
             <label>Supabase URL</label>
-            <input id="sbUrl" type="text" placeholder="https://xxxx.supabase.co" autocomplete="off" />
+            <input id="sbUrl" type="text" placeholder="https://xxxx.supabase.co" />
           </div>
-          <div class="field grow">
+          <div class="field">
             <label>Anon key</label>
-            <input id="sbAnon" type="text" placeholder="eyJhbGciOi..." autocomplete="off" />
+            <input id="sbAnon" type="password" placeholder="eyJ..." />
           </div>
         </div>
 
@@ -153,66 +189,52 @@
         <div class="small muted" id="cloudMsg" style="margin-top:8px">—</div>
       </div>
 
-      <div class="grid2" style="margin-top:12px">
-        <div class="mini">
-          <div class="minihead">Sign in / Sign up</div>
-          <div class="row gap wrap">
-            <div class="field grow">
-              <label>Email</label>
-              <input id="authEmail" type="text" placeholder="you@email.com" autocomplete="email"/>
-            </div>
-            <div class="field grow">
-              <label>Password</label>
-              <input id="authPass" type="password" placeholder="password" autocomplete="current-password"/>
-            </div>
+      <div class="card subtle" style="margin-top:12px">
+        <div class="card-title">Sign in / Sign up</div>
+
+        <div class="grid2" style="margin-top:10px">
+          <div class="field">
+            <label>Email</label>
+            <input id="authEmail" type="email" placeholder="you@email.com" />
           </div>
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn" id="btnSignIn">Sign in</button>
-            <button class="btn ghost" id="btnSignUp">Create account</button>
+          <div class="field">
+            <label>Password</label>
+            <input id="authPass" type="password" placeholder="••••••••" />
           </div>
-          <div class="small muted" id="authMsg" style="margin-top:8px">—</div>
         </div>
 
-        <div class="mini">
-          <div class="minihead">Session</div>
-          <div class="minibody mono small" id="authState">—</div>
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn danger" id="btnSignOut">Sign out</button>
-          </div>
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn" id="btnSignIn">Sign in</button>
+          <button class="btn ghost" id="btnSignUp">Create account</button>
+          <button class="btn danger" id="btnSignOut">Sign out</button>
         </div>
+
+        <div class="small muted" id="authMsg" style="margin-top:8px">—</div>
       </div>
 
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Sync actions</div>
-        <div class="row gap wrap">
+      <div class="card subtle" style="margin-top:12px">
+        <div class="card-title">Sync</div>
+        <div class="small muted">Sync is optional. You can always keep using local mode.</div>
+
+        <div class="row gap wrap" style="margin-top:10px">
           <button class="btn ghost" id="btnPull">Pull from cloud</button>
-          <button class="btn ghost" id="btnPush">Push to cloud</button>
+          <button class="btn" id="btnPush">Push to cloud</button>
         </div>
+
+        <div class="small muted" id="syncMsg" style="margin-top:8px">—</div>
       </div>
     </div>
-  </div>
+  </aside>
 
-  <main class="layout">
-    <nav class="nav" role="navigation" aria-label="Primary">
-      <button class="navbtn" data-view="home">Home</button>
-      <button class="navbtn" data-view="team">Team</button>
-      <button class="navbtn" data-view="train">Train</button>
-      <button class="navbtn" data-view="profile">Profile</button>
-    </nav>
+  <!-- Help tooltip layer (micro tours hook) -->
+  <div class="toast" id="toast" hidden></div>
 
-    <section class="content">
-      <section id="view-home" class="view"></section>
-      <section id="view-team" class="view" hidden></section>
-      <section id="view-train" class="view" hidden></section>
-      <section id="view-profile" class="view" hidden></section>
-    </section>
-  </main>
-
-  <div id="tooltip" class="tooltip" hidden></div>
-
+  <!-- Supabase UMD (safe if offline; guarded usage) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./cloudSync.js"></script>
-  <script src="./automationEngine.js"></script>
+
+  <script src="./dataStore.js"></script>
+  <script src="./nutritionEngine.js"></script>
+  <script src="./periodizationEngine.js"></script>
   <script src="./core.js"></script>
 </body>
 </html>
