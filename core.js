@@ -1,23 +1,24 @@
-// core.js — v13.1.0 (Role-based guided tours + Skip + Replay in Profile)
-// Offline-first + optional cloud sync. No prompt() popups.
+// core.js — v13.2.0
+// Micro-tours per tab + safe cloud status indicator + clean UI (no dev info exposed)
+
 (function () {
   "use strict";
+  if (window.__PIQ_CORE_V13_2_0__) return;
+  window.__PIQ_CORE_V13_2_0__ = true;
 
-  if (window.__PIQ_CORE_V13_1_0__) return;
-  window.__PIQ_CORE_V13_1_0__ = true;
-
-  const APP_VERSION = "13.1.0";
+  const APP_VERSION = "13.2.0";
   const STORAGE_KEY = "piq_state_v13_local";
   const PUSH_DEBOUNCE_MS = 900;
-  const TOUR_VERSION = 1;
+
+  const MICRO_TOUR_VERSION = 1;
 
   const $ = (id) => document.getElementById(id);
   const qa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const todayISO = () => new Date().toISOString().slice(0, 10);
-  const uid = (p="id") => `${p}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  const uid = (p = "id") => `${p}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 
   // ---------------------------
-  // State Model (Team separated)
+  // State
   // ---------------------------
   function defaultTeamState(teamId, name) {
     return {
@@ -36,7 +37,7 @@
         appVersion: APP_VERSION,
         updatedAt: Date.now(),
         onboarded: false,
-        tour: { completed: false, version: 0, role: "coach" }
+        microTours: { version: 0, completed: {} } // { version, completed: { role: { home:true, team:true... } } }
       },
       role: "coach",
       sport: "basketball",
@@ -52,10 +53,12 @@
 
     s.meta = s.meta && typeof s.meta === "object" ? s.meta : d.meta;
     if (typeof s.meta.onboarded !== "boolean") s.meta.onboarded = false;
-    if (!s.meta.tour || typeof s.meta.tour !== "object") s.meta.tour = { completed:false, version:0, role:"coach" };
-    if (typeof s.meta.tour.completed !== "boolean") s.meta.tour.completed = false;
-    if (typeof s.meta.tour.version !== "number") s.meta.tour.version = 0;
-    if (typeof s.meta.tour.role !== "string") s.meta.tour.role = "coach";
+
+    if (!s.meta.microTours || typeof s.meta.microTours !== "object") {
+      s.meta.microTours = { version: 0, completed: {} };
+    }
+    if (typeof s.meta.microTours.version !== "number") s.meta.microTours.version = 0;
+    if (!s.meta.microTours.completed || typeof s.meta.microTours.completed !== "object") s.meta.microTours.completed = {};
 
     s.role = typeof s.role === "string" ? s.role : d.role;
     s.sport = typeof s.sport === "string" ? s.sport : d.sport;
@@ -88,7 +91,7 @@
   const state = loadState();
 
   // ---------------------------
-  // Save + Sync Indicator
+  // Save indicator
   // ---------------------------
   let pushTimer = null;
 
@@ -99,22 +102,22 @@
     if (lab) lab.textContent = text;
   }
 
+  function cloudReady() {
+    return !!(window.cloudSync?.isReady?.() && window.cloudSync?.isConfigured?.());
+  }
+
   function saveLocal() {
     state.meta.updatedAt = Date.now();
     try {
       setSync("saving", "Saving…");
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       scheduleCloudPush();
-      window.setTimeout(() => {
+      setTimeout(() => {
         if (!cloudReady()) setSync("synced", "Saved");
-      }, 250);
+      }, 220);
     } catch {
       setSync("error", "Save failed");
     }
-  }
-
-  function cloudReady() {
-    return !!(window.cloudSync?.isReady?.() && window.cloudSync?.isConfigured?.());
   }
 
   async function tryInitCloud() {
@@ -125,9 +128,10 @@
       return false;
     }
     state.cloud.enabled = true;
+
     const sess = await window.cloudSync.getSession();
     if (sess.ok && sess.session) setSync("cloud", "Cloud");
-    else setSync("cloud", "Cloud (signed out)");
+    else setSync("cloud", "Cloud");
     return true;
   }
 
@@ -142,19 +146,17 @@
 
   async function pullActiveTeamFromCloud() {
     if (!cloudReady()) return { ok: false, reason: "Cloud not ready" };
-
     const teamId = state.activeTeamId;
-    setSync("saving", "Pulling…");
 
+    setSync("saving", "Pulling…");
     const sess = await window.cloudSync.getSession();
     if (!sess.ok || !sess.session) {
-      setSync("cloud", "Cloud (signed out)");
+      setSync("cloud", "Cloud");
       return { ok: false, reason: "Not signed in" };
     }
 
     const res = await window.cloudSync.pullTeamState(teamId);
     if (!res.ok) { setSync("error", "Pull failed"); return res; }
-
     if (!res.row?.state) { setSync("cloud", "Cloud"); return { ok: true, empty: true }; }
 
     const cloudState = res.row.state;
@@ -171,8 +173,7 @@
       state.teams[teamId].meta.updatedAt = Date.now();
       state.cloud.lastPulledAt = Date.now();
       saveLocal();
-      setSync("synced", "Pulled");
-      setTimeout(() => setSync("cloud", "Cloud"), 450);
+      setSync("cloud", "Cloud");
       renderAll();
       return { ok: true, applied: true };
     }
@@ -190,7 +191,7 @@
 
     const sess = await window.cloudSync.getSession();
     if (!sess.ok || !sess.session) {
-      setSync("cloud", "Cloud (signed out)");
+      setSync("cloud", "Cloud");
       return { ok: false, reason: "Not signed in" };
     }
 
@@ -209,7 +210,7 @@
   }
 
   // ---------------------------
-  // Themes / Sport
+  // Theme
   // ---------------------------
   function applySportTheme(sport) {
     const root = document.documentElement;
@@ -227,24 +228,30 @@
   }
 
   // ---------------------------
-  // UI: Views + Navigation
+  // Views + nav
   // ---------------------------
   const VIEWS = ["home", "team", "train", "profile"];
+  let activeView = "home";
   let activeTrainTab = "log";
 
   function showView(v) {
     const view = VIEWS.includes(v) ? v : "home";
+    activeView = view;
+
     VIEWS.forEach(name => {
       const el = $(`view-${name}`);
       if (el) el.hidden = (name !== view);
     });
     qa(".navbtn").forEach(b => b.classList.toggle("active", b.dataset.view === view));
     renderAll();
+
+    // auto micro-tour once per tab (role-specific)
+    setTimeout(() => autoMicroTour(view), 120);
   }
 
   qa(".navbtn").forEach(btn => btn.addEventListener("click", () => showView(btn.dataset.view)));
 
-  // Tooltip system (data-tip)
+  // Tooltip system
   document.addEventListener("mouseover", (e) => {
     const el = e.target?.closest?.("[data-tip]");
     const tip = el?.getAttribute?.("data-tip");
@@ -259,7 +266,7 @@
   document.addEventListener("mouseout", () => { const t = $("tooltip"); if (t) t.hidden = true; });
 
   // ---------------------------
-  // Team + Athletes
+  // Team helpers
   // ---------------------------
   function activeTeam() { return state.teams[state.activeTeamId]; }
 
@@ -286,7 +293,7 @@
   }
 
   // ---------------------------
-  // Training Log
+  // Training log
   // ---------------------------
   function addTrainingSession(athleteId, dateISO, minutes, rpe, type, notes) {
     const t = activeTeam();
@@ -306,168 +313,244 @@
   }
 
   // ---------------------------
-  // Guided Tour (Role-based)
+  // Micro Tours (per tab)
   // ---------------------------
-  let tourSteps = [];
-  let tourIndex = 0;
-  let highlighted = null;
+  let microSteps = [];
+  let microIndex = 0;
+  let microHighlight = null;
 
-  function clearHighlight() {
-    if (highlighted) {
-      try { highlighted.classList.remove("tour-highlight"); } catch {}
-      highlighted = null;
+  function ensureMicroState() {
+    const role = normalizeRole(state.role);
+    state.meta.microTours = state.meta.microTours || { version: 0, completed: {} };
+    state.meta.microTours.completed = state.meta.microTours.completed || {};
+    state.meta.microTours.completed[role] = state.meta.microTours.completed[role] || {};
+    if (state.meta.microTours.version !== MICRO_TOUR_VERSION) {
+      // reset completion if tour version bumped
+      state.meta.microTours.version = MICRO_TOUR_VERSION;
+      state.meta.microTours.completed = {};
+      state.meta.microTours.completed[role] = {};
     }
   }
 
-  function getRoleTour(role) {
-    const common = [
-      {
-        title: "Navigation",
-        body: "Use the 4 tabs to move fast: Home (overview), Team (roster), Train (logging), Profile (settings).",
-        selector: ".nav"
-      },
-      {
-        title: "Saved vs Cloud",
-        body: "The dot near the top shows your status. If you’re local-only it will say Saved/Local. If you sign in, it becomes Cloud.",
-        selector: ".sync-status"
-      }
-    ];
-
-    if (role === "athlete") {
-      return [
-        { title: "Athlete Home", body: "Home gives you a quick summary and what to do next.", selector: "[data-view='home']" },
-        { title: "Train tab", body: "Train is your main workflow. Log sessions first; nutrition expands next.", selector: "[data-view='train']" },
-        { title: "Log a session", body: "Pick your name, date, minutes and sRPE. Load auto-calculates.", selector: "#view-train" },
-        ...common,
-        { title: "Replay anytime", body: "You can replay this tour from Profile → Help & Tour.", selector: "[data-view='profile']" }
-      ];
-    }
-
-    if (role === "parent") {
-      return [
-        { title: "Parent Home", body: "Home shows key highlights (readiness/trends will expand).", selector: "[data-view='home']" },
-        { title: "Team roster", body: "Team lets you view athletes and switch the active team.", selector: "[data-view='team']" },
-        { title: "Train view", body: "Train lets you see logs and history (editing is limited by role).", selector: "[data-view='train']" },
-        ...common,
-        { title: "Replay anytime", body: "Replay this tour from Profile → Help & Tour.", selector: "[data-view='profile']" }
-      ];
-    }
-
-    // coach default
-    return [
-      { title: "Coach Home", body: "Home summarizes what matters most. Highlights will expand with more analytics.", selector: "[data-view='home']" },
-      { title: "Team: your foundation", body: "Create teams, add athletes, and manage roster in Team.", selector: "[data-view='team']" },
-      { title: "Train: your workflow", body: "Train is where you log sessions and review recent activity.", selector: "[data-view='train']" },
-      ...common,
-      { title: "Replay anytime", body: "Replay this tour from Profile → Help & Tour.", selector: "[data-view='profile']" }
-    ];
+  function normalizeRole(role) {
+    const r = String(role || "coach").toLowerCase();
+    return (r === "athlete" || r === "parent") ? r : "coach";
   }
 
-  function setTourVisible(on) {
+  function hasCompletedMicro(view) {
+    ensureMicroState();
+    const role = normalizeRole(state.role);
+    return !!state.meta.microTours.completed?.[role]?.[view];
+  }
+
+  function markCompletedMicro(view) {
+    ensureMicroState();
+    const role = normalizeRole(state.role);
+    state.meta.microTours.completed[role][view] = true;
+    saveLocal();
+  }
+
+  function clearMicroHighlight() {
+    if (microHighlight) {
+      try { microHighlight.classList.remove("tour-highlight"); } catch {}
+      microHighlight = null;
+    }
+  }
+
+  function setMicroVisible(on) {
     const o = $("tourOverlay");
     if (!o) return;
     o.hidden = !on;
     o.setAttribute("aria-hidden", on ? "false" : "true");
-    if (!on) clearHighlight();
+    if (!on) clearMicroHighlight();
   }
 
-  function renderTourStep() {
+  function buildMicroSteps(view) {
+    const role = normalizeRole(state.role);
+
+    // Keep it short: 3–5 steps max, tab-specific, role-personalized.
+    if (view === "home") {
+      if (role === "coach") return [
+        { title: "Home (Coach)", body: "This is your command center: quick overview + next actions.", selector: "#view-home" },
+        { title: "Saved status", body: "Top-left dot tells you if data is saved locally or syncing to cloud.", selector: ".sync-status" },
+        { title: "Go to Team", body: "Add athletes and manage teams in Team.", selector: "[data-view='team']" }
+      ];
+      if (role === "athlete") return [
+        { title: "Home (Athlete)", body: "Your daily starting point. Head to Train to log your work.", selector: "#view-home" },
+        { title: "Saved status", body: "That dot shows if your data is saved (Local) or synced (Cloud).", selector: ".sync-status" },
+        { title: "Go to Train", body: "Train is where you log sessions and track progress.", selector: "[data-view='train']" }
+      ];
+      return [
+        { title: "Home (Parent)", body: "Quick view of the athlete’s world. More insight grows as data is logged.", selector: "#view-home" },
+        { title: "Saved status", body: "The dot tells you if the device saved data or synced to cloud.", selector: ".sync-status" },
+        { title: "Team view", body: "Use Team to view roster and switch teams.", selector: "[data-view='team']" }
+      ];
+    }
+
+    if (view === "team") {
+      return [
+        { title: "Team setup", body: "Switch teams, choose sport theme, and manage your roster.", selector: "#view-team" },
+        { title: "Switch teams", body: "Use the team dropdown to switch the active team.", selector: "#teamSelect" },
+        { title: "Roster", body: "Add athletes and manage their profiles here.", selector: "#rosterList" }
+      ];
+    }
+
+    if (view === "train") {
+      return [
+        { title: "Train", body: "This is your daily workflow: log sessions and review recent activity.", selector: "#view-train" },
+        { title: "Log a session", body: "Pick athlete, date, minutes, and sRPE — load is calculated for you.", selector: "#trainPanel" },
+        { title: "Sub-modules", body: "Nutrition/workouts/periodization expand here as you build usage.", selector: ".subnav" }
+      ];
+    }
+
+    // profile
+    return [
+      { title: "Profile", body: "Change role preferences and replay tours anytime.", selector: "#view-profile" },
+      { title: "Replay micro-tours", body: "Use Replay to re-run the tour for the current tab.", selector: "#btnReplayTour" },
+      { title: "Cloud access", body: "Open Account (top right) to sign in and sync across devices.", selector: "#btnAuthOpen" }
+    ];
+  }
+
+  function renderMicroStep(view) {
     const title = $("tourTitle");
     const body = $("tourBody");
     const prog = $("tourProgress");
     const back = $("tourBack");
     const next = $("tourNext");
 
-    const step = tourSteps[tourIndex];
+    const step = microSteps[microIndex];
     if (!step) return;
 
-    if (title) title.textContent = step.title || "Tour";
+    if (title) title.textContent = step.title || "Help";
     if (body) body.textContent = step.body || "";
-    if (prog) prog.textContent = `Step ${tourIndex + 1} of ${tourSteps.length}`;
+    if (prog) prog.textContent = `Tip ${microIndex + 1} of ${microSteps.length}`;
 
-    if (back) back.disabled = (tourIndex === 0);
-    if (next) next.textContent = (tourIndex === tourSteps.length - 1) ? "Finish" : "Next";
+    if (back) back.disabled = (microIndex === 0);
+    if (next) next.textContent = (microIndex === microSteps.length - 1) ? "Done" : "Next";
 
-    // highlight target
-    clearHighlight();
+    clearMicroHighlight();
     if (step.selector) {
       const el = document.querySelector(step.selector);
       if (el) {
-        highlighted = el;
+        microHighlight = el;
         try {
-          highlighted.classList.add("tour-highlight");
-          highlighted.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+          microHighlight.classList.add("tour-highlight");
+          microHighlight.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
         } catch {}
       }
     }
   }
 
-  function startTour(role, fromProfile=false) {
-    const r = (role === "athlete" || role === "parent") ? role : "coach";
-    tourSteps = getRoleTour(r);
-    tourIndex = 0;
+  function startMicroTour(view, manual = false) {
+    microSteps = buildMicroSteps(view);
+    microIndex = 0;
 
-    setTourVisible(true);
-    renderTourStep();
+    // show overlay
+    setMicroVisible(true);
 
-    // if launched from onboarding, move user to Home for orientation
-    if (!fromProfile) showView("home");
+    // show controls in micro-mode (reusing the same overlay UI)
+    $("tourSkip") && ($("tourSkip").textContent = manual ? "Close" : "Skip");
+    renderMicroStep(view);
   }
 
-  function finishTour() {
-    state.meta.tour = state.meta.tour || { completed:false, version:0, role:state.role || "coach" };
-    state.meta.tour.completed = true;
-    state.meta.tour.version = TOUR_VERSION;
-    state.meta.tour.role = state.role || "coach";
-    saveLocal();
-    setTourVisible(false);
+  function finishMicroTour(view) {
+    markCompletedMicro(view);
+    setMicroVisible(false);
   }
 
-  function skipTour() {
-    // mark as completed so it doesn't nag; user can replay anytime
-    finishTour();
+  function autoMicroTour(view) {
+    if (!state.meta.onboarded) return;
+    if (hasCompletedMicro(view)) return;
+    startMicroTour(view, false);
   }
 
   function wireTourUI() {
-    $("btnHelp")?.addEventListener("click", () => startTour(state.role, true));
+    // Help button: run micro tour for CURRENT tab
+    $("btnHelp")?.addEventListener("click", () => startMicroTour(activeView, true));
 
-    $("tourClose")?.addEventListener("click", () => setTourVisible(false));
-    $("tourSkip")?.addEventListener("click", () => skipTour());
+    $("tourClose")?.addEventListener("click", () => setMicroVisible(false));
+
+    $("tourSkip")?.addEventListener("click", () => setMicroVisible(false));
 
     $("tourBack")?.addEventListener("click", () => {
-      if (tourIndex > 0) {
-        tourIndex -= 1;
-        renderTourStep();
+      if (microIndex > 0) {
+        microIndex -= 1;
+        renderMicroStep(activeView);
       }
     });
 
     $("tourNext")?.addEventListener("click", () => {
-      if (tourIndex >= tourSteps.length - 1) {
-        finishTour();
+      if (microIndex >= microSteps.length - 1) {
+        finishMicroTour(activeView);
         return;
       }
-      tourIndex += 1;
-      renderTourStep();
+      microIndex += 1;
+      renderMicroStep(activeView);
     });
 
-    // close tour on ESC
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         const o = $("tourOverlay");
-        if (o && !o.hidden) setTourVisible(false);
+        if (o && !o.hidden) setMicroVisible(false);
       }
     });
   }
 
   // ---------------------------
-  // Render: HOME
+  // Onboarding (role + sport) — modal dropdown already in index.html
+  // ---------------------------
+  function openOnboarding() {
+    const m = $("onboardingModal");
+    if (!m) return;
+
+    if ($("obRole")) $("obRole").value = state.role || "coach";
+    if ($("obSport")) $("obSport").value = state.sport || "basketball";
+
+    $("obMsg").textContent = "Choose role and sport. You’ll get quick tips per tab.";
+    m.hidden = false;
+
+    const onContinue = () => {
+      const role = ($("obRole")?.value || "coach").toLowerCase();
+      const sport = ($("obSport")?.value || "basketball").toLowerCase();
+
+      state.role = normalizeRole(role);
+      state.sport = (sport === "football" || sport === "soccer") ? sport : "basketball";
+      applySportTheme(state.sport);
+
+      state.meta.onboarded = true;
+
+      // reset micro tour completion for new role
+      state.meta.microTours = { version: MICRO_TOUR_VERSION, completed: {} };
+
+      saveLocal();
+      m.hidden = true;
+
+      showView("home");
+      startMicroTour("home", false);
+    };
+
+    const onSkip = () => {
+      state.meta.onboarded = true;
+      saveLocal();
+      m.hidden = true;
+      showView("home");
+    };
+
+    $("obSport")?.addEventListener("change", (e) => applySportTheme(e.target.value));
+
+    $("obContinue")?.addEventListener("click", onContinue, { once: true });
+    $("obSkip")?.addEventListener("click", onSkip, { once: true });
+  }
+
+  // ---------------------------
+  // Render: Home / Team / Train / Profile
   // ---------------------------
   function renderHome() {
     const el = $("view-home");
     if (!el) return;
 
     const t = activeTeam();
-    const role = state.role;
+    const role = normalizeRole(state.role);
     const teamName = t?.meta?.name || "—";
     const athleteCount = t?.athletes?.length || 0;
 
@@ -514,9 +597,6 @@
     $("goTrain2")?.addEventListener("click", () => showView("train"));
   }
 
-  // ---------------------------
-  // Render: TEAM
-  // ---------------------------
   function renderTeam() {
     const el = $("view-team");
     if (!el) return;
@@ -527,7 +607,7 @@
     el.innerHTML = `
       <div class="card">
         <h2>Team</h2>
-        <div class="small muted">Manage teams and roster (coach). Athletes/parents can view roster.</div>
+        <div class="small muted">Manage teams and roster.</div>
       </div>
 
       <div class="grid2">
@@ -542,7 +622,7 @@
             </div>
             <div class="field grow">
               <label>Sport</label>
-              <select id="sportSelect" data-tip="Changes theme + sport defaults">
+              <select id="sportSelect" data-tip="Changes accent theme">
                 <option value="basketball"${state.sport==="basketball"?" selected":""}>Basketball</option>
                 <option value="football"${state.sport==="football"?" selected":""}>Football</option>
                 <option value="soccer"${state.sport==="soccer"?" selected":""}>Soccer</option>
@@ -605,10 +685,10 @@
       else roster.innerHTML = t.athletes.map(a => `
         <div class="row between" style="padding:10px 0;border-bottom:1px solid var(--border)">
           <div>
-            <div><b>${escapeHTML(a.name)}</b> <span class="small muted">${escapeHTML(a.position || "")}</span></div>
+            <div><b>${escapeHTML(a.name)}</b></div>
             <div class="small muted">Sport: ${escapeHTML(a.sport || state.sport)}</div>
           </div>
-          ${state.role === "coach" ? `<button class="btn danger" data-del-ath="${escapeHTML(a.id)}">Remove</button>` : ``}
+          ${normalizeRole(state.role) === "coach" ? `<button class="btn danger" data-del-ath="${escapeHTML(a.id)}">Remove</button>` : ``}
         </div>
       `).join("");
 
@@ -627,9 +707,6 @@
     }
   }
 
-  // ---------------------------
-  // Render: TRAIN
-  // ---------------------------
   function renderTrain() {
     const el = $("view-train");
     if (!el) return;
@@ -672,7 +749,7 @@
       panel.innerHTML = `
         <div class="card">
           <h3>Nutrition</h3>
-          <div class="small muted">Macro auto-calculation is staged next. (Tour will guide you to what’s live now.)</div>
+          <div class="small muted">Macro auto-calculation is scheduled next — the UI will compute it automatically.</div>
         </div>
       `;
       return;
@@ -807,7 +884,7 @@
           <div><b>${escapeHTML(s.dateISO)}</b> • ${escapeHTML(s.type)} • ${escapeHTML(String(s.minutes))} min • sRPE ${escapeHTML(String(s.rpe))}</div>
           <div class="small muted">Load: <b>${escapeHTML(String(s.load))}</b>${s.notes?` • ${escapeHTML(s.notes)}`:""}</div>
         </div>
-        ${state.role==="coach" ? `<button class="btn danger" data-del-sess="${escapeHTML(s.id)}">Delete</button>` : ``}
+        ${normalizeRole(state.role)==="coach" ? `<button class="btn danger" data-del-sess="${escapeHTML(s.id)}">Delete</button>` : ``}
       </div>
     `).join("");
 
@@ -823,16 +900,11 @@
     }));
   }
 
-  // ---------------------------
-  // Render: PROFILE (Replay tour)
-  // ---------------------------
   function renderProfile() {
     const el = $("view-profile");
     if (!el) return;
 
-    const tourDone = !!state.meta?.tour?.completed;
-    const tourRole = state.meta?.tour?.role || "—";
-    const tourVer = state.meta?.tour?.version || 0;
+    const role = normalizeRole(state.role);
 
     el.innerHTML = `
       <div class="card">
@@ -843,31 +915,30 @@
       <div class="grid2">
         <div class="card">
           <h3>Role</h3>
-          <div class="small muted">Choose how the app is optimized for you.</div>
           <div class="row gap wrap" style="margin-top:10px">
             <div class="field grow">
               <label>Role</label>
               <select id="roleSelect">
-                <option value="coach"${state.role==="coach"?" selected":""}>Coach</option>
-                <option value="athlete"${state.role==="athlete"?" selected":""}>Athlete</option>
-                <option value="parent"${state.role==="parent"?" selected":""}>Parent</option>
+                <option value="coach"${role==="coach"?" selected":""}>Coach</option>
+                <option value="athlete"${role==="athlete"?" selected":""}>Athlete</option>
+                <option value="parent"${role==="parent"?" selected":""}>Parent</option>
               </select>
             </div>
           </div>
 
           <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn" id="btnReplayTour">Replay guided tour</button>
-            <button class="btn ghost" id="btnResetTour" data-tip="Shows onboarding again next time you open the app">Reset onboarding</button>
+            <button class="btn" id="btnReplayTour">Replay micro-tour (current tab)</button>
+            <button class="btn ghost" id="btnResetTours">Reset all micro-tours</button>
           </div>
 
           <div class="small muted" style="margin-top:8px">
-            Tour: <b>${tourDone ? "completed" : "not completed"}</b> • Last role: <b>${escapeHTML(tourRole)}</b> • Version: <b>${escapeHTML(String(tourVer))}</b>
+            Micro-tours are short tips per tab. They auto-run once per role.
           </div>
         </div>
 
         <div class="card">
-          <h3>Account</h3>
-          <div class="small muted">Use Account button (top right) to sign in and enable cloud sync.</div>
+          <h3>Cloud</h3>
+          <div class="small muted">Use Account (top right) to sign in and sync.</div>
           <div class="mini" style="margin-top:12px">
             <div class="minihead">Status</div>
             <div class="minibody mono small" id="profileCloudState">—</div>
@@ -877,18 +948,22 @@
     `;
 
     $("roleSelect")?.addEventListener("change", (e) => {
-      state.role = e.target.value;
+      state.role = normalizeRole(e.target.value);
+      // Reset tours when switching role so they make sense
+      state.meta.microTours = { version: MICRO_TOUR_VERSION, completed: {} };
       saveLocal();
       renderAll();
+      setTimeout(() => startMicroTour(activeView, true), 120);
     });
 
-    $("btnReplayTour")?.addEventListener("click", () => startTour(state.role, true));
-    $("btnResetTour")?.addEventListener("click", () => {
-      if (!confirm("Reset onboarding? This will show the Welcome setup again.")) return;
-      state.meta.onboarded = false;
-      state.meta.tour = { completed: false, version: 0, role: state.role || "coach" };
+    $("btnReplayTour")?.addEventListener("click", () => startMicroTour(activeView, true));
+
+    $("btnResetTours")?.addEventListener("click", () => {
+      if (!confirm("Reset all micro-tours?")) return;
+      state.meta.microTours = { version: MICRO_TOUR_VERSION, completed: {} };
       saveLocal();
-      openOnboarding(); // immediately show
+      renderAll();
+      setTimeout(() => startMicroTour(activeView, true), 120);
     });
 
     updateProfileCloudState();
@@ -897,31 +972,39 @@
   async function updateProfileCloudState() {
     const el = $("profileCloudState");
     if (!el) return;
-    const cfg = window.cloudSync?.loadCfg?.() || { url:"", anon:"" };
-    const ready = cloudReady();
-    let sessTxt = "signed out";
-    if (ready) {
-      const s = await window.cloudSync.getSession();
-      if (s.ok && s.session) sessTxt = `signed in as ${s.session.user?.email || "user"}`;
+
+    const cfg = window.cloudSync?.loadCfg?.() || { url: "", anon: "" };
+    const urlOk = window.cloudSync?.validateSupabaseUrl?.(cfg.url);
+    const keyOk = window.cloudSync?.validateAnonKey?.(cfg.anon);
+
+    let msg = "";
+    msg += `Cloud configured: ${(urlOk?.ok && keyOk?.ok) ? "yes" : "no"}\n`;
+    msg += `URL: ${urlOk?.ok ? "valid" : "invalid"}\n`;
+    msg += `Key: ${keyOk?.ok ? "valid" : "invalid"}\n`;
+
+    if (urlOk?.ok && keyOk?.ok) {
+      const sess = await window.cloudSync.getSession();
+      if (sess.ok && sess.session) msg += `Session: signed in\n`;
+      else msg += `Session: signed out\n`;
+    } else {
+      msg += `Note: Use your Supabase URL (https://xxxx.supabase.co)\n`;
     }
-    el.textContent =
-      `Cloud configured: ${cfg.url ? "yes" : "no"}\n` +
-      `Cloud ready: ${ready ? "yes" : "no"}\n` +
-      `Session: ${sessTxt}\n` +
-      `Last pull: ${state.cloud.lastPulledAt ? new Date(state.cloud.lastPulledAt).toLocaleString() : "—"}\n` +
-      `Last push: ${state.cloud.lastPushedAt ? new Date(state.cloud.lastPushedAt).toLocaleString() : "—"}`;
+
+    el.textContent = msg.trim();
   }
 
   // ---------------------------
-  // Auth Modal Wiring
+  // Auth modal wiring (clean UI messages)
   // ---------------------------
   function wireAuthModal() {
     $("btnAuthOpen")?.addEventListener("click", async () => {
       const m = $("authModal");
       if (m) m.hidden = false;
-      const cfg = window.cloudSync?.loadCfg?.() || { url:"", anon:"" };
+
+      const cfg = window.cloudSync?.loadCfg?.() || { url: "", anon: "" };
       if ($("sbUrl")) $("sbUrl").value = cfg.url || "";
       if ($("sbAnon")) $("sbAnon").value = cfg.anon || "";
+
       await refreshAuthState();
     });
 
@@ -930,17 +1013,34 @@
     $("btnSaveCloud")?.addEventListener("click", async () => {
       const url = ($("sbUrl")?.value || "").trim();
       const anon = ($("sbAnon")?.value || "").trim();
+
       window.cloudSync?.saveCfg?.({ url, anon });
+
+      const vUrl = window.cloudSync?.validateSupabaseUrl?.(url);
+      const vKey = window.cloudSync?.validateAnonKey?.(anon);
+
+      if (!vUrl?.ok) {
+        $("cloudMsg").textContent = `Cloud not enabled: ${vUrl.reason}`;
+        setSync("offline", "Local");
+        await refreshAuthState();
+        return;
+      }
+      if (!vKey?.ok) {
+        $("cloudMsg").textContent = `Cloud not enabled: ${vKey.reason}`;
+        setSync("offline", "Local");
+        await refreshAuthState();
+        return;
+      }
+
       const ok = await tryInitCloud();
-      $("cloudMsg").textContent = ok ? "Saved. Cloud initialized." : "Saved. Cloud not initialized (check URL/Key).";
+      $("cloudMsg").textContent = ok ? "Cloud settings saved." : "Cloud not enabled (check URL/Key).";
       await refreshAuthState();
       updateProfileCloudState();
     });
 
     $("btnTestCloud")?.addEventListener("click", async () => {
-      await tryInitCloud();
       const res = await window.cloudSync.testConnection();
-      $("cloudMsg").textContent = res.ok ? "Cloud OK." : `Cloud error: ${res.reason || "unknown"}`;
+      $("cloudMsg").textContent = res.ok ? "Cloud connection OK." : `Cloud error: ${res.reason || "unknown"}`;
       await refreshAuthState();
       updateProfileCloudState();
     });
@@ -951,7 +1051,7 @@
       const pass = ($("authPass")?.value || "").trim();
       if (!email || !pass) return ($("authMsg").textContent = "Enter email + password.");
       const res = await window.cloudSync.signUp(email, pass);
-      $("authMsg").textContent = res.ok ? "Account created. Check email if confirmation enabled." : `Sign up failed: ${res.reason}`;
+      $("authMsg").textContent = res.ok ? "Account created." : `Sign up failed: ${res.reason}`;
       await refreshAuthState();
       updateProfileCloudState();
     });
@@ -976,7 +1076,7 @@
       if (!cloudReady()) return;
       const res = await window.cloudSync.signOut();
       $("authMsg").textContent = res.ok ? "Signed out." : `Sign out failed: ${res.reason}`;
-      setSync("cloud", "Cloud (signed out)");
+      setSync("cloud", "Cloud");
       await refreshAuthState();
       updateProfileCloudState();
     });
@@ -1000,79 +1100,28 @@
     const el = $("authState");
     if (!el) return;
 
-    await tryInitCloud();
+    const cfg = window.cloudSync?.loadCfg?.() || { url: "", anon: "" };
+    const u = window.cloudSync?.validateSupabaseUrl?.(cfg.url);
+    const k = window.cloudSync?.validateAnonKey?.(cfg.anon);
 
-    if (!cloudReady()) {
+    if (!u?.ok || !k?.ok) {
       el.textContent = "Cloud not configured.";
       setSync("offline", "Local");
       return;
     }
 
-    const res = await window.cloudSync.getSession();
-    if (!res.ok) { el.textContent = `Cloud session error`; setSync("error", "Cloud error"); return; }
+    await tryInitCloud();
 
-    if (!res.session) {
-      el.textContent = "Signed out.";
-      setSync("cloud", "Cloud (signed out)");
-      return;
-    }
+    const res = await window.cloudSync.getSession();
+    if (!res.ok) { el.textContent = "Cloud session error"; setSync("error", "Cloud error"); return; }
+    if (!res.session) { el.textContent = "Signed out."; setSync("cloud", "Cloud"); return; }
 
     el.textContent = `Signed in as:\n${res.session.user?.email || "user"}`;
     setSync("cloud", "Cloud");
   }
 
   // ---------------------------
-  // Onboarding (Dropdown modal) + auto tour
-  // ---------------------------
-  function openOnboarding() {
-    const m = $("onboardingModal");
-    if (!m) return;
-
-    if ($("obRole")) $("obRole").value = state.role || "coach";
-    if ($("obSport")) $("obSport").value = state.sport || "basketball";
-
-    $("obMsg").textContent = "Choose role and sport. Continue to start your guided tour.";
-    m.hidden = false;
-
-    const onContinue = () => {
-      const role = ($("obRole")?.value || "coach").toLowerCase();
-      const sport = ($("obSport")?.value || "basketball").toLowerCase();
-
-      state.role = (role === "athlete" || role === "parent") ? role : "coach";
-      state.sport = (sport === "football" || sport === "soccer") ? sport : "basketball";
-
-      applySportTheme(state.sport);
-
-      state.meta.onboarded = true;
-      saveLocal();
-
-      m.hidden = true;
-      renderAll();
-      showView("home");
-
-      // start tour if not completed or older version
-      const t = state.meta.tour || { completed:false, version:0, role:state.role };
-      const needsTour = (!t.completed) || (t.version < TOUR_VERSION) || (t.role !== state.role);
-      if (needsTour) startTour(state.role, false);
-    };
-
-    const onSkip = () => {
-      state.meta.onboarded = true;
-      saveLocal();
-      m.hidden = true;
-      renderAll();
-      showView("home");
-    };
-
-    // preview theme on sport change
-    $("obSport")?.addEventListener("change", (e) => applySportTheme(e.target.value));
-
-    $("obContinue")?.addEventListener("click", onContinue, { once: true });
-    $("obSkip")?.addEventListener("click", onSkip, { once: true });
-  }
-
-  // ---------------------------
-  // Global render
+  // Render all
   // ---------------------------
   function renderAll() {
     const t = activeTeam();
@@ -1105,7 +1154,7 @@
           setSync("cloud", "Cloud");
           await pullActiveTeamFromCloud().catch(()=>{});
         } else {
-          setSync("cloud", "Cloud (signed out)");
+          setSync("cloud", "Cloud");
         }
         updateProfileCloudState();
       });
@@ -1118,8 +1167,7 @@
       openOnboarding();
     }
 
-    // remove splash
-    setTimeout(() => { try { $("splash")?.remove(); } catch {} }, 700);
+    setTimeout(() => { try { $("splash")?.remove(); } catch {} }, 650);
   }
 
   boot().catch(() => {
