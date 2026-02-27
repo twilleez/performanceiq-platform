@@ -1,13 +1,13 @@
-// core.js — v6.0.0 (Week 7–8)
-// Adds: ACWR, load spike banners, auto deload, weekly summaries, analytics charts
-// Also ensures ALL views render (no empty screens) + seed demo + splash hides
+// core.js — v7.0.0 (Week 9–10)
+// Automation Layer + Athlete Mode "Today" + Cloud write-back stubs
+// Requires: riskEngine, analyticsEngine, workoutEngine, periodizationEngine, automationEngine, cloudSync
 
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V6__) return;
-  window.__PIQ_CORE_V6__ = true;
+  if (window.__PIQ_CORE_V7__) return;
+  window.__PIQ_CORE_V7__ = true;
 
-  const STORAGE_KEY = "piq_state_v6";
+  const STORAGE_KEY = "piq_state_v7";
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (m) => ({
@@ -19,26 +19,24 @@
     x.setHours(0, 0, 0, 0);
     return x.toISOString().slice(0, 10);
   }
-
   function todayISO() { return iso(new Date()); }
+  function uuid() { return "a" + Math.random().toString(16).slice(2) + Date.now().toString(16); }
+  function key(athleteId, dateISO) { return athleteId + "|" + dateISO; }
 
   function defaultState() {
     return {
       ui: {
         activeView: "dashboard",
-        role: "coach",            // coach | athlete
+        role: "coach",           // coach | athlete
         activeAthleteId: null,
         advancedMode: false
       },
       athletes: [],
-      // sessionsByAthlete is keyed: `${athleteId}|${dateISO}` -> [ {minutes, rpe, load, type, notes} ]
-      sessionsByAthlete: {},
-      // readiness keyed: `${athleteId}|${dateISO}` -> { sleepHours, soreness }
-      readinessByAthlete: {},
-      // nutrition keyed: `${athleteId}|${dateISO}` -> { adherence (0-100), notes }
-      nutritionByAthlete: {},
+      sessionsByAthlete: {},     // `${athleteId}|${date}` -> [{minutes,rpe,load,type,notes,at}]
+      readinessByAthlete: {},    // `${athleteId}|${date}` -> {sleepHours,soreness,at}
+      nutritionByAthlete: {},    // `${athleteId}|${date}` -> {adherence,notes,at}
       periodization: { currentWeek: 1 },
-      app: { version: "6.0.0" }
+      app: { version: "7.0.0" }
     };
   }
 
@@ -83,7 +81,6 @@
     saveState();
     navActive(view);
 
-    // render on entry
     if (view === "dashboard") renderDashboard();
     if (view === "team") renderTeam();
     if (view === "log") renderLog();
@@ -101,42 +98,17 @@
 
   function ensureActiveAthlete() {
     if (state.athletes.length === 0) return null;
-    if (!state.ui.activeAthleteId) {
-      setActiveAthlete(state.athletes[0].id);
-    }
+    if (!state.ui.activeAthleteId) setActiveAthlete(state.athletes[0].id);
     const a = state.athletes.find(x => x.id === state.ui.activeAthleteId);
-    if (!a) {
-      setActiveAthlete(state.athletes[0].id);
-      return state.athletes[0];
-    }
+    if (!a) { setActiveAthlete(state.athletes[0].id); return state.athletes[0]; }
     return a;
   }
-
-  function uuid() {
-    return "a" + Math.random().toString(16).slice(2) + Date.now().toString(16);
-  }
-
-  // ----- Data helpers
-  function key(athleteId, dateISO) { return athleteId + "|" + dateISO; }
 
   function getDailyLoad(athleteId, dateISO) {
     const arr = state.sessionsByAthlete[key(athleteId, dateISO)] || [];
     let total = 0;
     for (let i = 0; i < arr.length; i++) total += Number(arr[i].load || 0);
     return total;
-  }
-
-  function dateRange(endISO, daysBack) {
-    const out = [];
-    for (let i = daysBack - 1; i >= 0; i--) {
-      out.push(window.analyticsEngine.addDays(endISO, -i));
-    }
-    return out;
-  }
-
-  function loadsForRange(athleteId, endISO, daysBack) {
-    const days = dateRange(endISO, daysBack);
-    return days.map(d => getDailyLoad(athleteId, d));
   }
 
   function getNutritionAdherence(athleteId, dateISO) {
@@ -149,83 +121,31 @@
   function getReadiness(athleteId, dateISO) {
     const rec = state.readinessByAthlete[key(athleteId, dateISO)];
     if (!rec) return { sleepHours: null, soreness: null };
-    return {
-      sleepHours: rec.sleepHours ?? null,
-      soreness: rec.soreness ?? null
-    };
+    return { sleepHours: rec.sleepHours ?? null, soreness: rec.soreness ?? null };
   }
 
-  function computeRiskSnapshot(athleteId, asOfISO) {
-    // Acute 7d load (sum)
-    const daily7 = loadsForRange(athleteId, asOfISO, 7);
-    const ms = window.riskEngine.monotonyAndStrain(daily7);
-
-    const acute7 = ms.weeklyLoad;
-
-    // Chronic 28d load (sum) -> weekly avg inside riskEngine
-    const daily28 = loadsForRange(athleteId, asOfISO, 28);
-    const chronic28 = daily28.reduce((a, b) => a + b, 0);
-
-    const ac = window.riskEngine.computeACWR(acute7, chronic28);
-    const r = getReadiness(athleteId, asOfISO);
-    const nut = getNutritionAdherence(athleteId, asOfISO);
-
-    const risk = window.riskEngine.riskIndex({
-      acwr: ac.acwr,
-      monotony: ms.monotony,
-      sleepHours: r.sleepHours,
-      soreness: r.soreness,
-      nutritionAdherence: nut
-    });
-
-    const band = window.riskEngine.band(risk);
-    const flags = window.riskEngine.buildFlags({
-      acwr: ac.acwr,
-      monotony: ms.monotony,
-      strain: ms.strain,
-      nutritionAdherence: nut
-    });
-
-    const deload = window.riskEngine.suggestedDeload({
-      acwr: ac.acwr,
-      monotony: ms.monotony,
-      risk
-    });
-
-    return {
-      daily7,
-      acute7,
-      chronic28,
-      acwr: ac.acwr,
-      monotony: ms.monotony,
-      strain: ms.strain,
-      risk,
-      band,
-      flags,
-      deload
-    };
+  // ---------- UI bits
+  function pill(label, tone) {
+    const t = tone ? ` ${tone}` : "";
+    return `<span class="pill${t}">${esc(label)}</span>`;
   }
 
-  // ----- UI components
-  function badge(label, tone) {
-    const cls = tone === "danger" ? "danger" : tone === "warn" ? "warn" : "ok";
-    return `<span class="pill ${cls}">${esc(label)}</span>`;
+  function callout(tone, title, body) {
+    const c = tone ? ` ${tone}` : "";
+    return `<div class="callout${c}"><b>${esc(title)}</b> — ${esc(body)}</div>`;
   }
 
   function sparkline(values) {
-    // Minimal SVG sparkline (values array numbers)
     const w = 240, h = 44, pad = 3;
     const v = (values || []).map(x => Number(x || 0));
     const max = Math.max(1, ...v);
     const min = Math.min(0, ...v);
     const span = Math.max(1, max - min);
-
     const pts = v.map((y, i) => {
       const x = pad + (i * (w - pad * 2)) / Math.max(1, v.length - 1);
       const yy = h - pad - ((y - min) * (h - pad * 2)) / span;
       return `${x.toFixed(1)},${yy.toFixed(1)}`;
     }).join(" ");
-
     return `
       <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" aria-hidden="true">
         <polyline fill="none" stroke="currentColor" stroke-width="2" points="${pts}"></polyline>
@@ -233,7 +153,45 @@
     `;
   }
 
-  // ----- Seed demo
+  // ---------- Cloud write-back wrappers (no-op if not configured)
+  async function cloudWriteTraining(athleteId, dateISO, sessionRow) {
+    if (!window.cloudSync || !window.cloudSync.hasClient || !window.cloudSync.hasClient()) return;
+    // Map to expected table fields
+    const row = {
+      athlete_id: athleteId,
+      date: dateISO,
+      minutes: sessionRow.minutes,
+      rpe: sessionRow.rpe,
+      load: sessionRow.load,
+      type: sessionRow.type,
+      notes: sessionRow.notes || ""
+    };
+    await window.cloudSync.writeTrainingSession(row);
+  }
+
+  async function cloudWriteReadiness(athleteId, dateISO, rec) {
+    if (!window.cloudSync || !window.cloudSync.hasClient || !window.cloudSync.hasClient()) return;
+    const row = {
+      athlete_id: athleteId,
+      date: dateISO,
+      sleep_hours: rec.sleepHours ?? null,
+      soreness: rec.soreness ?? null
+    };
+    await window.cloudSync.writeReadiness(row);
+  }
+
+  async function cloudWriteNutrition(athleteId, dateISO, rec) {
+    if (!window.cloudSync || !window.cloudSync.hasClient || !window.cloudSync.hasClient()) return;
+    const row = {
+      athlete_id: athleteId,
+      date: dateISO,
+      adherence: rec.adherence ?? null,
+      notes: rec.notes || ""
+    };
+    await window.cloudSync.writeNutrition(row);
+  }
+
+  // ---------- Demo seed
   function seedDemo() {
     const a1 = { id: uuid(), name: "Jordan Smith", sport: "basketball", pos: "PG" };
     const a2 = { id: uuid(), name: "Avery Johnson", sport: "football", pos: "WR" };
@@ -243,25 +201,25 @@
     const end = todayISO();
     for (let i = 0; i < 21; i++) {
       const d = window.analyticsEngine.addDays(end, -i);
-      // alternating loads
       const load1 = i % 3 === 0 ? 0 : (i % 2 === 0 ? 360 : 540);
       const load2 = i % 4 === 0 ? 0 : (i % 2 === 0 ? 420 : 620);
 
-      if (load1 > 0) state.sessionsByAthlete[key(a1.id, d)] = [{ minutes: 60, rpe: load1 / 60, load: load1, type: "practice", notes: "" }];
-      if (load2 > 0) state.sessionsByAthlete[key(a2.id, d)] = [{ minutes: 70, rpe: load2 / 70, load: load2, type: "practice", notes: "" }];
+      if (load1 > 0) state.sessionsByAthlete[key(a1.id, d)] = [{ minutes: 60, rpe: Math.round(load1 / 60), load: load1, type: "practice", notes: "", at: Date.now() }];
+      if (load2 > 0) state.sessionsByAthlete[key(a2.id, d)] = [{ minutes: 70, rpe: Math.round(load2 / 70), load: load2, type: "practice", notes: "", at: Date.now() }];
 
-      state.readinessByAthlete[key(a1.id, d)] = { sleepHours: 7.5, soreness: (i % 5) + 2 };
-      state.readinessByAthlete[key(a2.id, d)] = { sleepHours: 7.0, soreness: (i % 6) + 2 };
+      state.readinessByAthlete[key(a1.id, d)] = { sleepHours: 7.5, soreness: (i % 5) + 2, at: Date.now() };
+      state.readinessByAthlete[key(a2.id, d)] = { sleepHours: 7.0, soreness: (i % 6) + 2, at: Date.now() };
 
-      state.nutritionByAthlete[key(a1.id, d)] = { adherence: 78 - (i % 7) * 2, notes: "" };
-      state.nutritionByAthlete[key(a2.id, d)] = { adherence: 82 - (i % 6) * 2, notes: "" };
+      state.nutritionByAthlete[key(a1.id, d)] = { adherence: 78 - (i % 7) * 2, notes: "", at: Date.now() };
+      state.nutritionByAthlete[key(a2.id, d)] = { adherence: 82 - (i % 6) * 2, notes: "", at: Date.now() };
     }
 
     saveState();
     renderDashboard();
+    renderTeam();
   }
 
-  // ----- Renders
+  // ---------- DASHBOARD
   function renderDashboard() {
     const hostCoach = $("coachDashWrap");
     const hostAth = $("athleteDashWrap");
@@ -269,37 +227,54 @@
 
     const role = state.ui.role;
     const a = ensureActiveAthlete();
+    const asOf = todayISO();
 
-    // Coach summary cards (all athletes)
+    // COACH: Summary cards for all athletes + automation badges + deload prompt
     if (role === "coach") {
       const cards = state.athletes.map(at => {
-        const snap = computeRiskSnapshot(at.id, todayISO());
-        const flagsTop = snap.flags.slice(0, 3).map(f => `<div class="small muted">• ${esc(f.label)} — ${esc(f.detail)}</div>`).join("");
+        const snap = window.automationEngine.computeSnapshot(state, at.id, asOf);
+        const badges = window.automationEngine.pickTopBadges(snap)
+          .map(b => pill(b.label, b.tone)).join(" ");
+
+        const week = window.automationEngine.weeklySummary(state, at.id, asOf);
+        const prompt = window.automationEngine.buildDeloadPrompt(state, at.id, snap);
+
         return `
           <div class="card">
             <div class="cardhead">
               <h2 style="margin:0">Coach Summary</h2>
               <span class="muted">${esc(at.name)} • ${esc(at.sport || "sport")}</span>
             </div>
+
             <div class="row gap wrap">
-              ${badge(`Risk: ${snap.band.label} (${snap.risk})`, snap.band.color)}
-              <span class="pill">ACWR: ${snap.acwr.toFixed(2)}</span>
-              <span class="pill">7d Load: ${Math.round(snap.acute7)}</span>
-              <span class="pill">Monotony: ${snap.monotony.toFixed(2)}</span>
+              ${badges}
             </div>
-            <div class="mini" style="margin-top:10px">
-              <div class="minihead">Auto flags</div>
-              <div class="minibody small">${flagsTop || `<span class="muted">None</span>`}</div>
-            </div>
-            <div class="mini" style="margin-top:10px">
-              <div class="minihead">Auto Suggested Deload</div>
-              <div class="minibody small">
-                ${snap.deload.suggest ? `<b>Suggested</b> — ${esc(snap.deload.reason)}` : `<span class="muted">Not needed</span>`}
+
+            ${prompt ? `
+              <div class="mini" style="margin-top:10px">
+                <div class="minihead">${esc(prompt.title)}</div>
+                <div class="minibody small">
+                  ${esc(prompt.body)}
+                  <div class="row gap wrap" style="margin-top:10px">
+                    <button class="btn ghost small" data-dismiss="${esc(prompt.id)}">${esc(prompt.actionLabel)}</button>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="mini" style="margin-top:10px">
-              <div class="minihead">7-day load trend</div>
-              <div class="minibody">${sparkline(snap.daily7)}</div>
+            ` : ""}
+
+            <div class="grid2" style="margin-top:12px">
+              <div class="mini">
+                <div class="minihead">Weekly summary (7d)</div>
+                <div class="minibody small">
+                  <b>Load:</b> ${Math.round(week.totalLoad7)}<br/>
+                  <b>ACWR:</b> ${snap.acwr.toFixed(2)}<br/>
+                  <b>Nutrition avg:</b> ${week.nutAvg != null ? week.nutAvg + "%" : "—"}
+                </div>
+              </div>
+              <div class="mini">
+                <div class="minihead">7d Load trend</div>
+                <div class="minibody">${sparkline(snap.daily7)}</div>
+              </div>
             </div>
           </div>
         `;
@@ -311,11 +286,21 @@
           <div class="minibody muted">Go to Team → Add athlete, or click Seed Demo.</div>
         </div>
       `;
+
+      hostCoach.querySelectorAll("[data-dismiss]").forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.getAttribute("data-dismiss");
+          window.automationEngine.dismissPrompt(id, window.analyticsEngine.addDays(todayISO(), 7));
+          renderDashboard();
+          renderTeam();
+        };
+      });
+
       hostAth.innerHTML = "";
       return;
     }
 
-    // Athlete mode: clean, no clutter
+    // ATHLETE: “Today” (workout + nutrition + quick log)
     hostCoach.innerHTML = "";
     if (!a) {
       hostAth.innerHTML = `
@@ -327,70 +312,169 @@
       return;
     }
 
-    const snap = computeRiskSnapshot(a.id, todayISO());
+    const snap = window.automationEngine.computeSnapshot(state, a.id, asOf);
     const phase = window.periodizationEngine.getCurrentPhase(state.periodization.currentWeek);
-    const w = window.workoutEngine.generateWorkout({ sport: a.sport || "basketball", advanced: state.ui.advancedMode, phase });
+    const workout = window.workoutEngine.generateWorkout({
+      sport: a.sport || "basketball",
+      advanced: state.ui.advancedMode,
+      phase
+    });
 
-    const banner =
-      snap.acwr >= 1.5 ? `<div class="callout danger"><b>Load Spike</b> — ACWR ${snap.acwr.toFixed(2)}. Consider lower volume today.</div>` :
-      snap.acwr >= 1.3 ? `<div class="callout warn"><b>Elevated Load</b> — ACWR ${snap.acwr.toFixed(2)}. Prioritize recovery.</div>` :
-      `<div class="callout ok"><b>Load Normal</b> — ACWR ${snap.acwr.toFixed(2)}.</div>`;
+    const loadBanner =
+      snap.acwr >= 1.5 ? callout("danger", "Load Spike", `ACWR ${snap.acwr.toFixed(2)} — reduce volume today.`) :
+      snap.acwr >= 1.3 ? callout("warn", "Elevated Load", `ACWR ${snap.acwr.toFixed(2)} — prioritize recovery.`) :
+      callout("ok", "Load Normal", `ACWR ${snap.acwr.toFixed(2)} — stay consistent.`);
+
+    const nutToday = getNutritionAdherence(a.id, asOf);
+    const nutBanner =
+      (nutToday != null && nutToday < 70) ? callout("warn", "Nutrition Warning", `Adherence ${Math.round(nutToday)}% — increase protein + fluids.`) :
+      (nutToday != null) ? callout("ok", "Nutrition On Track", `Adherence ${Math.round(nutToday)}%`) :
+      callout("", "Nutrition Not Logged", "Log nutrition adherence for better recommendations.");
+
+    const todayLoad = getDailyLoad(a.id, asOf);
+    const estLoad = Math.round(workout.minutes * workout.rpe);
 
     hostAth.innerHTML = `
       <div class="card">
         <div class="cardhead">
-          <h2 style="margin:0">Athlete Dashboard</h2>
-          <span class="muted">${esc(a.name)} • ${esc(a.sport || "")}</span>
+          <h2 style="margin:0">Today</h2>
+          <span class="muted">${esc(a.name)} • ${esc(a.sport || "")} • ${esc(window.periodizationEngine.PHASES[phase].label)}</span>
         </div>
 
-        ${banner}
-
-        <div class="row gap wrap" style="margin-top:10px">
-          ${badge(`Risk: ${snap.band.label} (${snap.risk})`, snap.band.color)}
-          <span class="pill">Phase: ${esc(window.periodizationEngine.PHASES[phase].label)}</span>
-          <span class="pill">Today Load: ${getDailyLoad(a.id, todayISO())}</span>
-        </div>
+        ${loadBanner}
+        ${nutBanner}
 
         <div class="grid2" style="margin-top:12px">
           <div class="mini">
             <div class="minihead">Today’s Workout</div>
             <div class="minibody small">
-              <b>Target:</b> ${w.minutes} min @ sRPE ${w.rpe}<br/>
-              <span class="muted">Tap Workouts to see full plan.</span>
+              <b>Target:</b> ${workout.minutes} min @ sRPE ${workout.rpe}<br/>
+              <span class="muted">Est. load: ${estLoad} • Logged today: ${todayLoad}</span>
+              <div class="row gap wrap" style="margin-top:10px">
+                <button class="btn" id="btnToWorkouts">View Workout</button>
+                <button class="btn ghost" id="btnToggleMode">${state.ui.advancedMode ? "Switch Standard" : "Switch Advanced"}</button>
+              </div>
             </div>
           </div>
+
           <div class="mini">
-            <div class="minihead">Auto Suggested Deload</div>
+            <div class="minihead">Quick Log</div>
             <div class="minibody small">
-              ${snap.deload.suggest ? `<b>Suggested</b> — ${esc(snap.deload.reason)}` : `<span class="muted">Not needed</span>`}
+              <div class="row gap wrap">
+                <button class="btn small" data-quick="practice">Practice</button>
+                <button class="btn small" data-quick="lift">Lift</button>
+                <button class="btn small" data-quick="skills">Skills</button>
+                <button class="btn small" data-quick="conditioning">Conditioning</button>
+                <button class="btn small" data-quick="game">Game</button>
+                <button class="btn ghost small" id="btnToLog">Open Log</button>
+              </div>
+
+              <div class="row gap wrap" style="margin-top:12px">
+                <button class="btn ghost small" id="btnQuickReadiness">Log Readiness</button>
+                <button class="btn ghost small" id="btnQuickNutrition">Log Nutrition</button>
+              </div>
+
+              <div class="small muted" style="margin-top:8px">
+                Risk: ${snap.band.label} (${snap.risk}) • Deload: ${snap.deload.suggest ? "Suggested" : "No"}
+              </div>
             </div>
           </div>
         </div>
+
+        ${snap.deload.suggest ? `
+          <div class="mini" style="margin-top:12px">
+            <div class="minihead">Suggested Deload</div>
+            <div class="minibody small">
+              ${esc(snap.deload.reason)}
+              <div class="muted small">Tip: reduce minutes ~30–40% and keep sRPE ≤ 5 today.</div>
+            </div>
+          </div>
+        ` : ""}
+
       </div>
     `;
+
+    $("btnToWorkouts").onclick = () => showView("workouts");
+    $("btnToLog").onclick = () => showView("log");
+    $("btnToggleMode").onclick = () => { state.ui.advancedMode = !state.ui.advancedMode; saveState(); renderDashboard(); };
+
+    // Quick log uses workout target minutes/rpe as defaults
+    hostAth.querySelectorAll("[data-quick]").forEach(btn => {
+      btn.onclick = async () => {
+        const type = btn.getAttribute("data-quick");
+        const minutes = workout.minutes;
+        const rpe = workout.rpe;
+        const load = Math.round(minutes * rpe);
+        const sess = { minutes, rpe, load, type, notes: "Quick log", at: Date.now() };
+
+        const k = key(a.id, asOf);
+        const arr = state.sessionsByAthlete[k] || [];
+        arr.push(sess);
+        state.sessionsByAthlete[k] = arr;
+        saveState();
+
+        // optional cloud write-back
+        await cloudWriteTraining(a.id, asOf, sess);
+
+        renderDashboard();
+      };
+    });
+
+    $("btnQuickReadiness").onclick = async () => {
+      const sleep = Number(prompt("Sleep hours (e.g., 7.5):", "7.5") || "");
+      const sore = Number(prompt("Soreness 0–10:", "3") || "");
+      if (!Number.isFinite(sleep) || !Number.isFinite(sore)) return;
+
+      state.readinessByAthlete[key(a.id, asOf)] = { sleepHours: sleep, soreness: sore, at: Date.now() };
+      saveState();
+      await cloudWriteReadiness(a.id, asOf, { sleepHours: sleep, soreness: sore });
+      renderDashboard();
+    };
+
+    $("btnQuickNutrition").onclick = async () => {
+      const adh = Number(prompt("Nutrition adherence 0–100:", "80") || "");
+      if (!Number.isFinite(adh)) return;
+
+      state.nutritionByAthlete[key(a.id, asOf)] = { adherence: Math.max(0, Math.min(100, adh)), notes: "Quick log", at: Date.now() };
+      saveState();
+      await cloudWriteNutrition(a.id, asOf, { adherence: Math.max(0, Math.min(100, adh)), notes: "Quick log" });
+      renderDashboard();
+    };
   }
 
+  // ---------- TEAM
   function renderTeam() {
     const host = $("view-team");
     if (!host) return;
 
-    const rows = state.athletes.map(a => `
-      <div class="row between" style="padding:10px 0;border-bottom:1px solid var(--border)">
-        <div>
-          <b>${esc(a.name)}</b> <span class="muted small">• ${esc(a.sport || "—")} • ${esc(a.pos || "")}</span>
+    const asOf = todayISO();
+
+    const rows = state.athletes.map(a => {
+      const snap = window.automationEngine.computeSnapshot(state, a.id, asOf);
+      const badges = window.automationEngine.pickTopBadges(snap).slice(0, 3)
+        .map(b => pill(b.label, b.tone)).join(" ");
+
+      return `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+          <div class="row between">
+            <div>
+              <b>${esc(a.name)}</b> <span class="muted small">• ${esc(a.sport || "—")} • ${esc(a.pos || "")}</span>
+            </div>
+            <div class="row gap wrap">
+              <button class="btn ghost small" data-pick="${a.id}">Set Active</button>
+              <button class="btn danger small" data-del="${a.id}">Remove</button>
+            </div>
+          </div>
+          <div class="row gap wrap" style="margin-top:8px">${badges}</div>
         </div>
-        <div class="row gap wrap">
-          <button class="btn ghost small" data-pick="${a.id}">Set Active</button>
-          <button class="btn danger small" data-del="${a.id}">Remove</button>
-        </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
 
     host.innerHTML = `
       <div class="card">
         <div class="cardhead">
           <h2>Team</h2>
-          <span class="muted">Roster + sport selection</span>
+          <span class="muted">Roster + sport + auto badges</span>
         </div>
 
         <div class="row gap wrap">
@@ -432,6 +516,7 @@
       if (!state.ui.activeAthleteId) setActiveAthlete(a.id);
       saveState();
       renderTeam();
+      renderDashboard();
     };
 
     host.querySelectorAll("[data-pick]").forEach(b => {
@@ -454,6 +539,7 @@
     });
   }
 
+  // ---------- LOG (same as Week 7–8, but cloud write-back on save)
   function renderLog() {
     const host = $("view-log");
     if (!host) return;
@@ -477,7 +563,6 @@
     `).join("");
 
     const loadToday = a ? getDailyLoad(a.id, d) : 0;
-    const snap = a ? computeRiskSnapshot(a.id, d) : null;
 
     host.innerHTML = `
       <div class="card">
@@ -524,17 +609,9 @@
           </div>
         </div>
 
-        <div class="grid2" style="margin-top:12px">
-          <div class="mini">
-            <div class="minihead">Today total load</div>
-            <div class="minibody"><b>${loadToday}</b></div>
-          </div>
-          <div class="mini">
-            <div class="minihead">Auto flags</div>
-            <div class="minibody small">
-              ${snap ? (snap.flags.length ? snap.flags.map(f => `• ${esc(f.label)} <span class="muted">(${esc(f.detail)})</span>`).join("<br/>") : `<span class="muted">None</span>`) : `<span class="muted">—</span>`}
-            </div>
-          </div>
+        <div class="mini" style="margin-top:12px">
+          <div class="minihead">Today total load</div>
+          <div class="minibody"><b>${loadToday}</b></div>
         </div>
 
         <div style="margin-top:12px">
@@ -543,17 +620,15 @@
       </div>
     `;
 
-    const logAth = $("logAth");
-    if (logAth) {
-      logAth.onchange = () => {
-        setActiveAthlete(logAth.value);
-        saveState();
-        renderLog();
-        renderDashboard();
-      };
-    }
+    $("logAth").onchange = () => {
+      setActiveAthlete($("logAth").value);
+      saveState();
+      renderLog();
+      renderDashboard();
+      renderTeam();
+    };
 
-    $("btnSaveSess").onclick = () => {
+    $("btnSaveSess").onclick = async () => {
       const athId = $("logAth").value;
       if (!athId) return alert("Add an athlete first.");
       const dateISO = $("logDate").value || todayISO();
@@ -561,16 +636,20 @@
       const rpe = Math.max(0, Math.min(10, Number($("logRpe").value || 0)));
       const type = $("logType").value || "practice";
       const notes = ($("logNotes").value || "").trim();
-
       const load = Math.round(minutes * rpe);
+
+      const sess = { minutes, rpe, load, type, notes, at: Date.now() };
       const k = key(athId, dateISO);
       const arr = state.sessionsByAthlete[k] || [];
-      arr.push({ minutes, rpe, load, type, notes, at: Date.now() });
+      arr.push(sess);
       state.sessionsByAthlete[k] = arr;
 
       saveState();
+      await cloudWriteTraining(athId, dateISO, sess);
+
       renderLog();
       renderDashboard();
+      renderTeam();
     };
 
     host.querySelectorAll("[data-rm]").forEach(btn => {
@@ -585,10 +664,12 @@
         saveState();
         renderLog();
         renderDashboard();
+        renderTeam();
       };
     });
   }
 
+  // ---------- NUTRITION (kept lightweight; quick log exists in athlete dashboard)
   function renderNutrition() {
     const host = $("view-nutrition");
     if (!host) return;
@@ -606,7 +687,7 @@
       <div class="card">
         <div class="cardhead">
           <h2>Elite Nutrition</h2>
-          <span class="muted">Adherence drives risk flags</span>
+          <span class="muted">Adherence drives automation warnings</span>
         </div>
 
         <div class="row gap wrap">
@@ -635,7 +716,7 @@
         <div class="mini" style="margin-top:12px">
           <div class="minihead">Auto warning</div>
           <div class="minibody small">
-            ${Number(rec.adherence || 0) < 70 ? `<b class="danger">Below target</b> — this will trigger nutrition warning.` : `<span class="muted">On track</span>`}
+            ${Number(rec.adherence || 0) < 70 ? `<b class="danger">Below target</b> — triggers nutrition warning.` : `<span class="muted">On track</span>`}
           </div>
         </div>
       </div>
@@ -646,21 +727,28 @@
       saveState();
       renderNutrition();
       renderDashboard();
+      renderTeam();
     };
 
-    $("btnSaveNut").onclick = () => {
+    $("btnSaveNut").onclick = async () => {
       const athId = $("nutAth").value;
       if (!athId) return alert("Add an athlete first.");
       const dateISO = $("nutDate").value || todayISO();
       const adherence = Math.max(0, Math.min(100, Number($("nutAdh").value || 0)));
       const notes = ($("nutNotes").value || "").trim();
-      state.nutritionByAthlete[key(athId, dateISO)] = { adherence, notes, at: Date.now() };
+      const rec = { adherence, notes, at: Date.now() };
+      state.nutritionByAthlete[key(athId, dateISO)] = rec;
       saveState();
+
+      await cloudWriteNutrition(athId, dateISO, rec);
+
       renderNutrition();
       renderDashboard();
+      renderTeam();
     };
   }
 
+  // ---------- WORKOUTS (unchanged; uses sport + phase + advanced toggle)
   function renderWorkouts() {
     const host = $("view-workouts");
     if (!host) return;
@@ -728,6 +816,7 @@
     };
   }
 
+  // ---------- PERIODIZATION
   function renderPeriodization() {
     const host = $("view-periodization");
     if (!host) return;
@@ -739,8 +828,7 @@
     const a = ensureActiveAthlete();
     let baseline = 0;
     if (a) {
-      // baseline = chronic week avg from risk snapshot
-      const snap = computeRiskSnapshot(a.id, todayISO());
+      const snap = window.automationEngine.computeSnapshot(state, a.id, todayISO());
       baseline = Math.round(snap.chronic28 / 4) || 0;
     }
     const target = window.periodizationEngine.weeklyTargetLoad({ baselineWeekLoad: baseline, weekNumber: week });
@@ -792,6 +880,7 @@
     };
   }
 
+  // ---------- ANALYTICS (coach-only but still renders)
   function renderAnalytics() {
     const host = $("view-analytics");
     if (!host) return;
@@ -808,15 +897,13 @@
     }
 
     const end = todayISO();
-    const days21 = dateRange(end, 21);
+    const days21 = window.analyticsEngine.dateRange(end, 21);
 
     const loadSeries = days21.map(d => getDailyLoad(a.id, d));
     const nutSeries = days21.map(d => getNutritionAdherence(a.id, d) ?? 0);
+    const riskSeries = days21.map(d => window.automationEngine.computeSnapshot(state, a.id, d).risk);
 
-    // risk series uses snapshots (lightweight enough for 21d)
-    const riskSeries = days21.map(d => computeRiskSnapshot(a.id, d).risk);
-
-    const snapNow = computeRiskSnapshot(a.id, end);
+    const snapNow = window.automationEngine.computeSnapshot(state, a.id, end);
 
     host.innerHTML = `
       <div class="card">
@@ -848,6 +935,7 @@
     `;
   }
 
+  // ---------- SETTINGS
   function renderSettings() {
     const host = $("view-settings");
     if (!host) return;
@@ -867,7 +955,7 @@
         <div class="grid2">
           <div class="mini">
             <div class="minihead">Role</div>
-            <div class="minibody small muted">Coach sees analytics. Athlete sees clean dashboard.</div>
+            <div class="minibody small muted">Coach sees analytics. Athlete sees Today-first dashboard.</div>
             <div class="row gap wrap" style="margin-top:10px">
               <button class="btn ${state.ui.role === "coach" ? "" : "ghost"}" id="btnRoleCoach">Coach</button>
               <button class="btn ${state.ui.role === "athlete" ? "" : "ghost"}" id="btnRoleAth">Athlete</button>
@@ -894,6 +982,14 @@
           </div>
 
           <div class="mini">
+            <div class="minihead">Cloud</div>
+            <div class="minibody small">
+              Status: <b>${window.cloudSync && window.cloudSync.hasClient && window.cloudSync.hasClient() ? "Connected" : "Local-only"}</b><br/>
+              <span class="muted">Write-back enabled only if Supabase client is configured.</span>
+            </div>
+          </div>
+
+          <div class="mini">
             <div class="minihead">Debug</div>
             <div class="minibody mono small">
               Athletes: ${state.athletes.length}<br/>
@@ -905,8 +1001,8 @@
       </div>
     `;
 
-    $("btnRoleCoach").onclick = () => { state.ui.role = "coach"; saveState(); renderSettings(); renderDashboard(); };
-    $("btnRoleAth").onclick = () => { state.ui.role = "athlete"; saveState(); renderSettings(); renderDashboard(); };
+    $("btnRoleCoach").onclick = () => { state.ui.role = "coach"; saveState(); renderSettings(); renderDashboard(); renderTeam(); };
+    $("btnRoleAth").onclick = () => { state.ui.role = "athlete"; saveState(); renderSettings(); renderDashboard(); renderTeam(); };
 
     const setAth = $("setAth");
     if (setAth) {
@@ -915,6 +1011,7 @@
         saveState();
         renderSettings();
         renderDashboard();
+        renderTeam();
       };
     }
 
@@ -925,7 +1022,7 @@
       localStorage.removeItem(STORAGE_KEY);
       state = defaultState();
       saveState();
-      renderSettings();
+
       renderDashboard();
       renderTeam();
       renderLog();
@@ -933,10 +1030,11 @@
       renderWorkouts();
       renderPeriodization();
       renderAnalytics();
+      renderSettings();
     };
   }
 
-  // ----- Boot
+  // ---------- Boot
   function wireTopbar() {
     const seedBtn = $("btnSeed");
     if (seedBtn) seedBtn.onclick = seedDemo;
@@ -952,7 +1050,7 @@
     wireTopbar();
     wireNav();
 
-    // first render all to avoid empty panes
+    // Ensure every view has content (no empty)
     renderDashboard();
     renderTeam();
     renderLog();
@@ -962,9 +1060,7 @@
     renderAnalytics();
     renderSettings();
 
-    // go to last view
     showView(state.ui.activeView || "dashboard");
-
     hideSplash();
   }
 
