@@ -1,12 +1,12 @@
-// core.js — v13.0.0 (Week 13–14)
+// core.js — v13.0.1 (Onboarding dropdown modal; no prompt())
 // 4-tab UX + Cloud Accounts + Team Separation + Cloud Pull/Push
 (function () {
   "use strict";
 
-  if (window.__PIQ_CORE_V13__) return;
-  window.__PIQ_CORE_V13__ = true;
+  if (window.__PIQ_CORE_V13_1__) return;
+  window.__PIQ_CORE_V13_1__ = true;
 
-  const APP_VERSION = "13.0.0";
+  const APP_VERSION = "13.0.1";
   const STORAGE_KEY = "piq_state_v13_local";
   const PUSH_DEBOUNCE_MS = 900;
 
@@ -22,27 +22,23 @@
   function defaultTeamState(teamId, name) {
     return {
       meta: { teamId, name, createdAt: Date.now(), updatedAt: Date.now() },
-      athletes: [],     // [{id,name,role:'athlete', position, weightLb, sport}]
+      athletes: [],
       logs: {
-        readiness: {},  // readiness[athleteId] = [{dateISO, sleep, soreness, stress, energy}]
-        training: {},   // training[athleteId] = [{id,dateISO, minutes, rpe, type, notes, load}]
-        nutrition: {},  // nutrition[athleteId] = [{dateISO, protein, carbs, fat, waterOz, notes}]
+        readiness: {},
+        training: {},
+        nutrition: {},
       },
-      workouts: {
-        // future: sport engine plans saved here
-      },
-      periodization: {
-        // future: plans saved here
-      }
+      workouts: {},
+      periodization: {}
     };
   }
 
   function defaultAppState() {
     const localTeamId = uid("team");
     return {
-      meta: { appVersion: APP_VERSION, updatedAt: Date.now() },
-      role: "coach",                 // coach | athlete | parent
-      sport: "basketball",           // basketball | football | soccer ...
+      meta: { appVersion: APP_VERSION, updatedAt: Date.now(), onboarded: false },
+      role: "coach",
+      sport: "basketball",
       activeTeamId: localTeamId,
       teams: {
         [localTeamId]: defaultTeamState(localTeamId, "My Team")
@@ -55,22 +51,13 @@
     };
   }
 
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultAppState();
-      const s = JSON.parse(raw);
-      return normalizeState(s);
-    } catch {
-      return defaultAppState();
-    }
-  }
-
   function normalizeState(s) {
     const d = defaultAppState();
     if (!s || typeof s !== "object") return d;
 
     s.meta = s.meta && typeof s.meta === "object" ? s.meta : d.meta;
+    if (typeof s.meta.onboarded !== "boolean") s.meta.onboarded = false;
+
     s.role = typeof s.role === "string" ? s.role : d.role;
     s.sport = typeof s.sport === "string" ? s.sport : d.sport;
 
@@ -78,7 +65,6 @@
     s.teams = s.teams && typeof s.teams === "object" ? s.teams : d.teams;
 
     if (!s.teams[s.activeTeamId]) {
-      // guarantee active team exists
       const tid = s.activeTeamId || uid("team");
       s.activeTeamId = tid;
       s.teams[tid] = defaultTeamState(tid, "My Team");
@@ -88,6 +74,16 @@
     if (typeof s.cloud.enabled !== "boolean") s.cloud.enabled = false;
 
     return s;
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultAppState();
+      return normalizeState(JSON.parse(raw));
+    } catch {
+      return defaultAppState();
+    }
   }
 
   const state = loadState();
@@ -109,12 +105,10 @@
     try {
       setSync("saving", "Saving…");
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      // If cloud ready, schedule push
       scheduleCloudPush();
       window.setTimeout(() => {
-        // If cloud ready, will turn to "Cloud" after push
         if (!cloudReady()) setSync("synced", "Saved");
-      }, 300);
+      }, 250);
     } catch {
       setSync("error", "Save failed");
     }
@@ -128,13 +122,10 @@
     const res = window.cloudSync?.initFromStorage?.();
     if (!res?.ok) {
       state.cloud.enabled = false;
-      saveLocal();
       setSync("offline", "Local");
       return false;
     }
     state.cloud.enabled = true;
-    saveLocal();
-    // reflect session
     const sess = await window.cloudSync.getSession();
     if (sess.ok && sess.session) setSync("cloud", "Cloud");
     else setSync("cloud", "Cloud (signed out)");
@@ -169,29 +160,26 @@
     }
 
     if (!res.row?.state) {
-      // nothing in cloud yet
       setSync("cloud", "Cloud");
       return { ok: true, empty: true };
     }
 
-    // last-write wins by updated_at: if cloud newer, replace local team state
     const cloudState = res.row.state;
     const localTeam = state.teams[teamId];
     const localUpdated = localTeam?.meta?.updatedAt || 0;
-    // updated_at is timestamp; parse if possible
+
     let cloudUpdated = 0;
     try { cloudUpdated = Date.parse(res.row.updated_at || "") || Date.now(); } catch { cloudUpdated = Date.now(); }
 
     if (cloudUpdated >= localUpdated) {
       state.teams[teamId] = cloudState;
-      // ensure meta exists
       if (!state.teams[teamId].meta) state.teams[teamId].meta = {};
       state.teams[teamId].meta.teamId = teamId;
       state.teams[teamId].meta.updatedAt = Date.now();
       state.cloud.lastPulledAt = Date.now();
       saveLocal();
       setSync("synced", "Pulled");
-      setTimeout(() => setSync("cloud", "Cloud"), 500);
+      setTimeout(() => setSync("cloud", "Cloud"), 450);
       renderAll();
       return { ok: true, applied: true };
     }
@@ -214,7 +202,6 @@
     }
 
     setSync("saving", "Syncing…");
-    // update team meta timestamp
     teamState.meta = teamState.meta || {};
     teamState.meta.updatedAt = Date.now();
     teamState.meta.teamId = teamId;
@@ -252,7 +239,7 @@
   // UI: Views + Navigation
   // ---------------------------
   const VIEWS = ["home", "team", "train", "profile"];
-  let activeTrainTab = "log"; // log | nutrition | workouts | periodization | analytics
+  let activeTrainTab = "log";
 
   function showView(v) {
     const view = VIEWS.includes(v) ? v : "home";
@@ -308,7 +295,7 @@
   }
 
   // ---------------------------
-  // Minimal sRPE log (Week 13–14 baseline)
+  // Training Log
   // ---------------------------
   function addTrainingSession(athleteId, dateISO, minutes, rpe, type, notes) {
     const t = activeTeam();
@@ -341,10 +328,9 @@
     const teamName = t?.meta?.name || "—";
     const athleteCount = t?.athletes?.length || 0;
 
-    // Coach vs Athlete home differences
     let body = `
       <div class="card">
-        <h2>${role === "coach" ? "Coach Home" : "Athlete Home"}</h2>
+        <h2>${role === "coach" ? "Coach Home" : role === "parent" ? "Parent Home" : "Athlete Home"}</h2>
         <div class="small muted">Team: <b>${escapeHTML(teamName)}</b> • Sport: <b>${escapeHTML(state.sport)}</b></div>
       </div>
     `;
@@ -395,7 +381,7 @@
   }
 
   // ---------------------------
-  // Render: TEAM (Team switch + roster)
+  // Render: TEAM
   // ---------------------------
   function renderTeam() {
     const el = $("view-team");
@@ -467,7 +453,6 @@
     $("sportSelect")?.addEventListener("change", (e) => {
       state.sport = e.target.value;
       applySportTheme(state.sport);
-      // update active team sport defaults for new athletes
       saveLocal();
       renderAll();
     });
@@ -509,7 +494,7 @@
   }
 
   // ---------------------------
-  // Render: TRAIN (subnav)
+  // Render: TRAIN
   // ---------------------------
   function renderTrain() {
     const el = $("view-train");
@@ -544,7 +529,7 @@
     if (!panel) return;
 
     if (activeTrainTab === "log") {
-      panel.innerHTML = renderLogModule(athletes, t);
+      panel.innerHTML = renderLogModule(athletes);
       wireLogModule(athletes, t);
       return;
     }
@@ -553,7 +538,7 @@
       panel.innerHTML = `
         <div class="card">
           <h3>Nutrition</h3>
-          <div class="small muted">Week 15–16 adds auto macro computation + meal plans. (This tab will expand.)</div>
+          <div class="small muted">Macro auto-calculation comes in the next build cycle.</div>
         </div>
       `;
       return;
@@ -572,12 +557,10 @@
     return `<button class="${on.trim()}" data-tab="${escapeHTML(id)}">${escapeHTML(label)}</button>`;
   }
 
-  function renderLogModule(athletes, teamState) {
+  function renderLogModule(athletes) {
     if (!athletes.length) {
       return `<div class="card"><h3>Log</h3><div class="small muted">Add athletes in Team tab first.</div></div>`;
     }
-
-    const first = athletes[0].id;
 
     return `
       <div class="grid2">
@@ -668,6 +651,7 @@
     });
 
     renderRecentSessions(athletes, teamState);
+    $("logAthlete")?.addEventListener("change", () => renderRecentSessions(athletes, teamState));
   }
 
   function renderRecentSessions(athletes, teamState) {
@@ -695,10 +679,10 @@
 
     qa("[data-del-sess]").forEach(btn => btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-del-sess");
-      const aid = $("logAthlete")?.value || athletes[0].id;
-      if (!id || !aid) return;
+      const aid2 = $("logAthlete")?.value || athletes[0].id;
+      if (!id || !aid2) return;
       if (!confirm("Delete this session?")) return;
-      teamState.logs.training[aid] = (teamState.logs.training[aid] || []).filter(x => x.id !== id);
+      teamState.logs.training[aid2] = (teamState.logs.training[aid2] || []).filter(x => x.id !== id);
       teamState.meta.updatedAt = Date.now();
       saveLocal();
       renderTrain();
@@ -706,7 +690,7 @@
   }
 
   // ---------------------------
-  // Render: PROFILE (role + account)
+  // Render: PROFILE
   // ---------------------------
   function renderProfile() {
     const el = $("view-profile");
@@ -731,9 +715,6 @@
                 <option value="parent"${state.role==="parent"?" selected":""}>Parent</option>
               </select>
             </div>
-          </div>
-          <div class="small muted" style="margin-top:8px">
-            Athlete mode reduces clutter and focuses on “today”.
           </div>
         </div>
 
@@ -782,7 +763,6 @@
     $("btnAuthOpen")?.addEventListener("click", async () => {
       const m = $("authModal");
       if (m) m.hidden = false;
-      // load cfg into inputs
       const cfg = window.cloudSync?.loadCfg?.() || { url:"", anon:"" };
       if ($("sbUrl")) $("sbUrl").value = cfg.url || "";
       if ($("sbAnon")) $("sbAnon").value = cfg.anon || "";
@@ -832,7 +812,6 @@
       $("authMsg").textContent = res.ok ? "Signed in." : `Sign in failed: ${res.reason}`;
       if (res.ok) {
         setSync("cloud", "Cloud");
-        // Auto pull on login for active team
         await pullActiveTeamFromCloud().catch(()=>{});
       }
       await refreshAuthState();
@@ -894,15 +873,48 @@
   }
 
   // ---------------------------
+  // Onboarding (Dropdown modal)
+  // ---------------------------
+  function openOnboarding() {
+    const m = $("onboardingModal");
+    if (!m) return;
+
+    // defaults from state
+    if ($("obRole")) $("obRole").value = state.role || "coach";
+    if ($("obSport")) $("obSport").value = state.sport || "basketball";
+
+    $("obMsg").textContent = "Choose your role and sport, then Continue.";
+    m.hidden = false;
+
+    $("obContinue")?.addEventListener("click", () => {
+      const role = ($("obRole")?.value || "coach").toLowerCase();
+      const sport = ($("obSport")?.value || "basketball").toLowerCase();
+
+      state.role = (role === "athlete" || role === "parent") ? role : "coach";
+      state.sport = (sport === "football" || sport === "soccer") ? sport : "basketball";
+
+      applySportTheme(state.sport);
+
+      state.meta.onboarded = true;
+      saveLocal();
+
+      m.hidden = true;
+      renderAll();
+      showView("home");
+    }, { once: true });
+
+    // preview theme as you change sport
+    $("obSport")?.addEventListener("change", (e) => applySportTheme(e.target.value));
+  }
+
+  // ---------------------------
   // Global render
   // ---------------------------
   function renderAll() {
-    // top pills
     const t = activeTeam();
     if ($("activeTeamPill")) $("activeTeamPill").textContent = `Team: ${t?.meta?.name || "—"}`;
     applySportTheme(state.sport);
 
-    // render views
     renderHome();
     renderTeam();
     renderTrain();
@@ -920,16 +932,12 @@
   // ---------------------------
   async function boot() {
     wireAuthModal();
-
-    // Init cloud quietly (if configured)
     await tryInitCloud();
 
-    // Auto auth change -> update UI
     if (window.cloudSync?.isReady?.()) {
       window.cloudSync.onAuthChange(async (session) => {
         if (session) {
           setSync("cloud", "Cloud");
-          // pull once on sign-in events
           await pullActiveTeamFromCloud().catch(()=>{});
         } else {
           setSync("cloud", "Cloud (signed out)");
@@ -938,32 +946,20 @@
       });
     }
 
-    // First-time onboarding (no dev UI; just role + sport)
+    // Render immediately (avoid blank screen)
+    showView("home");
+    renderAll();
+
+    // Replace prompt() onboarding with dropdown modal
     if (!state.meta?.onboarded) {
-      const r = prompt("Choose role: coach / athlete / parent", "coach");
-      const role = String(r || "coach").toLowerCase();
-      state.role = (role === "athlete" || role === "parent") ? role : "coach";
-
-      const s = prompt("Choose sport: basketball / football / soccer", "basketball");
-      const sport = String(s || "basketball").toLowerCase();
-      state.sport = (sport === "football" || sport === "soccer") ? sport : "basketball";
-
-      state.meta.onboarded = true;
-      saveLocal();
+      openOnboarding();
     }
 
-    // default view
-    showView("home");
-
     // remove splash
-    setTimeout(() => { try { $("splash")?.remove(); } catch {} }, 900);
-
-    // initial render
-    renderAll();
+    setTimeout(() => { try { $("splash")?.remove(); } catch {} }, 700);
   }
 
   boot().catch(() => {
-    // If something goes wrong, still hide splash
     try { $("splash")?.remove(); } catch {}
     setSync("error", "Startup error");
   });
