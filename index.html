@@ -1,66 +1,144 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="theme-color" content="#0b0f14" />
-<title>PerformanceIQ</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0f14" />
+  <title>PerformanceIQ</title>
 
-<link rel="icon" href="./icon-192.png" />
-<link rel="stylesheet" href="./styles.css" />
-
-<!-- Google Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="icon" href="./icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 
 <body>
-
-<!-- Skeleton Splash -->
-<div id="splash" class="splash">
-  <div class="skeleton-card">
-    <div class="skeleton-bar large"></div>
-    <div class="skeleton-bar"></div>
-    <div class="skeleton-bar short"></div>
-  </div>
-</div>
-
-<header class="topbar">
-  <div class="brand">
-    <span class="brand-title">PerformanceIQ</span>
+  <!-- Skeleton Splash -->
+  <div id="splash" class="splash" aria-hidden="false">
+    <div class="skeleton-card">
+      <div class="skeleton-bar large"></div>
+      <div class="skeleton-bar"></div>
+      <div class="skeleton-bar short"></div>
+      <div class="skeleton-bar"></div>
+    </div>
   </div>
 
-  <div class="sync-status">
-    <span id="syncIndicator" class="sync-dot offline"></span>
-    <span id="syncText">Local</span>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-title">PerformanceIQ</span>
+      <span id="activeTeamPill" class="pill">Team: —</span>
+    </div>
+
+    <div class="topbar-right">
+      <div class="sync-status" title="Save / Sync status">
+        <span id="syncIndicator" class="sync-dot offline"></span>
+        <span id="syncText">Local</span>
+      </div>
+      <button class="btn ghost" id="btnAuthOpen">Account</button>
+    </div>
+  </header>
+
+  <!-- Auth Modal -->
+  <div id="authModal" class="modal" hidden>
+    <div class="modal-card">
+      <div class="row between">
+        <div>
+          <div class="modal-title">Account</div>
+          <div class="small muted">Sign in to sync across devices</div>
+        </div>
+        <button class="btn ghost" id="btnAuthClose">Close</button>
+      </div>
+
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">Cloud settings</div>
+        <div class="minibody small muted">
+          Enter Supabase project URL + anon key. If not set, app stays local-only.
+        </div>
+
+        <div class="row gap wrap" style="margin-top:10px">
+          <div class="field grow">
+            <label>Supabase URL</label>
+            <input id="sbUrl" type="text" placeholder="https://xxxx.supabase.co" autocomplete="off" />
+          </div>
+          <div class="field grow">
+            <label>Anon key</label>
+            <input id="sbAnon" type="text" placeholder="eyJhbGciOi..." autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn" id="btnSaveCloud">Save cloud settings</button>
+          <button class="btn ghost" id="btnTestCloud">Test</button>
+        </div>
+
+        <div class="small muted" id="cloudMsg" style="margin-top:8px">—</div>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <div class="mini">
+          <div class="minihead">Sign in / Sign up</div>
+          <div class="row gap wrap">
+            <div class="field grow">
+              <label>Email</label>
+              <input id="authEmail" type="text" placeholder="you@email.com" autocomplete="email"/>
+            </div>
+            <div class="field grow">
+              <label>Password</label>
+              <input id="authPass" type="password" placeholder="password" autocomplete="current-password"/>
+            </div>
+          </div>
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn" id="btnSignIn">Sign in</button>
+            <button class="btn ghost" id="btnSignUp">Create account</button>
+          </div>
+          <div class="small muted" id="authMsg" style="margin-top:8px">—</div>
+        </div>
+
+        <div class="mini">
+          <div class="minihead">Session</div>
+          <div class="minibody mono small" id="authState">—</div>
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn danger" id="btnSignOut">Sign out</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">Sync actions</div>
+        <div class="row gap wrap">
+          <button class="btn ghost" id="btnPull">Pull from cloud</button>
+          <button class="btn ghost" id="btnPush">Push to cloud</button>
+        </div>
+        <div class="small muted" style="margin-top:8px">
+          Pull replaces your local team data with the latest cloud version for your active team.
+        </div>
+      </div>
+    </div>
   </div>
-</header>
 
-<main class="layout">
+  <main class="layout">
+    <!-- Primary 4 Tabs -->
+    <nav class="nav" role="navigation" aria-label="Primary">
+      <button class="navbtn" data-view="home">Home</button>
+      <button class="navbtn" data-view="team">Team</button>
+      <button class="navbtn" data-view="train">Train</button>
+      <button class="navbtn" data-view="profile">Profile</button>
+    </nav>
 
-  <!-- 4 Primary Tabs -->
-  <nav class="nav">
-    <button class="navbtn" data-view="home">Home</button>
-    <button class="navbtn" data-view="team">Team</button>
-    <button class="navbtn" data-view="train">Train</button>
-    <button class="navbtn" data-view="profile">Profile</button>
-  </nav>
+    <section class="content">
+      <section id="view-home" class="view"></section>
+      <section id="view-team" class="view" hidden></section>
+      <section id="view-train" class="view" hidden></section>
+      <section id="view-profile" class="view" hidden></section>
+    </section>
+  </main>
 
-  <section class="content">
+  <div id="tooltip" class="tooltip" hidden></div>
 
-    <section id="view-home" class="view"></section>
-    <section id="view-team" class="view" hidden></section>
-    <section id="view-train" class="view" hidden></section>
-    <section id="view-profile" class="view" hidden></section>
+  <!-- Supabase UMD (safe; app guards usage if offline/unconfigured) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  </section>
-
-</main>
-
-<!-- Help Tooltip -->
-<div id="tooltip" class="tooltip" hidden></div>
-
-<script src="./automationEngine.js"></script>
-<script src="./cloudSync.js"></script>
-<script src="./core.js"></script>
+  <script src="./cloudSync.js"></script>
+  <script src="./automationEngine.js"></script>
+  <script src="./core.js"></script>
 </body>
 </html>
