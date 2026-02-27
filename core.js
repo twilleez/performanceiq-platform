@@ -1,4 +1,4 @@
-// core.js — v2.2.0 (Train engine: session types + warmups + injury filters + substitutions + sRPE logs + periodization)
+// core.js — v2.3.0 (Phase 0 hotfix pack: reset hard-gate + global undo + data mgmt + autosave + mobile fixes)
 (function () {
   "use strict";
   if (window.__PIQ_CORE__) return;
@@ -12,6 +12,14 @@
   state.team = state.team || { teams: [], active_team_id: null };
   state.ui = state.ui || { view: "home" };
   state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
+
+  // ---------- Splash fix ----------
+  function hideSplash() {
+    const s = $("splash");
+    if (!s) return;
+    s.classList.add("hidden");
+    setTimeout(() => s.setAttribute("aria-hidden", "true"), 250);
+  }
 
   // ---------- Local meta for UX ----------
   const metaKey = "piq_meta_v2";
@@ -28,17 +36,6 @@
   function loadCloudCfg() { try { return JSON.parse(localStorage.getItem(cloudKey) || "null"); } catch { return null; } }
   function saveCloudCfg(cfg) { localStorage.setItem(cloudKey, JSON.stringify(cfg)); }
 
-  function isMobile() { return window.matchMedia && window.matchMedia("(max-width: 860px)").matches; }
-
-  // ---------- Splash fix ----------
-  function hideSplash() {
-    const s = $("splash");
-    if (!s) return;
-    s.classList.add("hidden");
-    // keep DOM but hidden; avoids flashes
-    setTimeout(() => { s.setAttribute("aria-hidden", "true"); }, 250);
-  }
-
   // ---------- Toast ----------
   let toastTimer = null;
   function toast(msg, ms = 2200) {
@@ -48,6 +45,49 @@
     t.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.hidden = true; }, ms);
+  }
+
+  // ---------- Global Undo (Phase 0-2) ----------
+  let undoTimer = null;
+  let undoAction = null;
+
+  function showUndoToast(label, onUndo, ms = 6000) {
+    const t = $("undoToast");
+    if (!t) {
+      // fallback: at least allow logic without UI
+      undoAction = onUndo;
+      clearTimeout(undoTimer);
+      undoTimer = setTimeout(() => { undoAction = null; }, ms);
+      return;
+    }
+
+    t.hidden = false;
+    t.innerHTML = `
+      <div class="grow">${label}</div>
+      <button id="btnUndoNow">Undo</button>
+    `;
+
+    const btn = $("btnUndoNow");
+    btn?.addEventListener("click", () => {
+      try { onUndo?.(); } catch {}
+      hideUndoToast();
+      toast("Undone");
+    });
+
+    undoAction = onUndo;
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => {
+      // expire
+      undoAction = null;
+      hideUndoToast();
+    }, ms);
+  }
+
+  function hideUndoToast() {
+    const t = $("undoToast");
+    if (!t) return;
+    t.hidden = true;
+    t.innerHTML = "";
   }
 
   // ---------- Data status pill ----------
@@ -62,7 +102,7 @@
       syncing: { label: "Syncing…", color: "var(--brand)" },
       synced: { label: "Synced", color: "var(--ok)" },
       off: { label: "Sync off", color: "rgba(255,255,255,.35)" },
-      error: { label: "Sync error", color: "var(--danger)" }
+      error: { label: "Sync failed — open Account to retry", color: "var(--danger)" }
     };
 
     const v = map[kind] || map.local;
@@ -196,19 +236,25 @@
     else setDataStatus("local", timeAgo(meta.lastLocalSaveAt));
   }
 
-  // ---------- TRAIN ENGINE ----------
+  // ---------- Phase 0-5 Auto-save every 30s (best-effort, silent) ----------
+  let autosaveTimer = null;
+  function startAutosave() {
+    clearInterval(autosaveTimer);
+    autosaveTimer = setInterval(() => {
+      try { persist(null, { silentToast: true }); } catch {}
+    }, 30000);
+  }
+
+  // ---------- TRAIN (keep your current upgrade from v2.2.0) ----------
   function safeNum(x, d = 0) { const n = Number(x); return Number.isFinite(n) ? n : d; }
 
   function computeWeekIndex() {
-    // Simple: week based on time since first session or since today-90d fallback
-    // (later: tie to season start / plan start)
     const earliest = state.sessions.length
       ? Math.min(...state.sessions.map(s => new Date(s.date || Date.now()).getTime()).filter(t => isFinite(t)))
       : Date.now() - (7 * 24 * 3600 * 1000);
     const diffDays = Math.floor((Date.now() - earliest) / (24 * 3600 * 1000));
     return Math.max(1, Math.floor(diffDays / 7) + 1);
   }
-
   function phaseInfo() {
     const w = computeWeekIndex();
     const pe = window.periodizationEngine;
@@ -219,160 +265,61 @@
 
   function baseWarmupBlocks({ sport, sessionType, injuries }) {
     const has = (k) => injuries.includes(k);
-
-    // universal, then sport/session adjustments
     const universal = [
       "Breathing reset: 4 slow breaths (1 min)",
       "Tissue temp: brisk walk / light bike (2–3 min)",
       "Mobility: ankles + hips + T-spine (3–4 min)",
       "Activation: glutes + core brace (2–3 min)"
     ];
-
-    const landing = has("knee") || has("ankle")
+    const landing = (has("knee") || has("ankle"))
       ? ["Landing mechanics: snap-down to stick (2×5)", "Low pogo contacts (2×15)"]
       : ["Pogo hops (2×20)", "Snap-down to stick (2×5)"];
-
     const shoulder = has("shoulder")
       ? ["Scap + cuff: band external rotation (2×12)", "Serratus wall slide (2×8)"]
       : ["Scap + cuff: band pull-aparts (2×15)", "External rotation (2×12)"];
-
     const sessionMap = {
-      strength: [
-        "Movement prep: squat + hinge + lunge patterns (2 rounds)",
-        "Ramp sets: 2 light sets for first lift"
-      ],
-      speed: [
-        "Sprint drills: A-skip / wall march (2–3 min)",
-        "Build-ups: 2×20yd at 60–80%"
-      ],
-      conditioning: [
-        "Rhythm: tempo run / jump rope (3 min)",
-        "COD rehearsal: 2×20s easy shuffle + backpedal"
-      ],
-      skill: [
-        "Neural: quick feet line hops (2×20s)",
-        "Ball/implement: easy touches (2–3 min)"
-      ],
-      recovery: [
-        "Zone 2: bike/walk (8–12 min)",
-        "Mobility flow: hips/ankles/T-spine (6–8 min)",
-        "Breath: nasal 4–6 breaths/min (2–3 min)"
-      ]
+      strength: ["Movement prep: squat + hinge + lunge patterns (2 rounds)", "Ramp sets: 2 light sets for first lift"],
+      speed: ["Sprint drills: A-skip / wall march (2–3 min)", "Build-ups: 2×20yd at 60–80%"],
+      conditioning: ["Rhythm: tempo run / jump rope (3 min)", "COD rehearsal: 2×20s easy shuffle + backpedal"],
+      skill: ["Neural: quick feet line hops (2×20s)", "Sport touches: easy reps (2–3 min)"],
+      recovery: ["Zone 2: bike/walk (8–12 min)", "Mobility flow: hips/ankles/T-spine (6–8 min)", "Breath: nasal 4–6 breaths/min (2–3 min)"]
     };
-
     const sportExtras = {
       basketball: ["Footwork: closeout slides (2×15s)", ...landing],
       football: ["Accel prep: falling starts (3×10yd)", ...landing],
       soccer: ["Groin/adductors: lateral lunge rocks (2×8/side)", ...landing],
       baseball: ["Throwing prep: arm circle series (2 min)", ...shoulder],
       volleyball: ["Jump prep: approach mechanics (3×3)", ...landing],
-      track: ["Drills: wicket-style rhythm (2–3 min)", ...landing]
+      track: ["Drills: rhythm strides (2–3 min)", ...landing]
     };
-
-    const a = [];
-    a.push(...universal);
-    a.push(...(sportExtras[sport] || sportExtras.basketball));
-    a.push(...(sessionMap[sessionType] || sessionMap.strength));
-    return a;
+    return [...universal, ...(sportExtras[sport] || sportExtras.basketball), ...(sessionMap[sessionType] || sessionMap.strength)];
   }
 
   function exerciseLibrary() {
-    // Each exercise can be filtered by injury “avoid” tags and provides substitutions.
-    // This is intentionally practical + coach-friendly.
     return {
       lower: [
-        {
-          name: "Rear-Foot Elevated Split Squat",
-          sets: "3–4", reps: "6–10/side", notes: "Front shin vertical, slow eccentric.",
-          avoid: ["knee"],
-          subs: ["Step-up (box)", "Goblet split squat", "Leg press (controlled)"]
-        },
-        {
-          name: "Trap Bar Deadlift",
-          sets: "3–5", reps: "3–6", notes: "Neutral spine, powerful drive.",
-          avoid: ["back"],
-          subs: ["RDL (dumbbells)", "Hip thrust", "Kettlebell deadlift"]
-        },
-        {
-          name: "RDL (DB/BB)",
-          sets: "3–4", reps: "6–10", notes: "Hinge, hamstrings loaded, lats tight.",
-          avoid: ["back"],
-          subs: ["Hip thrust", "Hamstring curl", "Single-leg RDL (light)"]
-        },
-        {
-          name: "Nordic Hamstring (Regression)",
-          sets: "2–3", reps: "4–8", notes: "Control down; assist up.",
-          avoid: [],
-          subs: ["Swiss ball curl", "Machine ham curl", "Eccentric slider curls"]
-        }
+        { name: "Rear-Foot Elevated Split Squat", sets: "3–4", reps: "6–10/side", notes: "Front shin vertical, slow eccentric.", avoid: ["knee"], subs: ["Step-up (box)", "Goblet split squat", "Leg press (controlled)"] },
+        { name: "Trap Bar Deadlift", sets: "3–5", reps: "3–6", notes: "Neutral spine, powerful drive.", avoid: ["back"], subs: ["RDL (dumbbells)", "Hip thrust", "Kettlebell deadlift"] },
+        { name: "RDL (DB/BB)", sets: "3–4", reps: "6–10", notes: "Hinge, hamstrings loaded, lats tight.", avoid: ["back"], subs: ["Hip thrust", "Hamstring curl", "Single-leg RDL (light)"] },
+        { name: "Nordic Hamstring (Regression)", sets: "2–3", reps: "4–8", notes: "Control down; assist up.", avoid: [], subs: ["Swiss ball curl", "Machine ham curl", "Eccentric slider curls"] }
       ],
       upper: [
-        {
-          name: "DB Bench Press (Neutral Grip)",
-          sets: "3–4", reps: "6–10", notes: "Scap set, full control.",
-          avoid: ["shoulder"],
-          subs: ["Push-up (elevated)", "Landmine press", "Cable press"]
-        },
-        {
-          name: "Chin-up / Assisted Chin-up",
-          sets: "3–4", reps: "4–10", notes: "Full hang; ribs down.",
-          avoid: ["shoulder"],
-          subs: ["Lat pulldown", "Ring rows", "Chest-supported row"]
-        },
-        {
-          name: "Half-Kneeling Landmine Press",
-          sets: "3–4", reps: "6–10/side", notes: "Great shoulder-friendly press.",
-          avoid: [],
-          subs: ["Incline DB press", "Push-up", "Cable press (half kneel)"]
-        },
-        {
-          name: "Chest-Supported Row",
-          sets: "3–4", reps: "8–12", notes: "No low-back fatigue.",
-          avoid: [],
-          subs: ["Cable row", "1-arm DB row (bench supported)", "Seal row"]
-        }
+        { name: "DB Bench Press (Neutral Grip)", sets: "3–4", reps: "6–10", notes: "Scap set, full control.", avoid: ["shoulder"], subs: ["Push-up (elevated)", "Landmine press", "Cable press"] },
+        { name: "Chin-up / Assisted Chin-up", sets: "3–4", reps: "4–10", notes: "Full hang; ribs down.", avoid: ["shoulder"], subs: ["Lat pulldown", "Ring rows", "Chest-supported row"] },
+        { name: "Half-Kneeling Landmine Press", sets: "3–4", reps: "6–10/side", notes: "Shoulder-friendly press.", avoid: [], subs: ["Incline DB press", "Push-up", "Cable press (half kneel)"] },
+        { name: "Chest-Supported Row", sets: "3–4", reps: "8–12", notes: "No low-back fatigue.", avoid: [], subs: ["Cable row", "1-arm DB row (bench supported)", "Seal row"] }
       ],
       power: [
-        {
-          name: "Medball Throw (Sport Pattern)",
-          sets: "4–6", reps: "3–5", notes: "Max intent, full rest.",
-          avoid: ["shoulder"],
-          subs: ["Scoop toss (lighter)", "Chest pass", "Rotational throw (light)"]
-        },
-        {
-          name: "Broad Jump / Approach Jump (sport)",
-          sets: "3–5", reps: "2–4", notes: "Stick landings; quality > quantity.",
-          avoid: ["knee", "ankle"],
-          subs: ["Box jump (low)", "Snap-down + stick", "Trap bar jump (light)"]
-        }
+        { name: "Medball Throw (Sport Pattern)", sets: "4–6", reps: "3–5", notes: "Max intent, full rest.", avoid: ["shoulder"], subs: ["Scoop toss (lighter)", "Chest pass", "Rotational throw (light)"] },
+        { name: "Broad/Approach Jump (sport)", sets: "3–5", reps: "2–4", notes: "Stick landings; quality > quantity.", avoid: ["knee", "ankle"], subs: ["Box jump (low)", "Snap-down + stick", "Trap bar jump (light)"] }
       ],
       speed: [
-        {
-          name: "10–20yd Accelerations",
-          sets: "4–8", reps: "1", notes: "Full recovery; perfect reps.",
-          avoid: ["ankle"],
-          subs: ["Sled march (light)", "Wall drills", "Bike sprint (short)"]
-        },
-        {
-          name: "Change of Direction (5-10-5 or sport)",
-          sets: "4–6", reps: "1", notes: "Decel mechanics first.",
-          avoid: ["knee", "ankle"],
-          subs: ["Low-intensity COD", "Decel drops", "Lateral shuffle intervals"]
-        }
+        { name: "10–20yd Accelerations", sets: "4–8", reps: "1", notes: "Full recovery; perfect reps.", avoid: ["ankle"], subs: ["Sled march (light)", "Wall drills", "Bike sprint (short)"] },
+        { name: "Change of Direction (5-10-5)", sets: "4–6", reps: "1", notes: "Decel mechanics first.", avoid: ["knee", "ankle"], subs: ["Low-intensity COD", "Decel drops", "Lateral shuffle intervals"] }
       ],
       conditioning: [
-        {
-          name: "Tempo Intervals",
-          sets: "8–12", reps: "30–60s", notes: "Keep heart rate controlled.",
-          avoid: [],
-          subs: ["Bike tempo", "Row tempo", "Pool intervals"]
-        },
-        {
-          name: "Repeated Sprint Ability",
-          sets: "2–4", reps: "6–10 reps", notes: "Short rest, quality work.",
-          avoid: ["ankle", "knee"],
-          subs: ["Bike sprints", "Shuttle walk/jog", "Skill-based conditioning"]
-        }
+        { name: "Tempo Intervals", sets: "8–12", reps: "30–60s", notes: "Keep heart rate controlled.", avoid: [], subs: ["Bike tempo", "Row tempo", "Pool intervals"] },
+        { name: "Repeated Sprint Ability", sets: "2–4", reps: "6–10 reps", notes: "Short rest, quality work.", avoid: ["ankle", "knee"], subs: ["Bike sprints", "Shuttle walk/jog", "Skill-based conditioning"] }
       ]
     };
   }
@@ -380,22 +327,17 @@
   function buildSessionTemplate({ sport, sessionType, level, injuries, substitutionsOn }) {
     const lib = exerciseLibrary();
     const avoid = (ex) => (ex.avoid || []).some(tag => injuries.includes(tag));
-
-    // Level modifiers
+    const pick = (arr) => arr.filter(x => !avoid(x));
     const isAdv = level === "advanced";
     const strengthSets = isAdv ? "4–5" : "3–4";
     const accessory = isAdv ? "2–3 accessories" : "1–2 accessories";
 
-    const pick = (arr) => arr.filter(x => !avoid(x));
-
     const blocks = [];
 
-    // Strength day
     if (sessionType === "strength") {
       const lower = pick(lib.lower);
       const upper = pick(lib.upper);
       const power = pick(lib.power);
-
       blocks.push({ title: "Power (fresh)", items: power.slice(0, 1) });
       blocks.push({ title: "Main Lower", items: lower.slice(0, 2).map(x => Object.assign({}, x, { sets: strengthSets })) });
       blocks.push({ title: "Main Upper", items: upper.slice(0, 2).map(x => Object.assign({}, x, { sets: strengthSets })) });
@@ -405,25 +347,22 @@
         items: [
           { name: "Core: dead bug / pallof press", sets: "2–3", reps: "8–12", notes: "Brace + breathe.", avoid: [], subs: ["Side plank", "Carries"] },
           { name: "Calf / tib: raises", sets: "2–3", reps: "12–20", notes: "Ankle stiffness.", avoid: [], subs: ["Jump rope (easy)", "Isometrics"] }
-        ]
+        ].filter(x => !avoid(x))
       });
     }
 
-    // Speed day
     if (sessionType === "speed") {
-      const speed = pick(lib.speed);
-      blocks.push({ title: "Speed", items: speed.slice(0, 2) });
+      blocks.push({ title: "Speed", items: pick(lib.speed).slice(0, 2) });
       blocks.push({
         title: "Strength (support)",
-        items: pick(lib.lower).slice(0, 1).concat(pick(lib.upper).slice(0, 1)).map(x => Object.assign({}, x, { sets: isAdv ? "3–4" : "2–3", reps: isAdv ? "5–8" : "6–10" }))
+        items: pick(lib.lower).slice(0, 1).concat(pick(lib.upper).slice(0, 1))
+          .map(x => Object.assign({}, x, { sets: isAdv ? "3–4" : "2–3", reps: isAdv ? "5–8" : "6–10" }))
       });
       blocks.push({ title: "Cooldown", items: [{ name: "Breathing + hips/ankles", sets: "—", reps: "5–8 min", notes: "Downshift.", avoid: [], subs: [] }] });
     }
 
-    // Conditioning day
     if (sessionType === "conditioning") {
-      const cond = pick(lib.conditioning);
-      blocks.push({ title: "Conditioning", items: cond.slice(0, 2) });
+      blocks.push({ title: "Conditioning", items: pick(lib.conditioning).slice(0, 2) });
       blocks.push({
         title: "Tendon / Core",
         items: [
@@ -433,13 +372,10 @@
       });
     }
 
-    // Skill day (template)
     if (sessionType === "skill") {
       blocks.push({
         title: "Skill / Technique (sport)",
-        items: [
-          { name: `${sport} skill block`, sets: "—", reps: "30–45 min", notes: "Keep quality high. Finish with 5–10 min of free play.", avoid: [], subs: [] }
-        ]
+        items: [{ name: `${sport} skill block`, sets: "—", reps: "30–45 min", notes: "Quality reps. Finish with 5–10 min free play.", avoid: [], subs: [] }]
       });
       blocks.push({
         title: "Strength Micro-dose",
@@ -447,19 +383,17 @@
       });
     }
 
-    // Recovery day
     if (sessionType === "recovery") {
       blocks.push({
         title: "Recovery Session",
         items: [
-          { name: "Zone 2 (bike/walk)", sets: "—", reps: "20–30 min", notes: "Easy conversation pace.", avoid: [], subs: ["Pool", "Row (easy)"] },
+          { name: "Zone 2 (bike/walk)", sets: "—", reps: "20–30 min", notes: "Easy pace.", avoid: [], subs: ["Pool", "Row (easy)"] },
           { name: "Mobility flow", sets: "—", reps: "10–15 min", notes: "Hips/ankles/T-spine + breathing.", avoid: [], subs: [] },
           { name: "Optional: light band work", sets: "2", reps: "12–15", notes: "Shoulders/hips.", avoid: [], subs: [] }
         ]
       });
     }
 
-    // substitutions text helper
     function exRow(ex) {
       const subs = substitutionsOn && ex.subs && ex.subs.length ? `<div class="small muted">Subs: ${ex.subs.join(" • ")}</div>` : "";
       const meta = `<div class="small muted">${ex.sets || "—"} sets • ${ex.reps || "—"} reps</div>`;
@@ -476,7 +410,6 @@
   }
 
   function defaultIntensityTargets(sessionType, level, phase) {
-    // produce sRPE target + minutes range used for quick logging
     const adv = level === "advanced";
     const base = {
       strength: { min: 55, max: 75, rpe: adv ? 7 : 6 },
@@ -486,7 +419,6 @@
       recovery: { min: 25, max: 45, rpe: 3 }
     }[sessionType] || { min: 45, max: 65, rpe: 6 };
 
-    // phase adjustments
     if (phase === "DELOAD") return { ...base, rpe: Math.max(3, base.rpe - 2), max: Math.round(base.max * 0.75) };
     if (phase === "PEAK") return { ...base, rpe: Math.max(4, base.rpe - 1), max: Math.round(base.max * 0.85) };
     if (phase === "INTENSIFICATION") return { ...base, rpe: Math.min(8, base.rpe + 1), max: Math.round(base.max * 0.9) };
@@ -499,30 +431,28 @@
     const r = Math.max(0, Math.min(10, safeNum(srpe, 0)));
     const load = Math.round(mins * r);
 
-    state.sessions.unshift({
-      id,
-      date: dateISO,
-      sport,
-      sessionType,
-      level,
-      minutes: mins,
-      srpe: r,
-      load,
-      injuries: injuries || []
-    });
-
-    // keep list trimmed for speed
+    state.sessions.unshift({ id, date: dateISO, sport, sessionType, level, minutes: mins, srpe: r, load, injuries: injuries || [] });
     if (state.sessions.length > 400) state.sessions = state.sessions.slice(0, 400);
 
     persist("Session saved");
   }
 
-  function deleteSession(id) {
-    if (!id) return;
-    if (!confirm("Delete this session? This cannot be undone.")) return;
-    state.sessions = state.sessions.filter(s => s.id !== id);
-    persist("Session deleted");
+  // Phase 0-2: delete becomes UNDO-able (no hard delete trap)
+  function deleteSessionUndoable(id) {
+    const idx = state.sessions.findIndex(s => s.id === id);
+    if (idx < 0) return;
+
+    const removed = state.sessions[idx];
+    state.sessions.splice(idx, 1);
+    persist(null, { silentToast: true });
     render("train");
+
+    showUndoToast("Session deleted.", () => {
+      // restore at original position if possible
+      state.sessions.splice(Math.min(idx, state.sessions.length), 0, removed);
+      persist(null, { silentToast: true });
+      render("train");
+    });
   }
 
   function renderSessionHistory(container) {
@@ -542,7 +472,7 @@
                 <div style="font-weight:900">${(s.sport || "sport").toUpperCase()} • ${s.sessionType} • ${s.level}</div>
                 <div class="small muted">${(s.date || "").slice(0,10)} • ${s.minutes} min • sRPE ${s.srpe} • Load ${s.load}</div>
               </div>
-              <button class="btn danger" data-del="${s.id}" title="Delete">Delete</button>
+              <button class="btn danger" data-del="${s.id}" title="Delete (undo available)">Delete</button>
             </div>
           `).join("")}
         </div>
@@ -550,7 +480,76 @@
     `;
 
     container.querySelectorAll("[data-del]").forEach(btn => {
-      btn.addEventListener("click", () => deleteSession(btn.getAttribute("data-del")));
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteSessionUndoable(btn.getAttribute("data-del"));
+      });
+    });
+  }
+
+  // ---------- Phase 0-1: Triple-confirm reset modal ----------
+  function openHardResetModal(onConfirm) {
+    const overlay = document.createElement("div");
+    overlay.className = "piq-confirm-backdrop";
+    overlay.innerHTML = `
+      <div class="piq-confirm" role="dialog" aria-modal="true" aria-label="Confirm reset">
+        <div class="piq-confirm-head">
+          <div class="piq-confirm-title" style="color:var(--danger)">Seed Demo / Reset (Danger)</div>
+          <div class="piq-confirm-sub">This clears local data on this device. Cloud data is NOT deleted.</div>
+        </div>
+        <div class="piq-confirm-body">
+          <div class="piq-confirm-steps">
+            <div class="small muted" style="margin-bottom:10px">
+              Step 1: Read the warning. Step 2: Type <b>RESET</b>. Step 3: Check the final box.
+            </div>
+
+            <div class="mini" style="margin-bottom:10px">
+              <div class="minihead">Warning</div>
+              <div class="minibody">
+                • Local sessions and preferences will be removed.<br/>
+                • This cannot be undone after the 6-second undo window.<br/>
+                • Use Export first if you want a backup.
+              </div>
+            </div>
+
+            <div class="field" style="margin-top:10px">
+              <label>Type RESET to confirm</label>
+              <input id="piqResetType" type="text" placeholder="RESET" />
+            </div>
+
+            <label class="chip" style="margin-top:10px; width:100%">
+              <input id="piqResetCheck" type="checkbox" />
+              <span>I understand all local data will be lost</span>
+            </label>
+
+            <div class="row between" style="margin-top:12px">
+              <button class="btn ghost" id="piqResetCancel">Cancel</button>
+              <button class="btn danger" id="piqResetDo" disabled>Reset now</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const type = overlay.querySelector("#piqResetType");
+    const chk = overlay.querySelector("#piqResetCheck");
+    const btn = overlay.querySelector("#piqResetDo");
+    const cancel = overlay.querySelector("#piqResetCancel");
+
+    function update() {
+      const ok = (type.value || "").trim().toUpperCase() === "RESET" && chk.checked;
+      btn.disabled = !ok;
+    }
+    type.addEventListener("input", update);
+    chk.addEventListener("change", update);
+
+    cancel.addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+    btn.addEventListener("click", () => {
+      overlay.remove();
+      onConfirm?.();
     });
   }
 
@@ -659,14 +658,7 @@
     function saveUI() { localStorage.setItem(uiKey, JSON.stringify(ui)); }
 
     const warmup = baseWarmupBlocks({ sport, sessionType: ui.sessionType, injuries: ui.injuries });
-    const built = buildSessionTemplate({
-      sport,
-      sessionType: ui.sessionType,
-      level: ui.level,
-      injuries: ui.injuries,
-      substitutionsOn: ui.subs
-    });
-
+    const built = buildSessionTemplate({ sport, sessionType: ui.sessionType, level: ui.level, injuries: ui.injuries, substitutionsOn: ui.subs });
     const intensity = defaultIntensityTargets(ui.sessionType, ui.level, pi.phase);
 
     body.innerHTML = `
@@ -735,17 +727,11 @@
               <input id="piqSrpe" type="number" min="0" max="10" step="1" value="${intensity.rpe}" />
             </div>
           </div>
-          <div class="hintline">
-            Suggested: ${intensity.min}–${intensity.max} min • sRPE ~${intensity.rpe}
-          </div>
+          <div class="hintline">Suggested: ${intensity.min}–${intensity.max} min • sRPE ~${intensity.rpe}</div>
 
           <div class="row gap wrap" style="margin-top:12px">
             <button class="btn" id="piqSaveSession">Save session</button>
             <button class="btn ghost" id="piqResetFilters">Reset filters</button>
-          </div>
-
-          <div class="hintline">
-            <span class="muted">Tip:</span> Filters remove risky exercises and show safer substitutions.
           </div>
         </div>
 
@@ -769,16 +755,13 @@
                 ${(b.items || []).map(built.exRow).join("")}
               </ol>
             </div>
-          `).join("") : `
-            <div class="small muted">No safe exercises remain with current filters. Try resetting filters.</div>
-          `}
+          `).join("") : `<div class="small muted">No safe exercises remain with current filters. Try resetting filters.</div>`}
         </div>
       </div>
 
       <div id="piqHistory" style="margin-top:12px"></div>
     `;
 
-    // bind UI
     const st = $("piqSessionType");
     const lv = $("piqLevel");
     const subs = $("piqSubs");
@@ -789,22 +772,15 @@
     st?.addEventListener("change", () => { ui.sessionType = st.value; saveUI(); render("train"); });
     lv?.addEventListener("change", () => { ui.level = lv.value; saveUI(); render("train"); });
 
-    subs?.addEventListener("change", () => {
-      ui.subs = !!subs.checked;
-      saveUI();
-      render("train");
-    });
+    subs?.addEventListener("change", () => { ui.subs = !!subs.checked; saveUI(); render("train"); });
 
     document.querySelectorAll("[data-inj]").forEach(cb => {
       cb.addEventListener("change", () => {
         const k = cb.getAttribute("data-inj");
         if (!k) return;
         ui.injuries = ui.injuries || [];
-        if (cb.checked) {
-          if (!ui.injuries.includes(k)) ui.injuries.push(k);
-        } else {
-          ui.injuries = ui.injuries.filter(x => x !== k);
-        }
+        if (cb.checked) { if (!ui.injuries.includes(k)) ui.injuries.push(k); }
+        else ui.injuries = ui.injuries.filter(x => x !== k);
         saveUI();
         render("train");
       });
@@ -821,9 +797,8 @@
     $("piqSaveSession")?.addEventListener("click", () => {
       const mins = safeNum($("piqMinutes")?.value, intensity.max);
       const srpe = safeNum($("piqSrpe")?.value, intensity.rpe);
-      const dateISO = new Date().toISOString();
       addSessionLog({
-        dateISO,
+        dateISO: new Date().toISOString(),
         sport,
         sessionType: ui.sessionType,
         level: ui.level,
@@ -855,18 +830,18 @@
       </div>
 
       <div class="mini" style="margin-top:12px">
-        <div class="minihead">What gets saved</div>
+        <div class="minihead">Phase 0 hotfixes</div>
         <div class="minibody">
-          • Your sessions (minutes × sRPE = load)<br/>
-          • Your role + sport preferences<br/>
-          <span class="small muted">Cloud sync is optional and stays inside Account.</span>
+          • Undo for destructive actions<br/>
+          • Reset is triple-confirm gated<br/>
+          • Auto-save every 30 seconds (local)<br/>
+          <span class="small muted">Goal: 0 data-loss incidents.</span>
         </div>
       </div>
     `;
   }
 
   const renderMap = { home: renderHome, team: renderTeam, train: renderTrain, profile: renderProfile };
-
   function render(view) {
     setTeamPill();
     renderMap[view]?.();
@@ -1014,19 +989,23 @@
       if (error) throw error;
 
       if (data?.state) {
+        const prev = JSON.parse(JSON.stringify(state));
         state = data.state;
         state.profile = state.profile || {};
         state.team = state.team || { teams: [], active_team_id: null };
         state.ui = state.ui || { view: "home" };
         state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
+
         persist(null, { silentToast: true });
 
-        const activeView =
-          document.querySelector(".navbtn.active")?.dataset.view ||
-          document.querySelector(".bottomnav .tab.active")?.dataset.view ||
-          state.ui.view ||
-          "home";
-        render(activeView);
+        // Undo window for accidental pulls
+        showUndoToast("Pulled from cloud.", () => {
+          state = prev;
+          persist(null, { silentToast: true });
+          render(state.ui?.view || "home");
+        });
+
+        render(state.ui.view || "home");
       }
 
       meta.lastCloudSyncAt = new Date().toISOString();
@@ -1046,7 +1025,7 @@
     await refreshCloudPill();
   }
 
-  // ---------- Micro-tours ----------
+  // ---------- Micro-tours (kept lightweight) ----------
   const toursKey = "piq_tours_v2";
   function loadTours() { try { return JSON.parse(localStorage.getItem(toursKey) || "null") || {}; } catch { return {}; } }
   function saveTours(t) { localStorage.setItem(toursKey, JSON.stringify(t || {})); }
@@ -1054,26 +1033,10 @@
 
   function tourScript(role, tab) {
     const scripts = {
-      home: {
-        coach: "Home: phase + nutrition targets + quick actions.",
-        athlete: "Home: your phase snapshot + targets.",
-        parent: "Home: quick view of targets and training direction."
-      },
-      team: {
-        coach: "Team: roster + access (cloud).",
-        athlete: "Team: join team (cloud) when enabled.",
-        parent: "Team: see the team context."
-      },
-      train: {
-        coach: "Train: choose session type + filters + log sRPE load.",
-        athlete: "Train: follow today’s plan and save your session.",
-        parent: "Train: see plan and what it trains."
-      },
-      profile: {
-        coach: "Profile: what’s saved and how to use the app.",
-        athlete: "Profile: what’s saved and how to use the app.",
-        parent: "Profile: what’s saved and how to use the app."
-      }
+      home: { coach: "Home: phase + nutrition targets + next actions.", athlete: "Home: your snapshot + targets.", parent: "Home: quick view of targets and training direction." },
+      team: { coach: "Team: roster + access (cloud).", athlete: "Team: join team (cloud) when enabled.", parent: "Team: see team context." },
+      train: { coach: "Train: choose session type + filters + log sRPE load.", athlete: "Train: follow plan and save your session.", parent: "Train: see plan and what it trains." },
+      profile: { coach: "Profile: what’s saved and how to use the app.", athlete: "Profile: what’s saved and how to use the app.", parent: "Profile: what’s saved and how to use the app." }
     };
     return scripts?.[tab]?.[role] || "Tip: explore each tab to get started.";
   }
@@ -1097,7 +1060,7 @@
     toast(tourScript(role, active), 2600);
   }
 
-  // ---------- Onboarding (modal; never traps) ----------
+  // ---------- Onboarding (never traps) ----------
   function ensureRoleOnboarding() {
     if (state.profile?.role && state.profile?.sport) return;
 
@@ -1109,7 +1072,6 @@
           <div class="piq-modal-title">Welcome to PerformanceIQ</div>
           <div class="piq-modal-sub">Choose your role and sport to personalize the app.</div>
         </div>
-
         <div class="piq-modal-body">
           <div class="field">
             <label>Role</label>
@@ -1119,7 +1081,6 @@
               <option value="parent">Parent</option>
             </select>
           </div>
-
           <div class="field" style="margin-top:10px">
             <label>Sport</label>
             <select id="piqSportPick">
@@ -1131,11 +1092,10 @@
               <option value="track">Track</option>
             </select>
           </div>
-
           <div class="row between" style="margin-top:14px">
             <div class="small muted">You can change this anytime in Account.</div>
             <div class="row gap">
-              <button class="btn ghost" id="piqSkipBtn" title="Use defaults">Skip</button>
+              <button class="btn ghost" id="piqSkipBtn">Skip</button>
               <button class="btn" id="piqStartBtn">Continue</button>
             </div>
           </div>
@@ -1172,7 +1132,60 @@
     });
   }
 
-  // ---------- Boot bindings ----------
+  // ---------- Data Management (Phase 0-4) ----------
+  function exportFile(filename, text) {
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetLocalWithUndo() {
+    const prev = JSON.parse(JSON.stringify(state));
+
+    // reset to base defaults using datastore load fresh template by clearing key
+    try {
+      localStorage.removeItem("piq_local_state_v2");
+      state = window.dataStore.load();
+      persist(null, { silentToast: true });
+      render("home");
+      showUndoToast("Local data reset.", () => {
+        state = prev;
+        persist(null, { silentToast: true });
+        render(state.ui?.view || "home");
+      });
+      toast("Reset complete");
+    } catch {
+      toast("Reset failed");
+    }
+  }
+
+  function importJSONWithUndo(text) {
+    const prev = JSON.parse(JSON.stringify(state));
+    try {
+      window.dataStore.importJSON(text);
+      state = window.dataStore.load();
+      persist(null, { silentToast: true });
+      render(state.ui?.view || "home");
+
+      showUndoToast("Import complete (overwrote local).", () => {
+        state = prev;
+        persist(null, { silentToast: true });
+        render(state.ui?.view || "home");
+      });
+
+      toast("Imported");
+    } catch {
+      toast("Import failed");
+    }
+  }
+
+  // ---------- Bindings ----------
   function bindNav() {
     document.querySelectorAll("[data-view]").forEach(btn => {
       if (btn.classList.contains("navbtn") || btn.classList.contains("tab")) {
@@ -1237,37 +1250,67 @@
     $("btnPull")?.addEventListener("click", pullFromCloud);
 
     $("btnHelp")?.addEventListener("click", () => {
-      toast("Tip: Train tab now generates sessions + warmups + injury-safe substitutions. Save minutes + sRPE to log load.", 3200);
+      toast("Tip: Data Management is in Account. Destructive actions have Undo.", 2800);
+    });
+
+    // Data Management buttons (Phase 0-4)
+    $("btnExport")?.addEventListener("click", () => {
+      try {
+        const json = window.dataStore.exportJSON();
+        exportFile(`performanceiq-export-${new Date().toISOString().slice(0,10)}.json`, json);
+        $("dataMsg") && ($("dataMsg").textContent = "Exported JSON file.");
+        toast("Exported");
+      } catch {
+        $("dataMsg") && ($("dataMsg").textContent = "Export failed.");
+        toast("Export failed");
+      }
+    });
+
+    $("fileImport")?.addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try {
+        const text = await f.text();
+        importJSONWithUndo(text);
+        $("dataMsg") && ($("dataMsg").textContent = "Imported (Undo available).");
+      } catch {
+        $("dataMsg") && ($("dataMsg").textContent = "Import failed.");
+      } finally {
+        e.target.value = "";
+      }
+    });
+
+    $("btnResetLocal")?.addEventListener("click", () => {
+      openHardResetModal(() => {
+        // do reset, but still give 6s undo
+        resetLocalWithUndo();
+        $("dataMsg") && ($("dataMsg").textContent = "Reset performed (Undo available).");
+      });
     });
   }
 
+  // ---------- Boot ----------
   function boot() {
-    // Init SB best-effort
     sb = initSupabaseIfPossible();
 
-    // Bind UI
     bindNav();
     bindDrawer();
     bindAccountControls();
 
-    // Pills
     setTeamPill();
     refreshCloudPill();
 
-    // Status
     const cfg = loadCloudCfg();
     if (!cfg || !cfg.url || !cfg.anon) setDataStatus("off");
     else if (!sb) setDataStatus("error");
     else setDataStatus("local", timeAgo(meta.lastLocalSaveAt));
 
-    // Onboarding
     ensureRoleOnboarding();
 
-    // Initial view
     const initial = state.ui?.view || "home";
     showView(initial);
 
-    // ✅ always hide splash (fix trap screen)
+    startAutosave();
     hideSplash();
   }
 
