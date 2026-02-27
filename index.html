@@ -1,133 +1,66 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b0f14" />
-  <title>PerformanceIQ</title>
-  <link rel="icon" href="./icon-192.png" />
-  <link rel="apple-touch-icon" href="./icon-192.png" />
-  <link rel="stylesheet" href="./styles.css" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0b0f14" />
+<title>PerformanceIQ</title>
+
+<link rel="icon" href="./icon-192.png" />
+<link rel="stylesheet" href="./styles.css" />
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 
 <body>
-  <!-- Splash -->
-  <div id="splash" class="splash" aria-hidden="false">
-    <div class="splash-card">
-      <div class="brand">
-        <div class="logo-dot"></div>
-        <div>
-          <div class="brand-title">PerformanceIQ</div>
-          <div class="brand-sub">Offline-first • Team-ready</div>
-        </div>
-      </div>
-      <div class="splash-loading">
-        <div class="spinner" aria-hidden="true"></div>
-        <div id="splashText">Loading…</div>
-      </div>
-    </div>
+
+<!-- Skeleton Splash -->
+<div id="splash" class="splash">
+  <div class="skeleton-card">
+    <div class="skeleton-bar large"></div>
+    <div class="skeleton-bar"></div>
+    <div class="skeleton-bar short"></div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-title">PerformanceIQ</span>
   </div>
 
-  <!-- App -->
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="appmark">
-        <span class="appmark-dot" aria-hidden="true"></span>
-        <span class="appmark-title">PerformanceIQ</span>
-      </div>
-      <span class="pill" id="activeTeamPill" title="Active team">Team: Default</span>
-      <span class="pill" id="cloudPill" title="Cloud status">Cloud: Local</span>
-      <span class="pill" id="devicePill" title="Device mode">Device: —</span>
-      <span class="pill" id="sportPill" title="Active sport">Sport: —</span>
-    </div>
-
-    <div class="topbar-right">
-      <button class="btn ghost" id="btnOnboard">Onboarding</button>
-      <button class="btn ghost" id="btnSeed">Seed Demo</button>
-      <button class="btn" id="btnExport">Export</button>
-      <label class="btn ghost filebtn">
-        Import
-        <input id="fileImport" type="file" accept="application/json" />
-      </label>
-    </div>
-  </header>
-
-  <!-- Onboarding Wizard Modal -->
-  <div id="onboardModal" class="modal" hidden>
-    <div class="modal-card">
-      <div class="row between">
-        <div>
-          <div class="modal-title">Welcome to PerformanceIQ</div>
-          <div class="small muted">Set up your experience (takes ~60 seconds)</div>
-        </div>
-        <button class="btn ghost" id="btnCloseOnboard">Close</button>
-      </div>
-
-      <div class="wizbar" style="margin-top:12px">
-        <div class="wizstep" data-step="1"><div class="wizdot"></div><div class="wizlabel">Role</div></div>
-        <div class="wizline"></div>
-        <div class="wizstep" data-step="2"><div class="wizdot"></div><div class="wizlabel">Athlete</div></div>
-        <div class="wizline"></div>
-        <div class="wizstep" data-step="3"><div class="wizdot"></div><div class="wizlabel">Defaults</div></div>
-      </div>
-
-      <div id="wizBody" style="margin-top:14px"></div>
-
-      <div class="row between" style="margin-top:14px">
-        <button class="btn ghost" id="btnWizBack">Back</button>
-        <div class="row gap wrap">
-          <button class="btn ghost" id="btnWizSkip">Skip</button>
-          <button class="btn" id="btnWizNext">Next</button>
-        </div>
-      </div>
-    </div>
+  <div class="sync-status">
+    <span id="syncIndicator" class="sync-dot offline"></span>
+    <span id="syncText">Local</span>
   </div>
+</header>
 
-  <main class="layout">
-    <!-- Nav -->
-    <nav class="nav" role="navigation" aria-label="Primary">
-      <button class="navbtn" data-view="dashboard">Dashboard</button>
-      <button class="navbtn" data-view="team">Team</button>
-      <button class="navbtn" data-view="log">Log</button>
-      <button class="navbtn" data-view="nutrition">Nutrition</button>
-      <button class="navbtn" data-view="workouts">Workouts</button>
-      <button class="navbtn" data-view="periodization">Periodization</button>
-      <button class="navbtn" data-view="analytics">Analytics</button>
-      <button class="navbtn" data-view="settings">Settings</button>
-    </nav>
+<main class="layout">
 
-    <!-- Content -->
-    <section class="content">
-      <section class="view" id="view-dashboard" data-view>
-        <div id="coachDashWrap" class="grid2"></div>
-        <div id="athleteDashWrap"></div>
-      </section>
+  <!-- 4 Primary Tabs -->
+  <nav class="nav">
+    <button class="navbtn" data-view="home">Home</button>
+    <button class="navbtn" data-view="team">Team</button>
+    <button class="navbtn" data-view="train">Train</button>
+    <button class="navbtn" data-view="profile">Profile</button>
+  </nav>
 
-      <section class="view" id="view-team" data-view hidden></section>
-      <section class="view" id="view-log" data-view hidden></section>
-      <section class="view" id="view-nutrition" data-view hidden></section>
-      <section class="view" id="view-workouts" data-view hidden></section>
-      <section class="view" id="view-periodization" data-view hidden></section>
-      <section class="view" id="view-analytics" data-view hidden></section>
-      <section class="view" id="view-settings" data-view hidden></section>
-    </section>
-  </main>
+  <section class="content">
 
-  <footer class="footer">
-    <span class="muted">PerformanceIQ • Offline-first build</span>
-  </footer>
+    <section id="view-home" class="view"></section>
+    <section id="view-team" class="view" hidden></section>
+    <section id="view-train" class="view" hidden></section>
+    <section id="view-profile" class="view" hidden></section>
 
-<script src="./dataStore.js"></script>
-<script src="./nutritionEngine.js"></script>
-<script src="./periodizationEngine.js"></script>
-<script src="./workoutEngine.js"></script>
-<script src="./riskEngine.js"></script>
-<script src="./analyticsEngine.js"></script>
+  </section>
 
-<!-- NEW -->
+</main>
+
+<!-- Help Tooltip -->
+<div id="tooltip" class="tooltip" hidden></div>
+
 <script src="./automationEngine.js"></script>
 <script src="./cloudSync.js"></script>
-
 <script src="./core.js"></script>
 </body>
 </html>
