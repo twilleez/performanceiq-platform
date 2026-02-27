@@ -1,49 +1,156 @@
-// cloudSync.js — v1.0.0
-// Week 9–10 Cloud Write-back Hooks (SAFE)
-// - If Supabase is not configured or offline: no-op.
-// - If Supabase is configured: uses window.supabaseClient.
-// NOTE: This file does NOT create tables. It only writes if your schema exists.
+// cloudSync.js — v13.0.0 (UMD-safe Supabase v2)
+// Cloud table expectation (recommended):
+// public.piq_team_state (team_id uuid PK, state jsonb, updated_at timestamptz default now(), updated_by uuid default auth.uid())
+// RLS should allow select/upsert only for team members via is_team_member(team_id).
 
 (function () {
   "use strict";
   if (window.cloudSync) return;
 
-  function hasClient() {
-    return !!(window.supabaseClient && window.supabaseClient.from);
-  }
+  let client = null;
+  let cfg = { url: "", anon: "" };
 
-  async function safeUpsert(table, payload, conflictKeys) {
-    if (!hasClient()) return { ok: false, localOnly: true };
+  const CLOUD_CFG_KEY = "piq_cloud_cfg_v13";
+
+  function loadCfg() {
     try {
-      const q = window.supabaseClient.from(table).upsert(payload, conflictKeys ? { onConflict: conflictKeys } : undefined);
-      const { error } = await q;
-      if (error) return { ok: false, error };
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: e };
+      const raw = localStorage.getItem(CLOUD_CFG_KEY);
+      if (!raw) return { url: "", anon: "" };
+      const j = JSON.parse(raw);
+      return { url: String(j.url || ""), anon: String(j.anon || "") };
+    } catch {
+      return { url: "", anon: "" };
     }
   }
 
-  // Suggested table mappings (adjust if your schema differs)
-  // workout_logs: athlete_id, date, minutes, rpe, load, type, notes
-  async function writeTrainingSession(row) {
-    return safeUpsert("workout_logs", row, "athlete_id,date");
+  function saveCfg(next) {
+    cfg = { url: String(next.url || ""), anon: String(next.anon || "") };
+    try { localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify(cfg)); } catch {}
+    return cfg;
   }
 
-  // readiness: athlete_id, date, sleep_hours, soreness, stress, energy, note
-  async function writeReadiness(row) {
-    return safeUpsert("readiness", row, "athlete_id,date");
+  function hasSupabase() {
+    return typeof window.supabase !== "undefined" && typeof window.supabase.createClient === "function";
   }
 
-  // nutrition: athlete_id, date, adherence, notes
-  async function writeNutrition(row) {
-    return safeUpsert("nutrition", row, "athlete_id,date");
+  function isConfigured() {
+    return !!(cfg.url && cfg.anon);
+  }
+
+  function initFromStorage() {
+    cfg = loadCfg();
+    if (!hasSupabase() || !isConfigured()) {
+      client = null;
+      return { ok: false, reason: !hasSupabase() ? "Supabase library missing" : "Not configured" };
+    }
+    try {
+      client = window.supabase.createClient(cfg.url, cfg.anon, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+      });
+      return { ok: true };
+    } catch (e) {
+      client = null;
+      return { ok: false, reason: e?.message || String(e) };
+    }
+  }
+
+  async function testConnection() {
+    if (!client) return { ok: false, reason: "Cloud not initialized" };
+    try {
+      const { data, error } = await client.auth.getSession();
+      if (error) return { ok: false, reason: error.message };
+      return { ok: true, session: data?.session || null };
+    } catch (e) {
+      return { ok: false, reason: e?.message || String(e) };
+    }
+  }
+
+  async function signUp(email, password) {
+    if (!client) return { ok: false, reason: "Cloud not initialized" };
+    const { data, error } = await client.auth.signUp({ email, password });
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true, data };
+  }
+
+  async function signIn(email, password) {
+    if (!client) return { ok: false, reason: "Cloud not initialized" };
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true, data };
+  }
+
+  async function signOut() {
+    if (!client) return { ok: false, reason: "Cloud not initialized" };
+    const { error } = await client.auth.signOut();
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true };
+  }
+
+  async function getSession() {
+    if (!client) return { ok: false, session: null, reason: "Cloud not initialized" };
+    const { data, error } = await client.auth.getSession();
+    if (error) return { ok: false, session: null, reason: error.message };
+    return { ok: true, session: data?.session || null };
+  }
+
+  function onAuthChange(cb) {
+    if (!client) return () => {};
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      try { cb(session || null); } catch {}
+    });
+    return () => { try { data?.subscription?.unsubscribe?.(); } catch {} };
+  }
+
+  async function pullTeamState(teamId) {
+    if (!client) return { ok: false, reason: "Cloud not initialized" };
+    const id = String(teamId || "");
+    if (!id) return { ok: false, reason: "Missing teamId" };
+
+    const { data, error } = await client
+      .from("piq_team_state")
+      .select("team_id, state, updated_at")
+      .eq("team_id", id)
+      .maybeSingle();
+
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true, row: data || null };
+  }
+
+  async function pushTeamState(teamId, stateObj) {
+    if (!client) return { ok: false, reason: "Cloud not initialized" };
+    const id = String(teamId || "");
+    if (!id) return { ok: false, reason: "Missing teamId" };
+
+    const payload = {
+      team_id: id,
+      state: stateObj
+      // updated_at/updated_by recommended as server defaults/trigger
+    };
+
+    const { data, error } = await client
+      .from("piq_team_state")
+      .upsert(payload, { onConflict: "team_id" })
+      .select("team_id, updated_at")
+      .single();
+
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true, data };
   }
 
   window.cloudSync = {
-    hasClient,
-    writeTrainingSession,
-    writeReadiness,
-    writeNutrition
+    loadCfg,
+    saveCfg,
+    initFromStorage,
+    testConnection,
+    signUp,
+    signIn,
+    signOut,
+    getSession,
+    onAuthChange,
+    pullTeamState,
+    pushTeamState,
+    isReady: () => !!client,
+    isConfigured: () => isConfigured(),
+    getClient: () => client
   };
 })();
