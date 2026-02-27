@@ -1,10 +1,9 @@
-// dataStore.js — v2.1.0 (offline-first, safe, forward-compatible)
+// dataStore.js — v2.2.0 (offline-first, safe, forward-compatible)
 (function () {
   "use strict";
   if (window.dataStore) return;
 
   const KEY = "piq_local_state_v2";
-  const VERSION = "2.1.0";
 
   function nowISO() { return new Date().toISOString(); }
 
@@ -12,23 +11,29 @@
     try { return JSON.parse(json); } catch { return fallback; }
   }
 
-  function isObj(x) {
-    return !!x && typeof x === "object" && !Array.isArray(x);
-  }
-
-  function safeArray(val) {
-    return Array.isArray(val) ? val : [];
-  }
-
   function baseState() {
     return {
-      meta: { updated_at: nowISO(), version: VERSION },
+      meta: { updated_at: nowISO(), version: "2.2.0" },
       profile: {
         role: "coach",
         sport: "basketball",
+
+        // nutrition inputs (already used)
         weight_lbs: 160,
         goal: "maintain",   // maintain|gain|cut
-        activity: "med"     // low|med|high
+        activity: "med",    // low|med|high
+
+        // NEW: training preferences
+        train_level: "standard", // standard|advanced
+        equipment: "full",       // none|bands|dumbbells|barbell|full
+
+        // NEW: injury filters (simple, user-controlled)
+        injuries: {
+          knee: false,
+          shoulder: false,
+          back: false,
+          ankle: false
+        }
       },
       team: { active_team_id: null, teams: [] },
 
@@ -37,10 +42,7 @@
       workouts: [],
       nutrition: [],
 
-      // unified training session store (Train tab writes here)
-      // {id, date, sport, difficulty, minutes, srpe, load,
-      //  phase, focus, exercises:[{key,name,sets,reps,note,category}],
-      //  notes, created_at}
+      // unified training sessions
       training_sessions: [],
 
       ui: { view: "home" }
@@ -49,57 +51,45 @@
 
   function normalize(s) {
     const base = baseState();
+    const state = (s && typeof s === "object") ? s : base;
 
-    if (!isObj(s)) return base;
-
-    // Deep-merge known nested objects rather than replacing wholesale
-    const state = Object.assign({}, base, s);
-
-    state.meta    = Object.assign({}, base.meta,    isObj(s.meta)    ? s.meta    : {});
-    state.profile = Object.assign({}, base.profile, isObj(s.profile) ? s.profile : {});
-    state.team    = Object.assign({}, base.team,    isObj(s.team)    ? s.team    : {});
-    state.ui      = Object.assign({}, base.ui,      isObj(s.ui)      ? s.ui      : {});
-
-    // Always stamp current version
-    state.meta.version    = VERSION;
+    state.meta = state.meta || {};
+    state.meta.version = state.meta.version || base.meta.version;
     state.meta.updated_at = state.meta.updated_at || nowISO();
 
-    // Enforce array types for all buckets
-    state.team.teams        = safeArray(state.team.teams);
-    state.logs              = safeArray(state.logs);
-    state.workouts          = safeArray(state.workouts);
-    state.nutrition         = safeArray(state.nutrition);
-    state.training_sessions = safeArray(state.training_sessions);
+    state.profile = state.profile || base.profile;
+    state.profile.injuries = state.profile.injuries || {};
+    state.profile.injuries.knee = !!state.profile.injuries.knee;
+    state.profile.injuries.shoulder = !!state.profile.injuries.shoulder;
+    state.profile.injuries.back = !!state.profile.injuries.back;
+    state.profile.injuries.ankle = !!state.profile.injuries.ankle;
+
+    state.profile.train_level = state.profile.train_level || "standard";
+    state.profile.equipment = state.profile.equipment || "full";
+
+    state.team = state.team || base.team;
+    state.ui = state.ui || base.ui;
+
+    state.logs = Array.isArray(state.logs) ? state.logs : [];
+    state.workouts = Array.isArray(state.workouts) ? state.workouts : [];
+    state.nutrition = Array.isArray(state.nutrition) ? state.nutrition : [];
+    state.training_sessions = Array.isArray(state.training_sessions) ? state.training_sessions : [];
 
     return state;
   }
 
-  // ---- Storage helpers (guarded against private-mode / quota errors)
-  function readStorage() {
-    try { return localStorage.getItem(KEY); } catch { return null; }
-  }
-
-  function writeStorage(data) {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(data));
-      return true;
-    } catch (e) {
-      console.warn("[dataStore] localStorage write failed:", e);
-      return false;
-    }
-  }
-
-  // ---- Public API
   function load() {
-    const raw = readStorage();
-    if (!raw) return baseState();
-    return normalize(safeParse(raw, null));
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return normalize(baseState());
+    const parsed = safeParse(raw, null);
+    return normalize(parsed);
   }
 
   function save(state) {
     const s = normalize(state);
     s.meta.updated_at = nowISO();
-    return writeStorage(s);
+    localStorage.setItem(KEY, JSON.stringify(s));
+    return true;
   }
 
   function exportJSON() {
@@ -107,11 +97,9 @@
   }
 
   function importJSON(text) {
-    if (typeof text !== "string" || !text.trim()) throw new Error("Invalid file: empty input");
     const parsed = safeParse(text, null);
-    if (!isObj(parsed)) throw new Error("Invalid file: expected a JSON object");
-    const ok = save(parsed);
-    if (!ok) throw new Error("Could not save imported data (storage may be full or unavailable)");
+    if (!parsed || typeof parsed !== "object") throw new Error("Invalid file");
+    save(parsed);
     return true;
   }
 
