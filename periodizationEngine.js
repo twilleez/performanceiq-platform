@@ -1,36 +1,15 @@
-// periodizationEngine.js — v2.0.0
-// Week 5–6 Production Engine
-// Handles training phase detection + volume scaling + load strategy
+// periodizationEngine.js — v2.1.0
+// Adds: suggested weekly target load given baseline + phase multipliers
 
 (function () {
   "use strict";
   if (window.periodizationEngine) return;
 
   const PHASES = {
-    ACCUMULATION: {
-      label: "Accumulation",
-      volumeMultiplier: 1.1,
-      intensityMultiplier: 0.9,
-      description: "Higher volume, moderate intensity."
-    },
-    INTENSIFICATION: {
-      label: "Intensification",
-      volumeMultiplier: 0.9,
-      intensityMultiplier: 1.1,
-      description: "Lower volume, higher intensity."
-    },
-    DELOAD: {
-      label: "Deload",
-      volumeMultiplier: 0.6,
-      intensityMultiplier: 0.8,
-      description: "Reduced load for recovery."
-    },
-    PEAK: {
-      label: "Peak",
-      volumeMultiplier: 0.75,
-      intensityMultiplier: 1.15,
-      description: "Performance peak taper."
-    }
+    ACCUMULATION: { label: "Accumulation", vol: 1.1, intn: 0.9, desc: "Higher volume, moderate intensity." },
+    INTENSIFICATION: { label: "Intensification", vol: 0.9, intn: 1.1, desc: "Lower volume, higher intensity." },
+    DELOAD: { label: "Deload", vol: 0.6, intn: 0.8, desc: "Reduced load for recovery." },
+    PEAK: { label: "Peak", vol: 0.75, intn: 1.15, desc: "Taper + performance emphasis." }
   };
 
   function getCurrentPhase(weekNumber) {
@@ -42,18 +21,26 @@
 
   function adjustVolume(baseVolume, phase) {
     const p = PHASES[phase] || PHASES.ACCUMULATION;
-    return Math.round(baseVolume * p.volumeMultiplier);
+    return Math.round(baseVolume * p.vol);
   }
 
   function adjustIntensity(baseIntensity, phase) {
     const p = PHASES[phase] || PHASES.ACCUMULATION;
-    return Math.round(baseIntensity * p.intensityMultiplier);
+    return Math.round(baseIntensity * p.intn);
+  }
+
+  function weeklyTargetLoad({ baselineWeekLoad, weekNumber }) {
+    const phase = getCurrentPhase(weekNumber);
+    const p = PHASES[phase] || PHASES.ACCUMULATION;
+    const target = Math.round((baselineWeekLoad || 0) * p.vol);
+    return { phase, target, label: p.label, desc: p.desc };
   }
 
   window.periodizationEngine = {
     PHASES,
     getCurrentPhase,
     adjustVolume,
-    adjustIntensity
+    adjustIntensity,
+    weeklyTargetLoad
   };
 })();
