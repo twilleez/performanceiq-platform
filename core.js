@@ -1,4 +1,4 @@
-// core.js — v2.3.0 (Substitutions + Injury filters + UX upgrades: search + edit modal)
+// core.js — v2.2.0 (Train engine: session types + warmups + injury filters + substitutions + sRPE logs + periodization)
 (function () {
   "use strict";
   if (window.__PIQ_CORE__) return;
@@ -9,14 +9,11 @@
   // ---------- State ----------
   let state = window.dataStore?.load ? window.dataStore.load() : {};
   state.profile = state.profile || {};
-  state.profile.injuries = state.profile.injuries || { knee:false, shoulder:false, back:false, ankle:false };
-  state.profile.train_level = state.profile.train_level || "standard";
-  state.profile.equipment = state.profile.equipment || "full";
   state.team = state.team || { teams: [], active_team_id: null };
   state.ui = state.ui || { view: "home" };
-  state.training_sessions = Array.isArray(state.training_sessions) ? state.training_sessions : [];
+  state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
 
-  // ---------- Local meta ----------
+  // ---------- Local meta for UX ----------
   const metaKey = "piq_meta_v2";
   function loadMeta() { try { return JSON.parse(localStorage.getItem(metaKey) || "null") || {}; } catch { return {}; } }
   function saveMeta(m) { localStorage.setItem(metaKey, JSON.stringify(m || {})); }
@@ -31,6 +28,17 @@
   function loadCloudCfg() { try { return JSON.parse(localStorage.getItem(cloudKey) || "null"); } catch { return null; } }
   function saveCloudCfg(cfg) { localStorage.setItem(cloudKey, JSON.stringify(cfg)); }
 
+  function isMobile() { return window.matchMedia && window.matchMedia("(max-width: 860px)").matches; }
+
+  // ---------- Splash fix ----------
+  function hideSplash() {
+    const s = $("splash");
+    if (!s) return;
+    s.classList.add("hidden");
+    // keep DOM but hidden; avoids flashes
+    setTimeout(() => { s.setAttribute("aria-hidden", "true"); }, 250);
+  }
+
   // ---------- Toast ----------
   let toastTimer = null;
   function toast(msg, ms = 2200) {
@@ -42,22 +50,25 @@
     toastTimer = setTimeout(() => { t.hidden = true; }, ms);
   }
 
-  // ---------- Data pill ----------
+  // ---------- Data status pill ----------
   function setDataStatus(kind, detail) {
     const dot = $("saveDot");
     const txt = $("saveText");
     if (!dot || !txt) return;
+
     const map = {
-      local:   { label: "Local saved", color: "var(--ok)" },
-      saving:  { label: "Saving…",     color: "var(--warn)" },
-      syncing: { label: "Syncing…",    color: "var(--brand)" },
-      synced:  { label: "Synced",      color: "var(--ok)" },
-      off:     { label: "Sync off",    color: "rgba(255,255,255,.35)" },
-      error:   { label: "Sync error",  color: "var(--danger)" }
+      local: { label: "Local saved", color: "var(--ok)" },
+      saving: { label: "Saving…", color: "var(--warn)" },
+      syncing: { label: "Syncing…", color: "var(--brand)" },
+      synced: { label: "Synced", color: "var(--ok)" },
+      off: { label: "Sync off", color: "rgba(255,255,255,.35)" },
+      error: { label: "Sync error", color: "var(--danger)" }
     };
+
     const v = map[kind] || map.local;
     dot.style.background = v.color;
     txt.textContent = detail ? `${v.label} • ${detail}` : v.label;
+
     meta.syncState = kind;
     saveMeta(meta);
   }
@@ -77,31 +88,22 @@
     return `${d}d ago`;
   }
 
-  function persist(msg, opts = {}) {
-    setDataStatus("saving");
-    try {
-      window.dataStore?.save?.(state);
-      meta.lastLocalSaveAt = new Date().toISOString();
-      saveMeta(meta);
-      setDataStatus(sb ? (meta.syncState === "synced" ? "synced" : "local") : "local", timeAgo(meta.lastLocalSaveAt));
-    } catch {
-      setDataStatus("error");
-    }
-    if (msg && !opts.silentToast) toast(msg);
-  }
-
   // ---------- Navigation ----------
   const views = ["home", "team", "train", "profile"];
+
   function setActiveNav(view) {
     document.querySelectorAll(".navbtn").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.view === view);
-      btn.setAttribute("aria-current", btn.dataset.view === view ? "page" : "false");
+      const on = btn.dataset.view === view;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-current", on ? "page" : "false");
     });
     document.querySelectorAll(".bottomnav .tab").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.view === view);
-      btn.setAttribute("aria-current", btn.dataset.view === view ? "page" : "false");
+      const on = btn.dataset.view === view;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-current", on ? "page" : "false");
     });
   }
+
   function showView(view) {
     if (!views.includes(view)) view = "home";
     views.forEach(v => {
@@ -147,7 +149,9 @@
       return window.supabase.createClient(cfg.url.trim(), cfg.anon.trim(), {
         auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
       });
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
   async function refreshCloudPill() {
     const pill = $("cloudPill");
@@ -161,6 +165,28 @@
     }
   }
 
+  // ---------- Team pill ----------
+  function setTeamPill() {
+    const pill = $("teamPill");
+    if (!pill) return;
+    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
+    pill.textContent = `Team: ${teamName || "—"}`;
+  }
+
+  // ---------- Persistence ----------
+  function persist(msg, opts = {}) {
+    setDataStatus("saving");
+    try {
+      window.dataStore?.save?.(state);
+      meta.lastLocalSaveAt = new Date().toISOString();
+      saveMeta(meta);
+      setDataStatus(sb ? (meta.syncState === "synced" ? "synced" : "local") : "local", timeAgo(meta.lastLocalSaveAt));
+    } catch {
+      setDataStatus("error");
+    }
+    if (msg && !opts.silentToast) toast(msg);
+  }
+
   function applyStatusFromMeta() {
     const cfg = loadCloudCfg();
     if (!cfg || !cfg.url || !cfg.anon) { setDataStatus("off"); return; }
@@ -170,322 +196,369 @@
     else setDataStatus("local", timeAgo(meta.lastLocalSaveAt));
   }
 
-  // ---------- Utilities ----------
-  function uid() { return "id_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16); }
-  function clamp(n, a, b) { n = Number(n); if (!isFinite(n)) n = a; return Math.min(b, Math.max(a, n)); }
-  function todayISO() {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${dd}`;
-  }
-  function getWeekIndexFrom(dateISO) {
-    const d = new Date(dateISO + "T00:00:00");
-    const start = new Date(d.getFullYear(), 0, 1);
-    const diff = Math.floor((d - start) / (1000 * 60 * 60 * 24));
-    return Math.max(1, Math.floor(diff / 7) + 1);
-  }
-  function getPhaseLabel(dateISO) {
-    const week = getWeekIndexFrom(dateISO);
-    const p = window.periodizationEngine?.getCurrentPhase ? window.periodizationEngine.getCurrentPhase(week) : null;
-    return p || "ACCUMULATION";
-  }
-  function phaseIntensityHint(phase) {
-    const map = {
-      ACCUMULATION: "Build volume • technique focus",
-      INTENSIFICATION: "Heavier • lower volume",
-      DELOAD: "Reduce load • recover",
-      PEAK: "Sharp • explosive"
-    };
-    return map[phase] || "Training phase";
-  }
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (m) => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[m]));
+  // ---------- TRAIN ENGINE ----------
+  function safeNum(x, d = 0) { const n = Number(x); return Number.isFinite(n) ? n : d; }
+
+  function computeWeekIndex() {
+    // Simple: week based on time since first session or since today-90d fallback
+    // (later: tie to season start / plan start)
+    const earliest = state.sessions.length
+      ? Math.min(...state.sessions.map(s => new Date(s.date || Date.now()).getTime()).filter(t => isFinite(t)))
+      : Date.now() - (7 * 24 * 3600 * 1000);
+    const diffDays = Math.floor((Date.now() - earliest) / (24 * 3600 * 1000));
+    return Math.max(1, Math.floor(diffDays / 7) + 1);
   }
 
-  // ---------- Team pill ----------
-  function setTeamPill() {
-    const pill = $("teamPill");
-    if (!pill) return;
-    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
-    pill.textContent = `Team: ${teamName || "—"}`;
+  function phaseInfo() {
+    const w = computeWeekIndex();
+    const pe = window.periodizationEngine;
+    const phase = pe?.getCurrentPhase ? pe.getCurrentPhase(w) : "ACCUMULATION";
+    const hint = pe?.phaseHint ? pe.phaseHint(phase) : "";
+    return { week: w, phase, hint };
   }
 
-  // ---------- Strength library + safety tags ----------
-  // risk tags: knee, shoulder, back, ankle
-  function baseLibrary() {
-    return {
-      power: [
-        { key:"mb_slam", name:"Med Ball Slams", cue:"Fast intent • full body", tags:[] },
-        { key:"mb_throw", name:"Med Ball Chest Pass", cue:"Explode • stick landing", tags:[] },
-        { key:"mb_rot", name:"Med Ball Rotational Throws", cue:"Rotate fast • brace", tags:["shoulder"] },
-        { key:"box_jump", name:"Box Jump (or Snap Down)", cue:"Land quiet • knee control", tags:["knee","ankle"] },
-        { key:"broad_jump", name:"Broad Jump", cue:"Swing arms • stick landing", tags:["knee","ankle"] },
-        { key:"pogo", name:"Pogo Hops (stiffness)", cue:"Quick contacts • tall", tags:["ankle"] },
-        { key:"approach_jump", name:"Approach Jumps (3–5 reps)", cue:"Max intent • full rest", tags:["knee","ankle"] },
-        { key:"block_jump", name:"Block Jumps (3–5 reps)", cue:"Quick hands • soft land", tags:["knee","ankle"] },
-        { key:"lat_bounds", name:"Lateral Bounds", cue:"Stick landing • control", tags:["knee","ankle"] },
-        { key:"decel_drop", name:"Decel Drops (low box)", cue:"Soft land • hips back", tags:["knee","ankle"] },
-        { key:"sled_push", name:"Sled Push (if available)", cue:"45° angle • drive", tags:["knee"] }
+  function baseWarmupBlocks({ sport, sessionType, injuries }) {
+    const has = (k) => injuries.includes(k);
+
+    // universal, then sport/session adjustments
+    const universal = [
+      "Breathing reset: 4 slow breaths (1 min)",
+      "Tissue temp: brisk walk / light bike (2–3 min)",
+      "Mobility: ankles + hips + T-spine (3–4 min)",
+      "Activation: glutes + core brace (2–3 min)"
+    ];
+
+    const landing = has("knee") || has("ankle")
+      ? ["Landing mechanics: snap-down to stick (2×5)", "Low pogo contacts (2×15)"]
+      : ["Pogo hops (2×20)", "Snap-down to stick (2×5)"];
+
+    const shoulder = has("shoulder")
+      ? ["Scap + cuff: band external rotation (2×12)", "Serratus wall slide (2×8)"]
+      : ["Scap + cuff: band pull-aparts (2×15)", "External rotation (2×12)"];
+
+    const sessionMap = {
+      strength: [
+        "Movement prep: squat + hinge + lunge patterns (2 rounds)",
+        "Ramp sets: 2 light sets for first lift"
       ],
+      speed: [
+        "Sprint drills: A-skip / wall march (2–3 min)",
+        "Build-ups: 2×20yd at 60–80%"
+      ],
+      conditioning: [
+        "Rhythm: tempo run / jump rope (3 min)",
+        "COD rehearsal: 2×20s easy shuffle + backpedal"
+      ],
+      skill: [
+        "Neural: quick feet line hops (2×20s)",
+        "Ball/implement: easy touches (2–3 min)"
+      ],
+      recovery: [
+        "Zone 2: bike/walk (8–12 min)",
+        "Mobility flow: hips/ankles/T-spine (6–8 min)",
+        "Breath: nasal 4–6 breaths/min (2–3 min)"
+      ]
+    };
+
+    const sportExtras = {
+      basketball: ["Footwork: closeout slides (2×15s)", ...landing],
+      football: ["Accel prep: falling starts (3×10yd)", ...landing],
+      soccer: ["Groin/adductors: lateral lunge rocks (2×8/side)", ...landing],
+      baseball: ["Throwing prep: arm circle series (2 min)", ...shoulder],
+      volleyball: ["Jump prep: approach mechanics (3×3)", ...landing],
+      track: ["Drills: wicket-style rhythm (2–3 min)", ...landing]
+    };
+
+    const a = [];
+    a.push(...universal);
+    a.push(...(sportExtras[sport] || sportExtras.basketball));
+    a.push(...(sessionMap[sessionType] || sessionMap.strength));
+    return a;
+  }
+
+  function exerciseLibrary() {
+    // Each exercise can be filtered by injury “avoid” tags and provides substitutions.
+    // This is intentionally practical + coach-friendly.
+    return {
       lower: [
-        { key:"front_squat", name:"Front Squat (or Goblet)", cue:"Brace • full depth control", tags:["knee","back"] },
-        { key:"trap_bar", name:"Trap Bar Deadlift (or DB RDL)", cue:"Hips back • drive floor", tags:["back"] },
-        { key:"rdl", name:"Romanian Deadlift", cue:"Hamstrings • neutral spine", tags:["back"] },
-        { key:"split_squat", name:"Rear-Foot Elevated Split Squat", cue:"Knee tracks toes • torso tall", tags:["knee"] },
-        { key:"step_up", name:"Step-Ups (knee drive)", cue:"Full foot • controlled down", tags:["knee"] },
-        { key:"skater_squat", name:"Skater Squat (assisted)", cue:"Knee control • balance", tags:["knee"] },
-        { key:"hip_thrust", name:"Hip Thrust", cue:"Full lockout • ribs down", tags:[] },
-        { key:"nordic", name:"Nordic Curl (regression)", cue:"Slow eccentric", tags:["knee"] },
-        { key:"copenhagens", name:"Copenhagen Plank (adductors)", cue:"Short lever first", tags:["knee"] },
-        { key:"calf_iso", name:"Calf Isometrics + Tib Raises", cue:"Stiff ankle • jump health", tags:["ankle"] }
+        {
+          name: "Rear-Foot Elevated Split Squat",
+          sets: "3–4", reps: "6–10/side", notes: "Front shin vertical, slow eccentric.",
+          avoid: ["knee"],
+          subs: ["Step-up (box)", "Goblet split squat", "Leg press (controlled)"]
+        },
+        {
+          name: "Trap Bar Deadlift",
+          sets: "3–5", reps: "3–6", notes: "Neutral spine, powerful drive.",
+          avoid: ["back"],
+          subs: ["RDL (dumbbells)", "Hip thrust", "Kettlebell deadlift"]
+        },
+        {
+          name: "RDL (DB/BB)",
+          sets: "3–4", reps: "6–10", notes: "Hinge, hamstrings loaded, lats tight.",
+          avoid: ["back"],
+          subs: ["Hip thrust", "Hamstring curl", "Single-leg RDL (light)"]
+        },
+        {
+          name: "Nordic Hamstring (Regression)",
+          sets: "2–3", reps: "4–8", notes: "Control down; assist up.",
+          avoid: [],
+          subs: ["Swiss ball curl", "Machine ham curl", "Eccentric slider curls"]
+        }
       ],
       upper: [
-        { key:"bench", name:"Bench Press (or DB Press)", cue:"Shoulders packed • controlled", tags:["shoulder"] },
-        { key:"incline_db", name:"Incline DB Press", cue:"Drive up • stable", tags:["shoulder"] },
-        { key:"oh_press", name:"Overhead Press (or Landmine)", cue:"Ribs down • glutes tight", tags:["shoulder"] },
-        { key:"row", name:"Chest-Supported Row", cue:"Pull elbows • squeeze back", tags:[] },
-        { key:"pullup", name:"Pull-ups (or Lat Pulldown)", cue:"Full hang • no swing", tags:["shoulder"] },
-        { key:"facepull", name:"Face Pulls / Band Pull-Aparts", cue:"Scap health • posture", tags:[] },
-        { key:"carry", name:"Farmer Carries", cue:"Tall posture • slow steps", tags:["back"] },
-        { key:"scap_push", name:"Scap Push-ups", cue:"Protract/retract control", tags:[] },
-        { key:"cuff", name:"External Rotations (band/cable)", cue:"Elbow tucked • slow", tags:[] },
-        { key:"yb_t", name:"Y/T Raises (lower traps)", cue:"Light • perfect form", tags:[] }
+        {
+          name: "DB Bench Press (Neutral Grip)",
+          sets: "3–4", reps: "6–10", notes: "Scap set, full control.",
+          avoid: ["shoulder"],
+          subs: ["Push-up (elevated)", "Landmine press", "Cable press"]
+        },
+        {
+          name: "Chin-up / Assisted Chin-up",
+          sets: "3–4", reps: "4–10", notes: "Full hang; ribs down.",
+          avoid: ["shoulder"],
+          subs: ["Lat pulldown", "Ring rows", "Chest-supported row"]
+        },
+        {
+          name: "Half-Kneeling Landmine Press",
+          sets: "3–4", reps: "6–10/side", notes: "Great shoulder-friendly press.",
+          avoid: [],
+          subs: ["Incline DB press", "Push-up", "Cable press (half kneel)"]
+        },
+        {
+          name: "Chest-Supported Row",
+          sets: "3–4", reps: "8–12", notes: "No low-back fatigue.",
+          avoid: [],
+          subs: ["Cable row", "1-arm DB row (bench supported)", "Seal row"]
+        }
       ],
-      trunk: [
-        { key:"pallof", name:"Pallof Press", cue:"Anti-rotation • ribs down", tags:[] },
-        { key:"deadbug", name:"Dead Bug", cue:"Low back stays down", tags:["back"] },
-        { key:"side_plank", name:"Side Plank", cue:"Stack hips • long line", tags:[] },
-        { key:"anti_ext", name:"Ab Wheel / Body Saw", cue:"No sag • brace", tags:["back"] }
+      power: [
+        {
+          name: "Medball Throw (Sport Pattern)",
+          sets: "4–6", reps: "3–5", notes: "Max intent, full rest.",
+          avoid: ["shoulder"],
+          subs: ["Scoop toss (lighter)", "Chest pass", "Rotational throw (light)"]
+        },
+        {
+          name: "Broad Jump / Approach Jump (sport)",
+          sets: "3–5", reps: "2–4", notes: "Stick landings; quality > quantity.",
+          avoid: ["knee", "ankle"],
+          subs: ["Box jump (low)", "Snap-down + stick", "Trap bar jump (light)"]
+        }
+      ],
+      speed: [
+        {
+          name: "10–20yd Accelerations",
+          sets: "4–8", reps: "1", notes: "Full recovery; perfect reps.",
+          avoid: ["ankle"],
+          subs: ["Sled march (light)", "Wall drills", "Bike sprint (short)"]
+        },
+        {
+          name: "Change of Direction (5-10-5 or sport)",
+          sets: "4–6", reps: "1", notes: "Decel mechanics first.",
+          avoid: ["knee", "ankle"],
+          subs: ["Low-intensity COD", "Decel drops", "Lateral shuffle intervals"]
+        }
+      ],
+      conditioning: [
+        {
+          name: "Tempo Intervals",
+          sets: "8–12", reps: "30–60s", notes: "Keep heart rate controlled.",
+          avoid: [],
+          subs: ["Bike tempo", "Row tempo", "Pool intervals"]
+        },
+        {
+          name: "Repeated Sprint Ability",
+          sets: "2–4", reps: "6–10 reps", notes: "Short rest, quality work.",
+          avoid: ["ankle", "knee"],
+          subs: ["Bike sprints", "Shuttle walk/jog", "Skill-based conditioning"]
+        }
       ]
     };
   }
 
-  function sportFocus(sport) {
-    const map = {
-      basketball: ["Jump power", "Single-leg strength", "Ankle stiffness", "Deceleration"],
-      football: ["Acceleration", "Hip power", "Upper strength", "Resilience"],
-      soccer: ["Hamstrings", "Adductors", "Repeat sprint", "Single-leg control"],
-      baseball: ["Rotational power", "Shoulder health", "Separation", "Sprint bursts"],
-      volleyball: ["Jump tolerance", "Landing mechanics", "Shoulder health", "Lateral power"],
-      track: ["Max velocity", "Posterior chain", "Stiffness", "Elastic power"]
-    };
-    return map[sport] || map.basketball;
-  }
+  function buildSessionTemplate({ sport, sessionType, level, injuries, substitutionsOn }) {
+    const lib = exerciseLibrary();
+    const avoid = (ex) => (ex.avoid || []).some(tag => injuries.includes(tag));
 
-  // ---------- Substitutions ----------
-  // equipment: none | bands | dumbbells | barbell | full
-  // injuries: knee/shoulder/back/ankle booleans
-  function resolveExercise(ex, equipment, injuries) {
-    const e = equipment || "full";
-    const inj = injuries || { knee:false, shoulder:false, back:false, ankle:false };
+    // Level modifiers
+    const isAdv = level === "advanced";
+    const strengthSets = isAdv ? "4–5" : "3–4";
+    const accessory = isAdv ? "2–3 accessories" : "1–2 accessories";
 
-    // Injury-based safer swaps (priority)
-    const injurySwap = (key) => {
-      // knee pain: reduce deep knee flexion + high impact jumps
-      if (inj.knee) {
-        const kneeMap = {
-          front_squat: "hip_thrust",
-          split_squat: "hip_thrust",
-          step_up: "hip_thrust",
-          skater_squat: "hip_thrust",
-          box_jump: "mb_slam",
-          broad_jump: "mb_throw",
-          approach_jump: "mb_throw",
-          block_jump: "mb_throw",
-          lat_bounds: "pallof",
-          decel_drop: "deadbug",
-          nordic: "rdl",
-          copenhagens: "side_plank",
-          sled_push: "carry"
-        };
-        if (kneeMap[key]) return kneeMap[key];
-      }
+    const pick = (arr) => arr.filter(x => !avoid(x));
 
-      // ankle pain: avoid pogo/jumps
-      if (inj.ankle) {
-        const ankleMap = {
-          pogo: "calf_iso",
-          box_jump: "mb_slam",
-          broad_jump: "mb_throw",
-          approach_jump: "mb_throw",
-          block_jump: "mb_throw",
-          lat_bounds: "pallof",
-          decel_drop: "deadbug"
-        };
-        if (ankleMap[key]) return ankleMap[key];
-      }
+    const blocks = [];
 
-      // shoulder pain: avoid overhead + heavy pressing/pulling
-      if (inj.shoulder) {
-        const shoulderMap = {
-          oh_press: "facepull",
-          bench: "row",
-          incline_db: "row",
-          pullup: "row",
-          mb_rot: "pallof"
-        };
-        if (shoulderMap[key]) return shoulderMap[key];
-      }
+    // Strength day
+    if (sessionType === "strength") {
+      const lower = pick(lib.lower);
+      const upper = pick(lib.upper);
+      const power = pick(lib.power);
 
-      // back pain: avoid heavy hinge + carries + ab wheel
-      if (inj.back) {
-        const backMap = {
-          trap_bar: "hip_thrust",
-          rdl: "hip_thrust",
-          front_squat: "step_up",
-          carry: "pallof",
-          anti_ext: "deadbug",
-          deadbug: "side_plank" // if flexion intolerant, swap to plank
-        };
-        if (backMap[key]) return backMap[key];
-      }
-
-      return null;
-    };
-
-    // Equipment-based swaps (secondary)
-    const equipmentSwap = (key) => {
-      // none: bodyweight/band only
-      if (e === "none") {
-        const m = {
-          bench: "scap_push",
-          incline_db: "scap_push",
-          oh_press: "facepull",
-          row: "facepull",
-          pullup: "facepull",
-          front_squat: "step_up",
-          trap_bar: "hip_thrust",
-          rdl: "hip_thrust",
-          carry: "pallof",
-          mb_slam: "pallof",
-          mb_throw: "pallof",
-          mb_rot: "pallof",
-          sled_push: "step_up"
-        };
-        return m[key] || null;
-      }
-
-      // bands: band-friendly
-      if (e === "bands") {
-        const m = {
-          bench: "facepull",
-          incline_db: "facepull",
-          oh_press: "facepull",
-          row: "facepull",
-          pullup: "facepull",
-          front_squat: "step_up",
-          trap_bar: "hip_thrust",
-          rdl: "hip_thrust",
-          carry: "pallof",
-          mb_slam: "pallof",
-          mb_throw: "pallof",
-          mb_rot: "pallof",
-          sled_push: "step_up"
-        };
-        return m[key] || null;
-      }
-
-      // dumbbells: swap barbell to DB
-      if (e === "dumbbells") {
-        const m = {
-          front_squat: "split_squat",
-          trap_bar: "rdl",
-          oh_press: "incline_db"
-        };
-        return m[key] || null;
-      }
-
-      // barbell: no machines assumed, still ok
-      if (e === "barbell") {
-        const m = {
-          row: "row",
-          pullup: "row"
-        };
-        return m[key] || null;
-      }
-
-      return null;
-    };
-
-    const lib = baseLibrary();
-    const findByKey = (k) => {
-      for (const cat of Object.keys(lib)) {
-        const hit = (lib[cat] || []).find(x => x.key === k);
-        if (hit) return { ex: hit, category: cat };
-      }
-      return null;
-    };
-
-    // Determine swap chain (avoid infinite loop)
-    let currentKey = ex.key;
-    let swapped = false;
-    let reasons = [];
-
-    const swap1 = injurySwap(currentKey);
-    if (swap1 && swap1 !== currentKey) { currentKey = swap1; swapped = true; reasons.push("injury-safe"); }
-
-    const swap2 = equipmentSwap(currentKey);
-    if (swap2 && swap2 !== currentKey) { currentKey = swap2; swapped = true; reasons.push("equipment"); }
-
-    const res = findByKey(currentKey);
-    if (!res) {
-      return { ex, category: "unknown", swapped, reasons };
-    }
-    return { ex: res.ex, category: res.category, swapped, reasons };
-  }
-
-  function shouldHideExercise(ex, injuries) {
-    const inj = injuries || {};
-    const tags = ex.tags || [];
-    if (inj.knee && tags.includes("knee")) return true;
-    if (inj.ankle && tags.includes("ankle")) return true;
-    if (inj.shoulder && tags.includes("shoulder")) return true;
-    if (inj.back && tags.includes("back")) return true;
-    return false;
-  }
-
-  // ---------- Prescriptions ----------
-  function prescriptionFor(exKey, difficulty, phase, injuries) {
-    const isDeload = phase === "DELOAD";
-    const isPeak = phase === "PEAK";
-    const adv = difficulty === "advanced";
-    const inj = injuries || {};
-
-    const main = ["front_squat","trap_bar","rdl","bench","oh_press","pullup","row","hip_thrust","incline_db"];
-    const power = ["box_jump","broad_jump","pogo","mb_slam","mb_throw","mb_rot","approach_jump","block_jump","lat_bounds","decel_drop","sled_push"];
-
-    // If injury flags on (knee/ankle), automatically reduce jump dosage (even if user adds something)
-    const impactLimited = inj.knee || inj.ankle;
-
-    if (power.includes(exKey)) {
-      const baseSets = adv ? 3 : 3;
-      const sets = isDeload ? 2 : baseSets;
-      const reps = impactLimited ? "2–3 reps" : (isDeload ? "2–3 reps" : (isPeak ? "2–4 reps" : "3–5 reps"));
-      return { sets, reps, note: impactLimited ? "Low impact • crisp contacts" : "Max intent • full rest" };
+      blocks.push({ title: "Power (fresh)", items: power.slice(0, 1) });
+      blocks.push({ title: "Main Lower", items: lower.slice(0, 2).map(x => Object.assign({}, x, { sets: strengthSets })) });
+      blocks.push({ title: "Main Upper", items: upper.slice(0, 2).map(x => Object.assign({}, x, { sets: strengthSets })) });
+      blocks.push({
+        title: "Accessory / Prehab",
+        note: accessory,
+        items: [
+          { name: "Core: dead bug / pallof press", sets: "2–3", reps: "8–12", notes: "Brace + breathe.", avoid: [], subs: ["Side plank", "Carries"] },
+          { name: "Calf / tib: raises", sets: "2–3", reps: "12–20", notes: "Ankle stiffness.", avoid: [], subs: ["Jump rope (easy)", "Isometrics"] }
+        ]
+      });
     }
 
-    if (main.includes(exKey)) {
-      if (isDeload) return { sets: 2, reps: adv ? "3–5" : "5–8", note: "Easy quality • leave reps in tank" };
-      if (isPeak)   return { sets: 3, reps: adv ? "3–5" : "4–6", note: "Fast reps • crisp technique" };
-      return adv
-        ? { sets: 4, reps: phase === "INTENSIFICATION" ? "3–6" : "4–8", note: "Heavy but clean • stop before grind" }
-        : { sets: 3, reps: phase === "INTENSIFICATION" ? "4–6" : "6–10", note: "Smooth reps • full range" };
+    // Speed day
+    if (sessionType === "speed") {
+      const speed = pick(lib.speed);
+      blocks.push({ title: "Speed", items: speed.slice(0, 2) });
+      blocks.push({
+        title: "Strength (support)",
+        items: pick(lib.lower).slice(0, 1).concat(pick(lib.upper).slice(0, 1)).map(x => Object.assign({}, x, { sets: isAdv ? "3–4" : "2–3", reps: isAdv ? "5–8" : "6–10" }))
+      });
+      blocks.push({ title: "Cooldown", items: [{ name: "Breathing + hips/ankles", sets: "—", reps: "5–8 min", notes: "Downshift.", avoid: [], subs: [] }] });
     }
 
-    if (isDeload) return { sets: 2, reps: "8–12", note: "Light • perfect reps" };
-    return adv
-      ? { sets: 3, reps: "8–15", note: "Controlled tempo • no sloppy reps" }
-      : { sets: 2, reps: "10–15", note: "Easy quality • feel the target muscle" };
+    // Conditioning day
+    if (sessionType === "conditioning") {
+      const cond = pick(lib.conditioning);
+      blocks.push({ title: "Conditioning", items: cond.slice(0, 2) });
+      blocks.push({
+        title: "Tendon / Core",
+        items: [
+          { name: "Isometric split squat hold", sets: "2–3", reps: "30–45s/side", notes: "Tendon-friendly.", avoid: ["knee"], subs: ["Wall sit", "Spanish squat (if OK)"] },
+          { name: "Side plank + carries", sets: "2–3", reps: "30–45s", notes: "Anti-rotation.", avoid: [], subs: ["Pallof press", "Dead bug"] }
+        ].filter(x => !avoid(x))
+      });
+    }
+
+    // Skill day (template)
+    if (sessionType === "skill") {
+      blocks.push({
+        title: "Skill / Technique (sport)",
+        items: [
+          { name: `${sport} skill block`, sets: "—", reps: "30–45 min", notes: "Keep quality high. Finish with 5–10 min of free play.", avoid: [], subs: [] }
+        ]
+      });
+      blocks.push({
+        title: "Strength Micro-dose",
+        items: pick(lib.upper).slice(0, 1).concat(pick(lib.lower).slice(0, 1)).map(x => Object.assign({}, x, { sets: "2–3", reps: "6–10" }))
+      });
+    }
+
+    // Recovery day
+    if (sessionType === "recovery") {
+      blocks.push({
+        title: "Recovery Session",
+        items: [
+          { name: "Zone 2 (bike/walk)", sets: "—", reps: "20–30 min", notes: "Easy conversation pace.", avoid: [], subs: ["Pool", "Row (easy)"] },
+          { name: "Mobility flow", sets: "—", reps: "10–15 min", notes: "Hips/ankles/T-spine + breathing.", avoid: [], subs: [] },
+          { name: "Optional: light band work", sets: "2", reps: "12–15", notes: "Shoulders/hips.", avoid: [], subs: [] }
+        ]
+      });
+    }
+
+    // substitutions text helper
+    function exRow(ex) {
+      const subs = substitutionsOn && ex.subs && ex.subs.length ? `<div class="small muted">Subs: ${ex.subs.join(" • ")}</div>` : "";
+      const meta = `<div class="small muted">${ex.sets || "—"} sets • ${ex.reps || "—"} reps</div>`;
+      const notes = ex.notes ? `<div class="small muted">${ex.notes}</div>` : "";
+      return `<li style="margin:10px 0">
+        <div style="font-weight:900">${ex.name}</div>
+        ${meta}
+        ${notes}
+        ${subs}
+      </li>`;
+    }
+
+    return { blocks, exRow };
+  }
+
+  function defaultIntensityTargets(sessionType, level, phase) {
+    // produce sRPE target + minutes range used for quick logging
+    const adv = level === "advanced";
+    const base = {
+      strength: { min: 55, max: 75, rpe: adv ? 7 : 6 },
+      speed: { min: 45, max: 65, rpe: adv ? 7 : 6 },
+      conditioning: { min: 35, max: 55, rpe: adv ? 7 : 6 },
+      skill: { min: 45, max: 75, rpe: adv ? 6 : 5 },
+      recovery: { min: 25, max: 45, rpe: 3 }
+    }[sessionType] || { min: 45, max: 65, rpe: 6 };
+
+    // phase adjustments
+    if (phase === "DELOAD") return { ...base, rpe: Math.max(3, base.rpe - 2), max: Math.round(base.max * 0.75) };
+    if (phase === "PEAK") return { ...base, rpe: Math.max(4, base.rpe - 1), max: Math.round(base.max * 0.85) };
+    if (phase === "INTENSIFICATION") return { ...base, rpe: Math.min(8, base.rpe + 1), max: Math.round(base.max * 0.9) };
+    return base;
+  }
+
+  function addSessionLog({ dateISO, sport, sessionType, level, minutes, srpe, injuries }) {
+    const id = `s_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+    const mins = Math.max(0, Math.round(safeNum(minutes, 0)));
+    const r = Math.max(0, Math.min(10, safeNum(srpe, 0)));
+    const load = Math.round(mins * r);
+
+    state.sessions.unshift({
+      id,
+      date: dateISO,
+      sport,
+      sessionType,
+      level,
+      minutes: mins,
+      srpe: r,
+      load,
+      injuries: injuries || []
+    });
+
+    // keep list trimmed for speed
+    if (state.sessions.length > 400) state.sessions = state.sessions.slice(0, 400);
+
+    persist("Session saved");
+  }
+
+  function deleteSession(id) {
+    if (!id) return;
+    if (!confirm("Delete this session? This cannot be undone.")) return;
+    state.sessions = state.sessions.filter(s => s.id !== id);
+    persist("Session deleted");
+    render("train");
+  }
+
+  function renderSessionHistory(container) {
+    const list = state.sessions.slice(0, 12);
+    if (!list.length) {
+      container.innerHTML = `<div class="mini"><div class="minihead">Recent sessions</div><div class="minibody">No sessions logged yet.</div></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Recent sessions</div>
+        <div class="minibody">
+          ${list.map(s => `
+            <div class="row between" style="padding:10px 0; border-top: 1px solid var(--line)">
+              <div>
+                <div style="font-weight:900">${(s.sport || "sport").toUpperCase()} • ${s.sessionType} • ${s.level}</div>
+                <div class="small muted">${(s.date || "").slice(0,10)} • ${s.minutes} min • sRPE ${s.srpe} • Load ${s.load}</div>
+              </div>
+              <button class="btn danger" data-del="${s.id}" title="Delete">Delete</button>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll("[data-del]").forEach(btn => {
+      btn.addEventListener("click", () => deleteSession(btn.getAttribute("data-del")));
+    });
   }
 
   // ---------- Rendering ----------
   function renderHome() {
     const role = state.profile?.role || "coach";
     const sport = state.profile?.sport || "basketball";
+
     const subMap = {
       coach: `Coach view • Sport: ${sport}`,
       athlete: `Athlete view • Sport: ${sport}`,
@@ -504,17 +577,16 @@
 
     const today = $("todayBlock");
     if (today) {
+      const pi = phaseInfo();
       today.innerHTML = `
-        <div class="small muted">Nutrition targets (auto)</div>
+        <div class="small muted">Today snapshot</div>
         <div style="margin-top:8px" class="mono small">
+          Phase: ${pi.phase} (Week ${pi.week})<br/>
+          ${pi.hint ? `<span class="muted">${pi.hint}</span><br/>` : ""}
+          <br/>
+          Nutrition targets (auto):<br/>
           Calories: ${targets.calories}<br/>
           Protein: ${targets.protein_g}g • Carbs: ${targets.carbs_g}g • Fat: ${targets.fat_g}g
-        </div>
-        <hr class="sep"/>
-        <div class="small muted">Today’s training</div>
-        <div class="mono small" style="margin-top:8px">
-          Sport: ${sport}<br/>
-          Phase: ${getPhaseLabel(todayISO())}
         </div>
       `;
     }
@@ -559,71 +631,17 @@
     });
   }
 
-  // ---------- Edit Modal ----------
-  function openEditModal(item, onSave) {
-    const overlay = document.createElement("div");
-    overlay.className = "piq-modal-backdrop";
-    overlay.innerHTML = `
-      <div class="piq-modal" role="dialog" aria-modal="true" aria-label="Edit exercise">
-        <div class="piq-modal-head">
-          <div class="piq-modal-title">Edit</div>
-          <div class="piq-modal-sub">${escapeHtml(item.name || "Exercise")}</div>
-        </div>
-        <div class="piq-modal-body">
-          <div class="grid2">
-            <div class="field">
-              <label>Sets</label>
-              <input id="mSets" type="number" min="1" max="10" value="${Number(item.sets) || 3}"/>
-            </div>
-            <div class="field">
-              <label>Reps</label>
-              <input id="mReps" type="text" value="${escapeHtml(String(item.reps || "6–10"))}"/>
-            </div>
-          </div>
-          <div class="field" style="margin-top:10px">
-            <label>Note / cue</label>
-            <textarea id="mNote">${escapeHtml(String(item.note || ""))}</textarea>
-          </div>
-          <div class="piq-modal-actions">
-            <button class="btn ghost" id="mCancel" type="button">Cancel</button>
-            <button class="btn" id="mSave" type="button">Save</button>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-
-    const close = () => overlay.remove();
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
-
-    overlay.querySelector("#mCancel")?.addEventListener("click", close);
-    overlay.querySelector("#mSave")?.addEventListener("click", () => {
-      const sets = clamp(overlay.querySelector("#mSets")?.value, 1, 10);
-      const reps = String(overlay.querySelector("#mReps")?.value || "").trim() || "6–10";
-      const note = String(overlay.querySelector("#mNote")?.value || "").trim();
-      onSave({ sets, reps, note });
-      close();
-    });
-  }
-
-  // ---------- Train ----------
   function renderTrain() {
     const sport = state.profile?.sport || "basketball";
     const role = state.profile?.role || "coach";
-    const date = todayISO();
-    const phase = getPhaseLabel(date);
+    const pi = phaseInfo();
 
-    const injuries = state.profile?.injuries || { knee:false, shoulder:false, back:false, ankle:false };
-    const equipment = state.profile?.equipment || "full";
-    const difficulty = state.profile?.train_level || "standard";
-
-    const focus = sportFocus(sport);
     const trainSub = $("trainSub");
     if (trainSub) {
       const subMap = {
-        coach: "Coach view: build a session template + save a session.",
-        athlete: "Athlete view: follow the session and log effort.",
-        parent: "Parent view: see what training includes today."
+        coach: "Coach view: build today’s session template (then log sRPE load).",
+        athlete: "Athlete view: today’s plan + quick logging.",
+        parent: "Parent view: see today’s plan + what it means."
       };
       trainSub.textContent = subMap[role] || subMap.coach;
     }
@@ -631,553 +649,193 @@
     const body = $("trainBody");
     if (!body) return;
 
-    const recent = (state.training_sessions || [])
-      .filter(s => s && s.sport === sport)
-      .slice()
-      .sort((a,b) => String(b.date).localeCompare(String(a.date)))
-      .slice(0, 6);
+    const uiKey = "piq_train_ui_v1";
+    const ui = (() => { try { return JSON.parse(localStorage.getItem(uiKey) || "null") || {}; } catch { return {}; } })();
+    ui.sessionType = ui.sessionType || "strength";
+    ui.level = ui.level || "standard";
+    ui.subs = (typeof ui.subs === "boolean") ? ui.subs : true;
+    ui.injuries = Array.isArray(ui.injuries) ? ui.injuries : [];
 
-    // Injury summary chips
-    const injuryOn = Object.keys(injuries).filter(k => injuries[k]);
-    const injuryChips = injuryOn.length
-      ? injuryOn.map(k => `<span class="chip warn">${k} filter</span>`).join("")
-      : `<span class="chip">No injury filters</span>`;
+    function saveUI() { localStorage.setItem(uiKey, JSON.stringify(ui)); }
+
+    const warmup = baseWarmupBlocks({ sport, sessionType: ui.sessionType, injuries: ui.injuries });
+    const built = buildSessionTemplate({
+      sport,
+      sessionType: ui.sessionType,
+      level: ui.level,
+      injuries: ui.injuries,
+      substitutionsOn: ui.subs
+    });
+
+    const intensity = defaultIntensityTargets(ui.sessionType, ui.level, pi.phase);
 
     body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Today’s focus</div>
-        <div class="chips">
-          ${focus.map(x => `<span class="chip">${x}</span>`).join("")}
-          <span class="chip">Phase: ${phase}</span>
-          ${injuryChips}
-        </div>
-        <div class="small muted" style="margin-top:10px">${phaseIntensityHint(phase)}</div>
-      </div>
+      <div class="grid2">
+        <div class="mini">
+          <div class="minihead">Build today’s session</div>
 
-      <div class="mini" style="margin-top:12px">
-        <div class="row between wrap gap">
-          <div>
-            <div class="minihead">Build session</div>
-            <div class="small muted">Search, apply injury filters, and add exercises with substitutions.</div>
-          </div>
-
-          <div class="row gap wrap">
-            <div class="toggle" role="tablist" aria-label="Training level">
-              <button id="lvlStd" type="button" class="${difficulty === "standard" ? "active" : ""}">Standard</button>
-              <button id="lvlAdv" type="button" class="${difficulty === "advanced" ? "active" : ""}">Advanced</button>
-            </div>
-            <button class="btn ghost" id="btnClearDraft" type="button">Clear draft</button>
-          </div>
-        </div>
-
-        <div class="searchrow">
-          <div class="field">
-            <label>Search exercises</label>
-            <input id="exSearch" type="text" placeholder="e.g., squat, row, jump, core…" />
-          </div>
-
-          <div class="field" style="max-width:260px">
-            <label>Equipment</label>
-            <select id="equipSelect">
-              <option value="full">Full gym</option>
-              <option value="barbell">Barbell only</option>
-              <option value="dumbbells">Dumbbells</option>
-              <option value="bands">Bands</option>
-              <option value="none">No equipment</option>
+          <div class="field" style="margin-top:10px">
+            <label>Session type</label>
+            <select id="piqSessionType">
+              <option value="strength">Strength</option>
+              <option value="speed">Speed</option>
+              <option value="conditioning">Conditioning</option>
+              <option value="skill">Skill</option>
+              <option value="recovery">Recovery</option>
             </select>
           </div>
+
+          <div class="field" style="margin-top:10px">
+            <label>Level</label>
+            <select id="piqLevel">
+              <option value="standard">Standard</option>
+              <option value="advanced">Advanced</option>
+            </select>
+          </div>
+
+          <div class="hintline">
+            <span>Phase:</span>
+            <b>${pi.phase}</b>
+            <span class="muted">• Week ${pi.week}</span>
+          </div>
+
+          <div class="field" style="margin-top:10px">
+            <label>Injury / sensitivity filters</label>
+            <div class="chips" id="piqInjuryChips">
+              ${[
+                ["knee","Knee"],["ankle","Ankle"],["shoulder","Shoulder"],["back","Back"]
+              ].map(([k, label]) => `
+                <label class="chip">
+                  <input type="checkbox" data-inj="${k}" ${ui.injuries.includes(k) ? "checked" : ""} />
+                  <span>${label}</span>
+                  <span class="hint">filter</span>
+                </label>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="row between" style="margin-top:12px">
+            <div class="small muted">Show substitutions</div>
+            <label class="chip" style="margin:0">
+              <input type="checkbox" id="piqSubs" ${ui.subs ? "checked" : ""} />
+              <span>${ui.subs ? "On" : "Off"}</span>
+            </label>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="minihead" style="margin-bottom:6px">Quick log (sRPE load)</div>
+          <div class="grid2">
+            <div class="field">
+              <label>Minutes</label>
+              <input id="piqMinutes" type="number" min="0" max="240" value="${intensity.max}" />
+            </div>
+            <div class="field">
+              <label>sRPE (0–10)</label>
+              <input id="piqSrpe" type="number" min="0" max="10" step="1" value="${intensity.rpe}" />
+            </div>
+          </div>
+          <div class="hintline">
+            Suggested: ${intensity.min}–${intensity.max} min • sRPE ~${intensity.rpe}
+          </div>
+
+          <div class="row gap wrap" style="margin-top:12px">
+            <button class="btn" id="piqSaveSession">Save session</button>
+            <button class="btn ghost" id="piqResetFilters">Reset filters</button>
+          </div>
+
+          <div class="hintline">
+            <span class="muted">Tip:</span> Filters remove risky exercises and show safer substitutions.
+          </div>
         </div>
 
-        <div class="chips" style="margin-top:8px">
-          <span class="chip">Injury filters:</span>
-          <button class="chip" id="injKnee" type="button">Knee</button>
-          <button class="chip" id="injAnkle" type="button">Ankle</button>
-          <button class="chip" id="injShoulder" type="button">Shoulder</button>
-          <button class="chip" id="injBack" type="button">Back</button>
-          <button class="chip" id="injClear" type="button">Clear</button>
+        <div class="mini">
+          <div class="minihead">Warm-up generator</div>
+          <div class="minibody">
+            <ol style="margin:0; padding-left:18px">
+              ${warmup.map(x => `<li style="margin:8px 0">${x}</li>`).join("")}
+            </ol>
+          </div>
         </div>
-
-        <div id="strengthAcc" class="acc" style="margin-top:10px"></div>
       </div>
 
       <div class="mini" style="margin-top:12px">
-        <div class="row between wrap gap">
-          <div>
-            <div class="minihead">Session draft</div>
-            <div class="small muted">Added exercises appear here. Tap edit for sets/reps.</div>
-          </div>
-          <div class="row gap wrap">
-            <button class="btn ghost" id="btnAutoBuild" type="button">Auto-build</button>
-          </div>
-        </div>
-
-        <div id="draftList" style="margin-top:10px"></div>
-
-        <hr class="sep"/>
-
-        <div class="grid2">
-          <div class="field">
-            <label>Minutes</label>
-            <input id="trainMin" type="number" min="10" max="180" value="${phase === "DELOAD" ? 55 : phase === "PEAK" ? 65 : 75}"/>
-          </div>
-          <div class="field">
-            <label>sRPE (0–10)</label>
-            <input id="trainSrpe" type="number" min="0" max="10" step="1" value="6"/>
-          </div>
-        </div>
-
-        <div class="field" style="margin-top:10px">
-          <label>Notes (optional)</label>
-          <textarea id="trainNotes" placeholder="What felt good, what was hard, any pain/tightness…"></textarea>
-        </div>
-
-        <div class="row between wrap gap" style="margin-top:12px">
-          <div class="mono small muted" id="loadPreview">Load: —</div>
-          <button class="btn" id="btnSaveSession" type="button">Save session</button>
+        <div class="minihead">Session plan (${sport.toUpperCase()} • ${ui.sessionType} • ${ui.level})</div>
+        <div class="minibody">
+          ${built.blocks.length ? built.blocks.map(b => `
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line)">
+              <div style="font-weight:900">${b.title}${b.note ? ` <span class="muted">(${b.note})</span>` : ""}</div>
+              <ol style="margin:0; padding-left:18px">
+                ${(b.items || []).map(built.exRow).join("")}
+              </ol>
+            </div>
+          `).join("") : `
+            <div class="small muted">No safe exercises remain with current filters. Try resetting filters.</div>
+          `}
         </div>
       </div>
 
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Recent sessions</div>
-        <div class="small muted">Last saved sessions for ${sport}.</div>
-        <div id="recentSessions" style="margin-top:10px"></div>
-      </div>
+      <div id="piqHistory" style="margin-top:12px"></div>
     `;
 
-    // Draft persistence
-    const draftKey = "piq_train_draft_v2";
-    function loadDraft() {
-      try {
-        const d = JSON.parse(localStorage.getItem(draftKey) || "null");
-        if (!d || typeof d !== "object") return { items: [], sport, date };
-        if (!Array.isArray(d.items)) d.items = [];
-        return d;
-      } catch {
-        return { items: [], sport, date };
-      }
-    }
-    function saveDraft(d) { localStorage.setItem(draftKey, JSON.stringify(d || { items: [] })); }
-    let draft = loadDraft();
-    if (draft.sport !== sport) draft = { items: [], sport, date };
-    saveDraft(draft);
+    // bind UI
+    const st = $("piqSessionType");
+    const lv = $("piqLevel");
+    const subs = $("piqSubs");
 
-    function calcLoad() {
-      const minutes = clamp($("trainMin")?.value, 0, 300);
-      const srpe = clamp($("trainSrpe")?.value, 0, 10);
-      return Math.round(minutes * srpe);
-    }
+    if (st) st.value = ui.sessionType;
+    if (lv) lv.value = ui.level;
 
-    function updateLoadPreview() {
-      const lp = $("loadPreview");
-      if (lp) lp.textContent = `Load: ${calcLoad()} (minutes × sRPE)`;
-    }
+    st?.addEventListener("change", () => { ui.sessionType = st.value; saveUI(); render("train"); });
+    lv?.addEventListener("change", () => { ui.level = lv.value; saveUI(); render("train"); });
 
-    function renderDraft() {
-      const wrap = $("draftList");
-      if (!wrap) return;
+    subs?.addEventListener("change", () => {
+      ui.subs = !!subs.checked;
+      saveUI();
+      render("train");
+    });
 
-      if (!draft.items.length) {
-        wrap.innerHTML = `<div class="small muted">No exercises added yet. Use the library above or Auto-build.</div>`;
-      } else {
-        wrap.innerHTML = `
-          <div class="exercise-grid">
-            ${draft.items.map((it, idx) => `
-              <div class="ex-box">
-                <div class="ex-title">${escapeHtml(it.name)}</div>
-                <div class="ex-meta">
-                  ${escapeHtml(it.category)} • ${it.sets} sets • ${escapeHtml(it.reps)}<br/>
-                  <span class="muted">${escapeHtml(it.note || "")}</span>
-                  ${it.subbed ? `<br/><span class="muted">Substitution applied (${escapeHtml((it.subReasons||[]).join(", "))})</span>` : ``}
-                </div>
-                <div class="ex-actions">
-                  <button type="button" data-edit="${idx}">Edit</button>
-                  <button type="button" data-remove="${idx}">Remove</button>
-                </div>
-              </div>
-            `).join("")}
-          </div>
-        `;
-
-        wrap.querySelectorAll("[data-remove]").forEach(btn => {
-          btn.addEventListener("click", () => {
-            const idx = Number(btn.getAttribute("data-remove"));
-            if (!isFinite(idx)) return;
-            draft.items.splice(idx, 1);
-            saveDraft(draft);
-            renderDraft();
-          });
-        });
-
-        wrap.querySelectorAll("[data-edit]").forEach(btn => {
-          btn.addEventListener("click", () => {
-            const idx = Number(btn.getAttribute("data-edit"));
-            const it = draft.items[idx];
-            if (!it) return;
-            openEditModal(it, ({ sets, reps, note }) => {
-              it.sets = sets;
-              it.reps = reps;
-              it.note = note;
-              saveDraft(draft);
-              renderDraft();
-            });
-          });
-        });
-      }
-
-      updateLoadPreview();
-    }
-
-    function addExerciseToDraft(ex, category) {
-      // Apply substitutions based on injury/equipment
-      const resolved = resolveExercise(ex, state.profile.equipment, state.profile.injuries);
-      const picked = resolved.ex;
-      const cat = resolved.category || category;
-
-      const pres = prescriptionFor(picked.key, state.profile.train_level, phase, state.profile.injuries);
-
-      draft.items.push({
-        key: picked.key,
-        name: picked.name,
-        category: cat,
-        sets: pres.sets,
-        reps: pres.reps,
-        note: `${picked.cue ? picked.cue + " • " : ""}${pres.note || ""}`.trim(),
-        subbed: resolved.swapped,
-        subReasons: resolved.reasons || []
+    document.querySelectorAll("[data-inj]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const k = cb.getAttribute("data-inj");
+        if (!k) return;
+        ui.injuries = ui.injuries || [];
+        if (cb.checked) {
+          if (!ui.injuries.includes(k)) ui.injuries.push(k);
+        } else {
+          ui.injuries = ui.injuries.filter(x => x !== k);
+        }
+        saveUI();
+        render("train");
       });
+    });
 
-      saveDraft(draft);
-      renderDraft();
-      toast("Added to session");
-    }
+    $("piqResetFilters")?.addEventListener("click", () => {
+      ui.injuries = [];
+      ui.subs = true;
+      saveUI();
+      render("train");
+      toast("Filters reset");
+    });
 
-    // Library rendering with filters + search
-    function renderAccordion(searchTerm) {
-      const acc = $("strengthAcc");
-      if (!acc) return;
-
-      const lib = baseLibrary();
-      const term = String(searchTerm || "").trim().toLowerCase();
-
-      const categories = [
-        { key: "power", title: "Power & Jumps", desc: "Explosive work first. Low fatigue, high intent." },
-        { key: "lower", title: "Lower Body", desc: "Squat/hinge/single-leg foundations." },
-        { key: "upper", title: "Upper Body", desc: "Push/pull + shoulder health." },
-        { key: "trunk", title: "Trunk & Core", desc: "Anti-rotation + bracing." }
-      ];
-
-      const injuriesNow = state.profile.injuries || {};
-
-      const buildList = (list) => {
-        return (list || [])
-          .filter(ex => {
-            // hide if injury filter says so
-            if (shouldHideExercise(ex, injuriesNow)) return false;
-            // search filter
-            if (!term) return true;
-            const hay = `${ex.name} ${ex.key} ${(ex.cue || "")}`.toLowerCase();
-            return hay.includes(term);
-          });
-      };
-
-      acc.innerHTML = categories.map((c, i) => {
-        const list = buildList(lib[c.key]);
-        const opened = i === 0;
-
-        return `
-          <div class="acc-item">
-            <button class="acc-head" type="button" data-acc="${c.key}">
-              <span>${c.title} <small>• ${c.desc}</small></span>
-              <span class="muted">${opened ? "—" : "+"}</span>
-            </button>
-            <div class="acc-body" ${opened ? "" : "hidden"} data-body="${c.key}">
-              ${list.length ? `
-                <div class="exercise-grid">
-                  ${list.map(ex => {
-                    const resolved = resolveExercise(ex, state.profile.equipment, state.profile.injuries);
-                    const picked = resolved.ex;
-                    const pres = prescriptionFor(picked.key, state.profile.train_level, phase, state.profile.injuries);
-
-                    return `
-                      <div class="ex-box">
-                        <div class="ex-title">${escapeHtml(picked.name)}</div>
-                        <div class="ex-meta">
-                          ${pres.sets} sets • ${escapeHtml(pres.reps)}<br/>
-                          <span class="muted">${escapeHtml(picked.cue || "")}</span><br/>
-                          <span class="muted">${escapeHtml(pres.note || "")}</span>
-                          ${resolved.swapped ? `<br/><span class="muted">Auto-substitution (${escapeHtml((resolved.reasons||[]).join(", "))})</span>` : ``}
-                        </div>
-                        <div class="ex-actions">
-                          <button class="primary" type="button" data-add="${c.key}:${ex.key}">Add to session</button>
-                        </div>
-                      </div>
-                    `;
-                  }).join("")}
-                </div>
-              ` : `<div class="small muted" style="margin-top:10px">No matches in this category.</div>`}
-            </div>
-          </div>
-        `;
-      }).join("");
-
-      // expand/collapse
-      acc.querySelectorAll("[data-acc]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const key = btn.getAttribute("data-acc");
-          const bodyEl = acc.querySelector(`[data-body="${key}"]`);
-          if (!bodyEl) return;
-          const isHidden = bodyEl.hasAttribute("hidden");
-          if (isHidden) bodyEl.removeAttribute("hidden");
-          else bodyEl.setAttribute("hidden", "");
-          const sym = btn.querySelector("span.muted");
-          if (sym) sym.textContent = isHidden ? "—" : "+";
-        });
+    $("piqSaveSession")?.addEventListener("click", () => {
+      const mins = safeNum($("piqMinutes")?.value, intensity.max);
+      const srpe = safeNum($("piqSrpe")?.value, intensity.rpe);
+      const dateISO = new Date().toISOString();
+      addSessionLog({
+        dateISO,
+        sport,
+        sessionType: ui.sessionType,
+        level: ui.level,
+        minutes: mins,
+        srpe,
+        injuries: ui.injuries
       });
+      render("train");
+    });
 
-      // add buttons
-      acc.querySelectorAll("[data-add]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const v = btn.getAttribute("data-add") || "";
-          const [cat, exKey] = v.split(":");
-          const lib2 = baseLibrary();
-          const list = lib2[cat] || [];
-          const ex = list.find(x => x.key === exKey);
-          if (!ex) return;
-          addExerciseToDraft(ex, cat);
-        });
-      });
-    }
-
-    // Auto-build uses safest choices under injury filters
-    function autoBuildSession() {
-      const lib = baseLibrary();
-      const inj = state.profile.injuries || {};
-      const order = [
-        ["power", 2],
-        ["lower", 2],
-        ["upper", 2],
-        ["trunk", 1]
-      ];
-
-      function safePick(cat, count) {
-        const list = (lib[cat] || []).filter(ex => !shouldHideExercise(ex, inj));
-        return list.slice(0, Math.min(count, list.length));
-      }
-
-      draft.items = [];
-      order.forEach(([cat, n]) => {
-        safePick(cat, n).forEach(ex => addExerciseToDraft(ex, cat));
-      });
-
-      toast("Auto-built session");
-    }
-
-    // Recents
-    function renderRecents() {
-      const el = $("recentSessions");
-      if (!el) return;
-
-      if (!recent.length) {
-        el.innerHTML = `<div class="small muted">No saved sessions yet. Save your first one above.</div>`;
-        return;
-      }
-
-      el.innerHTML = `
-        <div class="acc">
-          ${recent.map(s => `
-            <div class="acc-item">
-              <button class="acc-head" type="button" data-sess="${s.id}">
-                <span>${escapeHtml(s.date)} • ${escapeHtml(s.difficulty)} • Load ${Number(s.load) || 0}</span>
-                <span class="muted">+</span>
-              </button>
-              <div class="acc-body" hidden data-sessbody="${s.id}">
-                <div class="small muted">Phase: ${escapeHtml(s.phase || "—")} • Minutes: ${Number(s.minutes) || 0} • sRPE: ${Number(s.srpe) || 0}</div>
-                <div style="margin-top:10px" class="exercise-grid">
-                  ${(s.exercises || []).slice(0, 10).map(ex => `
-                    <div class="ex-box">
-                      <div class="ex-title">${escapeHtml(ex.name)}</div>
-                      <div class="ex-meta">${Number(ex.sets) || 0} sets • ${escapeHtml(ex.reps || "")}<br/><span class="muted">${escapeHtml(ex.note || "")}</span></div>
-                    </div>
-                  `).join("")}
-                </div>
-                ${(s.exercises || []).length > 10 ? `<div class="small muted" style="margin-top:8px">+ ${(s.exercises || []).length - 10} more</div>` : ""}
-                ${s.notes ? `<div class="small muted" style="margin-top:10px">Notes: ${escapeHtml(s.notes)}</div>` : ""}
-                <div class="row gap wrap" style="margin-top:12px">
-                  <button class="btn ghost" type="button" data-delete="${s.id}">Delete</button>
-                </div>
-              </div>
-            </div>
-          `).join("")}
-        </div>
-      `;
-
-      el.querySelectorAll("[data-sess]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const id = btn.getAttribute("data-sess");
-          const bodyEl = el.querySelector(`[data-sessbody="${id}"]`);
-          const sym = btn.querySelector("span.muted");
-          if (!bodyEl) return;
-          const hidden = bodyEl.hasAttribute("hidden");
-          if (hidden) bodyEl.removeAttribute("hidden");
-          else bodyEl.setAttribute("hidden", "");
-          if (sym) sym.textContent = hidden ? "—" : "+";
-        });
-      });
-
-      el.querySelectorAll("[data-delete]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const id = btn.getAttribute("data-delete");
-          if (!id) return;
-          if (!confirm("Delete this session?")) return;
-          state.training_sessions = (state.training_sessions || []).filter(s => s.id !== id);
-          persist("Deleted");
-          renderTrain();
-        });
-      });
-    }
-
-    // Bind controls
-    function bindLevelToggle() {
-      const stdBtn = $("lvlStd");
-      const advBtn = $("lvlAdv");
-      if (!stdBtn || !advBtn) return;
-
-      stdBtn.addEventListener("click", () => {
-        state.profile.train_level = "standard";
-        persist(null, { silentToast: true });
-        stdBtn.classList.add("active");
-        advBtn.classList.remove("active");
-        renderAccordion($("exSearch")?.value);
-        renderDraft();
-        toast("Standard level");
-      });
-
-      advBtn.addEventListener("click", () => {
-        state.profile.train_level = "advanced";
-        persist(null, { silentToast: true });
-        advBtn.classList.add("active");
-        stdBtn.classList.remove("active");
-        renderAccordion($("exSearch")?.value);
-        renderDraft();
-        toast("Advanced level");
-      });
-    }
-
-    function bindInjuryButtons() {
-      const setChipState = () => {
-        const inj = state.profile.injuries || {};
-        const map = { injKnee:"knee", injAnkle:"ankle", injShoulder:"shoulder", injBack:"back" };
-        Object.keys(map).forEach(id => {
-          const k = map[id];
-          const el = $(id);
-          if (!el) return;
-          el.classList.toggle("warn", !!inj[k]);
-        });
-      };
-
-      const toggleInjury = (k) => {
-        state.profile.injuries[k] = !state.profile.injuries[k];
-        persist(null, { silentToast: true });
-        setChipState();
-        renderAccordion($("exSearch")?.value);
-        toast(`${k} filter ${state.profile.injuries[k] ? "on" : "off"}`);
-      };
-
-      $("injKnee")?.addEventListener("click", () => toggleInjury("knee"));
-      $("injAnkle")?.addEventListener("click", () => toggleInjury("ankle"));
-      $("injShoulder")?.addEventListener("click", () => toggleInjury("shoulder"));
-      $("injBack")?.addEventListener("click", () => toggleInjury("back"));
-
-      $("injClear")?.addEventListener("click", () => {
-        state.profile.injuries = { knee:false, ankle:false, shoulder:false, back:false };
-        persist(null, { silentToast: true });
-        setChipState();
-        renderAccordion($("exSearch")?.value);
-        toast("Injury filters cleared");
-      });
-
-      setChipState();
-    }
-
-    function bindEquipment() {
-      const sel = $("equipSelect");
-      if (!sel) return;
-      sel.value = state.profile.equipment || "full";
-      sel.addEventListener("change", () => {
-        state.profile.equipment = sel.value;
-        persist(null, { silentToast: true });
-        renderAccordion($("exSearch")?.value);
-        toast("Equipment updated");
-      });
-    }
-
-    function bindSearch() {
-      const s = $("exSearch");
-      if (!s) return;
-      s.addEventListener("input", () => renderAccordion(s.value));
-    }
-
-    function bindDraftControls() {
-      $("btnClearDraft")?.addEventListener("click", () => {
-        if (!confirm("Clear the session draft?")) return;
-        draft.items = [];
-        saveDraft(draft);
-        renderDraft();
-      });
-
-      $("btnAutoBuild")?.addEventListener("click", autoBuildSession);
-
-      $("trainMin")?.addEventListener("input", updateLoadPreview);
-      $("trainSrpe")?.addEventListener("input", updateLoadPreview);
-
-      $("btnSaveSession")?.addEventListener("click", () => {
-        if (!draft.items.length) { toast("Add exercises first"); return; }
-
-        const minutes = clamp($("trainMin")?.value, 0, 300);
-        const srpe = clamp($("trainSrpe")?.value, 0, 10);
-        const load = Math.round(minutes * srpe);
-
-        const session = {
-          id: uid(),
-          date,
-          sport,
-          difficulty: state.profile.train_level || "standard",
-          equipment: state.profile.equipment || "full",
-          injuries: Object.assign({}, state.profile.injuries || {}),
-          minutes,
-          srpe,
-          load,
-          phase,
-          focus: focus.slice(0, 6),
-          exercises: draft.items.slice(0, 80),
-          notes: String($("trainNotes")?.value || "").trim(),
-          created_at: new Date().toISOString()
-        };
-
-        state.training_sessions.unshift(session);
-        state.training_sessions = state.training_sessions.slice(0, 300);
-
-        persist("Session saved");
-
-        // clear draft
-        draft.items = [];
-        saveDraft(draft);
-        renderTrain();
-        toast("Saved");
-      });
-    }
-
-    // Initial renders + binds
-    renderAccordion("");
-    renderDraft();
-    renderRecents();
-    updateLoadPreview();
-
-    bindLevelToggle();
-    bindInjuryButtons();
-    bindEquipment();
-    bindSearch();
-    bindDraftControls();
+    const hist = $("piqHistory");
+    if (hist) renderSessionHistory(hist);
   }
 
   function renderProfile() {
@@ -1186,139 +844,43 @@
     const body = $("profileBody");
     if (!body) return;
 
-    const inj = state.profile?.injuries || {};
-    const on = Object.keys(inj).filter(k => inj[k]);
-
     body.innerHTML = `
       <div class="mini">
         <div class="minihead">Preferences</div>
         <div class="minibody">
-          Role: <b>${escapeHtml(role)}</b><br/>
-          Sport: <b>${escapeHtml(sport)}</b><br/>
-          Training level: <b>${escapeHtml(state.profile.train_level || "standard")}</b><br/>
-          Equipment: <b>${escapeHtml(state.profile.equipment || "full")}</b><br/>
-          Injury filters: <b>${on.length ? escapeHtml(on.join(", ")) : "none"}</b><br/>
-          <span class="small muted">Edit role/sport in Account. Injury & equipment settings live in Train.</span>
+          Role: <b>${role}</b><br/>
+          Sport: <b>${sport}</b><br/>
+          <span class="small muted">Edit in Account → Role & Sport.</span>
         </div>
       </div>
 
       <div class="mini" style="margin-top:12px">
-        <div class="minihead">Training history</div>
+        <div class="minihead">What gets saved</div>
         <div class="minibody">
-          Saved sessions: <b>${(state.training_sessions || []).length}</b>
-          <div class="small muted" style="margin-top:6px">Train logs minutes × sRPE = load.</div>
+          • Your sessions (minutes × sRPE = load)<br/>
+          • Your role + sport preferences<br/>
+          <span class="small muted">Cloud sync is optional and stays inside Account.</span>
         </div>
       </div>
     `;
   }
 
   const renderMap = { home: renderHome, team: renderTeam, train: renderTrain, profile: renderProfile };
+
   function render(view) {
     setTeamPill();
     renderMap[view]?.();
     applyStatusFromMeta();
   }
 
-  // ---------- Micro-tours ----------
-  const toursKey = "piq_tours_v2";
-  function loadTours() { try { return JSON.parse(localStorage.getItem(toursKey) || "null") || {}; } catch { return {}; } }
-  function saveTours(t) { localStorage.setItem(toursKey, JSON.stringify(t || {})); }
-  let tours = loadTours();
-
-  function tourScript(role, tab) {
-    const scripts = {
-      home: { coach:"Home: daily snapshot + quick actions.", athlete:"Home: targets + next action.", parent:"Home: quick view of today’s plan." },
-      team: { coach:"Team: roster + team setup.", athlete:"Team: join teams when invites are enabled.", parent:"Team: team context." },
-      train: { coach:"Train: search exercises, apply injury filters, and save sessions.", athlete:"Train: follow sets/reps, substitutions apply automatically.", parent:"Train: see training and how hard it was." },
-      profile: { coach:"Profile: preferences + history. Cloud is in Account.", athlete:"Profile: preferences + history. Cloud is in Account.", parent:"Profile: preferences + history. Cloud is in Account." }
-    };
-    return scripts?.[tab]?.[role] || "Tip: explore each tab to get started.";
-  }
-
-  function autoTourFor(tab) {
-    const role = state.profile?.role || "coach";
-    tours[role] = tours[role] || {};
-    if (tours[role][tab]) return;
-    tours[role][tab] = true;
-    saveTours(tours);
-    toast(tourScript(role, tab), 2600);
-  }
-
-  function runTourForCurrentTab() {
-    const active =
-      document.querySelector(".navbtn.active")?.dataset.view ||
-      document.querySelector(".bottomnav .tab.active")?.dataset.view ||
-      state.ui.view ||
-      "home";
-    const role = state.profile?.role || "coach";
-    toast(tourScript(role, active), 2600);
-  }
-
-  // ---------- Onboarding ----------
-  function ensureRoleOnboarding() {
-    if (state.profile?.role) return;
-
-    const overlay = document.createElement("div");
-    overlay.className = "piq-modal-backdrop";
-    overlay.innerHTML = `
-      <div class="piq-modal" role="dialog" aria-modal="true" aria-label="Choose role">
-        <div class="piq-modal-head">
-          <div class="piq-modal-title">Welcome to PerformanceIQ</div>
-          <div class="piq-modal-sub">Choose your role to personalize the app.</div>
-        </div>
-        <div class="piq-modal-body">
-          <div class="field">
-            <label>Role</label>
-            <select id="piqRolePick">
-              <option value="coach">Coach</option>
-              <option value="athlete">Athlete</option>
-              <option value="parent">Parent</option>
-            </select>
-          </div>
-
-          <div class="field" style="margin-top:10px">
-            <label>Sport</label>
-            <select id="piqSportPick">
-              <option value="basketball">Basketball</option>
-              <option value="football">Football</option>
-              <option value="soccer">Soccer</option>
-              <option value="baseball">Baseball</option>
-              <option value="volleyball">Volleyball</option>
-              <option value="track">Track</option>
-            </select>
-          </div>
-
-          <div class="row between" style="margin-top:14px">
-            <div class="small muted">You can change this anytime in Account.</div>
-            <button class="btn" id="piqStartBtn">Continue</button>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-
-    const roleSel = overlay.querySelector("#piqRolePick");
-    const sportSel = overlay.querySelector("#piqSportPick");
-    const btn = overlay.querySelector("#piqStartBtn");
-
-    btn.addEventListener("click", () => {
-      state.profile.role = roleSel.value;
-      state.profile.sport = sportSel.value;
-      state.profile.train_level = state.profile.train_level || "standard";
-      state.profile.equipment = state.profile.equipment || "full";
-      state.profile.injuries = state.profile.injuries || { knee:false, shoulder:false, back:false, ankle:false };
-      persist("Preferences saved");
-      overlay.remove();
-      tours = loadTours();
-      autoTourFor("home");
-      showView("home");
-    });
-  }
-
-  // ---------- Account controls ----------
+  // ---------- Cloud actions (kept safe + non-blocking) ----------
   async function cloudTest() {
     const msg = $("cloudMsg");
-    if (!sb) { if (msg) msg.textContent = "Cloud is off (local-only)."; setDataStatus("off"); return; }
+    if (!sb) {
+      if (msg) msg.textContent = "Cloud is off (local-only).";
+      setDataStatus("off");
+      return;
+    }
     try {
       const { data, error } = await sb.auth.getSession();
       if (error) throw error;
@@ -1370,7 +932,6 @@
       toast("Sign up failed");
     }
     await refreshCloudPill();
-    applyStatusFromMeta();
   }
 
   async function signOut() {
@@ -1455,12 +1016,9 @@
       if (data?.state) {
         state = data.state;
         state.profile = state.profile || {};
-        state.profile.injuries = state.profile.injuries || { knee:false, shoulder:false, back:false, ankle:false };
-        state.profile.train_level = state.profile.train_level || "standard";
-        state.profile.equipment = state.profile.equipment || "full";
         state.team = state.team || { teams: [], active_team_id: null };
         state.ui = state.ui || { view: "home" };
-        state.training_sessions = Array.isArray(state.training_sessions) ? state.training_sessions : [];
+        state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
         persist(null, { silentToast: true });
 
         const activeView =
@@ -1468,7 +1026,6 @@
           document.querySelector(".bottomnav .tab.active")?.dataset.view ||
           state.ui.view ||
           "home";
-
         render(activeView);
       }
 
@@ -1489,7 +1046,133 @@
     await refreshCloudPill();
   }
 
-  // ---------- Bindings ----------
+  // ---------- Micro-tours ----------
+  const toursKey = "piq_tours_v2";
+  function loadTours() { try { return JSON.parse(localStorage.getItem(toursKey) || "null") || {}; } catch { return {}; } }
+  function saveTours(t) { localStorage.setItem(toursKey, JSON.stringify(t || {})); }
+  let tours = loadTours();
+
+  function tourScript(role, tab) {
+    const scripts = {
+      home: {
+        coach: "Home: phase + nutrition targets + quick actions.",
+        athlete: "Home: your phase snapshot + targets.",
+        parent: "Home: quick view of targets and training direction."
+      },
+      team: {
+        coach: "Team: roster + access (cloud).",
+        athlete: "Team: join team (cloud) when enabled.",
+        parent: "Team: see the team context."
+      },
+      train: {
+        coach: "Train: choose session type + filters + log sRPE load.",
+        athlete: "Train: follow today’s plan and save your session.",
+        parent: "Train: see plan and what it trains."
+      },
+      profile: {
+        coach: "Profile: what’s saved and how to use the app.",
+        athlete: "Profile: what’s saved and how to use the app.",
+        parent: "Profile: what’s saved and how to use the app."
+      }
+    };
+    return scripts?.[tab]?.[role] || "Tip: explore each tab to get started.";
+  }
+
+  function autoTourFor(tab) {
+    const role = state.profile?.role || "coach";
+    tours[role] = tours[role] || {};
+    if (tours[role][tab]) return;
+    tours[role][tab] = true;
+    saveTours(tours);
+    toast(tourScript(role, tab), 2600);
+  }
+
+  function runTourForCurrentTab() {
+    const active =
+      document.querySelector(".navbtn.active")?.dataset.view ||
+      document.querySelector(".bottomnav .tab.active")?.dataset.view ||
+      state.ui.view ||
+      "home";
+    const role = state.profile?.role || "coach";
+    toast(tourScript(role, active), 2600);
+  }
+
+  // ---------- Onboarding (modal; never traps) ----------
+  function ensureRoleOnboarding() {
+    if (state.profile?.role && state.profile?.sport) return;
+
+    const overlay = document.createElement("div");
+    overlay.className = "piq-modal-backdrop";
+    overlay.innerHTML = `
+      <div class="piq-modal" role="dialog" aria-modal="true" aria-label="Choose role">
+        <div class="piq-modal-head">
+          <div class="piq-modal-title">Welcome to PerformanceIQ</div>
+          <div class="piq-modal-sub">Choose your role and sport to personalize the app.</div>
+        </div>
+
+        <div class="piq-modal-body">
+          <div class="field">
+            <label>Role</label>
+            <select id="piqRolePick">
+              <option value="coach">Coach</option>
+              <option value="athlete">Athlete</option>
+              <option value="parent">Parent</option>
+            </select>
+          </div>
+
+          <div class="field" style="margin-top:10px">
+            <label>Sport</label>
+            <select id="piqSportPick">
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="soccer">Soccer</option>
+              <option value="baseball">Baseball</option>
+              <option value="volleyball">Volleyball</option>
+              <option value="track">Track</option>
+            </select>
+          </div>
+
+          <div class="row between" style="margin-top:14px">
+            <div class="small muted">You can change this anytime in Account.</div>
+            <div class="row gap">
+              <button class="btn ghost" id="piqSkipBtn" title="Use defaults">Skip</button>
+              <button class="btn" id="piqStartBtn">Continue</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const roleSel = overlay.querySelector("#piqRolePick");
+    const sportSel = overlay.querySelector("#piqSportPick");
+    const btn = overlay.querySelector("#piqStartBtn");
+    const skip = overlay.querySelector("#piqSkipBtn");
+
+    roleSel.value = state.profile?.role || "coach";
+    sportSel.value = state.profile?.sport || "basketball";
+
+    function finish() {
+      persist("Preferences saved");
+      overlay.remove();
+      autoTourFor("home");
+      showView("home");
+    }
+
+    btn.addEventListener("click", () => {
+      state.profile.role = roleSel.value;
+      state.profile.sport = sportSel.value;
+      finish();
+    });
+
+    skip.addEventListener("click", () => {
+      state.profile.role = state.profile.role || roleSel.value || "coach";
+      state.profile.sport = state.profile.sport || sportSel.value || "basketball";
+      finish();
+    });
+  }
+
+  // ---------- Boot bindings ----------
   function bindNav() {
     document.querySelectorAll("[data-view]").forEach(btn => {
       if (btn.classList.contains("navbtn") || btn.classList.contains("tab")) {
@@ -1554,41 +1237,40 @@
     $("btnPull")?.addEventListener("click", pullFromCloud);
 
     $("btnHelp")?.addEventListener("click", () => {
-      toast("Tip: Train → apply injury filters + equipment to auto-substitute safer options.", 2800);
+      toast("Tip: Train tab now generates sessions + warmups + injury-safe substitutions. Save minutes + sRPE to log load.", 3200);
     });
   }
 
-  // ---------- Boot ----------
   function boot() {
+    // Init SB best-effort
     sb = initSupabaseIfPossible();
 
+    // Bind UI
     bindNav();
     bindDrawer();
     bindAccountControls();
 
+    // Pills
     setTeamPill();
     refreshCloudPill();
 
+    // Status
     const cfg = loadCloudCfg();
     if (!cfg || !cfg.url || !cfg.anon) setDataStatus("off");
     else if (!sb) setDataStatus("error");
     else setDataStatus("local", timeAgo(meta.lastLocalSaveAt));
 
+    // Onboarding
     ensureRoleOnboarding();
 
+    // Initial view
     const initial = state.ui?.view || "home";
     showView(initial);
 
-    const splash = $("splash");
-    if (splash) {
-      splash.style.display = "none";
-      splash.setAttribute("aria-hidden", "true");
-    }
+    // ✅ always hide splash (fix trap screen)
+    hideSplash();
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
 })();
