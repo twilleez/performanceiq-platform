@@ -1,4 +1,4 @@
-// core.js — v2.7.0 (Fix Today plan rendering + Phase 1 onboarding + Phase 2 theme system)
+// core.js — v2.9.0 (Phase 2 polish + Phase 3 slice + session-type plans + onboarding Try Now fix)
 (function () {
   "use strict";
   if (window.__PIQ_CORE__) return;
@@ -13,6 +13,10 @@
   state.ui = state.ui || { view: "home" };
   state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
   state.profile.injuries = Array.isArray(state.profile.injuries) ? state.profile.injuries : [];
+  state.profile.goal = state.profile.goal || "maintain";
+
+  // default preferred session type
+  state.profile.preferred_session_type = state.profile.preferred_session_type || "strength";
 
   // ---------------- Meta ----------------
   const metaKey = "piq_meta_v2";
@@ -20,12 +24,11 @@
   function saveMeta(m) { localStorage.setItem(metaKey, JSON.stringify(m || {})); }
   let meta = loadMeta();
   meta.lastLocalSaveAt = meta.lastLocalSaveAt || null;
-  meta.lastCloudSyncAt = meta.lastCloudSyncAt || null;
   meta.syncState = meta.syncState || "off";
   meta.onboarded_v1 = meta.onboarded_v1 || false;
   saveMeta(meta);
 
-  // ---------------- Theme (Phase 2) ----------------
+  // ---------------- Theme ----------------
   const themeKey = "piq_theme_v1";
   const SPORT_ACCENTS = {
     basketball: { accent: "#2EC4B6" },
@@ -36,9 +39,7 @@
     track:      { accent: "#F59E0B" },
   };
 
-  function loadTheme() {
-    try { return JSON.parse(localStorage.getItem(themeKey) || "null") || null; } catch { return null; }
-  }
+  function loadTheme() { try { return JSON.parse(localStorage.getItem(themeKey) || "null") || null; } catch { return null; } }
   function saveTheme(t) { localStorage.setItem(themeKey, JSON.stringify(t || {})); }
 
   function applyTheme(t) {
@@ -51,7 +52,6 @@
     html.style.setProperty("--accent", accent);
     html.style.setProperty("--accent-2", "color-mix(in oklab, var(--accent) 18%, transparent)");
 
-    // Keep themeSportSelect consistent if present
     if ($("themeModeSelect")) $("themeModeSelect").value = mode;
     if ($("themeSportSelect")) $("themeSportSelect").value = sport;
   }
@@ -63,11 +63,6 @@
     applyTheme(cur);
     toast(cur.mode === "dark" ? "Dark mode" : "Light mode");
   }
-
-  // ---------------- Cloud config ----------------
-  const cloudKey = "piq_cloud_v2";
-  function loadCloudCfg() { try { return JSON.parse(localStorage.getItem(cloudKey) || "null"); } catch { return null; } }
-  function saveCloudCfg(cfg) { localStorage.setItem(cloudKey, JSON.stringify(cfg)); }
 
   // ---------------- Toast ----------------
   function toast(msg, ms = 2200) {
@@ -94,7 +89,12 @@
     clearTimeout(undoTimer);
     undoTimer = setTimeout(() => { hideUndoToast(); }, ms);
   }
-  function hideUndoToast() { const t = $("undoToast"); if (!t) return; t.hidden = true; t.innerHTML = ""; }
+  function hideUndoToast() {
+    const t = $("undoToast");
+    if (!t) return;
+    t.hidden = true;
+    t.innerHTML = "";
+  }
 
   // ---------------- Status pill ----------------
   function setDataStatus(kind, detail) {
@@ -106,7 +106,7 @@
       syncing: { label: "Syncing…", color: "var(--accent)" },
       synced: { label: "Synced", color: "#22C55E" },
       off: { label: "Sync off", color: "rgba(255,255,255,.35)" },
-      error: { label: "Sync failed — open Account to retry", color: "#EF4444" }
+      error: { label: "Sync failed — open Account", color: "#EF4444" }
     };
     const v = map[kind] || map.local;
     dot.style.background = v.color;
@@ -144,7 +144,7 @@
     if (msg && !opts.silentToast) toast(msg);
   }
 
-  // Autosave every 30s
+  // Autosave
   let autosaveTimer = null;
   function startAutosave() {
     clearInterval(autosaveTimer);
@@ -206,16 +206,13 @@
 
   // ---------------- Help KB ----------------
   function helpArticles() {
-    const role = state.profile?.role || "coach";
     return [
-      { k: "today", title: "Today workflow", body: "Tap Today to generate a plan, start a timer, then log when done. Fastest way to track consistency." },
-      { k: "train", title: "Train tab", body: "Pick sport + session type, choose injury tags, view warm-up + microblocks, then Save session to log minutes and sRPE." },
-      { k: "srpe", title: "sRPE & training load", body: "sRPE is effort 0–10. Load = minutes × sRPE. Use it to track week-to-week workload." },
-      { k: "injury", title: "Injury-friendly templates", body: "Select injury tags (knee/ankle/shoulder/back) to generate safer templates and substitutions." },
-      { k: "theme", title: "Theme & sport accent", body: "Switch dark/light and choose a sport accent in Account → Appearance." },
-      { k: "data", title: "Data Management", body: "Export JSON to backup, Import JSON to restore, and Reset local if needed. Undo appears for 6 seconds after destructive actions." },
-      { k: role, title: "Role tips", body: `You are in ${role} mode. Use Help to learn each tab quickly.` },
-      { k: "shortcuts", title: "Shortcuts", body: "Press Ctrl/⌘+K to open Help Search from anywhere." },
+      { k: "today", title: "Today workflow", body: "Tap Today: Generate → Start timer → Done (log). Today uses your preferred session type + injury tag." },
+      { k: "session", title: "Session types", body: "Strength, Speed, Conditioning, Skill, Recovery. Train builds a different workout based on session type." },
+      { k: "injury", title: "Injury-friendly templates", body: "Knee/Ankle/Shoulder/Back templates swap risky moves for safer substitutions." },
+      { k: "report", title: "Coach report (Print → PDF)", body: "Profile (Coach) → Generate report. Print/Save as PDF. Works offline." },
+      { k: "theme", title: "Theme", body: "Switch dark/light and choose a sport accent in Account → Appearance." },
+      { k: "shortcuts", title: "Shortcuts", body: "Ctrl/⌘+K opens Help Search." },
     ];
   }
 
@@ -236,14 +233,8 @@
   }
 
   // ---------------- FAB ----------------
-  function openSheet() {
-    $("sheetBackdrop").hidden = false;
-    $("fabSheet").hidden = false;
-  }
-  function closeSheet() {
-    $("sheetBackdrop").hidden = true;
-    $("fabSheet").hidden = true;
-  }
+  function openSheet() { $("sheetBackdrop").hidden = false; $("fabSheet").hidden = false; }
+  function closeSheet() { $("sheetBackdrop").hidden = true; $("fabSheet").hidden = true; }
 
   // ---------------- Team pill ----------------
   function setTeamPill() {
@@ -254,45 +245,7 @@
   }
 
   // ---------------- Training building blocks ----------------
-  function skillMicroblocksFor(sport) {
-    const map = {
-      basketball: [
-        { name: "Ball Handling: Stationary series (3 min)", duration: 3 },
-        { name: "Ball Handling: Change-of-pace (4 min)", duration: 4 },
-        { name: "Shooting: Form + arc (6 min)", duration: 6 },
-        { name: "Shooting: Spot-up game pace (8 min)", duration: 8 },
-        { name: "Footwork: Closeout + retreat (4 min)", duration: 4 }
-      ],
-      football: [
-        { name: "Route running: stem + break mechanics (8 min)", duration: 8 },
-        { name: "Hands: catch-to-tuck series (6 min)", duration: 6 },
-        { name: "Release vs press: 1–2 moves (6 min)", duration: 6 }
-      ],
-      soccer: [
-        { name: "Dribbling: cone weave + bursts (8 min)", duration: 8 },
-        { name: "Shooting: placement focus (6 min)", duration: 6 },
-        { name: "Passing: wall reps + first touch (5 min)", duration: 5 }
-      ],
-      baseball: [
-        { name: "Throwing: easy progression (6 min)", duration: 6 },
-        { name: "Fielding: footwork → throw (8 min)", duration: 8 },
-        { name: "Rotational power: medball (6 min)", duration: 6 }
-      ],
-      volleyball: [
-        { name: "Approach footwork rhythm (6 min)", duration: 6 },
-        { name: "Blocking hands/press timing (5 min)", duration: 5 },
-        { name: "Spike contact timing (6 min)", duration: 6 }
-      ],
-      track: [
-        { name: "Drills: A/B series (6 min)", duration: 6 },
-        { name: "Starts: drive phase (6 min)", duration: 6 },
-        { name: "Relaxed sprint mechanics (6 min)", duration: 6 }
-      ]
-    };
-    return map[sport] || map.basketball;
-  }
-
-  function warmupFor(sport) {
+  function warmupFor(sport, sessionType) {
     const base = [
       "Breathing reset (1 min)",
       "Pulse raise: easy movement (2–3 min)",
@@ -306,23 +259,160 @@
       volleyball: ["Approach footwork (3×3)", "Landing mechanics (2×5)"],
       track: ["A/B-skips (2–3 min)", "Build-ups (3×40m easy→fast)"]
     };
-    return base.concat(extra[sport] || []);
+    const st = {
+      strength: ["Primer: 2 light sets of first lift"],
+      speed: ["Sprint drills: 2–3 min technique"],
+      conditioning: ["Low-intensity build: 3–4 min"],
+      skill: ["Skill prep: 2–3 min easy reps"],
+      recovery: ["Breath + tissue + easy mobility (6–8 min)"]
+    };
+    return base.concat(st[sessionType] || []).concat(extra[sport] || []);
   }
 
-  function injuryTemplate(sport, injuryTag) {
-    const inj = injuryTag || null;
-    const title = `${sport} — ${inj ? inj + "-friendly" : "standard"} session`;
+  function skillMicroblocksFor(sport) {
+    const map = {
+      basketball: [
+        "Ball Handling: stationary series (3 min)",
+        "Ball Handling: change-of-pace (4 min)",
+        "Shooting: form + arc (6 min)",
+        "Shooting: spot-up game pace (8 min)",
+        "Footwork: closeout + retreat (4 min)",
+        "Finishing: 2-foot + 1-foot reads (6 min)"
+      ],
+      football: [
+        "Route running: stem + break mechanics (8 min)",
+        "Hands: catch-to-tuck series (6 min)",
+        "Release vs press: 1–2 moves (6 min)",
+        "Throwing: footwork + timing (QB) (8 min)"
+      ],
+      soccer: [
+        "Dribbling: cone weave + bursts (8 min)",
+        "Shooting: placement focus (6 min)",
+        "Passing: wall reps + first touch (5 min)",
+        "Change of direction: 5-10-5 pattern (6 min)"
+      ],
+      baseball: [
+        "Throwing: easy progression (6 min)",
+        "Fielding: footwork → throw (8 min)",
+        "Rotational power: medball (6 min)",
+        "Sprint: 10–30 yd accelerations (6 min)"
+      ],
+      volleyball: [
+        "Approach footwork rhythm (6 min)",
+        "Blocking hands timing (5 min)",
+        "Spike contact timing (6 min)",
+        "Serve consistency: target zones (6 min)"
+      ],
+      track: [
+        "Drills: A/B series (6 min)",
+        "Starts: drive phase (6 min)",
+        "Relaxed sprint mechanics (6 min)",
+        "Strides: smooth build-ups (6 min)"
+      ]
+    };
+    return map[sport] || map.basketball;
+  }
 
-    const blocks = [
-      { h: "Warm-up", items: warmupFor(sport) },
-      { h: "Skill microblocks", items: skillMicroblocksFor(sport).slice(0, 4).map(x => x.name) }
+  function strengthBlock(sport) {
+    const common = [
+      "Split squat or rear-foot elevated (3×6–10)",
+      "RDL / hinge pattern (3×6–10)",
+      "Row variation (3×8–12)",
+      "Push variation (3×8–12)",
+      "Core: anti-rotation (2–3×10/side)"
     ];
+    const sportAdds = {
+      basketball: ["Calf work + tib raises (2–3×12–15)"],
+      football: ["Trap bar deadlift option (3×3–5)"],
+      soccer: ["Nordic regression (2–3×4–6)"],
+      baseball: ["Scap + cuff finisher (2–3×12–15)"],
+      volleyball: ["Landing strength: step-downs (2–3×6–8)"],
+      track: ["Posterior chain emphasis (hip thrust 3×6–10)"]
+    };
+    return common.concat(sportAdds[sport] || []);
+  }
 
-    if (inj === "knee") blocks.push({ h: "Knee-friendly strength", items: ["Split squat (light)", "Hamstring eccentrics", "Bike intervals (low impact)"] });
-    else if (inj === "ankle") blocks.push({ h: "Ankle-friendly work", items: ["Balance progression", "Isometric calf holds", "Bike or pool option"] });
-    else if (inj === "shoulder") blocks.push({ h: "Shoulder-friendly work", items: ["Band ER", "Scap work", "Avoid heavy overhead pressing"] });
-    else if (inj === "back") blocks.push({ h: "Back-safe work", items: ["Glute bridge / hinge regressions", "Pallof press", "Avoid heavy spinal flexion"] });
-    else blocks.push({ h: "Strength / Conditioning", items: ["Hinge pattern (moderate)", "Rows + push pattern", "Tempo conditioning"] });
+  function speedBlock(sport) {
+    const base = [
+      "Acceleration: 6×10–20yd (full rest)",
+      "Decel mechanics: 3×3 reps (stick landing)",
+      "COD: 4× reps (5-10-5 or sport pattern)"
+    ];
+    const sportAdds = {
+      basketball: ["Closeout → retreat → re-accelerate (6 reps)"],
+      football: ["Resisted starts (4×10yd)"],
+      soccer: ["Flying 10s (4×)"],
+      baseball: ["First-step reaction (6×)"],
+      volleyball: ["Approach speed reps (6×)"],
+      track: ["Event-specific sprint set (6–10 reps)"]
+    };
+    return base.concat(sportAdds[sport] || []);
+  }
+
+  function conditioningBlock(sport) {
+    const base = [
+      "Intervals: 8–12 min total",
+      "Work: 15–30s hard / Rest: 30–60s easy",
+      "Cool-down: 3–5 min easy movement"
+    ];
+    const sportAdds = {
+      basketball: ["Court shuttles or tempo runs"],
+      football: ["Short burst repeats (10–15s)"],
+      soccer: ["Repeated sprint ability (RSA)"],
+      baseball: ["Short accelerations + walk-back"],
+      volleyball: ["Short court shuttles"],
+      track: ["Tempo/strides (event dependent)"]
+    };
+    return base.concat(sportAdds[sport] || []);
+  }
+
+  function recoveryBlock() {
+    return [
+      "Breath: 4-6 breathing (3–5 min)",
+      "Mobility flow: hips/ankles/T-spine (8–12 min)",
+      "Easy cardio: 10–20 min zone 2 (optional)",
+      "Tissue: calves/quads/hips (optional)"
+    ];
+  }
+
+  function injurySubstitutions(injury) {
+    if (injury === "knee") return ["Swap deep squats → box squat / split squat range-limited", "Swap high-impact plyos → bike intervals", "Add isometrics: wall sit 3×30–45s"];
+    if (injury === "ankle") return ["Swap lateral bounds → line hops low", "Add balance + tib/calf work", "Prefer bike/pool for conditioning"];
+    if (injury === "shoulder") return ["Swap heavy overhead press → landmine press", "Limit high-volume throwing", "Add cuff/scap work 2–3×/wk"];
+    if (injury === "back") return ["Swap heavy hinge → hip hinge regression", "Avoid loaded spinal flexion", "Add anti-rotation + glute bridge"];
+    return [];
+  }
+
+  function buildSessionPlan({ sport, sessionType, injuryTag }) {
+    const st = sessionType || "strength";
+    const inj = injuryTag || null;
+    const title = `${sport} • ${st.toUpperCase()}${inj ? ` • ${inj}-friendly` : ""}`;
+
+    const blocks = [];
+    blocks.push({ h: "Warm-up", items: warmupFor(sport, st) });
+
+    // microblocks: always include, but change emphasis
+    const micro = skillMicroblocksFor(sport);
+    const microPick =
+      st === "skill" ? micro.slice(0, 5) :
+      st === "speed" ? micro.slice(0, 2) :
+      st === "conditioning" ? micro.slice(2, 4) :
+      micro.slice(0, 3);
+
+    blocks.push({ h: "Skill microblocks", items: microPick });
+
+    // main block depends on session type
+    if (st === "strength") blocks.push({ h: "Strength", items: strengthBlock(sport) });
+    else if (st === "speed") blocks.push({ h: "Speed", items: speedBlock(sport) });
+    else if (st === "conditioning") blocks.push({ h: "Conditioning", items: conditioningBlock(sport) });
+    else if (st === "skill") blocks.push({ h: "Skill focus", items: micro.concat(["Game-speed reps: 6–10 min", "Cool-down reset (3–5 min)"]) });
+    else if (st === "recovery") blocks.push({ h: "Recovery", items: recoveryBlock() });
+
+    // injury-friendly substitutions section
+    const subs = injurySubstitutions(inj);
+    if (subs.length) blocks.push({ h: "Injury substitutions", items: subs });
+
+    blocks.push({ h: "Cool-down", items: ["Easy breathing (2 min)", "Calves/hips stretch (3–5 min)"] });
 
     return { title, blocks };
   }
@@ -344,8 +434,9 @@
 
   function todayGenerate() {
     const sport = state.profile?.sport || "basketball";
+    const st = state.profile?.preferred_session_type || "strength";
     const inj = (state.profile?.injuries || [])[0] || null;
-    today.plan = injuryTemplate(sport, inj);
+    today.plan = buildSessionPlan({ sport, sessionType: st, injuryTag: inj });
     renderHome();
     toast("Today plan generated");
   }
@@ -371,7 +462,7 @@
     addSessionLog({
       dateISO: new Date().toISOString(),
       sport: state.profile?.sport || "basketball",
-      sessionType: "today",
+      sessionType: state.profile?.preferred_session_type || "strength",
       minutes,
       srpe: 6,
       planTitle: today.plan.title
@@ -386,11 +477,12 @@
     return todayDone();
   }
 
-  // ---------------- Render Home (✅ FIXED: show exercises) ----------------
+  // ---------------- Render Home ----------------
   function renderHome() {
     const role = state.profile?.role || "coach";
     const sport = state.profile?.sport || "basketball";
-    $("homeSub").textContent = `${role} view • Sport: ${sport}`;
+    const st = state.profile?.preferred_session_type || "strength";
+    $("homeSub").textContent = `${role} view • Sport: ${sport} • Today: ${st}`;
 
     const targets = window.nutritionEngine?.macroTargets
       ? window.nutritionEngine.macroTargets({
@@ -406,7 +498,7 @@
       <div style="margin-top:10px">
         ${plan.blocks.map(b => `
           <div style="margin-top:10px">
-            <div style="font-weight:800">${b.h}</div>
+            <div style="font-weight:900">${b.h}</div>
             <ul style="margin-top:6px; padding-left:18px">
               ${b.items.map(it => `<li style="margin:6px 0">${it}</li>`).join("")}
             </ul>
@@ -436,42 +528,169 @@
     if (!today.running) $("todayTimer").textContent = "No timer running";
   }
 
-  // ---------------- Render Team/Profile (minimal) ----------------
-  function renderTeam() { $("teamBody").innerHTML = `<div class="mini"><div class="minihead">Team</div><div class="minibody">Team tools expand with cloud + roles.</div></div>`; }
+  // ---------------- Render Team/Profile ----------------
+  function renderTeam() {
+    $("teamBody").innerHTML = `
+      <div class="mini">
+        <div class="minihead">Team</div>
+        <div class="minibody">Team tools expand with cloud roles later. (Phase 3+)</div>
+      </div>
+    `;
+  }
+
   function renderProfile() {
     const role = state.profile?.role || "coach";
     const sport = state.profile?.sport || "basketball";
+    const st = state.profile?.preferred_session_type || "strength";
+
     $("profileBody").innerHTML = `
+      <div class="grid2">
+        <div class="mini">
+          <div class="minihead">Preferences</div>
+          <div class="minibody">
+            Role: <b>${role}</b><br/>
+            Sport: <b>${sport}</b><br/>
+            Preferred session: <b>${st}</b><br/>
+            Injuries: <b>${(state.profile?.injuries||[]).join(", ") || "none"}</b>
+          </div>
+        </div>
+
+        <div class="mini">
+          <div class="minihead">Phase 3: Coach report</div>
+          <div class="minibody">Generate a printable report (Print → Save as PDF). Works offline.</div>
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn" id="btnCoachReport" ${role!=="coach" ? "disabled" : ""}>Generate report</button>
+            <button class="btn ghost" id="btnViewSessions">View recent sessions</button>
+          </div>
+          ${role!=="coach" ? `<div class="small muted" style="margin-top:8px">Coach role required for report.</div>` : ""}
+        </div>
+      </div>
+
+      <div id="profileExtra" style="margin-top:12px"></div>
+    `;
+
+    $("btnCoachReport")?.addEventListener("click", () => {
+      try { openCoachReportWindow(); } catch { toast("Report failed"); }
+    });
+    $("btnViewSessions")?.addEventListener("click", () => {
+      renderSessionHistory($("profileExtra"), 16);
+    });
+  }
+
+  function renderSessionHistory(container, limit = 12) {
+    if (!container) return;
+    const list = state.sessions.slice(0, limit);
+    if (!list.length) {
+      container.innerHTML = `<div class="mini"><div class="minihead">Recent sessions</div><div class="minibody">No sessions logged yet.</div></div>`;
+      return;
+    }
+    container.innerHTML = `
       <div class="mini">
-        <div class="minihead">Preferences</div>
+        <div class="minihead">Recent sessions</div>
         <div class="minibody">
-          Role: <b>${role}</b><br/>
-          Sport: <b>${sport}</b><br/>
-          Injuries: <b>${(state.profile?.injuries||[]).join(", ") || "none"}</b>
+          ${list.map(s => `
+            <div class="row between" style="padding:10px 0; border-top: 1px solid var(--line)">
+              <div>
+                <div style="font-weight:900">${(s.planTitle||s.sessionType||"session")}</div>
+                <div class="small muted">${(s.date||"").slice(0,10)} • ${s.minutes} min • sRPE ${s.srpe} • Load ${s.load}</div>
+              </div>
+            </div>
+          `).join("")}
         </div>
       </div>
     `;
   }
 
-  // ---------------- Render Train (unchanged structure; sport picker exists) ----------------
+  // ---------------- Coach Report (Print → PDF) ----------------
+  function openCoachReportWindow() {
+    const sport = state.profile?.sport || "basketball";
+    const role = state.profile?.role || "coach";
+    if (role !== "coach") { toast("Coach role required"); return; }
+
+    const last14 = state.sessions
+      .filter(s => (s.sport || "") === sport)
+      .slice(0, 14);
+
+    const totalMinutes = last14.reduce((a,s)=>a+(s.minutes||0),0);
+    const totalLoad = last14.reduce((a,s)=>a+(s.load||0),0);
+
+    const w = window.open("", "_blank");
+    if (!w) { toast("Popup blocked"); return; }
+
+    w.document.write(`
+      <!doctype html>
+      <html>
+      <head>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <title>PerformanceIQ Report</title>
+        <style>
+          body{font-family:Arial, sans-serif; padding:24px; color:#111}
+          h1{margin:0 0 6px}
+          .muted{color:#555}
+          .kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:16px 0}
+          .card{border:1px solid #ddd; border-radius:10px; padding:12px}
+          table{width:100%; border-collapse:collapse; margin-top:14px}
+          th,td{border-bottom:1px solid #eee; padding:10px; text-align:left; font-size:13px}
+          th{background:#fafafa}
+          .small{font-size:12px}
+        </style>
+      </head>
+      <body>
+        <h1>PerformanceIQ • Coach Report</h1>
+        <div class="muted">Sport: <b>${sport}</b> • Generated: <b>${new Date().toLocaleString()}</b></div>
+
+        <div class="kpis">
+          <div class="card"><div class="small muted">Sessions shown</div><div style="font-size:22px;font-weight:800">${last14.length}</div></div>
+          <div class="card"><div class="small muted">Total minutes</div><div style="font-size:22px;font-weight:800">${totalMinutes}</div></div>
+          <div class="card"><div class="small muted">Total load</div><div style="font-size:22px;font-weight:800">${totalLoad}</div></div>
+        </div>
+
+        <div class="card">
+          <div style="font-weight:800;margin-bottom:6px">Session history (most recent)</div>
+          <table>
+            <thead><tr><th>Date</th><th>Plan</th><th>Minutes</th><th>sRPE</th><th>Load</th></tr></thead>
+            <tbody>
+              ${last14.map(s=>`
+                <tr>
+                  <td>${(s.date||"").slice(0,10)}</td>
+                  <td>${(s.planTitle||s.sessionType||"")}</td>
+                  <td>${s.minutes||0}</td>
+                  <td>${s.srpe||0}</td>
+                  <td>${s.load||0}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:14px" class="muted small">
+          Tip: Print → “Save as PDF” to share with parents/admins.
+        </div>
+      </body>
+      </html>
+    `);
+    w.document.close();
+    w.focus();
+    toast("Report opened (Print → Save as PDF)");
+  }
+
+  // ---------------- Render Train (session type WORKS now) ----------------
   function renderTrain() {
     const role = state.profile?.role || "coach";
     $("trainSub").textContent = role === "coach"
-      ? "Coach: build sessions + log training load."
-      : "Athlete: follow the plan + save your session.";
+      ? "Coach: pick sport + session type + injury tags. Save session to log."
+      : "Athlete: follow plan. Save session to log your load.";
 
-    const sport = state.profile?.sport || "basketball";
-    const uiKey = "piq_train_ui_v3";
+    const uiKey = "piq_train_ui_v4";
     const ui = (() => { try { return JSON.parse(localStorage.getItem(uiKey) || "null") || {}; } catch { return {}; } })();
-    ui.sport = ui.sport || sport;
-    ui.sessionType = ui.sessionType || "strength";
+    ui.sport = ui.sport || (state.profile?.sport || "basketball");
+    ui.sessionType = ui.sessionType || (state.profile?.preferred_session_type || "strength");
     ui.level = ui.level || "standard";
     ui.injuries = Array.isArray(ui.injuries) ? ui.injuries : state.profile.injuries.slice(0);
     function saveUI() { localStorage.setItem(uiKey, JSON.stringify(ui)); }
 
-    const tpl = injuryTemplate(ui.sport, ui.injuries[0] || null);
-    const warm = warmupFor(ui.sport);
-    const micro = skillMicroblocksFor(ui.sport);
+    const plan = buildSessionPlan({ sport: ui.sport, sessionType: ui.sessionType, injuryTag: ui.injuries[0] || null });
 
     $("trainBody").innerHTML = `
       <div class="grid2">
@@ -502,14 +721,6 @@
           </div>
 
           <div class="field" style="margin-top:10px">
-            <label>Level</label>
-            <select id="piqLevel">
-              <option value="standard">Standard</option>
-              <option value="advanced">Advanced</option>
-            </select>
-          </div>
-
-          <div class="field" style="margin-top:10px">
             <label>Injury / sensitivity</label>
             <div class="row gap wrap">
               ${[["knee","Knee"],["ankle","Ankle"],["shoulder","Shoulder"],["back","Back"]].map(([k,l]) => `
@@ -531,38 +742,27 @@
 
           <div class="row gap wrap" style="margin-top:12px">
             <button class="btn" id="piqSaveSession">Save session</button>
-            <button class="btn ghost" id="piqResetFilters">Reset filters</button>
+            <button class="btn ghost" id="piqMakeToday">Make this Today</button>
+            <button class="btn ghost" id="piqResetFilters">Reset</button>
+          </div>
+          <div class="small muted" style="margin-top:8px">
+            “Make this Today” sets your preferred session type for Home → Today.
           </div>
         </div>
 
         <div class="mini">
-          <div class="minihead">Warm-up generator</div>
+          <div class="minihead">Generated plan</div>
           <div class="minibody">
-            <ol style="margin:0; padding-left:18px">
-              ${warm.map(x=>`<li style="margin:8px 0">${x}</li>`).join("")}
-            </ol>
+            <div style="margin-top:6px"><b>${plan.title}</b></div>
+            ${plan.blocks.map(b => `
+              <div style="margin-top:10px">
+                <div style="font-weight:900">${b.h}</div>
+                <ul style="margin-top:6px;padding-left:18px">
+                  ${b.items.map(it => `<li style="margin:6px 0">${it}</li>`).join("")}
+                </ul>
+              </div>
+            `).join("")}
           </div>
-
-          <div style="margin-top:12px" class="minihead">Skill microblocks</div>
-          <div class="minibody">
-            <ol style="margin:0; padding-left:18px">
-              ${micro.map(m=>`<li style="margin:8px 0">${m.name}</li>`).join("")}
-            </ol>
-          </div>
-        </div>
-      </div>
-
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">${tpl.title}</div>
-        <div class="minibody">
-          ${tpl.blocks.map(b => `
-            <div style="margin-top:10px">
-              <div style="font-weight:800">${b.h}</div>
-              <ul style="margin-top:6px; padding-left:18px">
-                ${b.items.map(it=>`<li style="margin:6px 0">${it}</li>`).join("")}
-              </ul>
-            </div>
-          `).join("")}
         </div>
       </div>
 
@@ -570,27 +770,29 @@
     `;
 
     const sportSel = $("piqSportPickTrain");
-    const st = $("piqSessionType");
-    const lv = $("piqLevel");
+    const stSel = $("piqSessionType");
     sportSel.value = ui.sport;
-    st.value = ui.sessionType;
-    lv.value = ui.level;
+    stSel.value = ui.sessionType;
 
     sportSel.addEventListener("change", () => {
       ui.sport = sportSel.value;
       state.profile.sport = ui.sport;
-      // Keep theme sport accent aligned unless user changed it explicitly
+
+      // align accent sport
       const t = loadTheme() || { mode: document.documentElement.getAttribute("data-theme") || "dark", sport: ui.sport };
-      if (!t.sport) t.sport = ui.sport;
-      saveTheme({ ...t, sport: t.sport || ui.sport });
+      saveTheme({ ...t, sport: ui.sport });
       applyTheme(loadTheme());
+
       persist(null, { silentToast: true });
       saveUI();
       render("train");
     });
 
-    st.addEventListener("change", () => { ui.sessionType = st.value; saveUI(); render("train"); });
-    lv.addEventListener("change", () => { ui.level = lv.value; saveUI(); render("train"); });
+    stSel.addEventListener("change", () => {
+      ui.sessionType = stSel.value;
+      saveUI();
+      render("train");
+    });
 
     document.querySelectorAll("[data-inj]").forEach(cb => {
       cb.addEventListener("change", () => {
@@ -614,6 +816,13 @@
       toast("Filters reset");
     });
 
+    $("piqMakeToday").addEventListener("click", () => {
+      state.profile.preferred_session_type = ui.sessionType;
+      persist("Today preference saved");
+      toast("Home → Today will use this session type");
+      renderHome();
+    });
+
     $("piqSaveSession").addEventListener("click", () => {
       const mins = safeNum($("piqMinutes").value, 30);
       const srpe = safeNum($("piqSrpe").value, 6);
@@ -623,219 +832,30 @@
         sessionType: ui.sessionType,
         minutes: mins,
         srpe,
-        planTitle: `${ui.sport} ${ui.sessionType} (${ui.level})`
+        planTitle: plan.title
       });
       render("train");
     });
 
-    renderSessionHistory($("piqHistory"));
-  }
-
-  function renderSessionHistory(container) {
-    if (!container) return;
-    const list = state.sessions.slice(0, 12);
-    if (!list.length) {
-      container.innerHTML = `<div class="mini"><div class="minihead">Recent sessions</div><div class="minibody">No sessions logged yet.</div></div>`;
-      return;
-    }
-    container.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Recent sessions</div>
-        <div class="minibody">
-          ${list.map(s => `
-            <div class="row between" style="padding:10px 0; border-top: 1px solid var(--line)">
-              <div>
-                <div style="font-weight:800">${(s.planTitle||s.sessionType||"session").toUpperCase()}</div>
-                <div class="small muted">${(s.date||"").slice(0,10)} • ${s.minutes} min • sRPE ${s.srpe} • Load ${s.load}</div>
-              </div>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-    `;
+    renderSessionHistory($("piqHistory"), 12);
   }
 
   // ---------------- Render map ----------------
   const renderMap = { home: renderHome, team: renderTeam, train: renderTrain, profile: renderProfile };
   function render(view) { setTeamPill(); renderMap[view]?.(); }
 
-  // ---------------- Phase 1: Onboarding (5 steps) ----------------
-  function openOnboardingWizard() {
-    const overlay = document.createElement("div");
-    overlay.style.position = "fixed";
-    overlay.style.inset = "0";
-    overlay.style.background = "rgba(2,6,12,.55)";
-    overlay.style.zIndex = "999";
-    overlay.style.display = "flex";
-    overlay.style.alignItems = "center";
-    overlay.style.justifyContent = "center";
-    overlay.innerHTML = `
-      <div style="width:min(560px,92vw);background:var(--top);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden">
-        <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:center">
-          <div>
-            <div style="font-family:var(--font-head);font-weight:800;font-size:18px">Welcome to PerformanceIQ</div>
-            <div class="small muted" id="obSub">Step 1 of 5</div>
-          </div>
-          <button class="btn ghost" id="obSkip" style="display:none">Skip</button>
-        </div>
-        <div style="padding:16px" id="obBody"></div>
-        <div style="padding:14px 16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:center">
-          <button class="btn ghost" id="obBack" disabled>Back</button>
-          <button class="btn" id="obNext">Next</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-
-    let step = 1;
-    const total = 5;
-
-    const elSub = overlay.querySelector("#obSub");
-    const elBody = overlay.querySelector("#obBody");
-    const btnBack = overlay.querySelector("#obBack");
-    const btnNext = overlay.querySelector("#obNext");
-    const btnSkip = overlay.querySelector("#obSkip");
-
-    function renderStep() {
-      elSub.textContent = `Step ${step} of ${total}`;
-      btnBack.disabled = step === 1;
-
-      // Skip available from step 2 onward
-      btnSkip.style.display = step >= 2 ? "inline-flex" : "none";
-
-      if (step === 1) {
-        elBody.innerHTML = `
-          <div class="field">
-            <label>Choose your role</label>
-            <select id="obRole">
-              <option value="coach">Coach</option>
-              <option value="athlete">Athlete</option>
-              <option value="parent">Parent</option>
-            </select>
-          </div>
-          <div class="field" style="margin-top:10px">
-            <label>Choose your sport</label>
-            <select id="obSport">
-              <option value="basketball">Basketball</option>
-              <option value="football">Football</option>
-              <option value="soccer">Soccer</option>
-              <option value="baseball">Baseball</option>
-              <option value="volleyball">Volleyball</option>
-              <option value="track">Track</option>
-            </select>
-          </div>
-          <div class="small muted" style="margin-top:10px;line-height:1.6">
-            Role changes what you see first. Sport changes the warm-up, microblocks, and templates.
-          </div>
-        `;
-        elBody.querySelector("#obRole").value = state.profile?.role || "coach";
-        elBody.querySelector("#obSport").value = state.profile?.sport || "basketball";
-        return;
-      }
-
-      if (step === 2) {
-        const role = state.profile?.role || "coach";
-        elBody.innerHTML = `
-          <div style="font-weight:800;margin-bottom:6px">Preview</div>
-          <div class="small muted" style="line-height:1.7">
-            ${role === "coach" ? "Coach mode emphasizes planning sessions and team structure."
-            : role === "athlete" ? "Athlete mode emphasizes Today + logging and consistency."
-            : "Parent mode emphasizes understanding the plan and targets."}
-          </div>
-          <div class="hr"></div>
-          <div style="font-weight:800;margin-bottom:6px">Tip</div>
-          <div class="small muted">Press Ctrl/⌘+K any time to search Help.</div>
-        `;
-        return;
-      }
-
-      if (step === 3) {
-        elBody.innerHTML = `
-          <div style="font-weight:800;margin-bottom:6px">Your first action</div>
-          <div class="small muted" style="line-height:1.7">
-            Use <b>Today</b> once per day: Generate → Start timer → Done (log).
-          </div>
-          <div class="hr"></div>
-          <button class="btn" id="obTryToday">Try Today now</button>
-        `;
-        elBody.querySelector("#obTryToday").addEventListener("click", () => {
-          showView("home");
-          toast("Tap Today: Generate → Start → Done", 3000);
-        });
-        return;
-      }
-
-      if (step === 4) {
-        elBody.innerHTML = `
-          <div style="font-weight:800;margin-bottom:6px">Team or Solo</div>
-          <div class="small muted" style="line-height:1.7">
-            You can run solo local-only. Cloud sync is optional and in Account.
-          </div>
-          <div class="hr"></div>
-          <button class="btn ghost" id="obOpenAccount">Open Account</button>
-        `;
-        elBody.querySelector("#obOpenAccount").addEventListener("click", () => openDrawer());
-        return;
-      }
-
-      // step 5
-      elBody.innerHTML = `
-        <div style="font-weight:800;margin-bottom:6px">You’re ready</div>
-        <div class="small muted" style="line-height:1.7">
-          Suggested next steps:
-          <ul style="margin-top:8px;padding-left:18px">
-            <li>Home → Today workflow</li>
-            <li>Train → pick sport + injury tags</li>
-            <li>Use ＋ quick log on mobile</li>
-          </ul>
-        </div>
-        <div class="hr"></div>
-        <button class="btn" id="obFinish">Finish</button>
-      `;
-      elBody.querySelector("#obFinish").addEventListener("click", finish);
-    }
-
-    function finish() {
-      meta.onboarded_v1 = true;
-      saveMeta(meta);
-      overlay.remove();
-      toast("Onboarding complete");
-    }
-
-    btnBack.addEventListener("click", () => { if (step > 1) { step--; renderStep(); } });
-    btnNext.addEventListener("click", () => {
-      if (step === 1) {
-        const role = elBody.querySelector("#obRole").value;
-        const sport = elBody.querySelector("#obSport").value;
-        state.profile.role = role;
-        state.profile.sport = sport;
-        persist(null, { silentToast: true });
-
-        // align theme accent sport if not set
-        const t = loadTheme() || { mode: "dark", sport };
-        if (!t.sport) t.sport = sport;
-        saveTheme(t);
-        applyTheme(t);
-      }
-      if (step < total) { step++; renderStep(); }
-      else finish();
-    });
-    btnSkip.addEventListener("click", finish);
-
-    renderStep();
-  }
-
   // ---------------- Micro-tours ----------------
   const toursKey = "piq_tours_v2";
   function loadTours() { try { return JSON.parse(localStorage.getItem(toursKey) || "null") || {}; } catch { return {}; } }
   function saveTours(t) { localStorage.setItem(toursKey, JSON.stringify(t || {})); }
   let tours = loadTours();
+
   function tourScript(role, tab) {
     const scripts = {
-      home: { coach:"Home: use Today to generate & log sessions fast.", athlete:"Home: hit Today daily.", parent:"Home: view targets + Today overview." },
-      team: { coach:"Team: roster + access.", athlete:"Team: join later via cloud.", parent:"Team: context & access." },
-      train:{ coach:"Train: pick sport + injury tags; Save session.", athlete:"Train: follow plan; Save session.", parent:"Train: see the plan." },
-      profile:{ coach:"Profile: preferences + injuries.", athlete:"Profile: preferences + injuries.", parent:"Profile: preferences + injuries." }
+      home: { coach:"Home: Today generates a session-type plan and logs it fast.", athlete:"Home: Today = Generate → Start → Done.", parent:"Home: view Today plan + targets." },
+      team: { coach:"Team: roster + access later.", athlete:"Team: join later via cloud.", parent:"Team: context & access." },
+      train:{ coach:"Train: session type changes the workout.", athlete:"Train: follow plan and Save session.", parent:"Train: see the plan." },
+      profile:{ coach:"Profile: generate report (Print → PDF).", athlete:"Profile: preferences + history.", parent:"Profile: preferences + history." }
     };
     return scripts?.[tab]?.[role] || "Tip: explore each tab to get started.";
   }
@@ -848,7 +868,8 @@
     toast(tourScript(role, tab), 2400);
   }
   function runTourForCurrentTab() {
-    const active = document.querySelector(".navbtn.active")?.dataset.view ||
+    const active =
+      document.querySelector(".navbtn.active")?.dataset.view ||
       document.querySelector(".bottomnav .tab.active")?.dataset.view ||
       state.ui.view || "home";
     toast(tourScript(state.profile?.role || "coach", active), 2400);
@@ -857,14 +878,11 @@
   // ---------------- Tooltips ----------------
   function bindTooltips() {
     const tips = {
-      tipToday: "Today = Generate → Start timer → Done (log). Shows full plan blocks underneath.",
+      tipToday: "Today uses your preferred session type (set in Train). Generate → Start timer → Done (log).",
       tipQuick: "Quick actions jump to the most common tabs.",
       tipTeam: "Team expands with cloud roles later.",
-      tipTrain: "Train: pick sport + session type + injury tags, then Save session.",
-      tipProfile: "Profile shows role/sport/injuries.",
-      tipRoleSport: "Role changes what’s emphasized. Sport changes microblocks & templates.",
-      tipDataMgmt: "Export/Import/Reset are device-level. Undo appears for 6 seconds.",
-      tipTheme: "Light/Dark mode + sport accent live here."
+      tipTrain: "Session type changes the workout. Use “Make this Today” to set Home preference.",
+      tipProfile: "Coach report: Print → Save as PDF."
     };
     Object.keys(tips).forEach(id => $(id)?.addEventListener("click", () => toast(tips[id], 3200)));
   }
@@ -920,19 +938,182 @@
     }
   }
 
-  // ---------------- QA Grade ----------------
-  function runQaGrade() {
-    const issues = [];
-    if (!$("todayBlock")) issues.push("Home Today block missing");
-    // This ensures the FIX is present (plan blocks render path exists)
-    if (typeof renderHome !== "function") issues.push("renderHome missing");
-    if (!$("piqSportPickTrain")) issues.push("Train sport picker missing (open Train tab once)");
-    if (!$("btnExport") || !$("fileImport") || !$("btnResetLocal")) issues.push("Data Management missing");
-    if (!$("helpDrawer") || !$("helpSearch")) issues.push("Help drawer missing");
-    if (!$("fab") || !$("fabSheet")) issues.push("FAB missing");
-    if (!$("btnThemeToggle") || !$("themeModeSelect") || !$("themeSportSelect")) issues.push("Theme system missing");
-    const grade = issues.length === 0 ? "A" : (issues.length <= 2 ? "B" : "C");
-    return { grade, summary: issues.length ? `WARN — Grade ${grade}: ${issues.join("; ")}` : "PASS — Grade A", issues };
+  // ---------------- Phase 1 onboarding wizard (FIXED Try Now) ----------------
+  function openOnboardingWizard() {
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.background = "rgba(2,6,12,.55)";
+    overlay.style.zIndex = "999";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+
+    overlay.innerHTML = `
+      <div style="width:min(560px,92vw);background:var(--top);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:center">
+          <div>
+            <div style="font-family:var(--font-head);font-weight:800;font-size:18px">Welcome to PerformanceIQ</div>
+            <div class="small muted" id="obSub">Step 1 of 5</div>
+          </div>
+          <button class="btn ghost" id="obSkip" style="display:none">Skip</button>
+        </div>
+        <div style="padding:16px" id="obBody"></div>
+        <div style="padding:14px 16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:center">
+          <button class="btn ghost" id="obBack" disabled>Back</button>
+          <button class="btn" id="obNext">Next</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    let step = 1;
+    const total = 5;
+
+    const elSub = overlay.querySelector("#obSub");
+    const elBody = overlay.querySelector("#obBody");
+    const btnBack = overlay.querySelector("#obBack");
+    const btnNext = overlay.querySelector("#obNext");
+    const btnSkip = overlay.querySelector("#obSkip");
+
+    function closeWizard(markComplete) {
+      if (markComplete) { meta.onboarded_v1 = true; saveMeta(meta); }
+      overlay.remove();
+    }
+
+    function renderStep() {
+      elSub.textContent = `Step ${step} of ${total}`;
+      btnBack.disabled = step === 1;
+      btnSkip.style.display = step >= 2 ? "inline-flex" : "none";
+
+      if (step === 1) {
+        elBody.innerHTML = `
+          <div class="field">
+            <label>Choose your role</label>
+            <select id="obRole">
+              <option value="coach">Coach</option>
+              <option value="athlete">Athlete</option>
+              <option value="parent">Parent</option>
+            </select>
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label>Choose your sport</label>
+            <select id="obSport">
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="soccer">Soccer</option>
+              <option value="baseball">Baseball</option>
+              <option value="volleyball">Volleyball</option>
+              <option value="track">Track</option>
+            </select>
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label>Preferred session type</label>
+            <select id="obSessionType">
+              <option value="strength">Strength</option>
+              <option value="speed">Speed</option>
+              <option value="conditioning">Conditioning</option>
+              <option value="skill">Skill</option>
+              <option value="recovery">Recovery</option>
+            </select>
+          </div>
+          <div class="small muted" style="margin-top:10px;line-height:1.6">
+            Role changes what you see first. Sport + session type change Today + Train plans.
+          </div>
+        `;
+        elBody.querySelector("#obRole").value = state.profile?.role || "coach";
+        elBody.querySelector("#obSport").value = state.profile?.sport || "basketball";
+        elBody.querySelector("#obSessionType").value = state.profile?.preferred_session_type || "strength";
+        return;
+      }
+
+      if (step === 2) {
+        const role = state.profile?.role || "coach";
+        elBody.innerHTML = `
+          <div style="font-weight:900;margin-bottom:6px">Preview</div>
+          <div class="small muted" style="line-height:1.7">
+            ${role === "coach" ? "Coach mode emphasizes planning sessions and reports."
+            : role === "athlete" ? "Athlete mode emphasizes Today + logging."
+            : "Parent mode emphasizes understanding the plan."}
+          </div>
+          <div class="hr"></div>
+          <div style="font-weight:900;margin-bottom:6px">Tip</div>
+          <div class="small muted">Press Ctrl/⌘+K any time to search Help.</div>
+        `;
+        return;
+      }
+
+      if (step === 3) {
+        elBody.innerHTML = `
+          <div style="font-weight:900;margin-bottom:6px">Try it now</div>
+          <div class="small muted" style="line-height:1.7">
+            Tap the button below to jump to Home and run Today.
+          </div>
+          <div class="hr"></div>
+          <button class="btn" id="obTryToday">Try Today now</button>
+          <div class="small muted" style="margin-top:10px">
+            This will close onboarding so you can tap the app.
+          </div>
+        `;
+        elBody.querySelector("#obTryToday").addEventListener("click", () => {
+          closeWizard(true);              // ✅ FIX: remove overlay so taps work
+          showView("home");
+          toast("Tap Today: Generate → Start → Done", 3200);
+        });
+        return;
+      }
+
+      if (step === 4) {
+        elBody.innerHTML = `
+          <div style="font-weight:900;margin-bottom:6px">Team or Solo</div>
+          <div class="small muted" style="line-height:1.7">
+            You can run solo local-only. Cloud sync is optional and in Account.
+          </div>
+          <div class="hr"></div>
+          <button class="btn ghost" id="obOpenAccount">Open Account</button>
+        `;
+        elBody.querySelector("#obOpenAccount").addEventListener("click", () => openDrawer());
+        return;
+      }
+
+      elBody.innerHTML = `
+        <div style="font-weight:900;margin-bottom:6px">You’re ready</div>
+        <div class="small muted" style="line-height:1.7">
+          Suggested next steps:
+          <ul style="margin-top:8px;padding-left:18px">
+            <li>Home → Today workflow</li>
+            <li>Train → change session type (it changes the workout)</li>
+            <li>Profile → Coach report (Print → PDF)</li>
+          </ul>
+        </div>
+        <div class="hr"></div>
+        <button class="btn" id="obFinish">Finish</button>
+      `;
+      elBody.querySelector("#obFinish").addEventListener("click", () => closeWizard(true));
+    }
+
+    btnBack.addEventListener("click", () => { if (step > 1) { step--; renderStep(); } });
+    btnNext.addEventListener("click", () => {
+      if (step === 1) {
+        const role = elBody.querySelector("#obRole").value;
+        const sport = elBody.querySelector("#obSport").value;
+        const st = elBody.querySelector("#obSessionType").value;
+
+        state.profile.role = role;
+        state.profile.sport = sport;
+        state.profile.preferred_session_type = st;
+        persist(null, { silentToast: true });
+
+        const t = loadTheme() || { mode: "dark", sport };
+        saveTheme({ ...t, sport });
+        applyTheme(loadTheme());
+      }
+      if (step < total) { step++; renderStep(); }
+      else closeWizard(true);
+    });
+    btnSkip.addEventListener("click", () => closeWizard(true));
+
+    renderStep();
   }
 
   // ---------------- Bindings ----------------
@@ -972,8 +1153,8 @@
     $("sheetBackdrop")?.addEventListener("click", closeSheet);
 
     $("fabLogWorkout")?.addEventListener("click", () => { closeSheet(); showView("train"); });
-    $("fabLogNutrition")?.addEventListener("click", () => { closeSheet(); toast("Nutrition quick log is Phase 3.", 2800); });
-    $("fabLogWellness")?.addEventListener("click", () => { closeSheet(); toast("Wellness quick log is Phase 3.", 2800); });
+    $("fabLogNutrition")?.addEventListener("click", () => { closeSheet(); toast("Nutrition deep features are Phase 3+", 2800); });
+    $("fabLogWellness")?.addEventListener("click", () => { closeSheet(); toast("Wellness tracking is Phase 3+", 2800); });
   }
 
   function bindThemeControls() {
@@ -982,9 +1163,8 @@
     $("btnSaveTheme")?.addEventListener("click", () => {
       const mode = ($("themeModeSelect")?.value || "dark");
       const sport = ($("themeSportSelect")?.value || (state.profile?.sport || "basketball"));
-      const t = { mode, sport };
-      saveTheme(t);
-      applyTheme(t);
+      saveTheme({ mode, sport });
+      applyTheme(loadTheme());
       toast("Theme saved");
     });
   }
@@ -1000,18 +1180,15 @@
       state.profile.sport = sportSelect?.value || state.profile.sport || "basketball";
       persist("Preferences saved");
 
-      // If theme sport not set, align it:
       const t = loadTheme() || { mode: document.documentElement.getAttribute("data-theme") || "dark", sport: state.profile.sport };
-      if (!t.sport) t.sport = state.profile.sport;
-      saveTheme(t);
-      applyTheme(t);
+      saveTheme({ ...t, sport: state.profile.sport });
+      applyTheme(loadTheme());
 
       render(state.ui.view || "home");
     });
 
     $("btnRunTour")?.addEventListener("click", runTourForCurrentTab);
 
-    // Data management
     $("btnExport")?.addEventListener("click", () => {
       try {
         const json = window.dataStore.exportJSON();
@@ -1053,7 +1230,18 @@
     });
   }
 
-  // ---------------- Boot ----------------
+  // ---------------- QA Grade ----------------
+  function runQaGrade() {
+    const issues = [];
+    if (!$("todayBlock")) issues.push("Home Today block missing");
+    if (!$("trainBody")) issues.push("Train body missing");
+    if (!$("btnThemeToggle")) issues.push("Theme toggle missing");
+    if (!$("btnExport") || !$("fileImport") || !$("btnResetLocal")) issues.push("Data Management missing");
+    const grade = issues.length === 0 ? "A" : (issues.length <= 2 ? "B" : "C");
+    return { grade, summary: issues.length ? `WARN — Grade ${grade}: ${issues.join("; ")}` : "PASS — Grade A", issues };
+  }
+
+  // ---------------- Splash ----------------
   function hideSplash() {
     const s = $("splash");
     if (!s) return;
@@ -1061,8 +1249,8 @@
     setTimeout(() => s.setAttribute("aria-hidden", "true"), 250);
   }
 
+  // ---------------- Boot ----------------
   function boot() {
-    // Apply theme early
     const savedTheme = loadTheme() || { mode: "dark", sport: (state.profile?.sport || "basketball") };
     saveTheme(savedTheme);
     applyTheme(savedTheme);
@@ -1078,12 +1266,10 @@
     setTeamPill();
     setDataStatus("off");
 
-    const initial = state.ui?.view || "home";
-    showView(initial);
+    showView(state.ui?.view || "home");
     startAutosave();
     hideSplash();
 
-    // Phase 1 onboarding wizard
     if (!meta.onboarded_v1) openOnboardingWizard();
   }
 
