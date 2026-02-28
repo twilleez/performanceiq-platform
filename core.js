@@ -1,14 +1,13 @@
-// core.js — v3.8.0 (Apple-level polish pass)
+// core.js — v3.8.1 (Apple-level polish + WCAG + caption illusion)
 // Adds:
-// - Shared-element transition for PIQ Score ring (Home <-> Profile)
-// - Elevation ramp hooks + refined micro-interactions timing
-// - Skeleton shimmer variants (card + blocklist)
-// Keeps: all existing functionality (offline-first app, views, today/train/profile/team, score ring, ripple, spring, themes).
+// - "Soft ambient audio-less caption illusion" (tiny floating caption near tap)
+// - WCAG-ish interaction tweaks: larger effective tap targets + safer focus
+// Keeps: existing functionality + ripples + spring + shared score ring + parallax + skeleton
 
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V380__) return;
-  window.__PIQ_CORE_V380__ = true;
+  if (window.__PIQ_CORE_V381__) return;
+  window.__PIQ_CORE_V381__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -17,7 +16,7 @@
   const SPORTS = ["basketball", "football", "soccer", "baseball", "volleyball", "track"];
 
   // -----------------------------
-  // Sport palettes (smart accent)
+  // Brand + Sport palettes
   // -----------------------------
   const SPORT_PALETTES = {
     basketball: { accent: "#F97316", accentSoft: "rgba(249,115,22,.14)" },
@@ -35,6 +34,12 @@
     const pal = SPORT_PALETTES[sport] || SPORT_PALETTES.basketball;
 
     const html = document.documentElement;
+
+    // Brand system tokens
+    html.style.setProperty("--brand-accent", pal.accent);
+    html.style.setProperty("--brand-accent-soft", pal.accentSoft);
+
+    // Back-compat tokens used elsewhere
     html.style.setProperty("--accent", pal.accent);
     html.style.setProperty("--accent-2", pal.accentSoft);
     html.style.setProperty("--accent-3", "color-mix(in oklab, var(--accent) 26%, transparent)");
@@ -47,7 +52,7 @@
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.8.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.8.1", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -108,7 +113,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.8.0";
+      state.meta.version = "3.8.1";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -165,12 +170,20 @@
     dot.style.background = color || "var(--ok)";
     txt.textContent = text || "Saved";
   }
-  function applyStatusFromMeta() {
-    setDataStatusLabel("Local saved", "var(--ok)");
+  function applyStatusFromMeta() { setDataStatusLabel("Local saved", "var(--ok)"); }
+
+  // ===========================
+  // WCAG-ish touch target helper
+  // ===========================
+  function enforceMinTapTargets() {
+    // Adds a class for CSS to guarantee ~44px targets on small controls.
+    document.querySelectorAll(".iconbtn, .tab, .navbtn").forEach(el => {
+      el.classList.add("tap44");
+    });
   }
 
   // ===========================
-  // Micro-interactions (ripple + spring)
+  // Micro-interactions (ripple + spring + caption illusion)
   // ===========================
   function canHaptic() {
     return !prefersReducedMotion && typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
@@ -212,6 +225,80 @@
     });
   }
 
+  // --- Soft ambient audio-less caption illusion ---
+  // A tiny floating caption appears near the tap, like an iOS "silent feedback" moment.
+  let _capEl = null;
+  let _capTimer = null;
+  let _capLastAt = 0;
+
+  function ensureCaptionEl() {
+    if (_capEl) return _capEl;
+    const el = document.createElement("div");
+    el.id = "piqCaptionIllusion";
+    el.className = "piq-caption";
+    el.setAttribute("aria-hidden", "true");
+    el.style.display = "none";
+    document.body.appendChild(el);
+    _capEl = el;
+    return el;
+  }
+
+  function captionTextFor(target) {
+    if (!target) return null;
+
+    // Prefer explicit labels
+    const aria = target.getAttribute("aria-label");
+    if (aria) return aria;
+
+    const title = target.getAttribute("title");
+    if (title) return title;
+
+    // Button content
+    const txt = (target.textContent || "").trim().replace(/\s+/g, " ");
+    if (txt && txt.length <= 28) return txt;
+
+    // Icon button fallback
+    if (target.classList.contains("iconbtn")) return "Tap";
+
+    return null;
+  }
+
+  function showCaptionIllusion(target, clientX, clientY) {
+    if (prefersReducedMotion) return;
+
+    const now = Date.now();
+    if (now - _capLastAt < 240) return; // rate limit (prevents spam on rapid taps)
+    _capLastAt = now;
+
+    const text = captionTextFor(target);
+    if (!text) return;
+
+    const el = ensureCaptionEl();
+    el.textContent = text;
+
+    // Position near tap, but keep on-screen.
+    const vx = Math.max(12, Math.min(window.innerWidth - 12, clientX || window.innerWidth / 2));
+    const vy = Math.max(12, Math.min(window.innerHeight - 12, clientY || window.innerHeight / 2));
+
+    el.style.display = "block";
+    el.classList.remove("show");
+    el.style.left = vx + "px";
+    el.style.top = vy + "px";
+    el.style.transform = "translate(-50%, -110%) scale(.98)";
+    el.style.opacity = "0";
+
+    // Force reflow then animate
+    el.offsetHeight;
+    el.classList.add("show");
+
+    clearTimeout(_capTimer);
+    _capTimer = setTimeout(() => {
+      el.classList.remove("show");
+      // allow transition to finish
+      setTimeout(() => { if (el) el.style.display = "none"; }, 180);
+    }, 650);
+  }
+
   function wireMicroInteractions() {
     document.addEventListener("pointerdown", (e) => {
       const t = e.target.closest(".btn, .iconbtn, .navbtn, .tab, .pill, .blockcard, .card");
@@ -221,6 +308,7 @@
       hapticTap(isNav ? "nav" : "light");
       springPress(t);
       makeRipple(t, e.clientX, e.clientY);
+      showCaptionIllusion(t, e.clientX, e.clientY);
     }, { passive: true });
   }
 
@@ -270,16 +358,18 @@
       const view = state.ui?.view || "home";
       const activeNav = nav?.querySelector(`.navbtn[data-view="${view}"]`) || nav?.querySelector('[data-view="home"]');
       const activeBottom = bottom?.querySelector(`.tab[data-view="${view}"]`) || bottom?.querySelector('[data-view="home"]');
-      if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px" });
+      if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "44px" });
       if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
     });
 
     window.addEventListener("resize", () => {
       const view = state.ui?.view || "home";
       requestAnimationFrame(() => {
+        const nav = $("desktopNav");
+        const bottom = $("bottomNav");
         const activeNav = nav?.querySelector(`.navbtn[data-view="${view}"]`);
         const activeBottom = bottom?.querySelector(`.tab[data-view="${view}"]`);
-        if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px" });
+        if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "44px" });
         if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
       });
     }, { passive: true });
@@ -343,7 +433,6 @@
   // ===========================
   function skeletonHTML({ lines = 3, variant = "card" } = {}) {
     if (variant === "blocklist") {
-      // looks like workout blocks
       return `
         <div class="sk-card sk-variant-blocklist">
           <div class="sk-head"></div>
@@ -375,9 +464,7 @@
     const targets = map[view] || [];
     targets.forEach(t => {
       const el = $(t.id);
-      if (el) {
-        el.innerHTML = `<div class="sk-wrap">${skeletonHTML({ lines: t.lines, variant: t.variant })}</div>`;
-      }
+      if (el) el.innerHTML = `<div class="sk-wrap">${skeletonHTML({ lines: t.lines, variant: t.variant })}</div>`;
     });
   }
 
@@ -577,7 +664,7 @@
   }
 
   // ===========================
-  // Shared-element transition (Apple-style)
+  // Shared-element transition (Home <-> Profile)
   // ===========================
   function getScoreRingEl(view) {
     const hostId = (view === "home") ? "piqScoreHome" : (view === "profile") ? "piqScoreProfile" : null;
@@ -598,7 +685,6 @@
     const fromRect = fromRing.getBoundingClientRect();
     const toRect = toRing.getBoundingClientRect();
 
-    // Hide destination briefly so the clone “lands”
     toRing.style.visibility = "hidden";
 
     const clone = fromRing.cloneNode(true);
@@ -615,13 +701,11 @@
 
     document.body.appendChild(clone);
 
-    // Subtle blur + scale while moving
     const dx = toRect.left - fromRect.left;
     const dy = toRect.top - fromRect.top;
     const sx = toRect.width / fromRect.width;
     const sy = toRect.height / fromRect.height;
 
-    // Ensure GPU path
     clone.offsetHeight;
 
     clone.style.transition =
@@ -639,7 +723,6 @@
       clone.removeEventListener("transitionend", done);
       clone.remove();
       toRing.style.visibility = "visible";
-      // tiny settle pop
       const wrap = toRing.querySelector(".ring-wrap");
       if (wrap) {
         wrap.classList.remove("score-land");
@@ -650,11 +733,10 @@
     };
 
     clone.addEventListener("transitionend", done);
-    // safety timeout
     window.setTimeout(done, 900);
   }
 
-  // ---------- Workout generation libs (unchanged from v3.7) ----------
+  // ---------- Workout/session generation (unchanged from v3.8.0) ----------
   const EXERCISE_LIB = {
     strength: {
       goblet_squat:        { title: "Goblet Squat",         cue: "3x8–10",     subs: { knee: "box_squat" } },
@@ -985,9 +1067,9 @@
       container.innerHTML = `
         <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
         <div class="minibody mono" id="todayRunning">Started ${timeAgo(todayTimerStart)}</div>
-        <div style="margin-top:8px" class="row gap wrap">
-          <button class="btn danger" id="btnStopNow" type="button">Stop &amp; Log</button>
-          <button class="btn ghost" id="btnCancelNow" type="button">Cancel</button>
+        <div style="margin-top:10px" class="row gap wrap">
+          <button class="btn danger" id="btnStopNow" type="button" aria-label="Stop and log session">Stop &amp; Log</button>
+          <button class="btn ghost" id="btnCancelNow" type="button" aria-label="Cancel session">Cancel</button>
         </div>
       `;
       $("btnStopNow")?.addEventListener("click", stopAndLogToday);
@@ -1002,7 +1084,7 @@
           const cue  = it.cue ? ` <span class="small muted">— ${it.cue}</span>` : "";
           const sub  = it.substitution ? ` <span class="small muted">• sub: ${it.substitution}</span>` : "";
           const reps = it.reps ? ` <span class="small muted">• ${it.reps}</span>` : "";
-          return `<div style="margin:4px 0">• ${name}${reps}${cue}${sub}</div>`;
+          return `<div class="piq-li">• ${name}${reps}${cue}${sub}</div>`;
         }).join("");
         return `
           <div class="blockcard elevate" tabindex="0">
@@ -1016,15 +1098,15 @@
       }).join("");
 
       const notes = (planned.injury_notes && planned.injury_notes.length)
-        ? `<div class="note" style="margin-top:10px"><b>Injury-friendly notes:</b><br/>${planned.injury_notes.map(n => `• ${n}`).join("<br/>")}</div>`
+        ? `<div class="note" style="margin-top:12px"><b>Injury-friendly notes:</b><br/>${planned.injury_notes.map(n => `• ${n}`).join("<br/>")}</div>`
         : "";
 
       container.innerHTML = `
         <div class="minihead">${planned.sessionType} • ${planned.sport} • ${planned.total_min} min</div>
         <div class="minobody">${blocksHTML}${notes}</div>
-        <div style="margin-top:8px" class="row gap wrap">
-          <button class="btn" id="btnStartToday" type="button">Start</button>
-          <button class="btn ghost" id="btnGenerateNew" type="button">Generate new</button>
+        <div style="margin-top:10px" class="row gap wrap">
+          <button class="btn" id="btnStartToday" type="button" aria-label="Start today session">Start</button>
+          <button class="btn ghost" id="btnGenerateNew" type="button" aria-label="Generate a new session">Generate new</button>
         </div>
       `;
       $("btnStartToday")?.addEventListener("click", () => startToday(planned));
@@ -1039,9 +1121,9 @@
     container.innerHTML = `
       <div class="minihead">No session generated</div>
       <div class="minobody">Press Generate to create a tailored session for today.</div>
-      <div style="margin-top:8px" class="row gap wrap">
-        <button class="btn" id="btnGenerateOnly" type="button">Generate</button>
-        <button class="btn ghost" id="btnOpenTrain" type="button">Open Train</button>
+      <div style="margin-top:10px" class="row gap wrap">
+        <button class="btn" id="btnGenerateOnly" type="button" aria-label="Generate today session">Generate</button>
+        <button class="btn ghost" id="btnOpenTrain" type="button" aria-label="Open Train tab">Open Train</button>
       </div>
     `;
     $("btnGenerateOnly")?.addEventListener("click", () => {
@@ -1138,9 +1220,9 @@
         <div class="minihead">Teams</div>
         <div class="minibody">
           ${teams.map(t => `
-            <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)">
+            <div class="piq-rowline">
               <div><b>${t.name}</b><div class="small muted">${t.sport || ""}</div></div>
-              <button class="btn ghost" data-setteam="${t.id}" type="button">Set Active</button>
+              <button class="btn ghost" data-setteam="${t.id}" type="button" aria-label="Set active team to ${t.name}">Set Active</button>
             </div>
           `).join("")}
         </div>
@@ -1173,12 +1255,12 @@
     body.innerHTML = `
       <div class="row gap wrap" style="align-items:flex-end;margin-bottom:12px">
         <div class="field" style="flex:1;min-width:180px">
-          <label>Sport</label>
+          <label for="trainSportSelect">Sport</label>
           <select id="trainSportSelect">${sportOptions}</select>
         </div>
 
-        <div class="field" style="width:210px">
-          <label>Session type</label>
+        <div class="field" style="width:240px">
+          <label for="trainSessionType">Session type</label>
           <select id="trainSessionType">
             <option value="practice">Practice</option>
             <option value="strength">Strength</option>
@@ -1188,7 +1270,7 @@
           </select>
         </div>
 
-        <button class="btn" id="btnGenTrain" type="button">Generate</button>
+        <button class="btn" id="btnGenTrain" type="button" aria-label="Generate training session">Generate</button>
       </div>
 
       <div id="trainCardArea"></div>
@@ -1215,9 +1297,9 @@
               </div>
             `).join("")}
 
-            <div style="margin-top:10px" class="row gap wrap">
-              <button class="btn" id="btnPushToday2" type="button">Push to Today</button>
-              <button class="btn ghost" id="btnStartNow" type="button">Start Now</button>
+            <div style="margin-top:12px" class="row gap wrap">
+              <button class="btn" id="btnPushToday2" type="button" aria-label="Push to Today">Push to Today</button>
+              <button class="btn ghost" id="btnStartNow" type="button" aria-label="Start session now">Start Now</button>
             </div>
           </div>
         </div>
@@ -1291,7 +1373,7 @@
     computeInsights();
     const weekly = state.insights?.weekly || [];
     const rows = weekly.map(w => `
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
+      <div class="piq-rowline">
         <div>${w.week}</div>
         <div>${w.minutes}m • load ${w.load}</div>
       </div>
@@ -1311,8 +1393,8 @@
         <div class="minihead">Insights</div>
         <div class="minibody">
           <div><b>Recent weeks</b></div>
-          <div style="margin-top:8px">${rows || '<div class="small muted">No sessions logged yet</div>'}</div>
-          <div style="margin-top:8px"><b>Current streak</b> — ${streak} days</div>
+          <div style="margin-top:10px">${rows || '<div class="small muted">No sessions logged yet</div>'}</div>
+          <div style="margin-top:10px"><b>Current streak</b> — ${streak} days</div>
         </div>
       </div>
     `;
@@ -1403,7 +1485,7 @@
 
     if (_navIndicator && desktopNav) {
       const btn = desktopNav.querySelector(`.navbtn[data-view="${view}"]`);
-      if (btn) updateIndicatorFor(desktopNav, _navIndicator, btn, { height: "40px" });
+      if (btn) updateIndicatorFor(desktopNav, _navIndicator, btn, { height: "44px" });
     }
     if (_bottomIndicator && bottomNav) {
       const btn = bottomNav.querySelector(`.tab[data-view="${view}"]`);
@@ -1417,10 +1499,6 @@
     if (active) {
       try { active.scrollTop = 0; } catch {}
       try { active.focus({ preventScroll: true }); } catch {}
-    }
-    const content = document.querySelector(".content");
-    if (content) {
-      try { content.scrollTop = 0; } catch {}
     }
   }
 
@@ -1453,7 +1531,6 @@
     }
   }
 
-  // NEW: Apple-style view switch with shared score ring
   function showView(view) {
     if (!VIEWS.includes(view)) view = "home";
 
@@ -1474,12 +1551,10 @@
       return;
     }
 
-    // Render real content, then run shared-element animation
     window.setTimeout(() => {
       renderAll();
       renderPIQScore();
 
-      // After DOM is ready, animate shared ring (Home <-> Profile)
       requestAnimationFrame(() => {
         animateSharedRing(fromView, view);
         focusAndScrollTop(view);
@@ -1503,7 +1578,7 @@
         <div class="piq-modal-body">
           <div class="grid2">
             <div class="field">
-              <label>Role</label>
+              <label for="obRole">Role</label>
               <select id="obRole">
                 <option value="coach">Coach</option>
                 <option value="athlete">Athlete</option>
@@ -1512,7 +1587,7 @@
             </div>
 
             <div class="field">
-              <label>Sport</label>
+              <label for="obSport">Sport</label>
               <select id="obSport">
                 ${SPORTS.map(s => `<option value="${s}">${s[0].toUpperCase() + s.slice(1)}</option>`).join("")}
               </select>
@@ -1520,7 +1595,7 @@
           </div>
 
           <div class="field" style="margin-top:10px">
-            <label>Session type</label>
+            <label for="obType">Session type</label>
             <select id="obType">
               <option value="practice">Practice</option>
               <option value="strength">Strength</option>
@@ -1530,18 +1605,18 @@
             </select>
           </div>
 
-          <div style="margin-top:10px">
+          <div style="margin-top:12px">
             <div class="small muted"><b>Injury filters</b> (optional):</div>
             <div class="piq-chiprow" id="obInj">
-              ${["knee","ankle","shoulder","back"].map(x => `<button class="piq-chip" data-inj="${x}" type="button">${x}</button>`).join("")}
+              ${["knee","ankle","shoulder","back"].map(x => `<button class="piq-chip" data-inj="${x}" type="button" aria-label="Toggle injury filter ${x}">${x}</button>`).join("")}
             </div>
           </div>
 
           <div class="row between" style="margin-top:14px">
             <div class="small muted">You can change this anytime in Account.</div>
             <div class="row gap wrap">
-              <button class="btn ghost" id="obSkip" type="button">Skip</button>
-              <button class="btn" id="obTry" type="button">Try now</button>
+              <button class="btn ghost" id="obSkip" type="button" aria-label="Skip onboarding">Skip</button>
+              <button class="btn" id="obTry" type="button" aria-label="Save onboarding and generate Today">Try now</button>
             </div>
           </div>
         </div>
@@ -1613,7 +1688,7 @@
           <div><b>Role</b>: ${state.profile.role}</div>
           <div><b>Sport</b>: ${state.profile.sport}</div>
           <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
-          <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
+          <div class="small muted" style="margin-top:10px">Tip: Use Train to generate by sport/session type and push to Today.</div>
         </div>
       </div>
 
@@ -1627,20 +1702,20 @@
         <div class="minibody">
           <div class="small muted">Export/Import/Reset are available here (and in Account).</div>
 
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn ghost" id="profExport" type="button">Export JSON</button>
+          <div class="row gap wrap" style="margin-top:12px">
+            <button class="btn ghost" id="profExport" type="button" aria-label="Export JSON">Export JSON</button>
             <label class="btn ghost" style="cursor:pointer">
               Import JSON
-              <input id="profImport" type="file" accept="application/json" style="display:none" />
+              <input id="profImport" type="file" accept="application/json" style="display:none" aria-label="Import JSON file" />
             </label>
-            <button class="btn danger" id="profReset" type="button">Reset local</button>
+            <button class="btn danger" id="profReset" type="button" aria-label="Reset local data">Reset local</button>
           </div>
 
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn" id="profGrade" type="button">Run QA Grade</button>
+          <div class="row gap wrap" style="margin-top:12px">
+            <button class="btn" id="profGrade" type="button" aria-label="Run QA Grade">Run QA Grade</button>
           </div>
 
-          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px">—</pre>
+          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:10px">—</pre>
         </div>
       </div>
     `;
@@ -1731,7 +1806,7 @@
   }
   function helpListHTML(list) {
     return list.map(r =>
-      `<div style="padding:8px;border-bottom:1px solid var(--line)">
+      `<div class="piq-helpitem">
         <b>${r.title}</b>
         <div class="small muted">${r.snippet}</div>
       </div>`
@@ -1866,6 +1941,7 @@
 
   // ---------- Boot ----------
   function boot() {
+    enforceMinTapTargets();
     wireMicroInteractions();
     bindUI();
     syncThemeFromState();
