@@ -1,20 +1,18 @@
 /* ============================================================
-   styles.css — PerformanceIQ v3.3
-   Enhanced clarity • Stronger active state • Better light theme
+   styles.css — PerformanceIQ v3.4.0
+   Apple-level smoothness + animated transitions + sport palettes
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
 
-/* ============================================================
-   DESIGN TOKENS
-   ============================================================ */
-
+/* ---- Tokens ----------------------------------------------- */
 :root {
   --ok:     #22C55E;
   --warn:   #F59E0B;
   --danger: #EF4444;
   --info:   #3B82F6;
 
+  /* These are overridden dynamically by core.js based on sport */
   --accent:   #2EC4B6;
   --accent-2: rgba(46, 196, 182, .14);
   --accent-3: rgba(46, 196, 182, .28);
@@ -27,18 +25,19 @@
   --sp-md: 14px;
   --sp-lg: 18px;
 
-  --focus-ring: 0 0 0 3px rgba(46, 196, 182, .35);
-  --transition: .15s ease;
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent) 28%, transparent);
 
+  /* Apple-like easing */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-in:  cubic-bezier(.7, 0, .84, 0);
+
+  /* Select arrows */
   --select-arrow-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a5876' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
   --select-arrow-dark:  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a3a8c4' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
   --select-arrow: var(--select-arrow-dark);
 }
 
-/* ============================================================
-   DARK THEME
-   ============================================================ */
-
+/* ---- Dark -------------------------------------------------- */
 html[data-theme="dark"] {
   --bg:      #07080b;
   --top:     #050608;
@@ -47,138 +46,316 @@ html[data-theme="dark"] {
   --line:    #151a28;
   --text:    #e8eaf4;
   --input:   #0d1018;
-  --shadow:  0 8px 22px rgba(3, 6, 15, .6);
-  --optionbg:   #0d1018;
-  --optionfg:   #e8eaf4;
+  --shadow:  0 10px 26px rgba(3, 6, 15, .65);
+  --optionbg:#0d1018;
+  --optionfg:#e8eaf4;
   --pillBorder: rgba(255, 255, 255, .14);
-  --activeViewRing: 0 0 0 2px var(--accent-3), 0 14px 40px rgba(3, 6, 15, .6);
+  --activeViewRing: 0 0 0 2px var(--accent-3), 0 16px 46px rgba(3, 6, 15, .70);
   --select-arrow: var(--select-arrow-dark);
 }
 
-/* ============================================================
-   LIGHT THEME (Improved Readability)
-   ============================================================ */
-
+/* ---- Light (more color + easier reading) ------------------- */
 html[data-theme="light"] {
   --bg:      #f4f7fb;
   --top:     #ffffff;
   --card:    #ffffff;
-  --muted:   #3e4c66;
+  --muted:   #3b4b66;
   --line:    rgba(15, 23, 42, .14);
   --text:    #0b1220;
   --input:   #eef2ff;
-  --shadow:  0 14px 36px rgba(8, 18, 40, .10);
-  --optionbg:   #ffffff;
-  --optionfg:   #0b1220;
+  --shadow:  0 16px 38px rgba(8, 18, 40, .10);
+  --optionbg:#ffffff;
+  --optionfg:#0b1220;
   --pillBorder: rgba(15, 23, 42, .16);
-  --activeViewRing: 0 0 0 2px var(--accent-3), 0 18px 44px rgba(8, 18, 40, .12);
+  --activeViewRing: 0 0 0 2px var(--accent-3), 0 18px 50px rgba(8, 18, 40, .12);
   --select-arrow: var(--select-arrow-light);
 }
 
-/* ============================================================
-   RESET
-   ============================================================ */
-
+/* ---- Reset ------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
-
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
   font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
 }
 
-/* ============================================================
-   FOCUS SYSTEM
-   ============================================================ */
-
+/* ---- Focus ------------------------------------------------ */
 :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 :focus:not(:focus-visible) { outline: none; }
 
-/* ============================================================
-   TYPOGRAPHY IMPROVEMENTS
-   ============================================================ */
+/* ---- Topbar ----------------------------------------------- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: color-mix(in oklab, var(--top) 92%, transparent);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+}
+.topbar-left  { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-sm); }
+.topbar-right { display: flex; gap: var(--sp-sm); align-items: center; }
 
-.card-title,
-.drawer-title,
-.sheet-title {
+.appmark { display: flex; align-items: center; }
+.appmark-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+.appmark-title {
   font-family: var(--font-head);
   font-weight: 800;
+  margin-left: 8px;
   letter-spacing: .02em;
   font-size: 18px;
 }
 
-.minihead {
-  font-weight: 900;
-  font-size: 14px;
-  letter-spacing: .02em;
+/* ---- Pills ------------------------------------------------ */
+.pill {
+  padding: 4px 8px;
+  border-radius: 16px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--pillBorder);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in oklab, var(--text) 80%, transparent);
+  white-space: nowrap;
+}
+.dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  display: inline-block;
+  background: var(--ok);
+  flex-shrink: 0;
 }
 
-.small { font-size: 12px; }
-.muted { color: var(--muted); }
+/* ---- Layout ----------------------------------------------- */
+.layout {
+  display: flex;
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 0 16px;
+  gap: 18px;
+}
+.nav { width: 160px; flex-shrink: 0; }
 
-/* ============================================================
-   ACTIVE VIEW CLARITY
-   ============================================================ */
+/* ---- Nav buttons ------------------------------------------ */
+.navbtn {
+  display: block;
+  width: 100%;
+  padding: var(--sp-sm) 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: none;
+  color: color-mix(in oklab, var(--text) 62%, transparent);
+  text-align: left;
+  font-weight: 900;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .18s var(--ease-out), color .18s var(--ease-out), border-color .18s var(--ease-out), transform .18s var(--ease-out);
+}
+.navbtn.active {
+  background: color-mix(in oklab, var(--card) 86%, var(--accent-2));
+  color: var(--text);
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--pillBorder));
+  box-shadow: 0 10px 22px color-mix(in oklab, var(--accent) 10%, transparent);
+}
+.navbtn:not(.active):hover {
+  background: color-mix(in oklab, var(--card) 90%, var(--accent-2));
+  color: var(--text);
+  transform: translateY(-1px);
+}
 
+.content { flex: 1; min-width: 0; }
+
+/* ---- Views (animated transitions) -------------------------- */
+.view { scroll-margin-top: 84px; }
 .view.is-active {
   box-shadow: var(--activeViewRing);
   border-radius: 18px;
-  transition: box-shadow .2s ease;
 }
 
-/* ============================================================
-   NAVIGATION IMPROVEMENTS
-   ============================================================ */
+/* Enter animation classes (set by core.js) */
+.view-enter {
+  opacity: 0;
+  transform: translateY(10px) scale(.99);
+  filter: blur(6px);
+}
+.view-enter-active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  transition: opacity .26s var(--ease-out), transform .26s var(--ease-out), filter .26s var(--ease-out);
+}
 
-.navbtn,
-.tab {
+/* ---- Cards ------------------------------------------------ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: var(--sp-md);
+  box-shadow: var(--shadow);
+  transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.card:hover { transform: translateY(-2px); }
+
+.card-title { font-family: var(--font-head); font-weight: 800; letter-spacing: .02em; font-size: 20px; }
+.subtle { background: color-mix(in oklab, var(--card) 96%, transparent); box-shadow: none; }
+
+.mini { background: transparent; border-radius: 10px; padding: 8px; }
+.minihead {
+  font-weight: 900;
+  color: color-mix(in oklab, var(--text) 92%, transparent);
+  margin-bottom: 6px;
+  letter-spacing: .02em;
+}
+.minibody { color: var(--muted); }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ---- Block cards (Today/Train) ----------------------------- */
+.blockcard {
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--card) 92%, var(--accent-2));
+  box-shadow: 0 10px 24px rgba(0,0,0,.06);
+}
+.blockcard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.blockcard-title {
   font-weight: 900;
   letter-spacing: .02em;
 }
 
-.navbtn.active,
-.tab.active {
+/* ---- Utilities -------------------------------------------- */
+.row     { display: flex; align-items: center; }
+.between { justify-content: space-between; }
+.gap     { gap: var(--sp-sm); }
+.wrap    { flex-wrap: wrap; }
+.small   { font-size: 12px; }
+.muted   { color: var(--muted); }
+.hr      { height: 1px; background: var(--line); margin: 12px 0; border-radius: 2px; }
+.mono    { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+/* ---- Buttons ---------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--sp-sm) 12px;
+  border-radius: 14px;
+  border: 1px solid var(--pillBorder);
   background: var(--accent-2);
   color: var(--text);
-  border-radius: 12px;
-}
-
-.navbtn:not(.active):hover,
-.tab:not(.active):hover {
-  background: color-mix(in oklab, var(--card) 88%, var(--accent-2));
-}
-
-/* ============================================================
-   BUTTONS (Stronger Light Mode)
-   ============================================================ */
-
-.btn {
   font-weight: 900;
-  border-radius: 14px;
+  font-size: inherit;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform .18s var(--ease-out), filter .18s var(--ease-out), background .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.btn:hover  { transform: translateY(-1px); filter: brightness(1.04); }
+.btn:active { transform: translateY(0); filter: brightness(0.96); }
+.btn.ghost  { background: transparent; }
+.btn.danger {
+  background: rgba(239, 68, 68, .14);
+  border-color: rgba(239, 68, 68, .35);
+}
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
+/* Light theme: solid sport accent buttons */
 html[data-theme="light"] .btn:not(.ghost):not(.danger) {
   background: var(--accent);
-  color: #fff;
   border-color: transparent;
-  box-shadow: 0 10px 24px rgba(8, 18, 40, .12);
+  color: #fff;
+  box-shadow: 0 12px 26px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+html[data-theme="light"] .btn.ghost {
+  border-color: var(--line);
 }
 
-html[data-theme="light"] .btn:hover {
-  filter: brightness(1.06);
+/* ---- Icon buttons ----------------------------------------- */
+.iconbtn {
+  width: 28px; height: 28px;
+  border-radius: 10px;
+  border: 1px solid var(--pillBorder);
+  background: transparent;
+  color: color-mix(in oklab, var(--text) 86%, transparent);
+  font-weight: 900;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .18s var(--ease-out), transform .18s var(--ease-out);
+}
+.iconbtn:hover {
+  background: color-mix(in oklab, var(--card) 84%, var(--accent-2));
+  transform: translateY(-1px);
 }
 
-/* ============================================================
-   FORM IMPROVEMENTS
-   ============================================================ */
-
-.field input,
+/* ---- Forms ------------------------------------------------ */
+.field label {
+  display: block;
+  font-size: 12px;
+  color: color-mix(in oklab, var(--text) 70%, transparent);
+  margin-bottom: 6px;
+  font-weight: 900;
+}
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="number"],
+.field input[type="password"],
+.field input[type="search"],
+.field input[type="date"],
 .field select,
 .field textarea {
-  font-weight: 500;
+  width: 100%;
+  padding: var(--sp-sm);
   border-radius: 14px;
+  border: 1px solid var(--pillBorder);
+  background: var(--input);
+  color: var(--text);
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.field input::placeholder { color: color-mix(in oklab, var(--text) 52%, transparent); }
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .field select {
@@ -187,68 +364,152 @@ html[data-theme="light"] .btn:hover {
   background-position: right 12px center;
   padding-right: 30px;
 }
+.field select option { background: var(--optionbg); color: var(--optionfg); }
+.field textarea { min-height: 80px; resize: vertical; }
 
-/* Better dropdown contrast in light mode */
-html[data-theme="light"] .field select {
-  background-color: #eef3ff;
+/* ---- Drawer ----------------------------------------------- */
+.drawer {
+  position: fixed;
+  right: 0; top: 0;
+  height: 100%;
+  width: 390px;
+  background: var(--top);
+  border-left: 1px solid var(--line);
+  padding: 12px;
+  transform: translateX(100%);
+  transition: transform .28s var(--ease-out);
+  z-index: 120;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.drawer.open { transform: translateX(0); }
+
+.drawer-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(2, 6, 12, .55);
+  z-index: 110;
+  backdrop-filter: blur(6px);
 }
 
-/* ============================================================
-   FAB ENHANCEMENT
-   ============================================================ */
+.drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-sm);
+  padding: 6px 4px var(--sp-sm);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.drawer-title { font-family: var(--font-head); font-weight: 800; letter-spacing: .02em; }
+.drawer-body  { padding: var(--sp-sm) 4px; }
+.drawer-help  { width: 420px; }
 
+/* ---- Toast ------------------------------------------------ */
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 28px;
+  background: var(--top);
+  padding: var(--sp-sm) var(--sp-md);
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  z-index: 200;
+  font-size: 13px;
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(10px);
+}
+
+/* ---- FAB + Sheet ------------------------------------------ */
 .fab {
+  position: fixed;
+  right: 18px; bottom: 84px;
+  z-index: 140;
+  width: 56px; height: 56px;
   border-radius: 20px;
+  border: 1px solid var(--pillBorder);
+  background: var(--accent-2);
+  color: var(--text);
+  font-size: 26px;
   font-weight: 900;
-  transition: transform .15s ease, filter .15s ease;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .18s var(--ease-out), filter .18s var(--ease-out), box-shadow .18s var(--ease-out);
 }
-
-.fab:hover {
-  transform: translateY(-2px);
-}
+.fab:hover { transform: translateY(-2px); filter: brightness(1.06); }
 
 html[data-theme="light"] .fab {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 14px 30px rgba(8, 18, 40, .16);
+  border-color: transparent;
+  box-shadow: 0 16px 34px color-mix(in oklab, var(--accent) 22%, transparent);
 }
 
-/* ============================================================
-   CARD LIFT IMPROVEMENT
-   ============================================================ */
-
-.card {
-  border-radius: 16px;
-  transition: box-shadow .2s ease, transform .15s ease;
+.sheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(2, 6, 12, .55);
+  z-index: 130;
+  backdrop-filter: blur(6px);
 }
-
-.card:hover {
-  transform: translateY(-2px);
+.sheet {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 18px;
+  z-index: 140;
+  width: min(520px, 94vw);
+  border: 1px solid var(--line);
+  background: var(--top);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
-
-/* ============================================================
-   DRAWER
-   ============================================================ */
-
-.drawer {
-  border-radius: 0;
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px var(--sp-md);
+  border-bottom: 1px solid var(--line);
 }
+.sheet-title { font-family: var(--font-head); font-weight: 800; letter-spacing: .02em; }
+.sheet-body  { padding: 12px var(--sp-md); display: grid; gap: var(--sp-sm); }
 
-html[data-theme="light"] .drawer {
-  box-shadow: 0 18px 44px rgba(8, 18, 40, .12);
-}
-
-/* ============================================================
-   MOBILE IMPROVEMENTS
-   ============================================================ */
-
+/* ---- Mobile bottom nav ------------------------------------ */
 .bottomnav {
-  backdrop-filter: blur(10px);
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: color-mix(in oklab, var(--top) 92%, transparent);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-around;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  backdrop-filter: blur(12px);
 }
 
-.tab.active {
+.tab {
+  padding: 12px var(--sp-sm);
+  border: none;
+  background: none;
+  color: color-mix(in oklab, var(--text) 60%, transparent);
+  font-weight: 900;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color .18s var(--ease-out);
+  flex: 1;
   position: relative;
 }
+.tab.active { color: var(--text); }
 
 .tab.active::after {
   content: "";
@@ -260,14 +521,66 @@ html[data-theme="light"] .drawer {
   height: 3px;
   border-radius: 999px;
   background: var(--accent);
+  box-shadow: 0 6px 16px color-mix(in oklab, var(--accent) 22%, transparent);
 }
 
-/* ============================================================
-   REDUCED MOTION
-   ============================================================ */
+/* ---- Splash ----------------------------------------------- */
+.splash {
+  position: fixed; inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top, color-mix(in oklab, var(--accent) 25%, transparent), transparent 45%),
+    var(--top);
+  z-index: 300;
+  transition: opacity .25s var(--ease-out);
+}
+.splash.hidden { opacity: 0; pointer-events: none; }
 
+.splash-card {
+  width: min(520px, 92vw);
+  background: var(--top);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: var(--sp-lg);
+  box-shadow: var(--shadow);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo-dot {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+.brand-title { font-family: var(--font-head); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
+.brand-sub   { color: var(--muted); font-size: 12px; }
+
+/* ---- Reduced motion --------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .btn, .navbtn, .tab, .drawer, .fab, .card {
-    transition: none;
+  .btn, .navbtn, .tab, .drawer, .fab, .iconbtn, .splash, .view-enter-active, .card {
+    transition: none !important;
   }
 }
+
+/* ---- Responsive ------------------------------------------- */
+@media (max-width: 860px) {
+  .layout {
+    flex-direction: column;
+    margin: 10px auto;
+    padding: 12px;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+  .nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    width: auto;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .navbtn { white-space: nowrap; flex-shrink: 0; }
+  .grid2  { grid-template-columns: 1fr; }
+  .drawer,
+  .drawer-help { width: min(92vw, 420px); }
+     }
