@@ -1,4 +1,13 @@
-// core.js — v3.2.0 (Phase 3–7: RBAC + PIQ Score + Heatmap + Nutrition + Risk + Periodization + active view focus)
+// core.js — v3.2.0 (Phase 8–12 milestone build)
+// Fixes & Features:
+// - Train tab sport picker always available
+// - Today plan shows exercises under each block
+// - Onboarding “Try now” reliably generates Today + returns Home
+// - Session types actually change the generated workout composition
+// - Injury-friendly program templates per sport/sessionType (explicit adjustments)
+// - Data Management available in Profile screen (plus Account drawer)
+// - Active screen focus + auto-scroll to top on every view change
+// - Safe date helpers prevent RangeError Invalid time value
 (function () {
   "use strict";
   if (window.__PIQ_CORE_V320__) return;
@@ -10,37 +19,35 @@
   const VIEWS  = ["home", "team", "train", "profile"];
   const SPORTS = ["basketball", "football", "soccer", "baseball", "volleyball", "track"];
 
-  // ---------- Load state ----------
-  let state = (window.dataStore?.load) ? window.dataStore.load() : {};
+  // ---------- Load + normalize state ----------
+  let state = (window.dataStore?.load) ? window.dataStore.load() : null;
+  if (!state || typeof state !== "object") state = {};
+
   state.meta = state.meta || { version: "3.2.0", updated_at: nowISO() };
+
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
   state.profile.sport = state.profile.sport || "basketball";
   state.profile.preferred_session_type = state.profile.preferred_session_type || "practice";
   state.profile.injuries = Array.isArray(state.profile.injuries) ? state.profile.injuries : [];
   state.profile.onboarded = !!state.profile.onboarded;
-  state.profile.theme = state.profile.theme || { mode: document.documentElement.getAttribute("data-theme") || "dark" };
+  state.profile.theme = state.profile.theme && typeof state.profile.theme === "object" ? state.profile.theme : { mode: "dark" };
 
-  state.team = state.team || { teams: [], members: [], active_team_id: null };
+  state.team = state.team || { teams: [], active_team_id: null };
   state.team.teams = Array.isArray(state.team.teams) ? state.team.teams : [];
-  state.team.members = Array.isArray(state.team.members) ? state.team.members : [];
+  state.team.active_team_id = state.team.active_team_id || null;
+
   state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
-
-  state.nutrition = state.nutrition || { logs: [], enabled: true };
-  state.nutrition.logs = Array.isArray(state.nutrition.logs) ? state.nutrition.logs : [];
-  state.wellness = state.wellness || { logs: [], enabled: true };
-  state.wellness.logs = Array.isArray(state.wellness.logs) ? state.wellness.logs : [];
-
-  state.risk = state.risk || { flags: [], updated_at: null };
-  state.dashboards = state.dashboards || { heatmap: null, updated_at: null };
-  state.piq = state.piq || { score: null, updated_at: null };
   state.periodization = state.periodization || { plan: null, updated_at: null };
   state.insights = state.insights || { weekly: [], updated_at: null };
-  state.ui = state.ui || { view: "home", todaySession: null };
+
+  state.ui = state.ui || {};
+  state.ui.view = VIEWS.includes(state.ui.view) ? state.ui.view : "home";
+  state.ui.todaySession = state.ui.todaySession || null;
 
   try { window.dataStore?.save?.(state); } catch {}
 
-  // ---------- Utilities ----------
+  // ---------- Toast ----------
   let _toastTimer = null;
   function toast(msg, ms = 2200) {
     const t = $("toast");
@@ -51,8 +58,11 @@
     _toastTimer = setTimeout(() => { t.hidden = true; }, ms);
   }
 
+  // ---------- Persist ----------
   function persist(msg) {
     try {
+      state.meta = state.meta || {};
+      state.meta.version = "3.2.0";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -67,10 +77,6 @@
   function persistDebounced(msg, ms = 250) {
     clearTimeout(_persistTimer);
     _persistTimer = setTimeout(() => persist(msg), ms);
-  }
-
-  function uid(prefix = "") {
-    return (prefix ? prefix + "_" : "") + Math.random().toString(36).slice(2, 9);
   }
 
   // ---------- Safe date helpers ----------
@@ -101,17 +107,8 @@
     return Math.round(diff / DAY) + "d ago";
   }
 
-  // ---------- RBAC ----------
-  const ROLE = {
-    OWNER: "owner",
-    COACH: "coach",
-    ATHLETE: "athlete",
-    PARENT: "parent",
-    VIEWER: "viewer"
-  };
-  function canCoach() {
-    const r = state.profile?.role;
-    return r === ROLE.OWNER || r === ROLE.COACH;
+  function uid(prefix = "") {
+    return (prefix ? prefix + "_" : "") + Math.random().toString(36).slice(2, 9);
   }
 
   // ---------- Status pill ----------
@@ -126,28 +123,29 @@
     setDataStatusLabel("Local saved", "var(--ok)");
   }
 
-  // ---------- Workout library (kept) ----------
+  // ---------- Libraries ----------
   const EXERCISE_LIB = {
     strength: {
-      goblet_squat:        { title: "Goblet Squat",         cue: "3x8-10",        subs: { knee: "box_squat" } },
-      split_squat:         { title: "Split Squat",          cue: "3x6-8/leg",     subs: { knee: "reverse_lunge" } },
-      rdl:                 { title: "Romanian Deadlift",    cue: "3x6-8",         subs: { back: "hip_hinge_dowel" } },
-      trap_bar_deadlift:   { title: "Trap Bar Deadlift",    cue: "3x4-6",         subs: { back: "kb_deadlift" } },
-      bench:               { title: "Bench Press",          cue: "3x5-8",         subs: { shoulder: "dumbbell_press" } },
-      row:                 { title: "Row (DB/Band)",        cue: "3x8-12",        subs: { back: "band_row" } },
-      push_press:          { title: "Push Press",           cue: "3x5",           subs: { shoulder: "landmine_press" } },
-      single_leg_deadlift: { title: "Single-Leg RDL",       cue: "3x6/leg",       subs: { balance: "rack_step_down" } }
+      goblet_squat:        { title: "Goblet Squat",         cue: "3x8–10",     subs: { knee: "box_squat" } },
+      split_squat:         { title: "Split Squat",          cue: "3x6–8/leg",  subs: { knee: "reverse_lunge" } },
+      rdl:                 { title: "Romanian Deadlift",    cue: "3x6–8",      subs: { back: "hip_hinge_dowel" } },
+      trap_bar_deadlift:   { title: "Trap Bar Deadlift",    cue: "3x4–6",      subs: { back: "kb_deadlift" } },
+      bench:               { title: "Bench Press",          cue: "3x5–8",      subs: { shoulder: "dumbbell_press" } },
+      row:                 { title: "Row (DB/Band)",        cue: "3x8–12",     subs: { back: "band_row" } },
+      push_press:          { title: "Push Press",           cue: "3x5",        subs: { shoulder: "landmine_press" } },
+      single_leg_deadlift: { title: "Single-Leg RDL",       cue: "3x6/leg",    subs: { balance: "rack_step_down" } }
     },
     plyo: {
-      approach_jumps: { title: "Approach Jumps", cue: "6 reps",  subs: { knee: "low_box_jump" } },
-      lateral_bounds: { title: "Lateral Bounds", cue: "4x6",     subs: { ankle: "lateral_step_up" } }
+      approach_jumps: { title: "Approach Jumps", cue: "6 reps", subs: { knee: "low_box_jump" } },
+      lateral_bounds: { title: "Lateral Bounds", cue: "4x6",    subs: { ankle: "lateral_step_up" } }
     },
     conditioning: {
-      tempo_runs: { title: "Tempo Runs",  cue: "6x200m", subs: { ankle: "bike_intervals" } },
-      shuttles:   { title: "Shuttles",    cue: "6x20s",  subs: { knee: "rower_intervals" } }
+      tempo_runs: { title: "Tempo Runs", cue: "6x200m", subs: { ankle: "bike_intervals" } },
+      shuttles:   { title: "Shuttles",   cue: "6x20s",  subs: { knee: "rower_intervals" } }
     }
   };
 
+  // Sport-specific skill microblocks (easy to expand)
   const SPORT_MICROBLOCKS = {
     basketball: {
       ball_handling: [
@@ -164,7 +162,9 @@
         { name: "Cone route tree", reps: "5 trees", cue: "explode out" },
         { name: "Hands drill", reps: "4x8", cue: "eyes through catch" }
       ],
-      throwing: [{ name: "QB quick set", reps: "8 min", cue: "base → rotate" }]
+      throwing: [
+        { name: "QB quick set", reps: "8 min", cue: "base → rotate" }
+      ]
     },
     soccer: {
       dribbling: [
@@ -201,20 +201,96 @@
     track:      ["goblet_squat", "rdl", "single_leg_deadlift"]
   };
 
+  // Session types -> blocks included
   const SESSION_RULES = {
-    practice:          { warmup: true, skill: true,  strength: true,  plyo: true,  conditioning: true,  cooldown: true },
-    strength:          { warmup: true, skill: false, strength: true,  plyo: false, conditioning: false, cooldown: true },
-    speed:             { warmup: true, skill: false, strength: false, plyo: true,  conditioning: false, cooldown: true },
-    recovery:          { warmup: true, skill: true,  strength: false, plyo: false, conditioning: false, cooldown: true },
+    practice:          { warmup: true, skill: true,  strength: true,   plyo: true,  conditioning: true,  cooldown: true },
+    strength:          { warmup: true, skill: false, strength: true,   plyo: false, conditioning: false, cooldown: true },
+    speed:             { warmup: true, skill: false, strength: false,  plyo: true,  conditioning: false, cooldown: true },
+    recovery:          { warmup: true, skill: true,  strength: false,  plyo: false, conditioning: false, cooldown: true },
     competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true, conditioning: false, cooldown: true }
   };
 
+  // Injury-friendly program templates (explicit adjustments per sport/sessionType)
+  // These are not just "filters": they change block durations + instructions.
+  const INJURY_FRIENDLY_TEMPLATES = {
+    knee: {
+      adjustBlocks: (blocks) => blocks.map(b => {
+        if (b.type === "plyo") {
+          return Object.assign({}, b, {
+            title: "Power & Plyo (knee-friendly)",
+            duration_min: Math.max(6, Math.round((b.duration_min || 10) * 0.7)),
+            items: [
+              { name: "Low box jump", cue: "4–6 reps (stick landings)" },
+              { name: "Snap-downs", cue: "3x3 (quiet landings)" }
+            ]
+          });
+        }
+        if (b.type === "conditioning") {
+          return Object.assign({}, b, {
+            title: "Conditioning (low impact)",
+            items: [{ name: "Bike intervals", cue: "6x20s hard / 70s easy" }]
+          });
+        }
+        return b;
+      }),
+      note: "Knee-friendly: reduce impact, emphasize landing control."
+    },
+    ankle: {
+      adjustBlocks: (blocks) => blocks.map(b => {
+        if (b.type === "conditioning") {
+          return Object.assign({}, b, {
+            title: "Conditioning (ankle-friendly)",
+            items: [{ name: "Rower intervals", cue: "6x30s / 60s easy" }]
+          });
+        }
+        return b;
+      }),
+      note: "Ankle-friendly: reduce cutting volume; choose low-impact conditioning."
+    },
+    shoulder: {
+      adjustBlocks: (blocks) => blocks.map(b => {
+        if (b.type === "strength") {
+          return Object.assign({}, b, {
+            title: "Strength (shoulder-friendly)",
+            items: (b.items || []).map(it => {
+              if ((it.name || "").toLowerCase().includes("press")) {
+                return Object.assign({}, it, { substitution: "landmine_press", cue: "3x8 light — controlled tempo" });
+              }
+              return it;
+            })
+          });
+        }
+        return b;
+      }),
+      note: "Shoulder-friendly: reduce overhead; use landmine/band patterns."
+    },
+    back: {
+      adjustBlocks: (blocks) => blocks.map(b => {
+        if (b.type === "strength") {
+          return Object.assign({}, b, {
+            title: "Strength (back-friendly)",
+            items: (b.items || []).map(it => {
+              if ((it.name || "").toLowerCase().includes("deadlift") || (it.name || "").toLowerCase().includes("rdl")) {
+                return Object.assign({}, it, { substitution: "hip_hinge_dowel", cue: "3x10 — patterning, no heavy load" });
+              }
+              return it;
+            })
+          });
+        }
+        return b;
+      }),
+      note: "Back-friendly: focus on hinge patterning and trunk control."
+    }
+  };
+
+  // ---------- Warm-up generator ----------
   function warmupItems(sport, sessionType) {
     const base = [
       { name: "Ankle/hip mobility", cue: "2–3 min" },
       { name: "Activation (glutes/core)", cue: "2 min" },
       { name: "Movement prep", cue: "4–5 min" }
     ];
+
     const sportAdds = {
       basketball: [{ name: "Pogo hops", cue: "2x20s" }, { name: "Decel snaps", cue: "3 reps" }],
       football:   [{ name: "A-skips", cue: "2x20m" }, { name: "Wall drills", cue: "3x10s" }],
@@ -223,6 +299,7 @@
       volleyball: [{ name: "Landing mechanics", cue: "5 reps" }, { name: "Approach rhythm", cue: "3 reps" }],
       track:      [{ name: "Drills (A/B skips)", cue: "2–3 min" }, { name: "Strides", cue: "3x60m easy" }]
     };
+
     const typeAdds = {
       strength: [{ name: "Ramp sets (light)", cue: "2 warm-up sets" }],
       speed: [{ name: "Build-ups", cue: "3x20m" }],
@@ -230,17 +307,23 @@
       competition_prep: [{ name: "Neural pop", cue: "2x10s fast" }],
       practice: []
     };
-    return base.concat(sportAdds[sport] || []).concat(typeAdds[sessionType] || []);
+
+    return base
+      .concat(sportAdds[sport] || [])
+      .concat(typeAdds[sessionType] || []);
   }
 
+  // ---------- Injury substitutions (strength keys) ----------
   function applyInjury(exKey, injuries) {
     const def = EXERCISE_LIB.strength[exKey];
     if (!def) return null;
+
     const inj = Array.isArray(injuries) ? injuries : [];
     let sub = null;
     for (const tag of inj) {
       if (def.subs?.[tag]) { sub = def.subs[tag]; break; }
     }
+
     return {
       key: exKey,
       name: def.title,
@@ -249,39 +332,57 @@
     };
   }
 
+  // ---------- Workout generation ----------
   function generateWorkoutFor(sport = "basketball", sessionType = "practice", injuries = []) {
     const rules = SESSION_RULES[sessionType] || SESSION_RULES.practice;
     const blocks = [];
 
     if (rules.warmup) {
-      blocks.push({ id: uid("warmup"), type: "warmup", title: "Dynamic Warm-up", duration_min: 10, items: warmupItems(sport, sessionType) });
+      blocks.push({
+        id: uid("warmup"),
+        type: "warmup",
+        title: "Dynamic Warm-up",
+        duration_min: 10,
+        items: warmupItems(sport, sessionType)
+      });
     }
+
     if (rules.skill) {
       const micro = SPORT_MICROBLOCKS[sport] || {};
       const keys = Object.keys(micro);
       const items = [];
       keys.slice(0, 2).forEach(k => (micro[k] || []).slice(0, 2).forEach(it => items.push(it)));
-      blocks.push({ id: uid("skill"), type: "skill", title: "Skill Microblocks", duration_min: 15, items });
+      blocks.push({
+        id: uid("skill"),
+        type: "skill",
+        title: "Skill Microblocks",
+        duration_min: 15,
+        items
+      });
     }
-    if (rules.strength) {
-      const pref = SPORT_STRENGTH_PREFS[sport] || ["goblet_squat", "rdl", "row"];
-      const pick = pref.slice(0, 3);
-      const strengthItems = [];
-      pick.forEach(k => { const ex = applyInjury(k, injuries); if (ex) strengthItems.push(ex); });
 
-      const cueSuffix = (rules.strength === "light") ? " (light)" : "";
+    if (rules.strength) {
+      const strengthItems = [];
+      const pref = SPORT_STRENGTH_PREFS[sport] || ["goblet_squat", "rdl", "row"];
+      pref.slice(0, 3).forEach(k => {
+        const ex = applyInjury(k, injuries);
+        if (ex) strengthItems.push(ex);
+      });
+
+      const isLight = (rules.strength === "light");
       blocks.push({
         id: uid("strength"),
         type: "strength",
-        title: "Strength" + cueSuffix,
-        duration_min: rules.strength === "light" ? 12 : 20,
+        title: isLight ? "Strength (light)" : "Strength",
+        duration_min: isLight ? 12 : 20,
         items: strengthItems.map(x => ({
           name: x.name,
-          cue: rules.strength === "light" ? "2x6–8 light, fast intent" : x.cue,
+          cue: isLight ? "2x6–8 light, fast intent" : x.cue,
           substitution: x.substitution || null
         }))
       });
     }
+
     if (rules.plyo) {
       blocks.push({
         id: uid("plyo"),
@@ -294,6 +395,7 @@
         ]
       });
     }
+
     if (rules.conditioning) {
       blocks.push({
         id: uid("cond"),
@@ -303,6 +405,7 @@
         items: [{ name: EXERCISE_LIB.conditioning.tempo_runs.title, cue: EXERCISE_LIB.conditioning.tempo_runs.cue }]
       });
     }
+
     if (rules.cooldown) {
       blocks.push({
         id: uid("cd"),
@@ -313,226 +416,28 @@
       });
     }
 
+    // Apply injury-friendly template adjustments (explicit, not just filtering)
+    const injList = Array.isArray(injuries) ? injuries : [];
+    let adjustedBlocks = blocks.slice();
+    let injuryNotes = [];
+    injList.forEach(tag => {
+      const tpl = INJURY_FRIENDLY_TEMPLATES[tag];
+      if (tpl?.adjustBlocks) {
+        adjustedBlocks = tpl.adjustBlocks(adjustedBlocks);
+        if (tpl.note) injuryNotes.push(tpl.note);
+      }
+    });
+
     return {
       id: uid("sess"),
       sport,
       sessionType,
-      injuries: injuries || [],
+      injuries: injList,
+      injury_notes: injuryNotes,
       generated_at: nowISO(),
-      blocks,
-      total_min: blocks.reduce((sum, b) => sum + (b.duration_min || 0), 0)
+      blocks: adjustedBlocks,
+      total_min: adjustedBlocks.reduce((sum, b) => sum + (b.duration_min || 0), 0)
     };
-  }
-
-  // ---------- PerformanceIQ Score (Phase 4) ----------
-  function computeTrainingAdherence() {
-    // last 7 days: minutes logged / (planned minutes if any, else 1)
-    const today = new Date();
-    const cutoff = new Date(today);
-    cutoff.setDate(cutoff.getDate() - 7);
-
-    const logs = state.sessions.filter(s => {
-      const d = safeDate(s?.created_at || s?.date);
-      return d && d >= cutoff;
-    });
-
-    const loggedMin = logs.reduce((a, s) => a + Number(s?.duration_min || 0), 0);
-    // If user has a periodization plan, use week target as "planned"
-    const weekTarget = state.periodization?.plan?.weeks?.[0]?.target_minutes;
-    const plannedMin = Number(weekTarget || Math.max(120, loggedMin || 0));
-    const ratio = plannedMin ? loggedMin / plannedMin : 0;
-    return Math.max(0, Math.min(1, ratio));
-  }
-
-  function computeLoadConsistency() {
-    const weekly = computeInsights().weekly || [];
-    if (weekly.length < 2) return 0.6; // neutral
-    const a = Number(weekly[0].load || 0);
-    const b = Number(weekly[1].load || 0);
-    if (b <= 0) return 0.6;
-    const change = Math.abs(a - b) / b; // 0 is stable
-    // 0–20% change = good, >60% = poor
-    if (change <= 0.20) return 1;
-    if (change >= 0.60) return 0.2;
-    return 1 - (change - 0.20) / 0.40 * 0.8;
-  }
-
-  function latestNutritionForDate(dateISO) {
-    const logs = state.nutrition?.logs || [];
-    // prefer exact date match
-    const exact = logs.slice().reverse().find(l => (l.date || "").slice(0, 10) === dateISO);
-    return exact || null;
-  }
-
-  function computeNutritionCompliance7d() {
-    if (state.nutrition?.enabled === false) return { score: 0.7, enabled: false };
-    const tgt = window.nutritionEngine?.targets?.(state.profile);
-    if (!tgt) return { score: 0.7, enabled: true };
-
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      days.push(d.toISOString().slice(0, 10));
-    }
-
-    let sum = 0, count = 0;
-    for (const day of days) {
-      const log = latestNutritionForDate(day);
-      if (!log) continue;
-      const c = window.nutritionEngine.complianceForDay(log, tgt);
-      sum += Number(c.score || 0);
-      count++;
-    }
-    if (!count) return { score: 0.55, enabled: true }; // baseline if no logs
-    return { score: Math.max(0, Math.min(1, sum / count)), enabled: true };
-  }
-
-  function computeRiskScore() {
-    // convert risk flags into 0..1 (1 is low risk)
-    const flags = computeRiskFlags();
-    if (!flags.length) return 1;
-    const max = flags.reduce((m, f) => Math.max(m, f.severity || 0), 0);
-    // severity 1..3
-    return max === 3 ? 0.2 : max === 2 ? 0.55 : 0.8;
-  }
-
-  function computePIQScore() {
-    const a = computeTrainingAdherence();          // 0..1
-    const c = computeLoadConsistency();            // 0..1
-    const n = computeNutritionCompliance7d().score;// 0..1
-    const r = computeRiskScore();                  // 0..1
-
-    // weights: adherence 35, consistency 25, nutrition 20, risk 20
-    const score = Math.round((a * 35 + c * 25 + n * 20 + r * 20));
-    state.piq.score = score;
-    state.piq.updated_at = nowISO();
-    persistDebounced(null, 250);
-    return score;
-  }
-
-  // ---------- Insights ----------
-  function computeInsights() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    const byWeek = {};
-    sessions.forEach(s => {
-      const key = isoWeekKey(s?.created_at || s?.generated_at || s?.date);
-      if (!key) return;
-      byWeek[key] = byWeek[key] || { minutes: 0, load: 0, sessions: 0 };
-      byWeek[key].minutes += Number(s?.duration_min || 0);
-      byWeek[key].load += Number(s?.load || 0);
-      byWeek[key].sessions += 1;
-    });
-
-    const weekly = Object.entries(byWeek)
-      .map(([k, v]) => ({ week: k, minutes: v.minutes, load: v.load, sessions: v.sessions }))
-      .sort((a, b) => b.week.localeCompare(a.week))
-      .slice(0, 12);
-
-    state.insights.weekly = weekly;
-    state.insights.updated_at = nowISO();
-    return state.insights;
-  }
-
-  function computeStreak() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    if (!sessions.length) return 0;
-
-    const days = sessions
-      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
-      .filter(Boolean);
-
-    if (!days.length) return 0;
-    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
-
-    let streak = 1;
-    let cursor = new Date(uniq[0] + "T00:00:00.000Z");
-
-    for (let i = 1; i < uniq.length; i++) {
-      const d = new Date(uniq[i] + "T00:00:00.000Z");
-      const prev = new Date(cursor);
-      prev.setUTCDate(prev.getUTCDate() - 1);
-      if (d.getTime() === prev.getTime()) { streak++; cursor = d; } else break;
-    }
-    return streak;
-  }
-
-  // ---------- Heatmap (Phase 5) ----------
-  function computeHeatmap4w() {
-    // day-of-week buckets (Sun..Sat)
-    const buckets = Array.from({ length: 7 }, () => 0);
-
-    const now = new Date();
-    const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - 28);
-
-    state.sessions.forEach(s => {
-      const d = safeDate(s?.created_at || s?.date);
-      if (!d || d < cutoff) return;
-      const dow = d.getDay();
-      buckets[dow] += Number(s?.load || 0);
-    });
-
-    // normalize for simple shading labels
-    const max = Math.max(1, ...buckets);
-    const levels = buckets.map(v => {
-      const r = v / max;
-      if (r < 0.15) return 0;
-      if (r < 0.35) return 1;
-      if (r < 0.60) return 2;
-      if (r < 0.85) return 3;
-      return 4;
-    });
-
-    const out = { buckets, levels, updated_at: nowISO() };
-    state.dashboards.heatmap = out;
-    state.dashboards.updated_at = nowISO();
-    return out;
-  }
-
-  // ---------- Risk Detection (Phase 7) ----------
-  function computeRiskFlags() {
-    // ACWR estimate from weekly loads:
-    // acute = last 7 days, chronic = last 28 days avg per week.
-    const now = new Date();
-    const acuteCut = new Date(now); acuteCut.setDate(acuteCut.getDate() - 7);
-    const chronicCut = new Date(now); chronicCut.setDate(chronicCut.getDate() - 28);
-
-    let acute = 0, chronicTotal = 0;
-    state.sessions.forEach(s => {
-      const d = safeDate(s?.created_at || s?.date);
-      if (!d) return;
-      const load = Number(s?.load || 0);
-      if (d >= acuteCut) acute += load;
-      if (d >= chronicCut) chronicTotal += load;
-    });
-
-    const chronicWeeklyAvg = chronicTotal / 4;
-    const acwr = chronicWeeklyAvg > 0 ? acute / chronicWeeklyAvg : 0;
-
-    const flags = [];
-
-    // thresholds (simple)
-    if (acwr >= 1.6) flags.push({ type: "spike", label: "Load spike (ACWR high)", severity: 3, detail: `ACWR ${acwr.toFixed(2)}` });
-    else if (acwr >= 1.3) flags.push({ type: "spike", label: "Load trending high", severity: 2, detail: `ACWR ${acwr.toFixed(2)}` });
-
-    // wellness check (last 3 days)
-    const wlogs = (state.wellness?.logs || []).slice().reverse();
-    const recent = wlogs.slice(0, 3);
-    if (recent.length) {
-      const avgSleep = recent.reduce((a, x) => a + Number(x.sleep_hrs || 0), 0) / recent.length;
-      const avgSore  = recent.reduce((a, x) => a + Number(x.soreness_1_10 || 0), 0) / recent.length;
-      const avgStress= recent.reduce((a, x) => a + Number(x.stress_1_10 || 0), 0) / recent.length;
-
-      if (avgSleep > 0 && avgSleep < 6) flags.push({ type: "recovery", label: "Low sleep trend", severity: 2, detail: `~${avgSleep.toFixed(1)} hrs` });
-      if (avgSore >= 7) flags.push({ type: "fatigue", label: "High soreness trend", severity: 2, detail: `~${avgSore.toFixed(1)}/10` });
-      if (avgStress >= 7) flags.push({ type: "stress", label: "High stress trend", severity: 1, detail: `~${avgStress.toFixed(1)}/10` });
-    }
-
-    state.risk.flags = flags;
-    state.risk.updated_at = nowISO();
-    persistDebounced(null, 250);
-    return flags;
   }
 
   // ---------- Today workflow ----------
@@ -554,6 +459,7 @@
 
     const planned = state.ui?.todaySession || null;
 
+    // In progress
     if (todayActiveSession) {
       container.innerHTML = `
         <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
@@ -568,25 +474,34 @@
       return;
     }
 
+    // Planned session (SHOW EXERCISES UNDER EACH BLOCK)
     if (planned) {
       const blocksHTML = (planned.blocks || []).map(b => {
         const items = (b.items || []).map(it => {
           const name = it.name || it.title || it.key || "Item";
           const cue  = it.cue ? ` <span class="small muted">— ${it.cue}</span>` : "";
           const sub  = it.substitution ? ` <span class="small muted">• sub: ${it.substitution}</span>` : "";
-          return `<div style="margin:4px 0">• ${name}${cue}${sub}</div>`;
+          const reps = it.reps ? ` <span class="small muted">• ${it.reps}</span>` : "";
+          return `<div style="margin:4px 0">• ${name}${reps}${cue}${sub}</div>`;
         }).join("");
         return `
-          <div style="margin-bottom:10px;padding:10px;border:1px solid var(--line);border-radius:12px">
-            <div style="font-weight:900;margin-bottom:6px">${b.title} <span class="small muted">(${b.duration_min} min)</span></div>
+          <div class="blockcard">
+            <div class="blockcard-head">
+              <div class="blockcard-title">${b.title}</div>
+              <div class="small muted">${b.duration_min} min</div>
+            </div>
             <div class="small muted">${items || "—"}</div>
           </div>
         `;
       }).join("");
 
+      const notes = (planned.injury_notes && planned.injury_notes.length)
+        ? `<div class="note" style="margin-top:10px"><b>Injury-friendly notes:</b><br/>${planned.injury_notes.map(n => `• ${n}`).join("<br/>")}</div>`
+        : "";
+
       container.innerHTML = `
         <div class="minihead">${planned.sessionType} • ${planned.sport} • ${planned.total_min} min</div>
-        <div class="minibody">${blocksHTML}</div>
+        <div class="minibody">${blocksHTML}${notes}</div>
         <div style="margin-top:8px">
           <button class="btn" id="btnStartToday">Start</button>
           <button class="btn ghost" id="btnGenerateNew">Generate new</button>
@@ -601,6 +516,7 @@
       return;
     }
 
+    // Nothing yet
     container.innerHTML = `
       <div class="minihead">No session generated</div>
       <div class="minibody">Press Generate to create a tailored session for today.</div>
@@ -667,7 +583,7 @@
 
     _clearTodayTimer();
     renderTodayBlock();
-    renderHomeScore();
+    renderInsights();
   }
 
   function cancelToday() {
@@ -676,195 +592,7 @@
     toast("Session cancelled");
   }
 
-  // ---------- Team (Phase 3) ----------
-  function setTeamPill() {
-    const pill = $("teamPill");
-    if (!pill) return;
-    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
-    pill.textContent = `Team: ${teamName || "—"}`;
-  }
-
-  function joinCode() {
-    // offline pseudo code (no guarantee of uniqueness across devices)
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let out = "";
-    for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
-    return out;
-  }
-
-  function renderHeatmapBlock() {
-    const hm = computeHeatmap4w();
-    const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-    const chips = hm.levels.map((lvl, i) => {
-      const v = hm.buckets[i];
-      const bg =
-        lvl === 0 ? "transparent" :
-        lvl === 1 ? "rgba(46,196,182,.10)" :
-        lvl === 2 ? "rgba(46,196,182,.16)" :
-        lvl === 3 ? "rgba(46,196,182,.22)" :
-                   "rgba(46,196,182,.30)";
-      return `
-        <div style="flex:1;min-width:86px;border:1px solid var(--line);border-radius:12px;padding:10px;background:${bg}">
-          <div style="font-weight:900">${days[i]}</div>
-          <div class="small muted">load ${v}</div>
-        </div>
-      `;
-    }).join("");
-
-    return `
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Team Heatmap (last 4 weeks)</div>
-        <div class="minibody">
-          <div style="display:flex;gap:10px;flex-wrap:wrap">${chips}</div>
-          <div class="small muted" style="margin-top:8px">Higher shading = higher total load for that weekday.</div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderTeam() {
-    const body = $("teamBody");
-    if (!body) return;
-
-    const teams = state.team?.teams || [];
-    const active = teams.find(t => t.id === state.team?.active_team_id) || null;
-    const members = (state.team?.members || []).filter(m => !active || m.team_id === active.id);
-
-    const coachTools = canCoach();
-
-    const teamList = teams.length ? `
-      ${teams.map(t => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)">
-          <div>
-            <b>${t.name}</b>
-            <div class="small muted">${t.sport || ""} • code ${t.join_code || "—"}</div>
-          </div>
-          <button class="btn ghost" data-setteam="${t.id}">Set Active</button>
-        </div>
-      `).join("")}
-    ` : `<div class="small muted">No teams yet.</div>`;
-
-    const roster = active ? `
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Roster — ${active.name}</div>
-        <div class="minibody">
-          ${members.length ? members.map(m => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)">
-              <div><b>${m.name}</b> <span class="small muted">• ${m.role}</span></div>
-              ${coachTools ? `<button class="btn ghost" data-delmember="${m.id}">Remove</button>` : ""}
-            </div>
-          `).join("") : `<div class="small muted" style="margin-top:8px">No members added yet.</div>`}
-
-          ${coachTools ? `
-            <div class="hr"></div>
-            <div class="grid2">
-              <div class="field">
-                <label>Member name</label>
-                <input id="newMemberName" type="text" placeholder="e.g., Jordan" />
-              </div>
-              <div class="field">
-                <label>Role</label>
-                <select id="newMemberRole">
-                  <option value="coach">Coach</option>
-                  <option value="athlete">Athlete</option>
-                  <option value="parent">Parent</option>
-                  <option value="viewer">Viewer</option>
-                </select>
-              </div>
-            </div>
-            <div style="margin-top:10px">
-              <button class="btn" id="btnAddMember">Add member</button>
-            </div>
-          ` : `
-            <div class="small muted" style="margin-top:10px">Coach tools hidden for your role.</div>
-          `}
-        </div>
-      </div>
-    ` : "";
-
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Teams</div>
-        <div class="minibody">
-          ${teamList}
-          <div class="hr"></div>
-
-          ${coachTools ? `
-            <div class="minihead">Create team (offline)</div>
-            <div class="grid2">
-              <div class="field">
-                <label>Team name</label>
-                <input id="teamName" type="text" placeholder="e.g., Virginia Trailblazers" />
-              </div>
-              <div class="field">
-                <label>Sport</label>
-                <select id="teamSport">
-                  ${SPORTS.map(s => `<option value="${s}">${s[0].toUpperCase()+s.slice(1)}</option>`).join("")}
-                </select>
-              </div>
-            </div>
-            <div style="margin-top:10px">
-              <button class="btn" id="btnCreateTeam">Create</button>
-            </div>
-          ` : `
-            <div class="small muted">Create/manage teams is Coach/Owner only.</div>
-          `}
-
-          ${active ? `
-            <div class="hr"></div>
-            <div class="minihead">Active team</div>
-            <div class="small muted">${active.name} • join code: <b>${active.join_code}</b></div>
-          ` : ""}
-        </div>
-      </div>
-
-      ${active && coachTools ? renderHeatmapBlock() : ""}
-      ${active ? roster : ""}
-    `;
-
-    // actions
-    body.querySelectorAll("[data-setteam]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.team.active_team_id = btn.getAttribute("data-setteam");
-        persist("Active team updated");
-        setTeamPill();
-        renderTeam();
-      });
-    });
-
-    body.querySelectorAll("[data-delmember]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-delmember");
-        state.team.members = (state.team.members || []).filter(m => m.id !== id);
-        persist("Member removed");
-        renderTeam();
-      });
-    });
-
-    $("btnCreateTeam")?.addEventListener("click", () => {
-      const name = ($("teamName")?.value || "").trim();
-      const sport = $("teamSport")?.value || state.profile.sport;
-      if (!name) { toast("Team name required"); return; }
-      const t = { id: uid("team"), name, sport, join_code: joinCode(), created_at: nowISO() };
-      state.team.teams.push(t);
-      state.team.active_team_id = t.id;
-      persist("Team created");
-      setTeamPill();
-      renderTeam();
-    });
-
-    $("btnAddMember")?.addEventListener("click", () => {
-      if (!active) return;
-      const name = ($("newMemberName")?.value || "").trim();
-      const role = $("newMemberRole")?.value || "athlete";
-      if (!name) { toast("Member name required"); return; }
-      state.team.members.push({ id: uid("mem"), team_id: active.id, name, role, created_at: nowISO() });
-      persist("Member added");
-      renderTeam();
-    });
-  }
-
-  // ---------- Train ----------
+  // ---------- Train tab ----------
   function renderTrain() {
     const sport = state.profile?.sport || "basketball";
     const role  = state.profile?.role || "coach";
@@ -880,12 +608,13 @@
     ).join("");
 
     body.innerHTML = `
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <div class="field" style="flex:1;min-width:160px">
+      <div class="row gap wrap" style="align-items:flex-end;margin-bottom:12px">
+        <div class="field" style="flex:1;min-width:180px">
           <label>Sport</label>
           <select id="trainSportSelect">${sportOptions}</select>
         </div>
-        <div class="field" style="width:190px">
+
+        <div class="field" style="width:210px">
           <label>Session type</label>
           <select id="trainSessionType">
             <option value="practice">Practice</option>
@@ -895,9 +624,8 @@
             <option value="competition_prep">Competition Prep</option>
           </select>
         </div>
-        <div style="align-self:flex-end;padding-bottom:2px">
-          <button class="btn" id="btnGenTrain">Generate</button>
-        </div>
+
+        <button class="btn" id="btnGenTrain" type="button">Generate</button>
       </div>
 
       <div id="trainCardArea"></div>
@@ -915,14 +643,18 @@
           <div class="minihead">${gen.sessionType} • ${gen.sport} • ${gen.total_min} min</div>
           <div class="minibody">
             ${gen.blocks.map(b => `
-              <div style="margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:12px">
-                <b>${b.title}</b> <span class="small muted">(${b.duration_min} min)</span><br/>
-                <span class="small muted">${(b.items||[]).map(it => it.name || it.title || it.key).join(", ")}</span>
+              <div class="blockcard">
+                <div class="blockcard-head">
+                  <div class="blockcard-title">${b.title}</div>
+                  <div class="small muted">${b.duration_min} min</div>
+                </div>
+                <div class="small muted">${(b.items||[]).map(it => it.name || it.title || it.key).join(", ")}</div>
               </div>
             `).join("")}
-            <div style="margin-top:10px">
-              <button class="btn" id="btnPushToday2">Push to Today</button>
-              <button class="btn ghost" id="btnStartNow">Start Now</button>
+
+            <div style="margin-top:10px" class="row gap wrap">
+              <button class="btn" id="btnPushToday2" type="button">Push to Today</button>
+              <button class="btn ghost" id="btnStartNow" type="button">Start Now</button>
             </div>
           </div>
         </div>
@@ -942,6 +674,7 @@
       });
     }
 
+    // Initial card
     renderCard(generateWorkoutFor(sport, pref, state.profile.injuries || []));
 
     $("trainSportSelect")?.addEventListener("change", (e) => {
@@ -961,147 +694,134 @@
     });
   }
 
-  // ---------- Home Score ----------
-  function renderHomeScore() {
-    const el = $("piqScoreHome");
-    if (!el) return;
-    const score = computePIQScore();
-    const flags = computeRiskFlags();
-    const riskNote = flags.length ? ` • ${flags[0].label}` : " • No risk flags";
-    el.innerHTML = `<b>${score}</b><span class="small muted"> / 100</span><div class="small muted" style="margin-top:6px">${riskNote}</div>`;
+  // ---------- Team ----------
+  function setTeamPill() {
+    const pill = $("teamPill");
+    if (!pill) return;
+    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
+    pill.textContent = `Team: ${teamName || "—"}`;
   }
 
-  // ---------- Profile (Score + Risk + Nutrition + Periodization + Insights) ----------
-  function renderProfile() {
-    const body = $("profileBody");
+  function renderTeam() {
+    const body = $("teamBody");
     if (!body) return;
-
-    const score = computePIQScore();
-    const flags = computeRiskFlags();
-    const streak = computeStreak();
-
-    // nutrition targets
-    const tgt = window.nutritionEngine?.targets?.(state.profile) || null;
-    const today = new Date().toISOString().slice(0, 10);
-    const todayLog = (state.nutrition?.logs || []).slice().reverse().find(l => (l.date || "").slice(0, 10) === today) || null;
-
-    // periodization plan (if none, show generate)
-    const plan = state.periodization?.plan || null;
-
+    const teams = state.team?.teams || [];
+    if (!teams.length) {
+      body.innerHTML = `
+        <div class="mini">
+          <div class="minihead">No teams</div>
+          <div class="minibody">Create or join a team when cloud is enabled, or test locally.</div>
+        </div>
+      `;
+      return;
+    }
     body.innerHTML = `
       <div class="mini">
-        <div class="minihead">Profile</div>
+        <div class="minihead">Teams</div>
         <div class="minibody">
-          <div><b>Role</b>: ${state.profile.role}</div>
-          <div><b>Sport</b>: ${state.profile.sport}</div>
-          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
-
-          <div class="hr"></div>
-
-          <div class="minihead">PerformanceIQ Score</div>
-          <div class="minibody"><b>${score}</b><span class="small muted"> / 100</span></div>
-
-          <div class="hr"></div>
-
-          <div class="minihead">Risk Detection</div>
-          <div class="minibody">
-            ${flags.length ? flags.map(f => `
-              <div style="margin:6px 0;padding:10px;border:1px solid var(--line);border-radius:12px">
-                <b>${f.label}</b> <span class="small muted">• severity ${f.severity}</span>
-                <div class="small muted">${f.detail || ""}</div>
-              </div>
-            `).join("") : `<div class="small muted">No risk flags right now.</div>`}
-          </div>
-
-          <div class="hr"></div>
-
-          <div class="minihead">Elite Nutrition</div>
-          <div class="minibody">
-            ${tgt ? `
-              <div class="small muted">Targets: ${tgt.calories} kcal • P ${tgt.protein_g}g • C ${tgt.carbs_g}g • F ${tgt.fat_g}g</div>
-              <div style="margin-top:8px">
-                <button class="btn ghost" id="btnOpenNutrition">Log nutrition</button>
-              </div>
-              <div class="small muted" style="margin-top:8px">${todayLog ? `Today logged: ${todayLog.calories} kcal` : "No log today yet."}</div>
-            ` : `<div class="small muted">Nutrition engine not loaded.</div>`}
-          </div>
-
-          <div class="hr"></div>
-
-          <div class="minihead">Periodization</div>
-          <div class="minibody">
-            ${plan ? `
-              <div class="small muted">Plan starts ${plan.start_date} • base ${plan.base_minutes} min/wk</div>
-              <div style="margin-top:8px">
-                ${plan.weeks.map(w => `
-                  <div style="padding:8px 0;border-top:1px solid var(--line)">
-                    <b>Week ${w.week}</b> — target ${w.target_minutes} min
-                    <div class="small muted">${w.notes}</div>
-                  </div>
-                `).join("")}
-              </div>
-            ` : `
-              <div class="small muted">No plan yet. Generate a simple 4-week wave.</div>
-              <div style="margin-top:10px">
-                <button class="btn" id="btnGenPlan">Generate 4-week plan</button>
-              </div>
-            `}
-          </div>
-
-          <div class="hr"></div>
-
-          <div class="minihead">Insights</div>
-          <div class="minibody">
-            <div><b>Current streak</b> — ${streak} days</div>
-            <div style="margin-top:8px" id="weeklyRows"></div>
-          </div>
+          ${teams.map(t => `
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)">
+              <div><b>${t.name}</b><div class="small muted">${t.sport || ""}</div></div>
+              <button class="btn ghost" data-setteam="${t.id}" type="button">Set Active</button>
+            </div>
+          `).join("")}
         </div>
       </div>
     `;
+    body.querySelectorAll("[data-setteam]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.team.active_team_id = btn.getAttribute("data-setteam");
+        persist("Active team updated");
+        setTeamPill();
+      });
+    });
+  }
 
-    // weekly rows
-    const weekly = computeInsights().weekly || [];
+  // ---------- Insights ----------
+  function computeInsights() {
+    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    const byWeek = {};
+
+    sessions.forEach(s => {
+      const key = isoWeekKey(s?.created_at || s?.generated_at || s?.date);
+      if (!key) return;
+      byWeek[key] = byWeek[key] || { minutes: 0, load: 0, sessions: 0 };
+      byWeek[key].minutes += Number(s?.duration_min || 0);
+      byWeek[key].load += Number(s?.load || 0);
+      byWeek[key].sessions += 1;
+    });
+
+    const weekly = Object.entries(byWeek)
+      .map(([k, v]) => ({ week: k, minutes: v.minutes, load: v.load, sessions: v.sessions }))
+      .sort((a, b) => b.week.localeCompare(a.week))
+      .slice(0, 12);
+
+    state.insights.weekly = weekly;
+    state.insights.updated_at = nowISO();
+    persistDebounced(null, 250);
+    return state.insights;
+  }
+
+  function computeStreak() {
+    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    if (!sessions.length) return 0;
+
+    const days = sessions
+      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
+      .filter(Boolean);
+
+    if (!days.length) return 0;
+
+    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
+
+    let streak = 1;
+    let cursor = new Date(uniq[0] + "T00:00:00.000Z");
+
+    for (let i = 1; i < uniq.length; i++) {
+      const d = new Date(uniq[i] + "T00:00:00.000Z");
+      const prev = new Date(cursor);
+      prev.setUTCDate(prev.getUTCDate() - 1);
+
+      if (d.getTime() === prev.getTime()) {
+        streak++;
+        cursor = d;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  function renderInsights(intoEl) {
+    computeInsights();
+    const weekly = state.insights?.weekly || [];
     const rows = weekly.map(w => `
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
         <div>${w.week}</div>
         <div>${w.minutes}m • load ${w.load}</div>
       </div>
-    `).join("") || `<div class="small muted">No sessions logged yet.</div>`;
+    `).join("");
 
-    const weeklyEl = body.querySelector("#weeklyRows");
-    if (weeklyEl) weeklyEl.innerHTML = rows;
+    const streak = computeStreak();
+    const host = intoEl || $("profileBody");
+    if (!host) return;
 
-    // bind plan gen
-    $("btnGenPlan")?.addEventListener("click", () => {
-      const gen = window.periodizationEngine?.generate4WeekPlan?.({
-        sport: state.profile.sport,
-        baseMinutes: 180,
-        startISO: new Date().toISOString().slice(0, 10)
-      });
-      if (!gen) { toast("Periodization engine not loaded"); return; }
-      state.periodization.plan = gen;
-      state.periodization.updated_at = nowISO();
-      persist("Plan generated");
-      renderProfile();
-    });
+    host.querySelector(".piq-insights-block")?.remove();
 
-    // quick nutrition modal via prompt (simple offline)
-    $("btnOpenNutrition")?.addEventListener("click", () => openNutritionQuickLog());
-  }
-
-  function openNutritionQuickLog() {
-    const tgt = window.nutritionEngine?.targets?.(state.profile);
-    const d = new Date().toISOString().slice(0, 10);
-    const cals = Number(prompt(`Calories for ${d}? (target ${tgt?.calories ?? "—"})`) || 0);
-    const p = Number(prompt(`Protein grams? (target ${tgt?.protein_g ?? "—"})`) || 0);
-    const carbs = Number(prompt(`Carbs grams? (target ${tgt?.carbs_g ?? "—"})`) || 0);
-    const fat = Number(prompt(`Fat grams? (target ${tgt?.fat_g ?? "—"})`) || 0);
-
-    if (!cals && !p && !carbs && !fat) { toast("No nutrition entered"); return; }
-    state.nutrition.logs.push({ id: uid("nut"), created_at: nowISO(), date: d, calories: cals, protein_g: p, carbs_g: carbs, fat_g: fat, notes: "" });
-    persist("Nutrition logged");
-    renderHomeScore();
-    if (state.ui.view === "profile") renderProfile();
+    const el = document.createElement("div");
+    el.className = "piq-insights-block";
+    el.style.marginTop = "12px";
+    el.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Insights</div>
+        <div class="minibody">
+          <div><b>Recent weeks</b></div>
+          <div style="margin-top:8px">${rows || '<div class="small muted">No sessions logged yet</div>'}</div>
+          <div style="margin-top:8px"><b>Current streak</b> — ${streak} days</div>
+        </div>
+      </div>
+    `;
+    host.appendChild(el);
   }
 
   // ---------- Data Management ----------
@@ -1128,7 +848,7 @@
       try {
         if (!window.dataStore?.importJSON) { toast("Import not available"); return; }
         window.dataStore.importJSON(e.target.result);
-        state = window.dataStore.load();
+        state = window.dataStore.load() || state;
         toast("Import complete");
         renderAll();
       } catch (err) {
@@ -1144,25 +864,27 @@
     if (!ok) return;
     const typed = prompt("Type RESET to confirm");
     if (typed !== "RESET") { toast("Reset aborted"); return; }
-    try { window.dataStore?.clear?.(); } catch {}
+    localStorage.removeItem("piq_local_state_v2");
     toast("Local state reset — reloading");
     setTimeout(() => location.reload(), 700);
   }
 
-  function runQAGrade() {
+  function runQAGrade(intoElId) {
     const issues = [];
     if (!state.profile?.sport) issues.push("Profile sport not set");
-    if (!state.ui?.todaySession && !state.sessions?.length) issues.push("No session generated/logged yet");
+    if (!state.ui?.todaySession && !(state.sessions && state.sessions.length)) issues.push("No session generated/logged yet");
     const grade = issues.length === 0 ? "A" : issues.length === 1 ? "B" : "C";
+
     const report =
       `QA Grade: ${grade}\n\nIssues found:\n` +
       (issues.length ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n") : "None");
-    const el = $("gradeReport");
+
+    const el = $(intoElId || "gradeReport");
     if (el) el.textContent = report;
     toast("QA grade complete");
   }
 
-  // ---------- Navigation + focus active selection ----------
+  // ---------- Navigation + focus/scroll ----------
   function setActiveNav(view) {
     document.querySelectorAll(".navbtn, .bottomnav .tab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === view);
@@ -1170,17 +892,23 @@
     });
   }
 
-  function focusActiveView(view) {
-    VIEWS.forEach(v => {
-      const el = $(`view-${v}`);
-      if (el) el.classList.toggle("is-active", v === view);
-    });
-    const active = $(`view-${view}`);
-    if (!active) return;
+  function focusAndScrollTop(view) {
+    // Scroll the main page top (mobile especially)
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
 
-    // ensure it's focusable and focus it (active screen)
-    active.setAttribute("tabindex", "-1");
-    try { active.focus({ preventScroll: false }); } catch { active.focus(); }
+    // Scroll the view container itself to top
+    const active = $(`view-${view}`);
+    if (active) {
+      try { active.scrollTop = 0; } catch {}
+      // Focus the active view for accessibility + “active screen” requirement
+      try { active.focus({ preventScroll: true }); } catch {}
+    }
+
+    // Also scroll inner content container (some browsers keep this as the scroller)
+    const content = document.querySelector(".content");
+    if (content) {
+      try { content.scrollTop = 0; } catch {}
+    }
   }
 
   function showView(view) {
@@ -1194,112 +922,10 @@
     });
 
     setActiveNav(view);
+
+    // Render then scroll/focus so content is measurable
     renderAll();
-    focusActiveView(view);
-  }
-
-  // ---------- Help drawer (expanded topics) ----------
-  function defaultHelpList() {
-    return [
-      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
-      { title: "Roles & access", snippet: "Owner/Coach can manage teams + dashboards. Athletes/Parents see limited tools." },
-      { title: "PerformanceIQ Score", snippet: "Score (0–100) updates from adherence, consistency, nutrition (if enabled), and risk." },
-      { title: "Heatmap", snippet: "Team view shows load by weekday (last 4 weeks). Coach-only by default." },
-      { title: "Risk detection", snippet: "Flags load spikes (ACWR) and low recovery trends (if wellness logs exist)." },
-      { title: "Nutrition", snippet: "Targets + quick nutrition log. Compliance contributes to Score." },
-      { title: "Periodization", snippet: "Generate a basic 4-week wave plan. Later phases can add athlete-specific blocks." },
-      { title: "Data Management", snippet: "Account → Export/Import/Reset. Reset requires typing RESET." }
-    ];
-  }
-  function searchHelp(q) {
-    const list = defaultHelpList();
-    if (!q) return list;
-    const s = q.toLowerCase();
-    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
-  }
-  function helpListHTML(list) {
-    return list.map(r =>
-      `<div style="padding:8px;border-bottom:1px solid var(--line)">
-        <b>${r.title}</b>
-        <div class="small muted">${r.snippet}</div>
-      </div>`
-    ).join("");
-  }
-
-  function openDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-
-    // Sync drawer fields each open
-    if ($("roleSelect")) $("roleSelect").value = state.profile.role || "coach";
-    if ($("sportSelect")) $("sportSelect").value = state.profile.sport || "basketball";
-    if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type || "practice";
-
-    const mode = state.profile?.theme?.mode || (document.documentElement.getAttribute("data-theme") || "dark");
-    if ($("themeModeSelect")) $("themeModeSelect").value = mode;
-    if ($("themeSportSelect")) $("themeSportSelect").value = state.profile.sport || "basketball";
-
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-  }
-  function closeDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-  function openHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = "";
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(defaultHelpList());
-  }
-  function closeHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-  function openHelpTopic(topic) {
-    openHelp();
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = topic;
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
-  }
-
-  // ---------- Render orchestration ----------
-  function renderHome() {
-    const homeSub = $("homeSub");
-    if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
-    renderTodayBlock();
-    renderHomeScore();
-  }
-
-  function renderAll() {
-    try {
-      setTeamPill();
-      applyStatusFromMeta();
-      const v = state.ui?.view || "home";
-      if (v === "home") renderHome();
-      if (v === "team") renderTeam();
-      if (v === "train") renderTrain();
-      if (v === "profile") renderProfile();
-    } catch (e) {
-      console.error("Render error", e);
-    }
+    requestAnimationFrame(() => focusAndScrollTop(view));
   }
 
   // ---------- Onboarding ----------
@@ -1320,11 +946,9 @@
             <div class="field">
               <label>Role</label>
               <select id="obRole">
-                <option value="owner">Owner</option>
                 <option value="coach">Coach</option>
                 <option value="athlete">Athlete</option>
                 <option value="parent">Parent</option>
-                <option value="viewer">Viewer</option>
               </select>
             </div>
 
@@ -1366,28 +990,6 @@
     `;
     document.body.appendChild(overlay);
 
-    // lightweight styles via inline (no extra file)
-    overlay.style.position = "fixed";
-    overlay.style.inset = "0";
-    overlay.style.background = "rgba(2,6,12,.55)";
-    overlay.style.zIndex = "999";
-    overlay.style.display = "flex";
-    overlay.style.alignItems = "center";
-    overlay.style.justifyContent = "center";
-    overlay.querySelector(".piq-modal").style.width = "min(560px, 92vw)";
-    overlay.querySelector(".piq-modal").style.background = "var(--top)";
-    overlay.querySelector(".piq-modal").style.border = "1px solid var(--line)";
-    overlay.querySelector(".piq-modal").style.borderRadius = "18px";
-    overlay.querySelector(".piq-modal").style.padding = "16px";
-    overlay.querySelector(".piq-modal").style.boxShadow = "var(--shadow)";
-
-    const head = overlay.querySelector(".piq-modal-head");
-    head.style.marginBottom = "10px";
-    head.querySelector(".piq-modal-title").style.fontFamily = "var(--font-head)";
-    head.querySelector(".piq-modal-title").style.fontWeight = "800";
-    head.querySelector(".piq-modal-title").style.fontSize = "18px";
-    head.querySelector(".piq-modal-sub").classList.add("small","muted");
-
     const roleEl = overlay.querySelector("#obRole");
     const sportEl = overlay.querySelector("#obSport");
     const typeEl = overlay.querySelector("#obType");
@@ -1402,15 +1004,6 @@
       injRow.querySelectorAll(".piq-chip").forEach(btn => {
         const k = btn.getAttribute("data-inj");
         btn.classList.toggle("on", injSet.has(k));
-        btn.style.border = "1px solid var(--pillBorder)";
-        btn.style.borderRadius = "999px";
-        btn.style.padding = "7px 10px";
-        btn.style.marginRight = "8px";
-        btn.style.marginTop = "8px";
-        btn.style.background = injSet.has(k) ? "var(--accent-2)" : "transparent";
-        btn.style.color = "var(--text)";
-        btn.style.cursor = "pointer";
-        btn.style.fontWeight = "900";
       });
     }
     injRow.addEventListener("click", (e) => {
@@ -1426,7 +1019,7 @@
       state.profile.onboarded = true;
       persist("Onboarding skipped");
       overlay.remove();
-      renderAll();
+      showView("home");
     });
 
     overlay.querySelector("#obTry").addEventListener("click", () => {
@@ -1438,48 +1031,189 @@
 
       state.ui.todaySession = _generateTodaySession();
       persist("Onboarding saved • Today generated");
-      overlay.remove();
 
+      overlay.remove();
       showView("home");
       toast("Today ready — press Start", 2200);
       renderTodayBlock();
-      renderHomeScore();
     });
+  }
+
+  // ---------- Profile view (now includes Data Management panel) ----------
+  function renderProfile() {
+    const body = $("profileBody");
+    if (!body) return;
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Profile</div>
+        <div class="minibody">
+          <div><b>Role</b>: ${state.profile.role}</div>
+          <div><b>Sport</b>: ${state.profile.sport}</div>
+          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
+          <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
+        </div>
+      </div>
+
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">Data Management</div>
+        <div class="minibody">
+          <div class="small muted">Export/Import/Reset are available here (and in Account).</div>
+
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn ghost" id="profExport" type="button">Export JSON</button>
+            <label class="btn ghost" style="cursor:pointer">
+              Import JSON
+              <input id="profImport" type="file" accept="application/json" style="display:none" />
+            </label>
+            <button class="btn danger" id="profReset" type="button">Reset local</button>
+          </div>
+
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn" id="profGrade" type="button">Run QA Grade</button>
+          </div>
+
+          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px">—</pre>
+        </div>
+      </div>
+    `;
+
+    // Bind profile data mgmt controls
+    $("profExport")?.addEventListener("click", exportJSON);
+    $("profImport")?.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (f) importJSONFile(f);
+    });
+    $("profReset")?.addEventListener("click", resetLocalState);
+    $("profGrade")?.addEventListener("click", () => runQAGrade("profGradeReport"));
+
+    renderInsights(body);
+  }
+
+  function renderHome() {
+    const homeSub = $("homeSub");
+    if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
+    renderTodayBlock();
+  }
+
+  // ---------- Render all ----------
+  function renderAll() {
+    try {
+      setTeamPill();
+      renderHome();
+      renderTeam();
+      renderTrain();
+      renderProfile();
+      applyStatusFromMeta();
+    } catch (e) {
+      console.error("Render error", e);
+    }
+  }
+
+  // ---------- Drawers ----------
+  function openDrawer() {
+    const b = $("drawerBackdrop");
+    const d = $("accountDrawer");
+    if (!b || !d) return;
+    b.hidden = false;
+    d.classList.add("open");
+    d.setAttribute("aria-hidden", "false");
+  }
+  function closeDrawer() {
+    const b = $("drawerBackdrop");
+    const d = $("accountDrawer");
+    if (!b || !d) return;
+    b.hidden = true;
+    d.classList.remove("open");
+    d.setAttribute("aria-hidden", "true");
+  }
+
+  function openHelp() {
+    const b = $("helpBackdrop");
+    const d = $("helpDrawer");
+    if (!b || !d) return;
+    b.hidden = false;
+    d.classList.add("open");
+    d.setAttribute("aria-hidden", "false");
+    const searchEl = $("helpSearch");
+    if (searchEl) searchEl.value = "";
+    const rEl = $("helpResults");
+    if (rEl) rEl.innerHTML = helpListHTML(defaultHelpList());
+  }
+  function closeHelp() {
+    const b = $("helpBackdrop");
+    const d = $("helpDrawer");
+    if (!b || !d) return;
+    b.hidden = true;
+    d.classList.remove("open");
+    d.setAttribute("aria-hidden", "true");
+  }
+
+  function defaultHelpList() {
+    return [
+      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
+      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
+      { title: "Injury-friendly templates", snippet: "Injuries change the plan (knee/ankle = low impact conditioning; shoulder/back adjust strength patterns)." },
+      { title: "Data Management", snippet: "Profile or Account → Export/Import/Reset. Reset requires typing RESET." },
+      { title: "Active screen focus", snippet: "Switching tabs auto-scrolls to top and focuses the active view for easier reading." }
+    ];
+  }
+  function searchHelp(q) {
+    const list = defaultHelpList();
+    if (!q) return list;
+    const s = q.toLowerCase();
+    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
+  }
+  function helpListHTML(list) {
+    return list.map(r =>
+      `<div style="padding:8px;border-bottom:1px solid var(--line)">
+        <b>${r.title}</b>
+        <div class="small muted">${r.snippet}</div>
+      </div>`
+    ).join("");
+  }
+  function openHelpTopic(topic) {
+    openHelp();
+    const searchEl = $("helpSearch");
+    if (searchEl) searchEl.value = topic;
+    const rEl = $("helpResults");
+    if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
   }
 
   // ---------- Bind UI ----------
   function bindUI() {
-    // nav
+    // Nav
     document.querySelectorAll("[data-view]").forEach(btn => {
       if (btn.classList.contains("navbtn") || btn.classList.contains("tab")) {
         btn.addEventListener("click", () => showView(btn.dataset.view));
       }
     });
 
-    // account drawer
+    // Account drawer
     $("btnAccount")?.addEventListener("click", openDrawer);
     $("btnCloseDrawer")?.addEventListener("click", closeDrawer);
     $("drawerBackdrop")?.addEventListener("click", closeDrawer);
 
-    // help drawer
+    // Help drawer
     $("btnHelp")?.addEventListener("click", openHelp);
     $("btnCloseHelp")?.addEventListener("click", closeHelp);
     $("helpBackdrop")?.addEventListener("click", closeHelp);
+
     $("helpSearch")?.addEventListener("input", (e) => {
       const q = e.target.value.trim();
       const rEl = $("helpResults");
       if (rEl) rEl.innerHTML = helpListHTML(searchHelp(q));
     });
 
-    // context help buttons
+    // Context help buttons
     $("tipToday")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipQuick")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
     $("tipTrain2")?.addEventListener("click", () => openHelpTopic("session types"));
-    $("tipTeam")?.addEventListener("click", () => openHelpTopic("roles"));
-    $("tipProfile")?.addEventListener("click", () => openHelpTopic("score"));
+    $("tipTeam")?.addEventListener("click", () => openHelpTopic("team"));
+    $("tipProfile")?.addEventListener("click", () => openHelpTopic("data management"));
 
-    // keyboard
+    // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { closeDrawer(); closeHelp(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -1489,7 +1223,7 @@
       }
     });
 
-    // today button
+    // Today button (Generate → Start → Log)
     $("todayButton")?.addEventListener("click", () => {
       if (!state.ui.todaySession) {
         state.ui.todaySession = _generateTodaySession();
@@ -1502,11 +1236,11 @@
       stopAndLogToday();
     });
 
-    // quick actions
+    // Quick actions
     $("qaTrain")?.addEventListener("click", () => showView("train"));
     $("qaTeam")?.addEventListener("click", () => showView("team"));
 
-    // theme toggle
+    // Theme toggle
     $("btnThemeToggle")?.addEventListener("click", () => {
       const html = document.documentElement;
       const cur = html.getAttribute("data-theme") || "dark";
@@ -1517,7 +1251,7 @@
       persistDebounced("Theme updated", 0);
     });
 
-    // drawer saves
+    // Drawer saves
     $("btnSaveProfile")?.addEventListener("click", () => {
       state.profile.role = $("roleSelect")?.value || state.profile.role;
       state.profile.sport = $("sportSelect")?.value || state.profile.sport;
@@ -1532,19 +1266,18 @@
       state.profile.theme = state.profile.theme || {};
       state.profile.theme.mode = mode;
       persist("Theme saved");
-      renderAll();
     });
 
-    // data management
+    // Data management (Account drawer)
     $("btnExport")?.addEventListener("click", exportJSON);
     $("fileImport")?.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
       if (f) importJSONFile(f);
     });
     $("btnResetLocal")?.addEventListener("click", resetLocalState);
-    $("btnRunGrade")?.addEventListener("click", runQAGrade);
+    $("btnRunGrade")?.addEventListener("click", () => runQAGrade("gradeReport"));
 
-    // FAB sheet (Phase 6 quick logs)
+    // FAB sheet open/close
     $("fab")?.addEventListener("click", () => {
       const back = $("sheetBackdrop");
       const sheet = $("fabSheet");
@@ -1563,46 +1296,18 @@
       if (back) back.hidden = true;
       if (sheet) { sheet.hidden = true; sheet.setAttribute("aria-hidden", "true"); }
     });
-
-    $("fabLogWorkout")?.addEventListener("click", () => {
-      // quick manual workout log
-      const mins = Number(prompt("Minutes trained?") || 0);
-      const rpe = Number(prompt("sRPE 1–10? (default 6)") || 6);
-      if (!mins) { toast("No workout entered"); return; }
-      const load = Math.round(mins * rpe);
-      state.sessions.push({ id: uid("log"), created_at: nowISO(), sport: state.profile.sport, sessionType: "manual", duration_min: mins, sRPE: rpe, load, blocks: [] });
-      persist(`Logged ${mins} min • load ${load}`);
-      $("btnCloseSheet")?.click();
-      renderAll();
-    });
-
-    $("fabLogNutrition")?.addEventListener("click", () => {
-      openNutritionQuickLog();
-      $("btnCloseSheet")?.click();
-    });
-
-    $("fabLogWellness")?.addEventListener("click", () => {
-      const d = new Date().toISOString().slice(0, 10);
-      const sleep = Number(prompt(`Sleep hours for ${d}?`) || 0);
-      const sore  = Number(prompt("Soreness 1–10?") || 0);
-      const stress= Number(prompt("Stress 1–10?") || 0);
-      if (!sleep && !sore && !stress) { toast("No wellness entered"); return; }
-      state.wellness.logs.push({ id: uid("wel"), created_at: nowISO(), date: d, sleep_hrs: sleep, soreness_1_10: sore, stress_1_10: stress, notes: "" });
-      persist("Wellness logged");
-      $("btnCloseSheet")?.click();
-      renderAll();
-    });
   }
 
   // ---------- Boot ----------
   function boot() {
     bindUI();
 
-    // prefill drawer selects (initial)
+    // Pre-fill drawer selects
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
 
+    // Apply saved theme
     const mode = state.profile?.theme?.mode;
     if (mode) document.documentElement.setAttribute("data-theme", mode);
 
@@ -1622,9 +1327,6 @@
   // Debug
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
-    getState: () => state,
-    computePIQScore,
-    computeRiskFlags,
-    computeHeatmap4w
+    getState: () => state
   };
 })();
