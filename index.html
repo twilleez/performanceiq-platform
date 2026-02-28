@@ -3,206 +3,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#2EC4B6" />
   <title>PerformanceIQ</title>
   <link rel="stylesheet" href="styles.css" />
-  <script src="data-store.js" defer></script>
-
-  <style>
-    /* ===== DASHBOARD ENHANCEMENTS ===== */
-    .dashboard-hero {
-      display:flex;
-      flex-wrap:wrap;
-      gap:16px;
-      margin-bottom:20px;
-    }
-    .dashboard-stat {
-      background:var(--card);
-      padding:14px 18px;
-      border-radius:12px;
-      min-width:140px;
-      font-weight:600;
-      font-size:14px;
-    }
-    .dashboard-stat.green { border-left:4px solid #16a34a; }
-    .dashboard-stat.yellow { border-left:4px solid #eab308; }
-    .dashboard-stat.red { border-left:4px solid #dc2626; }
-
-    .heatmap-table {
-      width:100%;
-      border-collapse:collapse;
-      margin-top:10px;
-    }
-    .heatmap-table th,
-    .heatmap-table td {
-      padding:10px;
-      text-align:left;
-      border-bottom:1px solid var(--line);
-      font-size:13px;
-    }
-    .heatmap-table th {
-      background:var(--card2);
-      font-weight:600;
-    }
-
-    .severity-badge {
-      padding:4px 8px;
-      border-radius:6px;
-      font-size:12px;
-      font-weight:600;
-      color:white;
-    }
-    .sev-green { background:#16a34a; }
-    .sev-yellow { background:#eab308; color:black; }
-    .sev-red { background:#dc2626; }
-
-    .trend-up { color:#16a34a; }
-    .trend-down { color:#dc2626; }
-  </style>
 </head>
-
 <body>
 
-<!-- SPLASH -->
-<div class="splash" id="splash">
-  <div style="font-size:34px;letter-spacing:4px;">PERFORMANCEIQ</div>
-  <div style="font-size:12px;opacity:.6;">OFFLINE-FIRST · TEAM-READY</div>
-</div>
-
-<script>
-window.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => document.getElementById('splash')?.remove(), 900);
-});
-</script>
-
 <header class="topbar">
-  <div><strong>PerformanceIQ</strong></div>
-  <div>
-    <button id="btnAccount">Account</button>
+  <div class="brand">PerformanceIQ</div>
+  <div class="top-actions">
+    <select id="teamSelect"></select>
+    <button id="btnRefresh">Refresh</button>
   </div>
 </header>
 
 <div class="layout">
 
-<nav class="nav">
-  <button data-view="home" class="active">Home</button>
-  <button data-view="team">Team</button>
-  <button data-view="train">Train</button>
-  <button data-view="profile">Profile</button>
+<nav class="sidebar">
+  <button data-view="dashboard" class="active">Dashboard</button>
+  <button data-view="athletes">Athletes</button>
+  <button data-view="analytics">Analytics</button>
+  <button data-view="settings">Settings</button>
 </nav>
 
-<div class="content">
+<main class="content">
 
-<!-- HOME -->
-<section id="view-home" class="view">
-  <h2>Welcome Back</h2>
-  <div id="homeScore">Score loading…</div>
-</section>
+<!-- DASHBOARD -->
+<section id="view-dashboard" class="view">
 
-<!-- TEAM (ELITE DASHBOARD) -->
-<section id="view-team" class="view" hidden>
-
-  <h2>Team Dashboard</h2>
-
-  <!-- HERO SUMMARY -->
-  <div class="dashboard-hero" id="dashboardHero">
-    <div class="dashboard-stat green">🟢 Ready: <span id="statReady">—</span></div>
-    <div class="dashboard-stat yellow">🟡 Monitor: <span id="statMonitor">—</span></div>
-    <div class="dashboard-stat red">🔴 High Risk: <span id="statRisk">—</span></div>
-    <div class="dashboard-stat">Avg PIQ: <span id="statAvg">—</span></div>
+  <div class="hero-row">
+    <div class="stat-card green">
+      <div class="stat-label">Ready</div>
+      <div class="stat-value" id="statReady">—</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="stat-label">Monitor</div>
+      <div class="stat-value" id="statMonitor">—</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">High Risk</div>
+      <div class="stat-value" id="statRisk">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg PIQ</div>
+      <div class="stat-value" id="statAvg">—</div>
+    </div>
   </div>
 
-  <!-- HEATMAP -->
   <div class="card">
     <h3>Athlete Readiness Board</h3>
-    <table class="heatmap-table">
+    <table class="heatmap">
       <thead>
         <tr>
           <th>Athlete</th>
-          <th>PIQ</th>
+          <th>Score</th>
           <th>ACR</th>
+          <th>Recovery</th>
           <th>Flags</th>
           <th>Trend</th>
         </tr>
       </thead>
-      <tbody id="heatmapBody">
-        <tr><td colspan="5">Loading team data…</td></tr>
-      </tbody>
+      <tbody id="heatmapBody"></tbody>
     </table>
   </div>
 
 </section>
 
-<!-- TRAIN -->
-<section id="view-train" class="view" hidden>
-  <h2>Train</h2>
+<!-- ATHLETES -->
+<section id="view-athletes" class="view hidden">
+  <h2>Athlete Profiles</h2>
+  <div id="athleteList"></div>
 </section>
 
-<!-- PROFILE -->
-<section id="view-profile" class="view" hidden>
-  <h2>Profile</h2>
+<!-- ANALYTICS -->
+<section id="view-analytics" class="view hidden">
+  <h2>Team Analytics</h2>
+  <div class="card">
+    <h4>Load Trend (4 Weeks)</h4>
+    <div class="chart-placeholder">Chart integration ready</div>
+  </div>
 </section>
 
+<!-- SETTINGS -->
+<section id="view-settings" class="view hidden">
+  <h2>Settings</h2>
+  <p>Cloud sync & configuration coming next phase.</p>
+</section>
+
+</main>
 </div>
-</div>
 
-<script>
-/* ========= SIMPLE ROUTER ========= */
-document.querySelectorAll('[data-view]').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    document.querySelectorAll('.view').forEach(v=>v.hidden=true);
-    document.getElementById('view-'+btn.dataset.view).hidden=false;
-  });
-});
-
-/* ========= DASHBOARD LOGIC ========= */
-async function loadDashboard() {
-
-  const demo = [
-    { athlete_name:"J. Smith", piq_total:84, severity:"green", acr:1.08, delta:6 },
-    { athlete_name:"D. Brown", piq_total:61, severity:"yellow", acr:1.42, delta:-12 },
-    { athlete_name:"M. Davis", piq_total:48, severity:"red", acr:1.61, delta:-20 }
-  ];
-
-  renderHeatmap(demo);
-}
-
-function renderHeatmap(rows){
-  const body = document.getElementById("heatmapBody");
-  if(!rows.length){
-    body.innerHTML='<tr><td colspan="5">No data</td></tr>';
-    return;
-  }
-
-  let ready=0, monitor=0, risk=0, total=0;
-
-  body.innerHTML = rows.map(r=>{
-    total+=r.piq_total;
-    if(r.severity==="green") ready++;
-    if(r.severity==="yellow") monitor++;
-    if(r.severity==="red") risk++;
-
-    return `
-      <tr>
-        <td>${r.athlete_name}</td>
-        <td><span class="severity-badge sev-${r.severity}">${r.piq_total}</span></td>
-        <td>${r.acr ?? '—'}</td>
-        <td>${r.severity.toUpperCase()}</td>
-        <td class="${r.delta>=0?'trend-up':'trend-down'}">
-          ${r.delta>=0?'↑':'↓'} ${Math.abs(r.delta)}
-        </td>
-      </tr>
-    `;
-  }).join("");
-
-  document.getElementById("statReady").textContent=ready;
-  document.getElementById("statMonitor").textContent=monitor;
-  document.getElementById("statRisk").textContent=risk;
-  document.getElementById("statAvg").textContent=Math.round(total/rows.length);
-}
-
-loadDashboard();
-</script>
-
+<script src="core.js"></script>
 </body>
 </html>
