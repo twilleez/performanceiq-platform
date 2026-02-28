@@ -1,11 +1,10 @@
 /* ============================================================
-   styles.css — PerformanceIQ v3.4.0
-   Apple-level smoothness + animated transitions + sport palettes
+   styles.css — PerformanceIQ v3.5.0
+   Micro-interactions + Score animation + sport palettes
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
 
-/* ---- Tokens ----------------------------------------------- */
 :root {
   --ok:     #22C55E;
   --warn:   #F59E0B;
@@ -31,15 +30,11 @@
   --ease-out: cubic-bezier(.16, 1, .3, 1);
   --ease-in:  cubic-bezier(.7, 0, .84, 0);
 
-  /* Select arrows as custom properties — theme overrides below.
-     Avoids escaped-quote syntax errors and keeps data URIs DRY. */
   --select-arrow-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a5876' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
   --select-arrow-dark:  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a3a8c4' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-  /* Default to dark arrow; light theme overrides below */
   --select-arrow: var(--select-arrow-dark);
 }
 
-/* ---- Dark -------------------------------------------------- */
 html[data-theme="dark"] {
   --bg:      #07080b;
   --top:     #050608;
@@ -56,7 +51,6 @@ html[data-theme="dark"] {
   --select-arrow: var(--select-arrow-dark);
 }
 
-/* ---- Light ------------------------------------------------- */
 html[data-theme="light"] {
   --bg:      #f4f7fb;
   --top:     #ffffff;
@@ -73,7 +67,7 @@ html[data-theme="light"] {
   --select-arrow: var(--select-arrow-light);
 }
 
-/* ---- Reset ------------------------------------------------- */
+/* Reset */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 
@@ -85,24 +79,20 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-/* ---- Focus ------------------------------------------------ */
 :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 :focus:not(:focus-visible) { outline: none; }
 
-/* ---- Topbar ----------------------------------------------- */
+/* Topbar */
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 20px;
-  /* Semi-transparent + blur for frosted-glass effect */
   background: color-mix(in oklab, var(--top) 92%, transparent);
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 10;
-  /* Vendor prefix required for Safari */
-  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 .topbar-left  { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-sm); }
@@ -124,7 +114,7 @@ body {
   font-size: 18px;
 }
 
-/* ---- Pills ------------------------------------------------ */
+/* Pills */
 .pill {
   padding: 4px 8px;
   border-radius: 16px;
@@ -144,7 +134,7 @@ body {
   flex-shrink: 0;
 }
 
-/* ---- Layout ----------------------------------------------- */
+/* Layout */
 .layout {
   display: flex;
   max-width: 1200px;
@@ -154,13 +144,11 @@ body {
 }
 .nav { width: 160px; flex-shrink: 0; }
 
-/* ---- Nav buttons ------------------------------------------ */
 .navbtn {
   display: block;
   width: 100%;
   padding: var(--sp-sm) 12px;
   border-radius: 12px;
-  /* Reserve border space at rest to prevent layout shift on .active */
   border: 1px solid transparent;
   background: none;
   color: color-mix(in oklab, var(--text) 62%, transparent);
@@ -169,11 +157,7 @@ body {
   font-size: inherit;
   font-family: inherit;
   cursor: pointer;
-  transition:
-    background    .18s var(--ease-out),
-    color         .18s var(--ease-out),
-    border-color  .18s var(--ease-out),
-    transform     .18s var(--ease-out);
+  transition: background .18s var(--ease-out), color .18s var(--ease-out), border-color .18s var(--ease-out), transform .18s var(--ease-out);
 }
 .navbtn.active {
   background: color-mix(in oklab, var(--card) 86%, var(--accent-2));
@@ -189,30 +173,19 @@ body {
 
 .content { flex: 1; min-width: 0; }
 
-/* ---- Views (animated transitions) -------------------------- */
+/* Views */
 .view { scroll-margin-top: 84px; }
-.view.is-active {
-  box-shadow: var(--activeViewRing);
-  border-radius: 18px;
-}
+.view.is-active { box-shadow: var(--activeViewRing); border-radius: 18px; }
 
-/* Enter animation — applied by JS: add .view-enter, then .view-enter-active */
-.view-enter {
-  opacity: 0;
-  transform: translateY(10px) scale(.99);
-  filter: blur(6px);
-}
+.view-enter { opacity: 0; transform: translateY(10px) scale(.99); filter: blur(6px); }
 .view-enter-active {
   opacity: 1;
   transform: translateY(0) scale(1);
   filter: blur(0);
-  transition:
-    opacity   .26s var(--ease-out),
-    transform .26s var(--ease-out),
-    filter    .26s var(--ease-out);
+  transition: opacity .26s var(--ease-out), transform .26s var(--ease-out), filter .26s var(--ease-out);
 }
 
-/* ---- Cards ------------------------------------------------ */
+/* Cards */
 .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -221,45 +194,25 @@ body {
   box-shadow: var(--shadow);
   transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out);
 }
-/* Lift on hover — disable for touch devices to avoid sticky hover state */
-@media (hover: hover) {
-  .card:hover { transform: translateY(-2px); }
-}
+.card:hover { transform: translateY(-2px); }
 
-.card-title {
-  font-family: var(--font-head);
-  font-weight: 800;
-  letter-spacing: .02em;
-  font-size: 20px;
-}
-.subtle {
-  background: color-mix(in oklab, var(--card) 96%, transparent);
-  box-shadow: none;
-  /* Suppress hover lift on .subtle (informational/structural cards) */
-  pointer-events: auto;
-}
-.subtle:hover { transform: none; }
+.card-title { font-family: var(--font-head); font-weight: 800; letter-spacing: .02em; font-size: 20px; }
+.subtle { background: color-mix(in oklab, var(--card) 96%, transparent); box-shadow: none; }
 
 .mini { background: transparent; border-radius: 10px; padding: 8px; }
-.minihead {
-  font-weight: 900;
-  color: color-mix(in oklab, var(--text) 92%, transparent);
-  margin-bottom: 6px;
-  letter-spacing: .02em;
-}
+.minihead { font-weight: 900; color: color-mix(in oklab, var(--text) 92%, transparent); margin-bottom: 6px; letter-spacing: .02em; }
 .minibody { color: var(--muted); }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-/* ---- Block cards (Today / Train blocks) ------------------- */
+/* Block cards */
 .blockcard {
   margin: 10px 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: color-mix(in oklab, var(--card) 92%, var(--accent-2));
-  /* Lighter than .card shadow; these are nested content blocks */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .06);
+  box-shadow: 0 10px 24px rgba(0,0,0,.06);
 }
 .blockcard-head {
   display: flex;
@@ -268,12 +221,9 @@ body {
   gap: 10px;
   margin-bottom: 6px;
 }
-.blockcard-title {
-  font-weight: 900;
-  letter-spacing: .02em;
-}
+.blockcard-title { font-weight: 900; letter-spacing: .02em; }
 
-/* ---- Utilities --------------------------------------------- */
+/* Utilities */
 .row     { display: flex; align-items: center; }
 .between { justify-content: space-between; }
 .gap     { gap: var(--sp-sm); }
@@ -283,7 +233,7 @@ body {
 .hr      { height: 1px; background: var(--line); margin: 12px 0; border-radius: 2px; }
 .mono    { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
-/* ---- Buttons ---------------------------------------------- */
+/* Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -301,40 +251,25 @@ body {
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition:
-    transform    .18s var(--ease-out),
-    filter       .18s var(--ease-out),
-    background   .18s var(--ease-out),
-    box-shadow   .18s var(--ease-out);
+  transition: transform .18s var(--ease-out), filter .18s var(--ease-out), background .18s var(--ease-out), box-shadow .18s var(--ease-out);
 }
 .btn:hover  { transform: translateY(-1px); filter: brightness(1.04); }
-.btn:active { transform: translateY(0);    filter: brightness(0.96); }
+.btn:active { transform: translateY(0); filter: brightness(0.96); }
 .btn.ghost  { background: transparent; }
-.btn.danger {
-  background:   rgba(239, 68, 68, .14);
-  border-color: rgba(239, 68, 68, .35);
-}
-.btn:disabled,
-.btn[aria-disabled="true"] {
-  opacity: .45;
-  cursor: not-allowed;
-  pointer-events: none;
-  /* Cancel hover transform so disabled buttons don't lift */
-  transform: none;
-}
+.btn.danger { background: rgba(239, 68, 68, .14); border-color: rgba(239, 68, 68, .35); }
 
-/* Light theme: solid sport-accent buttons */
+.btn:disabled,
+.btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; pointer-events: none; }
+
 html[data-theme="light"] .btn:not(.ghost):not(.danger) {
   background: var(--accent);
   border-color: transparent;
   color: #fff;
   box-shadow: 0 12px 26px color-mix(in oklab, var(--accent) 18%, transparent);
 }
-html[data-theme="light"] .btn.ghost {
-  border-color: var(--line);
-}
+html[data-theme="light"] .btn.ghost { border-color: var(--line); }
 
-/* ---- Icon buttons ----------------------------------------- */
+/* Icon buttons */
 .iconbtn {
   width: 28px; height: 28px;
   border-radius: 10px;
@@ -351,12 +286,9 @@ html[data-theme="light"] .btn.ghost {
   flex-shrink: 0;
   transition: background .18s var(--ease-out), transform .18s var(--ease-out);
 }
-.iconbtn:hover {
-  background: color-mix(in oklab, var(--card) 84%, var(--accent-2));
-  transform: translateY(-1px);
-}
+.iconbtn:hover { background: color-mix(in oklab, var(--card) 84%, var(--accent-2)); transform: translateY(-1px); }
 
-/* ---- Forms ------------------------------------------------ */
+/* Forms */
 .field label {
   display: block;
   font-size: 12px;
@@ -364,7 +296,6 @@ html[data-theme="light"] .btn.ghost {
   margin-bottom: 6px;
   font-weight: 900;
 }
-
 .field input[type="text"],
 .field input[type="email"],
 .field input[type="number"],
@@ -389,12 +320,8 @@ html[data-theme="light"] .btn.ghost {
 .field input::placeholder { color: color-mix(in oklab, var(--text) 52%, transparent); }
 .field input:focus,
 .field select:focus,
-.field textarea:focus {
-  border-color: var(--accent);
-  box-shadow: var(--focus-ring);
-}
+.field textarea:focus { border-color: var(--accent); box-shadow: var(--focus-ring); }
 
-/* Single rule, theme-aware via --select-arrow custom property */
 .field select {
   background-image: var(--select-arrow);
   background-repeat: no-repeat;
@@ -404,7 +331,7 @@ html[data-theme="light"] .btn.ghost {
 .field select option { background: var(--optionbg); color: var(--optionfg); }
 .field textarea { min-height: 80px; resize: vertical; }
 
-/* ---- Drawer ----------------------------------------------- */
+/* Drawer */
 .drawer {
   position: fixed;
   right: 0; top: 0;
@@ -426,7 +353,6 @@ html[data-theme="light"] .btn.ghost {
   position: fixed; inset: 0;
   background: rgba(2, 6, 12, .55);
   z-index: 110;
-  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
 
@@ -443,13 +369,13 @@ html[data-theme="light"] .btn.ghost {
 .drawer-body  { padding: var(--sp-sm) 4px; }
 .drawer-help  { width: 420px; }
 
-/* ---- Toast ------------------------------------------------ */
+/* Toast */
 .toast {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
   bottom: 28px;
-  background: color-mix(in oklab, var(--top) 92%, transparent);
+  background: var(--top);
   padding: var(--sp-sm) var(--sp-md);
   border-radius: 14px;
   border: 1px solid var(--line);
@@ -460,44 +386,10 @@ html[data-theme="light"] .btn.ghost {
   max-width: calc(100vw - 32px);
   overflow: hidden;
   text-overflow: ellipsis;
-  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 
-/* ---- Undo toast ------------------------------------------- */
-#undoToast {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 132px;
-  background: color-mix(in oklab, var(--top) 92%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: var(--sp-sm) 12px;
-  z-index: 220;
-  box-shadow: var(--shadow);
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-sm);
-  max-width: calc(100vw - 32px);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-#undoToast button {
-  border: 1px solid var(--pillBorder);
-  background: var(--accent-2);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 7px var(--sp-sm);
-  font-weight: 900;
-  font-size: inherit;
-  font-family: inherit;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-/* ---- FAB + Sheet ------------------------------------------ */
+/* FAB + Sheet */
 .fab {
   position: fixed;
   right: 18px; bottom: 84px;
@@ -529,7 +421,6 @@ html[data-theme="light"] .fab {
   position: fixed; inset: 0;
   background: rgba(2, 6, 12, .55);
   z-index: 130;
-  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
 .sheet {
@@ -556,7 +447,7 @@ html[data-theme="light"] .fab {
 .sheet-title { font-family: var(--font-head); font-weight: 800; letter-spacing: .02em; }
 .sheet-body  { padding: 12px var(--sp-md); display: grid; gap: var(--sp-sm); }
 
-/* ---- Mobile bottom nav ------------------------------------ */
+/* Bottom nav */
 .bottomnav {
   position: fixed;
   left: 0; right: 0; bottom: 0;
@@ -566,9 +457,9 @@ html[data-theme="light"] .fab {
   justify-content: space-around;
   z-index: 100;
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
+
 .tab {
   padding: 12px var(--sp-sm);
   border: none;
@@ -578,14 +469,11 @@ html[data-theme="light"] .fab {
   font-size: inherit;
   font-family: inherit;
   cursor: pointer;
-  transition: color .18s var(--ease-out);
+  transition: color .18s var(--ease-out), transform .18s var(--ease-out);
   flex: 1;
   position: relative;
 }
 .tab.active { color: var(--text); }
-.tab:not(.active):hover { color: color-mix(in oklab, var(--text) 80%, transparent); }
-
-/* Active tab indicator — uses pseudo-element so it doesn't affect layout */
 .tab.active::after {
   content: "";
   position: absolute;
@@ -599,7 +487,7 @@ html[data-theme="light"] .fab {
   box-shadow: 0 6px 16px color-mix(in oklab, var(--accent) 22%, transparent);
 }
 
-/* ---- Splash ----------------------------------------------- */
+/* Splash */
 .splash {
   position: fixed; inset: 0;
   display: flex;
@@ -621,55 +509,79 @@ html[data-theme="light"] .fab {
   padding: var(--sp-lg);
   box-shadow: var(--shadow);
 }
-.brand { display: flex; align-items: center; gap: 12px; }
-.logo-dot {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
-}
-.brand-title { font-family: var(--font-head); font-weight: 800; font-size: 18px; letter-spacing: .02em; }
-.brand-sub   { color: var(--muted); font-size: 12px; }
 
-/* ---- Skeleton loading ------------------------------------- */
-.skeleton {
-  height: 10px;
+/* ---------------------------
+   Micro-interactions (NEW)
+   --------------------------- */
+.micro-press {
+  transform: scale(.985) translateY(1px);
+  filter: brightness(.98);
+}
+
+/* ---------------------------
+   PerformanceIQ Score (NEW)
+   --------------------------- */
+.piq-score {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--card) 88%, var(--accent-2));
+  box-shadow: 0 12px 26px rgba(0,0,0,.06);
+}
+.piq-score-num {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: .02em;
+  color: var(--text);
+}
+.piq-score-meta {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.piq-score-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 800;
+}
+.piq-score-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 4px 10px;
   border-radius: 999px;
-  margin-top: var(--sp-sm);
-  background-image: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--text) 8%,  transparent),
-    color-mix(in oklab, var(--text) 16%, transparent),
-    color-mix(in oklab, var(--text) 8%,  transparent)
-  );
-  background-size: 220% 100%;
-  animation: shimmer 1.3s linear infinite;
-}
-.skeleton:nth-child(2) { animation-delay: .15s; width: 80%; }
-.skeleton:nth-child(3) { animation-delay: .30s; width: 55%; }
-
-@keyframes shimmer {
-  0%   { background-position: 0%   0; }
-  100% { background-position: 200% 0; }
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--line));
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  color: color-mix(in oklab, var(--text) 90%, transparent);
 }
 
-/* ---- Reduced motion --------------------------------------- */
+/* score bump animation */
+.score-bump {
+  animation: scoreBump .35s var(--ease-out);
+}
+@keyframes scoreBump {
+  0%   { transform: translateY(0) scale(1); }
+  45%  { transform: translateY(-2px) scale(1.045); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  /* !important needed to override inline transitions from JS-set classes */
-  .btn, .navbtn, .tab, .drawer, .fab, .iconbtn,
-  .splash, .view-enter-active, .card,
-  .skeleton {
+  .btn, .navbtn, .tab, .drawer, .fab, .iconbtn, .splash, .view-enter-active, .card, .score-bump {
     transition: none !important;
     animation: none !important;
   }
-  /* Prevent transform lifts from appearing as a jump with no easing */
-  .btn:hover, .navbtn:not(.active):hover,
-  .fab:hover, .iconbtn:hover, .card:hover {
-    transform: none;
-  }
 }
 
-/* ---- Responsive ------------------------------------------- */
+/* Responsive */
 @media (max-width: 860px) {
   .layout {
     flex-direction: column;
@@ -689,11 +601,4 @@ html[data-theme="light"] .fab {
   .grid2  { grid-template-columns: 1fr; }
   .drawer,
   .drawer-help { width: min(92vw, 420px); }
-
-  /* Suppress hover-lift on touch screens to avoid sticky state */
-  .card:hover      { transform: none; }
-  .btn:hover       { transform: none; }
-  .navbtn:hover    { transform: none; }
-  .fab:hover       { transform: none; }
-  .iconbtn:hover   { transform: none; }
-}
+   }
