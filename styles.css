@@ -5,6 +5,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
 
+/* ---- Design tokens ---------------------------------------- */
 :root {
   --ok:     #22C55E;
   --warn:   #F59E0B;
@@ -22,9 +23,15 @@
   --sp-md: 14px;
   --sp-lg: 18px;
 
-  /* Slightly calmer focus ring (less harsh on light theme) */
   --focus-ring: 0 0 0 3px rgba(46, 196, 182, .30);
   --transition: .15s ease;
+
+  /* Select arrow SVGs — defined once per theme as custom properties
+     so we avoid duplicating the data URI and fix the escaped-quote bug */
+  --select-arrow-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a5876' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  --select-arrow-dark:  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a3a8c4' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  /* Default to dark arrow; overridden per theme below */
+  --select-arrow: var(--select-arrow-dark);
 }
 
 /* ---- Color schemes ---------------------------------------- */
@@ -40,27 +47,24 @@ html[data-theme="dark"] {
   --optionbg:   #0d1018;
   --optionfg:   #e8eaf4;
   --pillBorder: rgba(255, 255, 255, .14);
-
-  /* Active view cue */
   --activeViewRing: 0 0 0 1px rgba(46, 196, 182, .30), 0 10px 30px rgba(3, 6, 15, .55);
+  --select-arrow: var(--select-arrow-dark);
 }
 
 html[data-theme="light"] {
-  /* Eye-friendly: softer background and less stark contrast */
-  --bg:      #f3f5fb;
+  --bg:      #f6f8fb;
   --top:     #ffffff;
   --card:    #ffffff;
-  --muted:   #4a5876;
-  --line:    #e2e8f5;
-  --text:    #0b1426;
+  --muted:   #42526b;
+  --line:    rgba(15, 23, 42, .12);
+  --text:    #0f172a;
   --input:   #f3f6ff;
   --shadow:  0 10px 26px rgba(8, 18, 40, .08);
   --optionbg:   #ffffff;
-  --optionfg:   #0b1426;
-  --pillBorder: rgba(11, 20, 38, .14);
-
-  /* Calm ring on light mode */
+  --optionfg:   #0f172a;
+  --pillBorder: rgba(15, 23, 42, .14);
   --activeViewRing: 0 0 0 1px rgba(46, 196, 182, .22), 0 12px 30px rgba(8, 18, 40, .10);
+  --select-arrow: var(--select-arrow-light);
 }
 
 /* ---- Reset ------------------------------------------------- */
@@ -165,11 +169,8 @@ body {
 
 .content { flex: 1; min-width: 0; }
 
-/* ---- Views: focus active screen ---------------------------- */
-.view {
-  /* helps focus visibility when we focus() the active view */
-  scroll-margin-top: 84px;
-}
+/* ---- Views ------------------------------------------------ */
+.view { scroll-margin-top: 84px; }
 .view.is-active {
   box-shadow: var(--activeViewRing);
   border-radius: 16px;
@@ -183,11 +184,7 @@ body {
   padding: var(--sp-md);
   box-shadow: var(--shadow);
 }
-.card-title {
-  font-family: var(--font-head);
-  font-weight: 800;
-  letter-spacing: .01em;
-}
+.card-title { font-family: var(--font-head); font-weight: 800; letter-spacing: .01em; }
 .subtle {
   background: color-mix(in oklab, var(--card) 96%, transparent);
   box-shadow: none;
@@ -247,10 +244,17 @@ body {
   pointer-events: none;
 }
 
+/* Light theme: solid accent buttons for better readability */
+html[data-theme="light"] .btn:not(.ghost):not(.danger) {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+html[data-theme="light"] .btn.ghost { border-color: var(--line); }
+
 /* ---- Icon / help buttons ---------------------------------- */
 .iconbtn {
-  width: 28px;
-  height: 28px;
+  width: 28px; height: 28px;
   border-radius: 10px;
   border: 1px solid var(--pillBorder);
   background: transparent;
@@ -307,14 +311,12 @@ body {
   box-shadow: var(--focus-ring);
 }
 
+/* Single rule, theme-aware via --select-arrow custom property */
 .field select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a5876' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-image: var(--select-arrow);
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px;
-}
-html[data-theme="dark"] .field select {
-  background-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a3a8c4' d='M1 1l5 5 5-5'/%3E%3C/svg%3E\");
 }
 .field select option { background: var(--optionbg); color: var(--optionfg); }
 .field textarea { min-height: 80px; resize: vertical; }
@@ -322,8 +324,7 @@ html[data-theme="dark"] .field select {
 /* ---- Drawer ----------------------------------------------- */
 .drawer {
   position: fixed;
-  right: 0;
-  top: 0;
+  right: 0; top: 0;
   height: 100%;
   width: 390px;
   background: var(--top);
@@ -339,8 +340,7 @@ html[data-theme="dark"] .field select {
 .drawer.open { transform: translateX(0); }
 
 .drawer-backdrop {
-  position: fixed;
-  inset: 0;
+  position: fixed; inset: 0;
   background: rgba(2, 6, 12, .55);
   z-index: 110;
 }
@@ -356,6 +356,13 @@ html[data-theme="dark"] .field select {
 .drawer-title { font-family: var(--font-head); font-weight: 800; }
 .drawer-body  { padding: var(--sp-sm) 4px; }
 .drawer-help  { width: 420px; }
+
+/* Light theme: slightly elevated shadow on drawers/cards */
+html[data-theme="light"] .card,
+html[data-theme="light"] .mini,
+html[data-theme="light"] .drawer {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+}
 
 /* ---- Toast ------------------------------------------------ */
 .toast {
@@ -410,11 +417,9 @@ html[data-theme="dark"] .field select {
 /* ---- FAB + Sheet ------------------------------------------ */
 .fab {
   position: fixed;
-  right: 18px;
-  bottom: 84px;
+  right: 18px; bottom: 84px;
   z-index: 140;
-  width: 56px;
-  height: 56px;
+  width: 56px; height: 56px;
   border-radius: 18px;
   border: 1px solid var(--pillBorder);
   background: var(--accent-2);
@@ -431,8 +436,7 @@ html[data-theme="dark"] .field select {
 .fab:hover { filter: brightness(1.08); }
 
 .sheet-backdrop {
-  position: fixed;
-  inset: 0;
+  position: fixed; inset: 0;
   background: rgba(2, 6, 12, .55);
   z-index: 130;
 }
@@ -463,9 +467,7 @@ html[data-theme="dark"] .field select {
 /* ---- Mobile bottom nav ------------------------------------ */
 .bottomnav {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 0; right: 0; bottom: 0;
   background: var(--top);
   border-top: 1px solid var(--line);
   display: flex;
@@ -490,8 +492,7 @@ html[data-theme="dark"] .field select {
 
 /* ---- Splash ----------------------------------------------- */
 .splash {
-  position: fixed;
-  inset: 0;
+  position: fixed; inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -523,13 +524,12 @@ html[data-theme="dark"] .field select {
 .skeleton {
   height: 10px;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--text) 10%, transparent);
   margin-top: var(--sp-sm);
   background-image: linear-gradient(
     90deg,
-    color-mix(in oklab, var(--text) 8%, transparent),
+    color-mix(in oklab, var(--text) 8%,  transparent),
     color-mix(in oklab, var(--text) 16%, transparent),
-    color-mix(in oklab, var(--text) 8%, transparent)
+    color-mix(in oklab, var(--text) 8%,  transparent)
   );
   background-size: 220% 100%;
   animation: shimmer 1.3s linear infinite;
@@ -542,12 +542,13 @@ html[data-theme="dark"] .field select {
   100% { background-position: 200% 0; }
 }
 
+/* ---- Reduced motion --------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
-  .btn, .navbtn, .tab, .drawer, .fab, .iconbtn { transition: none; }
-  .splash { transition: none; }
+  .btn, .navbtn, .tab, .drawer, .fab, .iconbtn, .splash { transition: none; }
 }
 
+/* ---- Responsive ------------------------------------------- */
 @media (max-width: 860px) {
   .layout {
     flex-direction: column;
@@ -567,36 +568,4 @@ html[data-theme="dark"] .field select {
   .grid2  { grid-template-columns: 1fr; }
   .drawer,
   .drawer-help { width: min(92vw, 420px); }
-}
-/* ===== PerformanceIQ light theme readability patch (append) ===== */
-html[data-theme="light"] {
-  /* Higher contrast text + softer background */
-  --bg: #f6f8fb;
-  --panel: #ffffff;
-  --card: #ffffff;
-  --text: #0f172a;
-  --muted: #42526b;
-  --line: rgba(15, 23, 42, 0.12);
-
-  /* Make pills/buttons pop using accent */
-  --focus: var(--accent);
-}
-
-html[data-theme="light"] .muted { color: var(--muted); }
-html[data-theme="light"] .pill  { border-color: var(--line); }
-html[data-theme="light"] .card,
-html[data-theme="light"] .mini,
-html[data-theme="light"] .drawer {
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-}
-html[data-theme="light"] .btn {
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.10);
-}
-html[data-theme="light"] .btn:not(.ghost):not(.danger) {
-  background: var(--accent);
-  border-color: transparent;
-  color: #fff;
-}
-html[data-theme="light"] .btn.ghost {
-  border-color: var(--line);
 }
