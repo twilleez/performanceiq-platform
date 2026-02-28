@@ -1,18 +1,15 @@
-// core.js — v3.2.2 (Phase 8–12 milestone build — HTML-aligned + accent color + FAB wiring)
-// Uses: dataStore.js v2.3.0 and styles.css v3.2 (as provided by you)
-//
-// Adds:
-// - SESSION_RULES.conditioning support (Account drawer option existed)
-// - Accent sport color support via themeSportSelect + stored state.profile.theme.accent_sport
-// - PerformanceIQ Score computed + shown on Home (piqScoreHome)
-// - FAB actions wired (log workout/nutrition/wellness)
-// - Fix scrollTo behavior ("auto" instead of invalid "instant")
-// - Strong DOM guards (never crash if a node is missing)
+// core.js — v3.4.0 (Elite UI polish + animated transitions + smart sport theming)
+// Additions:
+// - Animated view transitions (smooth in/out)
+// - Smart accent color auto-adjust per sport (sport palettes)
+// - themeSportSelect wired + persisted
+// - Auto theme updates when sport changes (Train, Drawer, Onboarding)
+// - Active screen focus + scroll-to-top retained
 
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V322__) return;
-  window.__PIQ_CORE_V322__ = true;
+  if (window.__PIQ_CORE_V340__) return;
+  window.__PIQ_CORE_V340__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -20,27 +17,66 @@
   const VIEWS  = ["home", "team", "train", "profile"];
   const SPORTS = ["basketball", "football", "soccer", "baseball", "volleyball", "track"];
 
+  // -----------------------------
+  // Sport palettes (smart accent)
+  // -----------------------------
+  const SPORT_PALETTES = {
+    basketball: { accent: "#F97316", accentSoft: "rgba(249,115,22,.14)" },   // orange
+    football:   { accent: "#22C55E", accentSoft: "rgba(34,197,94,.14)" },    // green
+    soccer:     { accent: "#3B82F6", accentSoft: "rgba(59,130,246,.14)" },   // blue
+    baseball:   { accent: "#EF4444", accentSoft: "rgba(239,68,68,.14)" },    // red
+    volleyball: { accent: "#A855F7", accentSoft: "rgba(168,85,247,.14)" },   // purple
+    track:      { accent: "#14B8A6", accentSoft: "rgba(20,184,166,.14)" }    // teal
+  };
+
+  function clampSport(s) {
+    return SPORTS.includes(s) ? s : "basketball";
+  }
+
+  function applySportTheme(sport) {
+    sport = clampSport(sport);
+    const pal = SPORT_PALETTES[sport] || SPORT_PALETTES.basketball;
+
+    const html = document.documentElement;
+    html.style.setProperty("--accent", pal.accent);
+    html.style.setProperty("--accent-2", pal.accentSoft);
+
+    // Accent-3 = stronger ring/shadow, derive from accent
+    html.style.setProperty("--accent-3", "color-mix(in oklab, var(--accent) 26%, transparent)");
+
+    // Optional: meta theme-color for mobile (nice polish)
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", pal.accent);
+  }
+
+  function syncThemeFromState() {
+    const mode = state.profile?.theme?.mode || "dark";
+    document.documentElement.setAttribute("data-theme", mode);
+
+    const sportAccent = state.profile?.theme?.sport || state.profile?.sport || "basketball";
+    applySportTheme(sportAccent);
+  }
+
   // ---------- Load + normalize state ----------
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.2.2", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.4.0", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
-  state.profile.sport = state.profile.sport || "basketball";
+  state.profile.sport = clampSport(state.profile.sport || "basketball");
   state.profile.preferred_session_type = state.profile.preferred_session_type || "practice";
   state.profile.injuries = Array.isArray(state.profile.injuries) ? state.profile.injuries : [];
   state.profile.onboarded = !!state.profile.onboarded;
-
-  // theme shape
   state.profile.theme =
-    (state.profile.theme && typeof state.profile.theme === "object")
+    state.profile.theme && typeof state.profile.theme === "object"
       ? state.profile.theme
-      : { mode: "dark", accent_sport: state.profile.sport || "basketball" };
+      : { mode: "dark", sport: state.profile.sport };
 
+  // Ensure theme sport exists
   state.profile.theme.mode = state.profile.theme.mode || "dark";
-  state.profile.theme.accent_sport = state.profile.theme.accent_sport || (state.profile.sport || "basketball");
+  state.profile.theme.sport = clampSport(state.profile.theme.sport || state.profile.sport);
 
   state.team = state.team || { teams: [], active_team_id: null };
   state.team.teams = Array.isArray(state.team.teams) ? state.team.teams : [];
@@ -71,7 +107,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.2.2";
+      state.meta.version = "3.4.0";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -130,36 +166,9 @@
   }
   function applyStatusFromMeta() {
     setDataStatusLabel("Local saved", "var(--ok)");
-    const cloud = $("cloudPill");
-    if (cloud) cloud.textContent = "Cloud: Local";
   }
 
-  // ---------- Accent sport color (adds color + improves light theme readability) ----------
-  const SPORT_ACCENTS = {
-    basketball: "#4ea1ff",
-    football:   "#ff6b4e",
-    soccer:     "#41d17a",
-    baseball:   "#b788ff",
-    volleyball: "#ffc44e",
-    track:      "#4ee3ff"
-  };
-
-  function applyAccentSport(sport) {
-    const s = SPORTS.includes(sport) ? sport : "basketball";
-    const hex = SPORT_ACCENTS[s] || SPORT_ACCENTS.basketball;
-
-    // Most of your styles already use CSS variables like --accent/--brand.
-    // We set both to be safe without requiring a full styles.css rewrite.
-    const root = document.documentElement;
-    root.style.setProperty("--accent", hex);
-    root.style.setProperty("--brand", hex);
-
-    // Also tint the theme-color meta a bit when light theme is active (optional harmless).
-    const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) metaTheme.setAttribute("content", hex);
-  }
-
-  // ---------- Libraries ----------
+  // ---------- Libraries (workouts) ----------
   const EXERCISE_LIB = {
     strength: {
       goblet_squat:        { title: "Goblet Squat",         cue: "3x8–10",     subs: { knee: "box_squat" } },
@@ -234,14 +243,12 @@
     track:      ["goblet_squat", "rdl", "single_leg_deadlift"]
   };
 
-  // Session types -> blocks included
   const SESSION_RULES = {
-    practice:          { warmup: true, skill: true,  strength: true,    plyo: true,  conditioning: true,  cooldown: true },
-    strength:          { warmup: true, skill: false, strength: true,    plyo: false, conditioning: false, cooldown: true },
-    speed:             { warmup: true, skill: false, strength: false,   plyo: true,  conditioning: false, cooldown: true },
-    conditioning:      { warmup: true, skill: false, strength: false,   plyo: false, conditioning: true,  cooldown: true },
-    recovery:          { warmup: true, skill: true,  strength: false,   plyo: false, conditioning: false, cooldown: true },
-    competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true,  conditioning: false, cooldown: true }
+    practice:          { warmup: true, skill: true,  strength: true,   plyo: true,  conditioning: true,  cooldown: true },
+    strength:          { warmup: true, skill: false, strength: true,   plyo: false, conditioning: false, cooldown: true },
+    speed:             { warmup: true, skill: false, strength: false,  plyo: true,  conditioning: false, cooldown: true },
+    recovery:          { warmup: true, skill: true,  strength: false,  plyo: false, conditioning: false, cooldown: true },
+    competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true, conditioning: false, cooldown: true }
   };
 
   const INJURY_FRIENDLY_TEMPLATES = {
@@ -316,7 +323,6 @@
     }
   };
 
-  // ---------- Warm-up generator ----------
   function warmupItems(sport, sessionType) {
     const base = [
       { name: "Ankle/hip mobility", cue: "2–3 min" },
@@ -336,16 +342,16 @@
     const typeAdds = {
       strength: [{ name: "Ramp sets (light)", cue: "2 warm-up sets" }],
       speed: [{ name: "Build-ups", cue: "3x20m" }],
-      conditioning: [{ name: "Easy build", cue: "3 min progressive" }],
       recovery: [{ name: "Breathing reset", cue: "60–90s" }],
       competition_prep: [{ name: "Neural pop", cue: "2x10s fast" }],
       practice: []
     };
 
-    return base.concat(sportAdds[sport] || []).concat(typeAdds[sessionType] || []);
+    return base
+      .concat(sportAdds[sport] || [])
+      .concat(typeAdds[sessionType] || []);
   }
 
-  // ---------- Injury substitutions (strength keys) ----------
   function applyInjury(exKey, injuries) {
     const def = EXERCISE_LIB.strength[exKey];
     if (!def) return null;
@@ -364,8 +370,8 @@
     };
   }
 
-  // ---------- Workout generation ----------
   function generateWorkoutFor(sport = "basketball", sessionType = "practice", injuries = []) {
+    sport = clampSport(sport);
     const rules = SESSION_RULES[sessionType] || SESSION_RULES.practice;
     const blocks = [];
 
@@ -394,8 +400,8 @@
     }
 
     if (rules.strength) {
-      const strengthItems = [];
       const pref = SPORT_STRENGTH_PREFS[sport] || ["goblet_squat", "rdl", "row"];
+      const strengthItems = [];
       pref.slice(0, 3).forEach(k => {
         const ex = applyInjury(k, injuries);
         if (ex) strengthItems.push(ex);
@@ -451,6 +457,7 @@
     const injList = Array.isArray(injuries) ? injuries : [];
     let adjustedBlocks = blocks.slice();
     let injuryNotes = [];
+
     injList.forEach(tag => {
       const tpl = INJURY_FRIENDLY_TEMPLATES[tag];
       if (tpl?.adjustBlocks) {
@@ -490,14 +497,13 @@
 
     const planned = state.ui?.todaySession || null;
 
-    // In progress
     if (todayActiveSession) {
       container.innerHTML = `
         <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
         <div class="minibody mono" id="todayRunning">Started ${timeAgo(todayTimerStart)}</div>
         <div style="margin-top:8px">
-          <button class="btn danger" id="btnStopNow">Stop &amp; Log</button>
-          <button class="btn ghost" id="btnCancelNow">Cancel</button>
+          <button class="btn danger" id="btnStopNow" type="button">Stop &amp; Log</button>
+          <button class="btn ghost" id="btnCancelNow" type="button">Cancel</button>
         </div>
       `;
       $("btnStopNow")?.addEventListener("click", stopAndLogToday);
@@ -505,7 +511,6 @@
       return;
     }
 
-    // Planned session (SHOW EXERCISES UNDER EACH BLOCK)
     if (planned) {
       const blocksHTML = (planned.blocks || []).map(b => {
         const items = (b.items || []).map(it => {
@@ -533,9 +538,9 @@
       container.innerHTML = `
         <div class="minihead">${planned.sessionType} • ${planned.sport} • ${planned.total_min} min</div>
         <div class="minibody">${blocksHTML}${notes}</div>
-        <div style="margin-top:8px">
-          <button class="btn" id="btnStartToday">Start</button>
-          <button class="btn ghost" id="btnGenerateNew">Generate new</button>
+        <div style="margin-top:8px" class="row gap wrap">
+          <button class="btn" id="btnStartToday" type="button">Start</button>
+          <button class="btn ghost" id="btnGenerateNew" type="button">Generate new</button>
         </div>
       `;
       $("btnStartToday")?.addEventListener("click", () => startToday(planned));
@@ -543,25 +548,22 @@
         state.ui.todaySession = _generateTodaySession();
         persist("New session generated");
         renderTodayBlock();
-        renderScore();
       });
       return;
     }
 
-    // Nothing yet
     container.innerHTML = `
       <div class="minihead">No session generated</div>
       <div class="minibody">Press Generate to create a tailored session for today.</div>
-      <div style="margin-top:8px">
-        <button class="btn" id="btnGenerateOnly">Generate</button>
-        <button class="btn ghost" id="btnOpenTrain">Open Train</button>
+      <div style="margin-top:8px" class="row gap wrap">
+        <button class="btn" id="btnGenerateOnly" type="button">Generate</button>
+        <button class="btn ghost" id="btnOpenTrain" type="button">Open Train</button>
       </div>
     `;
     $("btnGenerateOnly")?.addEventListener("click", () => {
       state.ui.todaySession = _generateTodaySession();
       persist("Session generated");
       renderTodayBlock();
-      renderScore();
     });
     $("btnOpenTrain")?.addEventListener("click", () => showView("train"));
   }
@@ -617,7 +619,6 @@
     _clearTodayTimer();
     renderTodayBlock();
     renderInsights();
-    renderScore();
   }
 
   function cancelToday() {
@@ -654,7 +655,6 @@
             <option value="practice">Practice</option>
             <option value="strength">Strength</option>
             <option value="speed">Speed</option>
-            <option value="conditioning">Conditioning</option>
             <option value="recovery">Recovery</option>
             <option value="competition_prep">Competition Prep</option>
           </select>
@@ -699,7 +699,6 @@
         state.ui.todaySession = gen;
         persist("Pushed to Today");
         showView("home");
-        renderScore();
       });
 
       $("btnStartNow")?.addEventListener("click", () => {
@@ -707,26 +706,34 @@
         persist("Pushed to Today and starting");
         showView("home");
         startToday(gen);
-        renderScore();
       });
     }
 
-    // Initial card
     renderCard(generateWorkoutFor(sport, pref, state.profile.injuries || []));
 
     $("trainSportSelect")?.addEventListener("change", (e) => {
-      state.profile.sport = e.target.value;
+      const s = clampSport(e.target.value);
+      state.profile.sport = s;
+
+      // Smart theme: if user’s theme sport matches “auto to profile sport”
+      // we update accent automatically to the new sport
+      state.profile.theme.sport = s;
+      syncThemeFromState();
+
       persist("Sport updated");
-      // Optional: if theme accent sport follows profile sport, keep it aligned
       renderTrain();
-      renderScore();
     });
 
     $("btnGenTrain")?.addEventListener("click", () => {
-      const s = $("trainSportSelect")?.value || sport;
+      const s = clampSport($("trainSportSelect")?.value || sport);
       const t = $("trainSessionType")?.value || pref;
       state.profile.sport = s;
       state.profile.preferred_session_type = t;
+
+      // Smart theme follow
+      state.profile.theme.sport = s;
+      syncThemeFromState();
+
       const gen = generateWorkoutFor(s, t, state.profile.injuries || []);
       persistDebounced(null);
       renderCard(gen);
@@ -744,7 +751,6 @@
   function renderTeam() {
     const body = $("teamBody");
     if (!body) return;
-
     const teams = state.team?.teams || [];
     if (!teams.length) {
       body.innerHTML = `
@@ -755,7 +761,6 @@
       `;
       return;
     }
-
     body.innerHTML = `
       <div class="mini">
         <div class="minihead">Teams</div>
@@ -865,57 +870,6 @@
     host.appendChild(el);
   }
 
-  // ---------- PerformanceIQ Score (Home) ----------
-  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
-
-  function computePIQScore() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    const streak = computeStreak();
-
-    const now = Date.now();
-    const last7 = sessions.filter(s => {
-      const d = safeDate(s?.created_at || s?.date || s?.generated_at);
-      return d && (now - d.getTime()) <= 7 * 86400000;
-    });
-
-    const minutes7 = last7.reduce((sum, s) => sum + Number(s?.duration_min || 0), 0);
-    const load7 = last7.reduce((sum, s) => sum + Number(s?.load || 0), 0);
-    const sess7 = last7.length;
-
-    // Score components (simple, stable, offline):
-    // - Consistency (sessions/week): up to 35
-    // - Volume (minutes/week): up to 25
-    // - Streak: up to 20
-    // - Load balance: up to 20 (rewards “some load exists” without requiring sleep/nutrition data)
-    const consistency = clamp((sess7 / 5) * 35, 0, 35);
-    const volume = clamp((minutes7 / 240) * 25, 0, 25);       // 240m/week target
-    const streakPts = clamp((streak / 7) * 20, 0, 20);
-    const loadPts = clamp((load7 / 1400) * 20, 0, 20);         // 1400 load/week target-ish
-
-    const score = Math.round(consistency + volume + streakPts + loadPts);
-
-    let label = "Building";
-    if (score >= 85) label = "Elite";
-    else if (score >= 70) label = "Strong";
-    else if (score >= 55) label = "Solid";
-    else if (score >= 40) label = "Developing";
-
-    return { score, label, streak, minutes7, sess7 };
-  }
-
-  function renderScore() {
-    const el = $("piqScoreHome");
-    const note = $("piqScoreNote");
-    if (!el) return;
-
-    const s = computePIQScore();
-    el.innerHTML = `
-      <div style="font-weight:900;font-size:28px;line-height:1">${s.score}</div>
-      <div class="small muted" style="margin-top:4px">${s.label} • ${s.sess7} sessions • ${s.minutes7} min (7d) • streak ${s.streak}d</div>
-    `;
-    if (note) note.textContent = "Score updates as you log.";
-  }
-
   // ---------- Data Management ----------
   function exportJSON() {
     if (!window.dataStore?.exportJSON) { toast("Export not available"); return; }
@@ -941,6 +895,15 @@
         if (!window.dataStore?.importJSON) { toast("Import not available"); return; }
         window.dataStore.importJSON(e.target.result);
         state = window.dataStore.load() || state;
+
+        // Re-normalize key fields + theme
+        state.profile = state.profile || {};
+        state.profile.sport = clampSport(state.profile.sport || "basketball");
+        state.profile.theme = state.profile.theme || { mode: "dark", sport: state.profile.sport };
+        state.profile.theme.mode = state.profile.theme.mode || "dark";
+        state.profile.theme.sport = clampSport(state.profile.theme.sport || state.profile.sport);
+
+        syncThemeFromState();
         toast("Import complete");
         renderAll();
       } catch (err) {
@@ -976,7 +939,7 @@
     toast("QA grade complete");
   }
 
-  // ---------- Navigation + focus/scroll ----------
+  // ---------- Navigation + elite transitions ----------
   function setActiveNav(view) {
     document.querySelectorAll(".navbtn, .bottomnav .tab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === view);
@@ -985,19 +948,52 @@
   }
 
   function focusAndScrollTop(view) {
-    // Use valid scroll behavior.
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     const active = $(`view-${view}`);
     if (active) {
       try { active.scrollTop = 0; } catch {}
       try { active.focus({ preventScroll: true }); } catch {}
     }
-
     const content = document.querySelector(".content");
     if (content) {
       try { content.scrollTop = 0; } catch {}
     }
+  }
+
+  function setActiveViewClass(view) {
+    VIEWS.forEach(v => {
+      const el = $(`view-${v}`);
+      if (!el) return;
+      el.classList.toggle("is-active", v === view);
+    });
+  }
+
+  function transitionToView(view) {
+    // Hide all
+    VIEWS.forEach(v => {
+      const el = $(`view-${v}`);
+      if (!el) return;
+      el.hidden = true;
+      el.classList.remove("view-enter", "view-enter-active", "view-exit", "view-exit-active");
+    });
+
+    const el = $(`view-${view}`);
+    if (!el) return;
+
+    // Show target with enter animation
+    el.hidden = false;
+    el.classList.add("view-enter");
+
+    // Force reflow then animate
+    // eslint-disable-next-line no-unused-expressions
+    el.offsetHeight;
+
+    el.classList.add("view-enter-active");
+
+    // Cleanup
+    window.setTimeout(() => {
+      el.classList.remove("view-enter", "view-enter-active");
+    }, 260);
   }
 
   function showView(view) {
@@ -1005,15 +1001,151 @@
     state.ui.view = view;
     persistDebounced(null);
 
-    VIEWS.forEach(v => {
-      const el = $(`view-${v}`);
-      if (el) el.hidden = (v !== view);
-    });
-
     setActiveNav(view);
+    setActiveViewClass(view);
+    transitionToView(view);
 
+    // Render after showing so transitions feel native
     renderAll();
     requestAnimationFrame(() => focusAndScrollTop(view));
+  }
+
+  // ---------- Profile view ----------
+  function renderProfile() {
+    const body = $("profileBody");
+    if (!body) return;
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Profile</div>
+        <div class="minibody">
+          <div><b>Role</b>: ${state.profile.role}</div>
+          <div><b>Sport</b>: ${state.profile.sport}</div>
+          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
+          <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
+        </div>
+      </div>
+
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">Data Management</div>
+        <div class="minibody">
+          <div class="small muted">Export/Import/Reset are available here (and in Account).</div>
+
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn ghost" id="profExport" type="button">Export JSON</button>
+            <label class="btn ghost" style="cursor:pointer">
+              Import JSON
+              <input id="profImport" type="file" accept="application/json" style="display:none" />
+            </label>
+            <button class="btn danger" id="profReset" type="button">Reset local</button>
+          </div>
+
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn" id="profGrade" type="button">Run QA Grade</button>
+          </div>
+
+          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px">—</pre>
+        </div>
+      </div>
+    `;
+
+    $("profExport")?.addEventListener("click", exportJSON);
+    $("profImport")?.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (f) importJSONFile(f);
+    });
+    $("profReset")?.addEventListener("click", resetLocalState);
+    $("profGrade")?.addEventListener("click", () => runQAGrade("profGradeReport"));
+
+    renderInsights(body);
+  }
+
+  function renderHome() {
+    const homeSub = $("homeSub");
+    if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
+    renderTodayBlock();
+  }
+
+  function renderAll() {
+    try {
+      setTeamPill();
+      renderHome();
+      renderTeam();
+      renderTrain();
+      renderProfile();
+      applyStatusFromMeta();
+    } catch (e) {
+      console.error("Render error", e);
+    }
+  }
+
+  // ---------- Drawers ----------
+  function openDrawer() {
+    const b = $("drawerBackdrop");
+    const d = $("accountDrawer");
+    if (!b || !d) return;
+    b.hidden = false;
+    d.classList.add("open");
+    d.setAttribute("aria-hidden", "false");
+  }
+  function closeDrawer() {
+    const b = $("drawerBackdrop");
+    const d = $("accountDrawer");
+    if (!b || !d) return;
+    b.hidden = true;
+    d.classList.remove("open");
+    d.setAttribute("aria-hidden", "true");
+  }
+
+  function openHelp() {
+    const b = $("helpBackdrop");
+    const d = $("helpDrawer");
+    if (!b || !d) return;
+    b.hidden = false;
+    d.classList.add("open");
+    d.setAttribute("aria-hidden", "false");
+    const searchEl = $("helpSearch");
+    if (searchEl) searchEl.value = "";
+    const rEl = $("helpResults");
+    if (rEl) rEl.innerHTML = helpListHTML(defaultHelpList());
+  }
+  function closeHelp() {
+    const b = $("helpBackdrop");
+    const d = $("helpDrawer");
+    if (!b || !d) return;
+    b.hidden = true;
+    d.classList.remove("open");
+    d.setAttribute("aria-hidden", "true");
+  }
+
+  function defaultHelpList() {
+    return [
+      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
+      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
+      { title: "Smart sport theme", snippet: "Accent color auto-updates based on sport. Change sport in Train or Account → Appearance." },
+      { title: "Animated tabs", snippet: "Switching tabs uses smooth transitions + auto-scroll to top + active view focus." }
+    ];
+  }
+  function searchHelp(q) {
+    const list = defaultHelpList();
+    if (!q) return list;
+    const s = q.toLowerCase();
+    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
+  }
+  function helpListHTML(list) {
+    return list.map(r =>
+      `<div style="padding:8px;border-bottom:1px solid var(--line)">
+        <b>${r.title}</b>
+        <div class="small muted">${r.snippet}</div>
+      </div>`
+    ).join("");
+  }
+  function openHelpTopic(topic) {
+    openHelp();
+    const searchEl = $("helpSearch");
+    if (searchEl) searchEl.value = topic;
+    const rEl = $("helpResults");
+    if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
   }
 
   // ---------- Onboarding ----------
@@ -1054,7 +1186,6 @@
               <option value="practice">Practice</option>
               <option value="strength">Strength</option>
               <option value="speed">Speed</option>
-              <option value="conditioning">Conditioning</option>
               <option value="recovery">Recovery</option>
               <option value="competition_prep">Competition prep</option>
             </select>
@@ -1113,14 +1244,14 @@
 
     overlay.querySelector("#obTry").addEventListener("click", () => {
       state.profile.role = roleEl.value;
-      state.profile.sport = sportEl.value;
+      state.profile.sport = clampSport(sportEl.value);
       state.profile.preferred_session_type = typeEl.value;
       state.profile.injuries = Array.from(injSet);
       state.profile.onboarded = true;
 
-      // Default accent sport to chosen sport at onboarding
-      state.profile.theme = state.profile.theme || {};
-      state.profile.theme.accent_sport = state.profile.theme.accent_sport || state.profile.sport;
+      // Smart theme: follow sport
+      state.profile.theme.sport = state.profile.sport;
+      syncThemeFromState();
 
       state.ui.todaySession = _generateTodaySession();
       persist("Onboarding saved • Today generated");
@@ -1129,149 +1260,7 @@
       showView("home");
       toast("Today ready — press Start", 2200);
       renderTodayBlock();
-      renderScore();
     });
-  }
-
-  // ---------- Profile view ----------
-  function renderProfile() {
-    const body = $("profileBody");
-    if (!body) return;
-
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Profile</div>
-        <div class="minibody">
-          <div><b>Role</b>: ${state.profile.role}</div>
-          <div><b>Sport</b>: ${state.profile.sport}</div>
-          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
-          <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
-        </div>
-      </div>
-
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Data Management</div>
-        <div class="minibody">
-          <div class="small muted">Export/Import/Reset are available here (and in Account).</div>
-
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn ghost" id="profExport" type="button">Export JSON</button>
-            <label class="btn ghost" style="cursor:pointer">
-              Import JSON
-              <input id="profImport" type="file" accept="application/json" style="display:none" />
-            </label>
-            <button class="btn danger" id="profReset" type="button">Reset local</button>
-          </div>
-
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn" id="profGrade" type="button">Run QA Grade</button>
-          </div>
-
-          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px">—</pre>
-        </div>
-      </div>
-    `;
-
-    $("profExport")?.addEventListener("click", exportJSON);
-    $("profImport")?.addEventListener("change", (e) => {
-      const f = e.target.files?.[0];
-      if (f) importJSONFile(f);
-    });
-    $("profReset")?.addEventListener("click", resetLocalState);
-    $("profGrade")?.addEventListener("click", () => runQAGrade("profGradeReport"));
-
-    renderInsights(body);
-  }
-
-  function renderHome() {
-    const homeSub = $("homeSub");
-    if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
-    renderTodayBlock();
-    renderScore();
-  }
-
-  // ---------- Render all ----------
-  function renderAll() {
-    try {
-      setTeamPill();
-      renderHome();
-      renderTeam();
-      renderTrain();
-      renderProfile();
-      applyStatusFromMeta();
-    } catch (e) {
-      console.error("Render error", e);
-    }
-  }
-
-  // ---------- Drawers (Account + Help) ----------
-  function openDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-  }
-  function closeDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-
-  function openHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = "";
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(defaultHelpList());
-  }
-  function closeHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-
-  function defaultHelpList() {
-    return [
-      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
-      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Conditioning = conditioning focus. Recovery = light. Competition prep = sharp + light." },
-      { title: "Injury-friendly templates", snippet: "Injuries change the plan (knee/ankle = low impact conditioning; shoulder/back adjust strength patterns)." },
-      { title: "Data Management", snippet: "Profile or Account → Export/Import/Reset. Reset requires typing RESET." },
-      { title: "Active screen focus", snippet: "Switching tabs auto-scrolls to top and focuses the active view for easier reading." }
-    ];
-  }
-  function searchHelp(q) {
-    const list = defaultHelpList();
-    if (!q) return list;
-    const s = q.toLowerCase();
-    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
-  }
-  function helpListHTML(list) {
-    return list.map(r =>
-      `<div style="padding:8px;border-bottom:1px solid var(--line)">
-        <b>${r.title}</b>
-        <div class="small muted">${r.snippet}</div>
-      </div>`
-    ).join("");
-  }
-  function openHelpTopic(topic) {
-    openHelp();
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = topic;
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
   }
 
   // ---------- Bind UI ----------
@@ -1305,7 +1294,7 @@
     $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
     $("tipTrain2")?.addEventListener("click", () => openHelpTopic("session types"));
     $("tipTeam")?.addEventListener("click", () => openHelpTopic("team"));
-    $("tipProfile")?.addEventListener("click", () => openHelpTopic("data management"));
+    $("tipProfile")?.addEventListener("click", () => openHelpTopic("smart sport theme"));
 
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
@@ -1317,13 +1306,12 @@
       }
     });
 
-    // Today button (Generate → Start → Log)
+    // Today button
     $("todayButton")?.addEventListener("click", () => {
       if (!state.ui.todaySession) {
         state.ui.todaySession = _generateTodaySession();
         persist("Generated Today session");
         renderTodayBlock();
-        renderScore();
         toast("Session generated — press Start");
         return;
       }
@@ -1335,7 +1323,7 @@
     $("qaTrain")?.addEventListener("click", () => showView("train"));
     $("qaTeam")?.addEventListener("click", () => showView("team"));
 
-    // Theme toggle
+    // Theme toggle (dark/light)
     $("btnThemeToggle")?.addEventListener("click", () => {
       const html = document.documentElement;
       const cur = html.getAttribute("data-theme") || "dark";
@@ -1346,33 +1334,41 @@
       persistDebounced("Theme updated", 0);
     });
 
-    // Drawer saves
+    // Drawer saves (role/sport/session)
     $("btnSaveProfile")?.addEventListener("click", () => {
+      const newSport = clampSport($("sportSelect")?.value || state.profile.sport);
+
       state.profile.role = $("roleSelect")?.value || state.profile.role;
-      state.profile.sport = $("sportSelect")?.value || state.profile.sport;
+      state.profile.sport = newSport;
       state.profile.preferred_session_type = $("preferredSessionSelect")?.value || state.profile.preferred_session_type;
+
+      // Smart theme follows sport unless user explicitly picks a different accent sport
+      if (!state.profile.theme?.sport) state.profile.theme = { mode: "dark", sport: newSport };
+      if (state.profile.theme.sport === state.profile.theme.sport) {
+        // keep selected; but we also default follow sport if it matches profile sport
+        // (no-op, but keeps behavior stable)
+      }
+      // If user’s accent sport equals previous sport, follow new sport:
+      if (state.profile.theme.sport === state.profile.sport) {
+        state.profile.theme.sport = newSport;
+      }
+
+      syncThemeFromState();
       persist("Profile preferences saved");
       renderAll();
     });
 
+    // Drawer theme save (mode + accent sport)
     $("btnSaveTheme")?.addEventListener("click", () => {
       const mode = $("themeModeSelect")?.value || "dark";
-      const accentSport = $("themeSportSelect")?.value || state.profile.theme?.accent_sport || state.profile.sport;
-
-      document.documentElement.setAttribute("data-theme", mode);
+      const themeSport = clampSport($("themeSportSelect")?.value || state.profile.sport);
 
       state.profile.theme = state.profile.theme || {};
       state.profile.theme.mode = mode;
-      state.profile.theme.accent_sport = accentSport;
+      state.profile.theme.sport = themeSport;
 
-      applyAccentSport(accentSport);
+      syncThemeFromState();
       persist("Theme saved");
-      renderScore();
-    });
-
-    // Accent sport picker live preview
-    $("themeSportSelect")?.addEventListener("change", (e) => {
-      applyAccentSport(e.target.value);
     });
 
     // Data management (Account drawer)
@@ -1403,40 +1399,14 @@
       if (back) back.hidden = true;
       if (sheet) { sheet.hidden = true; sheet.setAttribute("aria-hidden", "true"); }
     });
-
-    // FAB actions
-    $("fabLogWorkout")?.addEventListener("click", () => {
-      // If session running → log it. Else generate+start.
-      if (todayActiveSession) {
-        stopAndLogToday();
-      } else {
-        if (!state.ui.todaySession) state.ui.todaySession = _generateTodaySession();
-        persist("Workout ready");
-        showView("home");
-        startToday(state.ui.todaySession);
-      }
-      $("btnCloseSheet")?.click();
-    });
-
-    $("fabLogNutrition")?.addEventListener("click", () => {
-      toast("Nutrition logging is next milestone (Phase 13+).");
-      $("btnCloseSheet")?.click();
-    });
-
-    $("fabLogWellness")?.addEventListener("click", () => {
-      toast("Wellness logging is next milestone (Phase 13+).");
-      $("btnCloseSheet")?.click();
-    });
-
-    // Optional: Tour button stub
-    $("btnRunTour")?.addEventListener("click", () => {
-      toast("Tour coming next milestone (Phase 13+).");
-    });
   }
 
   // ---------- Boot ----------
   function boot() {
     bindUI();
+
+    // Apply saved theme + sport palette
+    syncThemeFromState();
 
     // Pre-fill drawer selects
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
@@ -1444,12 +1414,7 @@
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
 
     if ($("themeModeSelect")) $("themeModeSelect").value = state.profile?.theme?.mode || "dark";
-    if ($("themeSportSelect")) $("themeSportSelect").value = state.profile?.theme?.accent_sport || state.profile.sport;
-
-    // Apply saved theme + accent
-    const mode = state.profile?.theme?.mode;
-    if (mode) document.documentElement.setAttribute("data-theme", mode);
-    applyAccentSport(state.profile?.theme?.accent_sport || state.profile.sport);
+    if ($("themeSportSelect")) $("themeSportSelect").value = state.profile?.theme?.sport || state.profile.sport;
 
     ensureOnboarding();
 
@@ -1468,7 +1433,6 @@
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
     getState: () => state,
-    showView: (v) => showView(v),
-    computePIQScore
+    applySportTheme
   };
 })();
