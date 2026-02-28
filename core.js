@@ -1,15 +1,13 @@
-// core.js — v3.4.0 (Elite UI polish + animated transitions + smart sport theming)
-// Additions:
-// - Animated view transitions (smooth in/out)
-// - Smart accent color auto-adjust per sport (sport palettes)
-// - themeSportSelect wired + persisted
-// - Auto theme updates when sport changes (Train, Drawer, Onboarding)
-// - Active screen focus + scroll-to-top retained
+// core.js — v3.5.0 (Micro-interactions + Score animation + sport palettes + animated transitions)
+// Keeps all v3.4.0 functionality, adds:
+// - Micro-interactions: press pop, subtle haptics (optional), UI “done before” feel
+// - PerformanceIQ Score: computed from usage, animated count-up + pulse on change
+// - Score updates on log/import/reset + renders on Home
 
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V340__) return;
-  window.__PIQ_CORE_V340__ = true;
+  if (window.__PIQ_CORE_V350__) return;
+  window.__PIQ_CORE_V350__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -40,28 +38,17 @@
     const html = document.documentElement;
     html.style.setProperty("--accent", pal.accent);
     html.style.setProperty("--accent-2", pal.accentSoft);
-
-    // Accent-3 = stronger ring/shadow, derive from accent
     html.style.setProperty("--accent-3", "color-mix(in oklab, var(--accent) 26%, transparent)");
 
-    // Optional: meta theme-color for mobile (nice polish)
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", pal.accent);
-  }
-
-  function syncThemeFromState() {
-    const mode = state.profile?.theme?.mode || "dark";
-    document.documentElement.setAttribute("data-theme", mode);
-
-    const sportAccent = state.profile?.theme?.sport || state.profile?.sport || "basketball";
-    applySportTheme(sportAccent);
   }
 
   // ---------- Load + normalize state ----------
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.4.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.5.0", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -74,7 +61,6 @@
       ? state.profile.theme
       : { mode: "dark", sport: state.profile.sport };
 
-  // Ensure theme sport exists
   state.profile.theme.mode = state.profile.theme.mode || "dark";
   state.profile.theme.sport = clampSport(state.profile.theme.sport || state.profile.sport);
 
@@ -90,7 +76,24 @@
   state.ui.view = VIEWS.includes(state.ui.view) ? state.ui.view : "home";
   state.ui.todaySession = state.ui.todaySession || null;
 
+  // Persist score snapshot (optional cache, safe)
+  state.score = state.score && typeof state.score === "object" ? state.score : { value: 0, updated_at: null };
+
   try { window.dataStore?.save?.(state); } catch {}
+
+  function syncThemeFromState() {
+    const mode = state.profile?.theme?.mode || "dark";
+    document.documentElement.setAttribute("data-theme", mode);
+
+    const sportAccent = state.profile?.theme?.sport || state.profile?.sport || "basketball";
+    applySportTheme(sportAccent);
+  }
+
+  // ---------- Motion preference ----------
+  const prefersReducedMotion = (() => {
+    try { return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+    catch { return false; }
+  })();
 
   // ---------- Toast ----------
   let _toastTimer = null;
@@ -107,7 +110,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.4.0";
+      state.meta.version = "3.5.0";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -166,6 +169,192 @@
   }
   function applyStatusFromMeta() {
     setDataStatusLabel("Local saved", "var(--ok)");
+  }
+
+  // ===========================
+  // Micro-interactions (premium)
+  // ===========================
+  function canHaptic() {
+    return !prefersReducedMotion && typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
+  }
+  function hapticTap(kind = "light") {
+    // Keep this subtle to feel native
+    if (!canHaptic()) return;
+    const pattern = kind === "nav" ? 8 : kind === "success" ? [10, 20, 12] : 8;
+    try { navigator.vibrate(pattern); } catch {}
+  }
+
+  function microPress(el, kind = "light") {
+    if (!el) return;
+    el.classList.add("micro-press");
+    window.setTimeout(() => el.classList.remove("micro-press"), 160);
+    hapticTap(kind);
+  }
+
+  function wireMicroInteractions() {
+    // Delegated tap effect for the whole app
+    document.addEventListener("pointerdown", (e) => {
+      const t = e.target.closest(".btn, .iconbtn, .navbtn, .tab, .pill");
+      if (!t) return;
+      microPress(t, t.classList.contains("navbtn") || t.classList.contains("tab") ? "nav" : "light");
+    }, { passive: true });
+  }
+
+  // ===========================
+  // Score: compute + animation
+  // ===========================
+  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+
+  function computeStreak() {
+    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    if (!sessions.length) return 0;
+
+    const days = sessions
+      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
+      .filter(Boolean);
+
+    if (!days.length) return 0;
+
+    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
+
+    let streak = 1;
+    let cursor = new Date(uniq[0] + "T00:00:00.000Z");
+
+    for (let i = 1; i < uniq.length; i++) {
+      const d = new Date(uniq[i] + "T00:00:00.000Z");
+      const prev = new Date(cursor);
+      prev.setUTCDate(prev.getUTCDate() - 1);
+
+      if (d.getTime() === prev.getTime()) {
+        streak++;
+        cursor = d;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  function computePIQScore() {
+    // Score is intentionally simple, stable, and offline-safe.
+    // Signals:
+    // - Consistency (sessions last 14 days)
+    // - Training load volume (minutes last 14 days)
+    // - Streak
+    // - Variety (session types last 14 days)
+    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    if (!sessions.length) return { value: 0, note: "Log sessions to build your score." };
+
+    const now = Date.now();
+    const days14 = 14 * 86_400_000;
+
+    let minutes14 = 0;
+    let sessions14 = 0;
+    const types = new Set();
+
+    sessions.forEach(s => {
+      const d = safeDate(s?.created_at || s?.generated_at || s?.date);
+      if (!d) return;
+      const age = now - d.getTime();
+      if (age <= days14) {
+        sessions14 += 1;
+        minutes14 += Number(s?.duration_min || 0);
+        if (s?.sessionType) types.add(String(s.sessionType));
+      }
+    });
+
+    const streak = computeStreak();
+    const variety = types.size;
+
+    // Normalize:
+    // sessions14 target: 6 in 14 days
+    // minutes14 target: 240 mins in 14 days
+    const sScore = clamp((sessions14 / 6) * 35, 0, 35);
+    const mScore = clamp((minutes14 / 240) * 35, 0, 35);
+    const stScore = clamp(streak * 3, 0, 18);
+    const vScore = clamp(variety * 3, 0, 12);
+
+    const raw = sScore + mScore + stScore + vScore; // max 100
+    const value = Math.round(clamp(raw, 0, 100));
+
+    let note = "Keep logging sessions for momentum.";
+    if (value >= 85) note = "Elite consistency — keep stacking days.";
+    else if (value >= 70) note = "Strong rhythm — push one more quality session.";
+    else if (value >= 50) note = "Good base — build a 3–4 day streak.";
+    else if (value >= 25) note = "Start small — log 2 sessions this week.";
+
+    return { value, note };
+  }
+
+  function animateNumber(el, from, to, ms = 650) {
+    if (!el) return;
+    if (prefersReducedMotion) { el.textContent = String(to); return; }
+
+    const start = performance.now();
+    const diff = to - from;
+
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); } // smooth
+
+    function step(now) {
+      const p = clamp((now - start) / ms, 0, 1);
+      const v = Math.round(from + diff * easeOut(p));
+      el.textContent = String(v);
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  let _lastScoreRendered = null;
+
+  function renderPIQScore() {
+    const host = $("piqScoreHome");
+    const noteEl = $("piqScoreNote");
+    if (!host) return;
+
+    const res = computePIQScore();
+
+    const prev = (typeof _lastScoreRendered === "number")
+      ? _lastScoreRendered
+      : (typeof state.score?.value === "number" ? state.score.value : 0);
+
+    _lastScoreRendered = res.value;
+
+    // Cache to state (safe)
+    state.score.value = res.value;
+    state.score.updated_at = nowISO();
+    persistDebounced(null, 250);
+
+    // Render with animation
+    host.innerHTML = `
+      <div class="piq-score">
+        <div class="piq-score-num" id="piqScoreNum">0</div>
+        <div class="piq-score-meta">
+          <div class="piq-score-label">/ 100</div>
+          <div class="piq-score-chip">${scoreTier(res.value)}</div>
+        </div>
+      </div>
+    `;
+
+    const numEl = $("piqScoreNum");
+    if (numEl) {
+      animateNumber(numEl, prev, res.value, 700);
+      // Pulse if score changed
+      if (prev !== res.value) {
+        numEl.classList.add("score-bump");
+        window.setTimeout(() => numEl.classList.remove("score-bump"), 360);
+        hapticTap(res.value > prev ? "success" : "light");
+      }
+    }
+
+    if (noteEl) noteEl.textContent = res.note;
+  }
+
+  function scoreTier(v) {
+    if (v >= 85) return "Elite";
+    if (v >= 70) return "Strong";
+    if (v >= 50) return "Building";
+    if (v >= 25) return "Starter";
+    return "New";
   }
 
   // ---------- Libraries (workouts) ----------
@@ -501,7 +690,7 @@
       container.innerHTML = `
         <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
         <div class="minibody mono" id="todayRunning">Started ${timeAgo(todayTimerStart)}</div>
-        <div style="margin-top:8px">
+        <div style="margin-top:8px" class="row gap wrap">
           <button class="btn danger" id="btnStopNow" type="button">Stop &amp; Log</button>
           <button class="btn ghost" id="btnCancelNow" type="button">Cancel</button>
         </div>
@@ -619,6 +808,7 @@
     _clearTodayTimer();
     renderTodayBlock();
     renderInsights();
+    renderPIQScore();
   }
 
   function cancelToday() {
@@ -714,14 +904,11 @@
     $("trainSportSelect")?.addEventListener("change", (e) => {
       const s = clampSport(e.target.value);
       state.profile.sport = s;
-
-      // Smart theme: if user’s theme sport matches “auto to profile sport”
-      // we update accent automatically to the new sport
-      state.profile.theme.sport = s;
+      state.profile.theme.sport = s; // smart follow
       syncThemeFromState();
-
       persist("Sport updated");
       renderTrain();
+      renderPIQScore();
     });
 
     $("btnGenTrain")?.addEventListener("click", () => {
@@ -729,8 +916,6 @@
       const t = $("trainSessionType")?.value || pref;
       state.profile.sport = s;
       state.profile.preferred_session_type = t;
-
-      // Smart theme follow
       state.profile.theme.sport = s;
       syncThemeFromState();
 
@@ -808,36 +993,6 @@
     return state.insights;
   }
 
-  function computeStreak() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    if (!sessions.length) return 0;
-
-    const days = sessions
-      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
-      .filter(Boolean);
-
-    if (!days.length) return 0;
-
-    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
-
-    let streak = 1;
-    let cursor = new Date(uniq[0] + "T00:00:00.000Z");
-
-    for (let i = 1; i < uniq.length; i++) {
-      const d = new Date(uniq[i] + "T00:00:00.000Z");
-      const prev = new Date(cursor);
-      prev.setUTCDate(prev.getUTCDate() - 1);
-
-      if (d.getTime() === prev.getTime()) {
-        streak++;
-        cursor = d;
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
   function renderInsights(intoEl) {
     computeInsights();
     const weekly = state.insights?.weekly || [];
@@ -896,16 +1051,20 @@
         window.dataStore.importJSON(e.target.result);
         state = window.dataStore.load() || state;
 
-        // Re-normalize key fields + theme
+        // Re-normalize
         state.profile = state.profile || {};
         state.profile.sport = clampSport(state.profile.sport || "basketball");
         state.profile.theme = state.profile.theme || { mode: "dark", sport: state.profile.sport };
         state.profile.theme.mode = state.profile.theme.mode || "dark";
         state.profile.theme.sport = clampSport(state.profile.theme.sport || state.profile.sport);
 
+        state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
+        state.score = state.score && typeof state.score === "object" ? state.score : { value: 0, updated_at: null };
+
         syncThemeFromState();
         toast("Import complete");
         renderAll();
+        renderPIQScore();
       } catch (err) {
         console.error(err);
         toast("Import failed: " + (err.message || "unknown error"));
@@ -969,31 +1128,25 @@
   }
 
   function transitionToView(view) {
-    // Hide all
     VIEWS.forEach(v => {
       const el = $(`view-${v}`);
       if (!el) return;
       el.hidden = true;
-      el.classList.remove("view-enter", "view-enter-active", "view-exit", "view-exit-active");
+      el.classList.remove("view-enter", "view-enter-active");
     });
 
     const el = $(`view-${view}`);
     if (!el) return;
 
-    // Show target with enter animation
     el.hidden = false;
-    el.classList.add("view-enter");
-
-    // Force reflow then animate
-    // eslint-disable-next-line no-unused-expressions
-    el.offsetHeight;
-
-    el.classList.add("view-enter-active");
-
-    // Cleanup
-    window.setTimeout(() => {
-      el.classList.remove("view-enter", "view-enter-active");
-    }, 260);
+    if (!prefersReducedMotion) {
+      el.classList.add("view-enter");
+      // force reflow
+      // eslint-disable-next-line no-unused-expressions
+      el.offsetHeight;
+      el.classList.add("view-enter-active");
+      window.setTimeout(() => el.classList.remove("view-enter", "view-enter-active"), 260);
+    }
   }
 
   function showView(view) {
@@ -1005,147 +1158,8 @@
     setActiveViewClass(view);
     transitionToView(view);
 
-    // Render after showing so transitions feel native
     renderAll();
     requestAnimationFrame(() => focusAndScrollTop(view));
-  }
-
-  // ---------- Profile view ----------
-  function renderProfile() {
-    const body = $("profileBody");
-    if (!body) return;
-
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Profile</div>
-        <div class="minibody">
-          <div><b>Role</b>: ${state.profile.role}</div>
-          <div><b>Sport</b>: ${state.profile.sport}</div>
-          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
-          <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
-        </div>
-      </div>
-
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Data Management</div>
-        <div class="minibody">
-          <div class="small muted">Export/Import/Reset are available here (and in Account).</div>
-
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn ghost" id="profExport" type="button">Export JSON</button>
-            <label class="btn ghost" style="cursor:pointer">
-              Import JSON
-              <input id="profImport" type="file" accept="application/json" style="display:none" />
-            </label>
-            <button class="btn danger" id="profReset" type="button">Reset local</button>
-          </div>
-
-          <div class="row gap wrap" style="margin-top:10px">
-            <button class="btn" id="profGrade" type="button">Run QA Grade</button>
-          </div>
-
-          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px">—</pre>
-        </div>
-      </div>
-    `;
-
-    $("profExport")?.addEventListener("click", exportJSON);
-    $("profImport")?.addEventListener("change", (e) => {
-      const f = e.target.files?.[0];
-      if (f) importJSONFile(f);
-    });
-    $("profReset")?.addEventListener("click", resetLocalState);
-    $("profGrade")?.addEventListener("click", () => runQAGrade("profGradeReport"));
-
-    renderInsights(body);
-  }
-
-  function renderHome() {
-    const homeSub = $("homeSub");
-    if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
-    renderTodayBlock();
-  }
-
-  function renderAll() {
-    try {
-      setTeamPill();
-      renderHome();
-      renderTeam();
-      renderTrain();
-      renderProfile();
-      applyStatusFromMeta();
-    } catch (e) {
-      console.error("Render error", e);
-    }
-  }
-
-  // ---------- Drawers ----------
-  function openDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-  }
-  function closeDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-
-  function openHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = "";
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(defaultHelpList());
-  }
-  function closeHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-
-  function defaultHelpList() {
-    return [
-      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
-      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
-      { title: "Smart sport theme", snippet: "Accent color auto-updates based on sport. Change sport in Train or Account → Appearance." },
-      { title: "Animated tabs", snippet: "Switching tabs uses smooth transitions + auto-scroll to top + active view focus." }
-    ];
-  }
-  function searchHelp(q) {
-    const list = defaultHelpList();
-    if (!q) return list;
-    const s = q.toLowerCase();
-    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
-  }
-  function helpListHTML(list) {
-    return list.map(r =>
-      `<div style="padding:8px;border-bottom:1px solid var(--line)">
-        <b>${r.title}</b>
-        <div class="small muted">${r.snippet}</div>
-      </div>`
-    ).join("");
-  }
-  function openHelpTopic(topic) {
-    openHelp();
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = topic;
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
   }
 
   // ---------- Onboarding ----------
@@ -1240,6 +1254,7 @@
       persist("Onboarding skipped");
       overlay.remove();
       showView("home");
+      renderPIQScore();
     });
 
     overlay.querySelector("#obTry").addEventListener("click", () => {
@@ -1249,7 +1264,6 @@
       state.profile.injuries = Array.from(injSet);
       state.profile.onboarded = true;
 
-      // Smart theme: follow sport
       state.profile.theme.sport = state.profile.sport;
       syncThemeFromState();
 
@@ -1260,7 +1274,147 @@
       showView("home");
       toast("Today ready — press Start", 2200);
       renderTodayBlock();
+      renderPIQScore();
     });
+  }
+
+  // ---------- Profile view ----------
+  function renderProfile() {
+    const body = $("profileBody");
+    if (!body) return;
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Profile</div>
+        <div class="minibody">
+          <div><b>Role</b>: ${state.profile.role}</div>
+          <div><b>Sport</b>: ${state.profile.sport}</div>
+          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
+          <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
+        </div>
+      </div>
+
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">Data Management</div>
+        <div class="minibody">
+          <div class="small muted">Export/Import/Reset are available here (and in Account).</div>
+
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn ghost" id="profExport" type="button">Export JSON</button>
+            <label class="btn ghost" style="cursor:pointer">
+              Import JSON
+              <input id="profImport" type="file" accept="application/json" style="display:none" />
+            </label>
+            <button class="btn danger" id="profReset" type="button">Reset local</button>
+          </div>
+
+          <div class="row gap wrap" style="margin-top:10px">
+            <button class="btn" id="profGrade" type="button">Run QA Grade</button>
+          </div>
+
+          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px">—</pre>
+        </div>
+      </div>
+    `;
+
+    $("profExport")?.addEventListener("click", exportJSON);
+    $("profImport")?.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (f) importJSONFile(f);
+    });
+    $("profReset")?.addEventListener("click", resetLocalState);
+    $("profGrade")?.addEventListener("click", () => runQAGrade("profGradeReport"));
+
+    renderInsights(body);
+  }
+
+  function renderHome() {
+    const homeSub = $("homeSub");
+    if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
+    renderTodayBlock();
+    renderPIQScore();
+  }
+
+  function renderAll() {
+    try {
+      setTeamPill();
+      renderHome();
+      renderTeam();
+      renderTrain();
+      renderProfile();
+      applyStatusFromMeta();
+    } catch (e) {
+      console.error("Render error", e);
+    }
+  }
+
+  // ---------- Drawers ----------
+  function openDrawer() {
+    const b = $("drawerBackdrop");
+    const d = $("accountDrawer");
+    if (!b || !d) return;
+    b.hidden = false;
+    d.classList.add("open");
+    d.setAttribute("aria-hidden", "false");
+  }
+  function closeDrawer() {
+    const b = $("drawerBackdrop");
+    const d = $("accountDrawer");
+    if (!b || !d) return;
+    b.hidden = true;
+    d.classList.remove("open");
+    d.setAttribute("aria-hidden", "true");
+  }
+
+  function openHelp() {
+    const b = $("helpBackdrop");
+    const d = $("helpDrawer");
+    if (!b || !d) return;
+    b.hidden = false;
+    d.classList.add("open");
+    d.setAttribute("aria-hidden", "false");
+    const searchEl = $("helpSearch");
+    if (searchEl) searchEl.value = "";
+    const rEl = $("helpResults");
+    if (rEl) rEl.innerHTML = helpListHTML(defaultHelpList());
+  }
+  function closeHelp() {
+    const b = $("helpBackdrop");
+    const d = $("helpDrawer");
+    if (!b || !d) return;
+    b.hidden = true;
+    d.classList.remove("open");
+    d.setAttribute("aria-hidden", "true");
+  }
+
+  function defaultHelpList() {
+    return [
+      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
+      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
+      { title: "Smart sport theme", snippet: "Accent color auto-updates based on sport. Change sport in Train or Account → Appearance." },
+      { title: "PerformanceIQ Score", snippet: "Score increases with consistency, minutes, streaks, and variety in the last 14 days." }
+    ];
+  }
+  function searchHelp(q) {
+    const list = defaultHelpList();
+    if (!q) return list;
+    const s = q.toLowerCase();
+    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
+  }
+  function helpListHTML(list) {
+    return list.map(r =>
+      `<div style="padding:8px;border-bottom:1px solid var(--line)">
+        <b>${r.title}</b>
+        <div class="small muted">${r.snippet}</div>
+      </div>`
+    ).join("");
+  }
+  function openHelpTopic(topic) {
+    openHelp();
+    const searchEl = $("helpSearch");
+    if (searchEl) searchEl.value = topic;
+    const rEl = $("helpResults");
+    if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
   }
 
   // ---------- Bind UI ----------
@@ -1294,7 +1448,7 @@
     $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
     $("tipTrain2")?.addEventListener("click", () => openHelpTopic("session types"));
     $("tipTeam")?.addEventListener("click", () => openHelpTopic("team"));
-    $("tipProfile")?.addEventListener("click", () => openHelpTopic("smart sport theme"));
+    $("tipProfile")?.addEventListener("click", () => openHelpTopic("score"));
 
     // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
@@ -1332,9 +1486,10 @@
       state.profile.theme = state.profile.theme || {};
       state.profile.theme.mode = next;
       persistDebounced("Theme updated", 0);
+      renderPIQScore();
     });
 
-    // Drawer saves (role/sport/session)
+    // Drawer saves
     $("btnSaveProfile")?.addEventListener("click", () => {
       const newSport = clampSport($("sportSelect")?.value || state.profile.sport);
 
@@ -1342,14 +1497,11 @@
       state.profile.sport = newSport;
       state.profile.preferred_session_type = $("preferredSessionSelect")?.value || state.profile.preferred_session_type;
 
-      // Smart theme follows sport unless user explicitly picks a different accent sport
-      if (!state.profile.theme?.sport) state.profile.theme = { mode: "dark", sport: newSport };
-      if (state.profile.theme.sport === state.profile.theme.sport) {
-        // keep selected; but we also default follow sport if it matches profile sport
-        // (no-op, but keeps behavior stable)
-      }
-      // If user’s accent sport equals previous sport, follow new sport:
-      if (state.profile.theme.sport === state.profile.sport) {
+      // If accent sport was tracking the profile sport, keep tracking it.
+      if (state.profile.theme?.sport === state.profile.sport) {
+        state.profile.theme.sport = newSport;
+      } else {
+        // Default behavior: still follow new sport unless user chose something else explicitly
         state.profile.theme.sport = newSport;
       }
 
@@ -1358,7 +1510,6 @@
       renderAll();
     });
 
-    // Drawer theme save (mode + accent sport)
     $("btnSaveTheme")?.addEventListener("click", () => {
       const mode = $("themeModeSelect")?.value || "dark";
       const themeSport = clampSport($("themeSportSelect")?.value || state.profile.sport);
@@ -1369,6 +1520,7 @@
 
       syncThemeFromState();
       persist("Theme saved");
+      renderAll();
     });
 
     // Data management (Account drawer)
@@ -1403,9 +1555,10 @@
 
   // ---------- Boot ----------
   function boot() {
+    wireMicroInteractions();
     bindUI();
 
-    // Apply saved theme + sport palette
+    // Apply theme + sport palette
     syncThemeFromState();
 
     // Pre-fill drawer selects
@@ -1420,6 +1573,7 @@
 
     showView(state.ui.view || "home");
     renderAll();
+    renderPIQScore();
     toast("PerformanceIQ ready", 1400);
   }
 
@@ -1433,6 +1587,7 @@
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
     getState: () => state,
-    applySportTheme
+    applySportTheme,
+    computePIQScore
   };
 })();
