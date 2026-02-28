@@ -1,29 +1,30 @@
-// core.js — v3.2.1 (Phase 8–12 milestone build — hardened)
-// Uses dataStore.js v2.3.0 + styles.css v3.2 from above.
+// core.js — v3.2.2 (Phase 8–12 milestone build — HTML-aligned + accent color + FAB wiring)
+// Uses: dataStore.js v2.3.0 and styles.css v3.2 (as provided by you)
 //
-// Fixes:
-// - Includes missing help drawer functions (searchHelp/helpListHTML/closeHelp)
-// - Guards all optional DOM ids so app never breaks if a section is missing
-// - Focus active screen + auto-scroll to top on every view change (kept)
-// - Train sport picker always available (kept)
-// - Today plan shows exercises under each block (kept)
-// - Data Management in Profile (kept) + Account hooks guarded
+// Adds:
+// - SESSION_RULES.conditioning support (Account drawer option existed)
+// - Accent sport color support via themeSportSelect + stored state.profile.theme.accent_sport
+// - PerformanceIQ Score computed + shown on Home (piqScoreHome)
+// - FAB actions wired (log workout/nutrition/wellness)
+// - Fix scrollTo behavior ("auto" instead of invalid "instant")
+// - Strong DOM guards (never crash if a node is missing)
+
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V321__) return;
-  window.__PIQ_CORE_V321__ = true;
+  if (window.__PIQ_CORE_V322__) return;
+  window.__PIQ_CORE_V322__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
 
-  const VIEWS = ["home", "team", "train", "profile"];
+  const VIEWS  = ["home", "team", "train", "profile"];
   const SPORTS = ["basketball", "football", "soccer", "baseball", "volleyball", "track"];
 
   // ---------- Load + normalize state ----------
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.2.1", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.2.2", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -31,7 +32,15 @@
   state.profile.preferred_session_type = state.profile.preferred_session_type || "practice";
   state.profile.injuries = Array.isArray(state.profile.injuries) ? state.profile.injuries : [];
   state.profile.onboarded = !!state.profile.onboarded;
-  state.profile.theme = (state.profile.theme && typeof state.profile.theme === "object") ? state.profile.theme : { mode: "dark" };
+
+  // theme shape
+  state.profile.theme =
+    (state.profile.theme && typeof state.profile.theme === "object")
+      ? state.profile.theme
+      : { mode: "dark", accent_sport: state.profile.sport || "basketball" };
+
+  state.profile.theme.mode = state.profile.theme.mode || "dark";
+  state.profile.theme.accent_sport = state.profile.theme.accent_sport || (state.profile.sport || "basketball");
 
   state.team = state.team || { teams: [], active_team_id: null };
   state.team.teams = Array.isArray(state.team.teams) ? state.team.teams : [];
@@ -62,7 +71,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.2.1";
+      state.meta.version = "3.2.2";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -121,6 +130,33 @@
   }
   function applyStatusFromMeta() {
     setDataStatusLabel("Local saved", "var(--ok)");
+    const cloud = $("cloudPill");
+    if (cloud) cloud.textContent = "Cloud: Local";
+  }
+
+  // ---------- Accent sport color (adds color + improves light theme readability) ----------
+  const SPORT_ACCENTS = {
+    basketball: "#4ea1ff",
+    football:   "#ff6b4e",
+    soccer:     "#41d17a",
+    baseball:   "#b788ff",
+    volleyball: "#ffc44e",
+    track:      "#4ee3ff"
+  };
+
+  function applyAccentSport(sport) {
+    const s = SPORTS.includes(sport) ? sport : "basketball";
+    const hex = SPORT_ACCENTS[s] || SPORT_ACCENTS.basketball;
+
+    // Most of your styles already use CSS variables like --accent/--brand.
+    // We set both to be safe without requiring a full styles.css rewrite.
+    const root = document.documentElement;
+    root.style.setProperty("--accent", hex);
+    root.style.setProperty("--brand", hex);
+
+    // Also tint the theme-color meta a bit when light theme is active (optional harmless).
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute("content", hex);
   }
 
   // ---------- Libraries ----------
@@ -198,10 +234,12 @@
     track:      ["goblet_squat", "rdl", "single_leg_deadlift"]
   };
 
+  // Session types -> blocks included
   const SESSION_RULES = {
     practice:          { warmup: true, skill: true,  strength: true,    plyo: true,  conditioning: true,  cooldown: true },
     strength:          { warmup: true, skill: false, strength: true,    plyo: false, conditioning: false, cooldown: true },
     speed:             { warmup: true, skill: false, strength: false,   plyo: true,  conditioning: false, cooldown: true },
+    conditioning:      { warmup: true, skill: false, strength: false,   plyo: false, conditioning: true,  cooldown: true },
     recovery:          { warmup: true, skill: true,  strength: false,   plyo: false, conditioning: false, cooldown: true },
     competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true,  conditioning: false, cooldown: true }
   };
@@ -298,6 +336,7 @@
     const typeAdds = {
       strength: [{ name: "Ramp sets (light)", cue: "2 warm-up sets" }],
       speed: [{ name: "Build-ups", cue: "3x20m" }],
+      conditioning: [{ name: "Easy build", cue: "3 min progressive" }],
       recovery: [{ name: "Breathing reset", cue: "60–90s" }],
       competition_prep: [{ name: "Neural pop", cue: "2x10s fast" }],
       practice: []
@@ -451,6 +490,7 @@
 
     const planned = state.ui?.todaySession || null;
 
+    // In progress
     if (todayActiveSession) {
       container.innerHTML = `
         <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
@@ -465,6 +505,7 @@
       return;
     }
 
+    // Planned session (SHOW EXERCISES UNDER EACH BLOCK)
     if (planned) {
       const blocksHTML = (planned.blocks || []).map(b => {
         const items = (b.items || []).map(it => {
@@ -502,10 +543,12 @@
         state.ui.todaySession = _generateTodaySession();
         persist("New session generated");
         renderTodayBlock();
+        renderScore();
       });
       return;
     }
 
+    // Nothing yet
     container.innerHTML = `
       <div class="minihead">No session generated</div>
       <div class="minibody">Press Generate to create a tailored session for today.</div>
@@ -518,6 +561,7 @@
       state.ui.todaySession = _generateTodaySession();
       persist("Session generated");
       renderTodayBlock();
+      renderScore();
     });
     $("btnOpenTrain")?.addEventListener("click", () => showView("train"));
   }
@@ -573,6 +617,7 @@
     _clearTodayTimer();
     renderTodayBlock();
     renderInsights();
+    renderScore();
   }
 
   function cancelToday() {
@@ -609,6 +654,7 @@
             <option value="practice">Practice</option>
             <option value="strength">Strength</option>
             <option value="speed">Speed</option>
+            <option value="conditioning">Conditioning</option>
             <option value="recovery">Recovery</option>
             <option value="competition_prep">Competition Prep</option>
           </select>
@@ -653,6 +699,7 @@
         state.ui.todaySession = gen;
         persist("Pushed to Today");
         showView("home");
+        renderScore();
       });
 
       $("btnStartNow")?.addEventListener("click", () => {
@@ -660,15 +707,19 @@
         persist("Pushed to Today and starting");
         showView("home");
         startToday(gen);
+        renderScore();
       });
     }
 
+    // Initial card
     renderCard(generateWorkoutFor(sport, pref, state.profile.injuries || []));
 
     $("trainSportSelect")?.addEventListener("change", (e) => {
       state.profile.sport = e.target.value;
       persist("Sport updated");
+      // Optional: if theme accent sport follows profile sport, keep it aligned
       renderTrain();
+      renderScore();
     });
 
     $("btnGenTrain")?.addEventListener("click", () => {
@@ -814,6 +865,57 @@
     host.appendChild(el);
   }
 
+  // ---------- PerformanceIQ Score (Home) ----------
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+  function computePIQScore() {
+    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    const streak = computeStreak();
+
+    const now = Date.now();
+    const last7 = sessions.filter(s => {
+      const d = safeDate(s?.created_at || s?.date || s?.generated_at);
+      return d && (now - d.getTime()) <= 7 * 86400000;
+    });
+
+    const minutes7 = last7.reduce((sum, s) => sum + Number(s?.duration_min || 0), 0);
+    const load7 = last7.reduce((sum, s) => sum + Number(s?.load || 0), 0);
+    const sess7 = last7.length;
+
+    // Score components (simple, stable, offline):
+    // - Consistency (sessions/week): up to 35
+    // - Volume (minutes/week): up to 25
+    // - Streak: up to 20
+    // - Load balance: up to 20 (rewards “some load exists” without requiring sleep/nutrition data)
+    const consistency = clamp((sess7 / 5) * 35, 0, 35);
+    const volume = clamp((minutes7 / 240) * 25, 0, 25);       // 240m/week target
+    const streakPts = clamp((streak / 7) * 20, 0, 20);
+    const loadPts = clamp((load7 / 1400) * 20, 0, 20);         // 1400 load/week target-ish
+
+    const score = Math.round(consistency + volume + streakPts + loadPts);
+
+    let label = "Building";
+    if (score >= 85) label = "Elite";
+    else if (score >= 70) label = "Strong";
+    else if (score >= 55) label = "Solid";
+    else if (score >= 40) label = "Developing";
+
+    return { score, label, streak, minutes7, sess7 };
+  }
+
+  function renderScore() {
+    const el = $("piqScoreHome");
+    const note = $("piqScoreNote");
+    if (!el) return;
+
+    const s = computePIQScore();
+    el.innerHTML = `
+      <div style="font-weight:900;font-size:28px;line-height:1">${s.score}</div>
+      <div class="small muted" style="margin-top:4px">${s.label} • ${s.sess7} sessions • ${s.minutes7} min (7d) • streak ${s.streak}d</div>
+    `;
+    if (note) note.textContent = "Score updates as you log.";
+  }
+
   // ---------- Data Management ----------
   function exportJSON() {
     if (!window.dataStore?.exportJSON) { toast("Export not available"); return; }
@@ -883,7 +985,8 @@
   }
 
   function focusAndScrollTop(view) {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    // Use valid scroll behavior.
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
 
     const active = $(`view-${view}`);
     if (active) {
@@ -951,6 +1054,7 @@
               <option value="practice">Practice</option>
               <option value="strength">Strength</option>
               <option value="speed">Speed</option>
+              <option value="conditioning">Conditioning</option>
               <option value="recovery">Recovery</option>
               <option value="competition_prep">Competition prep</option>
             </select>
@@ -1014,6 +1118,10 @@
       state.profile.injuries = Array.from(injSet);
       state.profile.onboarded = true;
 
+      // Default accent sport to chosen sport at onboarding
+      state.profile.theme = state.profile.theme || {};
+      state.profile.theme.accent_sport = state.profile.theme.accent_sport || state.profile.sport;
+
       state.ui.todaySession = _generateTodaySession();
       persist("Onboarding saved • Today generated");
 
@@ -1021,6 +1129,7 @@
       showView("home");
       toast("Today ready — press Start", 2200);
       renderTodayBlock();
+      renderScore();
     });
   }
 
@@ -1078,6 +1187,7 @@
     const homeSub = $("homeSub");
     if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
     renderTodayBlock();
+    renderScore();
   }
 
   // ---------- Render all ----------
@@ -1136,7 +1246,7 @@
   function defaultHelpList() {
     return [
       { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
-      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
+      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Conditioning = conditioning focus. Recovery = light. Competition prep = sharp + light." },
       { title: "Injury-friendly templates", snippet: "Injuries change the plan (knee/ankle = low impact conditioning; shoulder/back adjust strength patterns)." },
       { title: "Data Management", snippet: "Profile or Account → Export/Import/Reset. Reset requires typing RESET." },
       { title: "Active screen focus", snippet: "Switching tabs auto-scrolls to top and focuses the active view for easier reading." }
@@ -1189,7 +1299,7 @@
       if (rEl) rEl.innerHTML = helpListHTML(searchHelp(q));
     });
 
-    // Context help buttons (guarded)
+    // Context help buttons
     $("tipToday")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipQuick")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
@@ -1207,12 +1317,13 @@
       }
     });
 
-    // Today button
+    // Today button (Generate → Start → Log)
     $("todayButton")?.addEventListener("click", () => {
       if (!state.ui.todaySession) {
         state.ui.todaySession = _generateTodaySession();
         persist("Generated Today session");
         renderTodayBlock();
+        renderScore();
         toast("Session generated — press Start");
         return;
       }
@@ -1235,7 +1346,7 @@
       persistDebounced("Theme updated", 0);
     });
 
-    // Drawer saves (guarded)
+    // Drawer saves
     $("btnSaveProfile")?.addEventListener("click", () => {
       state.profile.role = $("roleSelect")?.value || state.profile.role;
       state.profile.sport = $("sportSelect")?.value || state.profile.sport;
@@ -1246,13 +1357,25 @@
 
     $("btnSaveTheme")?.addEventListener("click", () => {
       const mode = $("themeModeSelect")?.value || "dark";
+      const accentSport = $("themeSportSelect")?.value || state.profile.theme?.accent_sport || state.profile.sport;
+
       document.documentElement.setAttribute("data-theme", mode);
+
       state.profile.theme = state.profile.theme || {};
       state.profile.theme.mode = mode;
+      state.profile.theme.accent_sport = accentSport;
+
+      applyAccentSport(accentSport);
       persist("Theme saved");
+      renderScore();
     });
 
-    // Data management (Account drawer) — guarded
+    // Accent sport picker live preview
+    $("themeSportSelect")?.addEventListener("change", (e) => {
+      applyAccentSport(e.target.value);
+    });
+
+    // Data management (Account drawer)
     $("btnExport")?.addEventListener("click", exportJSON);
     $("fileImport")?.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
@@ -1261,7 +1384,7 @@
     $("btnResetLocal")?.addEventListener("click", resetLocalState);
     $("btnRunGrade")?.addEventListener("click", () => runQAGrade("gradeReport"));
 
-    // FAB sheet open/close — guarded
+    // FAB sheet open/close
     $("fab")?.addEventListener("click", () => {
       const back = $("sheetBackdrop");
       const sheet = $("fabSheet");
@@ -1280,21 +1403,53 @@
       if (back) back.hidden = true;
       if (sheet) { sheet.hidden = true; sheet.setAttribute("aria-hidden", "true"); }
     });
+
+    // FAB actions
+    $("fabLogWorkout")?.addEventListener("click", () => {
+      // If session running → log it. Else generate+start.
+      if (todayActiveSession) {
+        stopAndLogToday();
+      } else {
+        if (!state.ui.todaySession) state.ui.todaySession = _generateTodaySession();
+        persist("Workout ready");
+        showView("home");
+        startToday(state.ui.todaySession);
+      }
+      $("btnCloseSheet")?.click();
+    });
+
+    $("fabLogNutrition")?.addEventListener("click", () => {
+      toast("Nutrition logging is next milestone (Phase 13+).");
+      $("btnCloseSheet")?.click();
+    });
+
+    $("fabLogWellness")?.addEventListener("click", () => {
+      toast("Wellness logging is next milestone (Phase 13+).");
+      $("btnCloseSheet")?.click();
+    });
+
+    // Optional: Tour button stub
+    $("btnRunTour")?.addEventListener("click", () => {
+      toast("Tour coming next milestone (Phase 13+).");
+    });
   }
 
   // ---------- Boot ----------
   function boot() {
     bindUI();
 
-    // Pre-fill drawer selects (if present)
+    // Pre-fill drawer selects
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
-    if ($("themeModeSelect")) $("themeModeSelect").value = state.profile?.theme?.mode || "dark";
 
-    // Apply saved theme
+    if ($("themeModeSelect")) $("themeModeSelect").value = state.profile?.theme?.mode || "dark";
+    if ($("themeSportSelect")) $("themeSportSelect").value = state.profile?.theme?.accent_sport || state.profile.sport;
+
+    // Apply saved theme + accent
     const mode = state.profile?.theme?.mode;
     if (mode) document.documentElement.setAttribute("data-theme", mode);
+    applyAccentSport(state.profile?.theme?.accent_sport || state.profile.sport);
 
     ensureOnboarding();
 
@@ -1313,6 +1468,7 @@
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
     getState: () => state,
-    showView: (v) => showView(v)
+    showView: (v) => showView(v),
+    computePIQScore
   };
 })();
