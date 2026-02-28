@@ -50,8 +50,8 @@
         <span id="saveText">Saved</span>
       </span>
 
-      <span class="pill" id="teamPill" title="Active team" aria-live="polite" aria-label="Active team">Team: —</span>
-      <span class="pill" id="cloudPill" title="Cloud status" aria-live="polite" aria-label="Cloud status">Cloud: Local</span>
+      <span class="pill" id="teamPill"  title="Active team"   aria-live="polite" aria-label="Active team">Team: —</span>
+      <span class="pill" id="cloudPill" title="Cloud status"  aria-live="polite" aria-label="Cloud status">Cloud: Local</span>
 
       <button class="iconbtn" id="btnThemeToggle" type="button"
               aria-label="Toggle dark/light mode" title="Toggle dark/light">☾</button>
@@ -67,15 +67,14 @@
   <main class="layout" id="mainContent">
     <!-- Desktop nav -->
     <nav class="nav" role="navigation" aria-label="Primary navigation" id="desktopNav">
-      <button class="navbtn" data-view="home" type="button" aria-current="page">Home</button>
-      <button class="navbtn" data-view="team" type="button">Team</button>
-      <button class="navbtn" data-view="train" type="button">Train</button>
+      <button class="navbtn" data-view="home"    type="button" aria-current="page">Home</button>
+      <button class="navbtn" data-view="team"    type="button">Team</button>
+      <button class="navbtn" data-view="train"   type="button">Train</button>
       <button class="navbtn" data-view="profile" type="button">Profile</button>
     </nav>
 
     <!-- Content -->
     <section class="content" aria-live="polite" aria-atomic="false">
-
       <!-- Home -->
       <section class="view" id="view-home" role="region" aria-label="Home" tabindex="-1">
         <div class="card">
@@ -85,11 +84,11 @@
               <div class="small muted" id="homeSub">Welcome back.</div>
             </div>
             <div class="row gap wrap">
-              <button class="btn" id="todayButton" type="button"
-                      aria-label="Generate, start, or log today's session">Generate → Start → Log</button>
+              <button class="btn" id="todayButton" type="button" aria-label="Generate, start, or log today's session">
+                Generate → Start → Log
+              </button>
               <span class="pill" id="todayTimer" aria-live="polite" aria-label="Timer status">No timer running</span>
-              <button class="iconbtn" id="tipToday" type="button"
-                      aria-label="Help for today workflow">?</button>
+              <button class="iconbtn" id="tipToday" type="button" aria-label="Help for today workflow">?</button>
             </div>
           </div>
 
@@ -107,10 +106,16 @@
                 <div class="minihead" role="heading" aria-level="2">Quick actions</div>
                 <button class="iconbtn" id="tipTrain" type="button" aria-label="Help for quick actions">?</button>
               </div>
+
               <div class="row gap wrap">
-                <button class="btn" id="qaTrain" type="button">Open Train</button>
-                <button class="btn ghost" id="qaTeam" type="button">Manage Team</button>
+                <button class="btn"       id="qaTrain" type="button">Open Train</button>
+                <button class="btn ghost" id="qaTeam"  type="button">Manage Team</button>
               </div>
+
+              <div class="hr"></div>
+              <div class="minihead">PerformanceIQ Score</div>
+              <div class="minibody" id="piqScoreHome">—</div>
+              <div class="small muted" id="piqScoreNote" style="margin-top:6px">Score updates as you log.</div>
             </div>
           </div>
         </div>
@@ -122,7 +127,7 @@
           <div class="row between">
             <div>
               <div class="card-title" role="heading" aria-level="1">Team</div>
-              <div class="small muted">Roster, join codes, and access.</div>
+              <div class="small muted">Roster, roles, join codes, and dashboards.</div>
             </div>
             <button class="iconbtn" id="tipTeam" type="button" aria-label="Help for Team">?</button>
           </div>
@@ -150,7 +155,7 @@
           <div class="row between">
             <div>
               <div class="card-title" role="heading" aria-level="1">Profile</div>
-              <div class="small muted">Your role, sport, preferences, reports, periodization, and insights.</div>
+              <div class="small muted">Your role, preferences, score, risks, and insights.</div>
             </div>
             <button class="iconbtn" id="tipProfile" type="button" aria-label="Help for Profile">?</button>
           </div>
@@ -163,9 +168,9 @@
 
   <!-- ===================== Mobile bottom nav ===================== -->
   <nav class="bottomnav" id="bottomNav" aria-label="Bottom navigation">
-    <button class="tab" data-view="home" type="button" aria-current="page"><span class="tablbl">Home</span></button>
-    <button class="tab" data-view="team" type="button"><span class="tablbl">Team</span></button>
-    <button class="tab" data-view="train" type="button"><span class="tablbl">Train</span></button>
+    <button class="tab" data-view="home"    type="button" aria-current="page"><span class="tablbl">Home</span></button>
+    <button class="tab" data-view="team"    type="button"><span class="tablbl">Team</span></button>
+    <button class="tab" data-view="train"   type="button"><span class="tablbl">Train</span></button>
     <button class="tab" data-view="profile" type="button"><span class="tablbl">Profile</span></button>
   </nav>
 
@@ -181,9 +186,9 @@
       <button class="btn ghost" id="btnCloseSheet" type="button" aria-label="Close quick log">Close</button>
     </div>
     <div class="sheet-body">
-      <button class="btn" id="fabLogWorkout" type="button">Log workout</button>
+      <button class="btn"       id="fabLogWorkout"   type="button">Log workout</button>
       <button class="btn ghost" id="fabLogNutrition" type="button">Log nutrition</button>
-      <button class="btn ghost" id="fabLogWellness" type="button">Log wellness</button>
+      <button class="btn ghost" id="fabLogWellness"  type="button">Log wellness</button>
     </div>
   </div>
 
@@ -197,12 +202,13 @@
     <div class="drawer-head">
       <div>
         <div class="drawer-title" id="drawerTitle">Account</div>
-        <div class="small muted">Preferences • appearance • data management • cloud (optional)</div>
+        <div class="small muted">Preferences • appearance • data management</div>
       </div>
       <button class="btn ghost" id="btnCloseDrawer" type="button" aria-label="Close account drawer">Close</button>
     </div>
 
     <div class="drawer-body">
+
       <!-- Role & Sport -->
       <div class="card subtle" role="group" aria-labelledby="sectionRoleSport">
         <div class="card-title" id="sectionRoleSport" role="heading" aria-level="2">Role &amp; Sport</div>
@@ -210,9 +216,11 @@
           <div class="field">
             <label for="roleSelect">Role</label>
             <select id="roleSelect" autocomplete="off">
+              <option value="owner">Owner</option>
               <option value="coach">Coach</option>
               <option value="athlete">Athlete</option>
               <option value="parent">Parent</option>
+              <option value="viewer">Viewer</option>
             </select>
           </div>
           <div class="field">
@@ -234,14 +242,15 @@
             <option value="practice">Practice</option>
             <option value="strength">Strength</option>
             <option value="speed">Speed</option>
+            <option value="conditioning">Conditioning</option>
             <option value="recovery">Recovery</option>
-            <option value="competition_prep">Competition prep</option>
+            <option value="competition_prep">Competition Prep</option>
           </select>
         </div>
 
         <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn" id="btnSaveProfile" type="button">Save</button>
-          <button class="btn ghost" id="btnRunTour" type="button">Tour this tab</button>
+          <button class="btn"       id="btnSaveProfile" type="button">Save</button>
+          <button class="btn ghost" id="btnRunTour"     type="button">Tour this tab</button>
         </div>
       </div>
 
@@ -298,12 +307,11 @@
              aria-live="polite" role="status">—</pre>
       </div>
 
-      <!-- Cloud placeholder -->
       <div class="card subtle" style="margin-top:12px" role="group" aria-labelledby="sectionCloud">
         <div class="card-title" id="sectionCloud" role="heading" aria-level="2">Cloud (optional)</div>
-        <div class="small muted">This build focuses offline stability. Cloud is reintroduced in a later phase.</div>
-        <div class="small muted" style="margin-top:8px">—</div>
+        <div class="small muted">Offline-first build. Cloud sync is a later phase.</div>
       </div>
+
     </div>
   </aside>
 
@@ -326,7 +334,7 @@
       <div class="field">
         <label for="helpSearch">Search</label>
         <input id="helpSearch" type="search"
-               placeholder="Try: today, session types, injury, periodization…"
+               placeholder="Try: today, session types, risk, nutrition, heatmap…"
                autocomplete="off" spellcheck="false" />
       </div>
       <div id="helpResults" style="margin-top:10px" aria-live="polite" role="region" aria-label="Help results"></div>
@@ -343,10 +351,10 @@
   <script src="./periodizationEngine.js"></script>
   <script src="./core.js"></script>
 
-  <!-- Splash hide — non-blocking, always fires even if scripts error -->
+  <!-- Splash hide — non-blocking -->
   <script>
     (function () {
-      var splash = document.getElementById("splash");
+      var splash     = document.getElementById("splash");
       var splashText = document.getElementById("splashText");
       function hide() {
         if (!splash) return;
@@ -361,4 +369,4 @@
     })();
   </script>
 </body>
-  </html>
+</html>
