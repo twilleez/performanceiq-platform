@@ -1,54 +1,60 @@
-// nutritionEngine.js — v2.1.0 (auto targets + macro calories + quality helpers)
+// nutritionEngine.js — v1.0.0 (Elite Nutrition Add-on, offline-safe)
 (function () {
   "use strict";
   if (window.nutritionEngine) return;
 
-  // Inputs: weight_lbs, goal ("maintain"|"gain"|"cut"), activity ("low"|"med"|"high")
-  function macroTargets({ weight_lbs = 160, goal = "maintain", activity = "med" } = {}) {
-    const w = Math.max(80, Number(weight_lbs) || 160);
+  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
-    // Practical defaults
-    const protein = Math.round(w * (goal === "cut" ? 1.0 : 0.9)); // g/day
-    const fat = Math.round(w * 0.3); // g/day
+  function targets(profile) {
+    const weight = Number(profile?.weight_lbs || 160);
+    const goal = profile?.goal || "maintain";      // cut|maintain|bulk
+    const activity = profile?.activity || "med";   // low|med|high
 
-    let cal = w * 15;
-    if (activity === "high") cal += 250;
-    if (activity === "low") cal -= 200;
-    if (goal === "gain") cal += 250;
-    if (goal === "cut") cal -= 300;
+    // Simple offline targets (not medical advice):
+    // Calories baseline: 14–17 kcal/lb depending on activity; goal adjusts.
+    const activityMult = activity === "low" ? 14 : activity === "high" ? 17 : 15.5;
+    let cals = weight * activityMult;
+    if (goal === "cut") cals -= 250;
+    if (goal === "bulk") cals += 250;
+    cals = Math.round(cals);
 
+    // Protein: 0.8–1.0 g/lb
+    const protein = Math.round(weight * (activity === "high" ? 1.0 : 0.85));
+
+    // Fat: ~0.35 g/lb
+    const fat = Math.round(weight * 0.35);
+
+    // Carbs: remainder
     const proteinCals = protein * 4;
     const fatCals = fat * 9;
-    const remaining = Math.max(0, cal - proteinCals - fatCals);
-    const carbs = Math.round(remaining / 4);
+    const carbCals = Math.max(0, cals - proteinCals - fatCals);
+    const carbs = Math.round(carbCals / 4);
 
-    return { calories: Math.round(cal), protein_g: protein, carbs_g: carbs, fat_g: fat };
+    return { calories: cals, protein_g: protein, carbs_g: carbs, fat_g: fat };
   }
 
-  function caloriesFromMacros({ protein_g = 0, carbs_g = 0, fat_g = 0 } = {}) {
-    const p = Math.max(0, Number(protein_g) || 0);
-    const c = Math.max(0, Number(carbs_g) || 0);
-    const f = Math.max(0, Number(fat_g) || 0);
-    return Math.round(p * 4 + c * 4 + f * 9);
+  function complianceForDay(log, tgt) {
+    if (!log || !tgt) return { score: 0, note: "No log" };
+
+    // score each macro + calories (0..1), average
+    function pct(actual, target) {
+      if (!target) return 0;
+      const r = actual / target;
+      // full credit within 85%..115% of target
+      if (r >= 0.85 && r <= 1.15) return 1;
+      // fade out outside range
+      const dist = r < 0.85 ? (0.85 - r) : (r - 1.15);
+      return clamp(1 - dist / 0.85, 0, 1);
+    }
+
+    const p = pct(Number(log.protein_g || 0), tgt.protein_g);
+    const c = pct(Number(log.carbs_g || 0), tgt.carbs_g);
+    const f = pct(Number(log.fat_g || 0), tgt.fat_g);
+    const k = pct(Number(log.calories || 0), tgt.calories);
+
+    const score = (p + c + f + k) / 4;
+    return { score, note: "Computed from macros + calories" };
   }
 
-  // Simple adherence score vs targets (0–100)
-  function adherenceScore(consumed, target) {
-    if (!consumed || !target) return 0;
-    const keys = ["protein_g", "carbs_g", "fat_g"];
-    let total = 0;
-    keys.forEach((k) => {
-      const a = Math.max(0, Number(consumed[k]) || 0);
-      const t = Math.max(1, Number(target[k]) || 1);
-      const ratio = Math.min(1.25, a / t); // allow slight over
-      total += Math.max(0, Math.min(1, ratio));
-    });
-    return Math.round((total / keys.length) * 100);
-  }
-
-  window.nutritionEngine = {
-    macroTargets,
-    caloriesFromMacros,
-    adherenceScore
-  };
+  window.nutritionEngine = { targets, complianceForDay };
 })();
