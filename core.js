@@ -1,8 +1,8 @@
-// core.js — v3.1.0 (Phase 1–2 stability + Today UX + safe dates)
+// core.js — v3.1.1 (Phase 1–2 stability + Today UX + safe dates + drawer + reset + render optimizations)
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V31__) return;
-  window.__PIQ_CORE_V31__ = true;
+  if (window.__PIQ_CORE_V31_1__) return;
+  window.__PIQ_CORE_V31_1__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -15,7 +15,7 @@
   if (!state) state = {};
 
   // Normalize state shape (never trust old saves)
-  state.meta = state.meta || { version: "3.1.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.1.1", updated_at: nowISO() };
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
   state.profile.sport = state.profile.sport || "basketball";
@@ -755,7 +755,16 @@
     if (!ok) return;
     const typed = prompt("Type RESET to confirm");
     if (typed !== "RESET") { toast("Reset aborted"); return; }
-    localStorage.removeItem("piq_local_state_v2");
+
+    // Remove common keys (safe) — include the dataStore KEY and known variants
+    const keysToTry = ["piq_local_state_v2", "piq_local_state_v3", "piq_state", "performanceiq_state"];
+    keysToTry.forEach(k => {
+      try { localStorage.removeItem(k); } catch (e) {}
+    });
+
+    // If dataStore exposes a clear function, call it (non-breaking)
+    try { if (window.dataStore?.clear) window.dataStore.clear(); } catch (e) {}
+
     toast("Local state reset — reloading");
     setTimeout(() => location.reload(), 700);
   }
@@ -798,10 +807,26 @@
   }
 
   // ---------- Account / Help drawers ----------
+  // NOTE: sync drawer fields each time drawer opens to avoid stale selects
   function openDrawer() {
     const b = $("drawerBackdrop");
     const d = $("accountDrawer");
     if (!b || !d) return;
+
+    // Sync drawer fields every time it's opened
+    try {
+      if ($("roleSelect")) $("roleSelect").value = state.profile.role || "coach";
+      if ($("sportSelect")) $("sportSelect").value = state.profile.sport || "basketball";
+      if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type || "practice";
+
+      const mode = state.profile?.theme?.mode || (document.documentElement.getAttribute("data-theme") || "dark");
+      if ($("themeModeSelect")) $("themeModeSelect").value = mode;
+      if ($("themeSportSelect")) $("themeSportSelect").value = state.profile.sport || "basketball";
+    } catch (e) {
+      // non-fatal — continue to open drawer
+      console.warn("openDrawer sync failed", e);
+    }
+
     b.hidden = false;
     d.classList.add("open");
     d.setAttribute("aria-hidden", "false");
@@ -869,6 +894,7 @@
   }
 
   // ---------- Render orchestration ----------
+  // Optimized: only render the active view plus essential top-level UI (team pill/status)
   function renderHome() {
     const homeSub = $("homeSub");
     if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
@@ -895,12 +921,16 @@
 
   function renderAll() {
     try {
+      // Always update top-level pills/status
       setTeamPill();
-      renderHome();
-      renderTeam();
-      renderTrain();
-      renderProfile();
       applyStatusFromMeta();
+
+      // Render only the active view to avoid unnecessary DOM churn
+      const v = state.ui?.view || "home";
+      if (v === "home") renderHome();
+      if (v === "team") renderTeam();
+      if (v === "train") renderTrain();
+      if (v === "profile") renderProfile();
     } catch (e) {
       console.error("Render error", e);
     }
@@ -1140,7 +1170,7 @@
   function boot() {
     bindUI();
 
-    // Prefill drawer selects
+    // Prefill drawer selects (initial)
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
