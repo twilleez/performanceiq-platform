@@ -568,3 +568,35 @@ html[data-theme="dark"] .field select {
   .drawer,
   .drawer-help { width: min(92vw, 420px); }
 }
+/* ===== PerformanceIQ light theme readability patch (append) ===== */
+html[data-theme="light"] {
+  /* Higher contrast text + softer background */
+  --bg: #f6f8fb;
+  --panel: #ffffff;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #42526b;
+  --line: rgba(15, 23, 42, 0.12);
+
+  /* Make pills/buttons pop using accent */
+  --focus: var(--accent);
+}
+
+html[data-theme="light"] .muted { color: var(--muted); }
+html[data-theme="light"] .pill  { border-color: var(--line); }
+html[data-theme="light"] .card,
+html[data-theme="light"] .mini,
+html[data-theme="light"] .drawer {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+html[data-theme="light"] .btn {
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.10);
+}
+html[data-theme="light"] .btn:not(.ghost):not(.danger) {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+html[data-theme="light"] .btn.ghost {
+  border-color: var(--line);
+}
