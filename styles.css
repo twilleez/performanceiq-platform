@@ -1,11 +1,14 @@
 /* ============================================================
-   styles.css — PerformanceIQ v3.2
-   Eye-friendly light theme + strong focus/active view clarity
+   styles.css — PerformanceIQ v3.3
+   Enhanced clarity • Stronger active state • Better light theme
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
 
-/* ---- Design tokens ---------------------------------------- */
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+
 :root {
   --ok:     #22C55E;
   --warn:   #F59E0B;
@@ -13,7 +16,8 @@
   --info:   #3B82F6;
 
   --accent:   #2EC4B6;
-  --accent-2: rgba(46, 196, 182, .16);
+  --accent-2: rgba(46, 196, 182, .14);
+  --accent-3: rgba(46, 196, 182, .28);
 
   --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --font-head: "Barlow Condensed", "DM Sans", system-ui, sans-serif;
@@ -23,18 +27,18 @@
   --sp-md: 14px;
   --sp-lg: 18px;
 
-  --focus-ring: 0 0 0 3px rgba(46, 196, 182, .30);
+  --focus-ring: 0 0 0 3px rgba(46, 196, 182, .35);
   --transition: .15s ease;
 
-  /* Select arrow SVGs — defined once per theme as custom properties
-     so we avoid duplicating the data URI and fix the escaped-quote bug */
   --select-arrow-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a5876' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
   --select-arrow-dark:  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a3a8c4' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-  /* Default to dark arrow; overridden per theme below */
   --select-arrow: var(--select-arrow-dark);
 }
 
-/* ---- Color schemes ---------------------------------------- */
+/* ============================================================
+   DARK THEME
+   ============================================================ */
+
 html[data-theme="dark"] {
   --bg:      #07080b;
   --top:     #050608;
@@ -43,31 +47,38 @@ html[data-theme="dark"] {
   --line:    #151a28;
   --text:    #e8eaf4;
   --input:   #0d1018;
-  --shadow:  0 6px 18px rgba(3, 6, 15, .6);
+  --shadow:  0 8px 22px rgba(3, 6, 15, .6);
   --optionbg:   #0d1018;
   --optionfg:   #e8eaf4;
   --pillBorder: rgba(255, 255, 255, .14);
-  --activeViewRing: 0 0 0 1px rgba(46, 196, 182, .30), 0 10px 30px rgba(3, 6, 15, .55);
+  --activeViewRing: 0 0 0 2px var(--accent-3), 0 14px 40px rgba(3, 6, 15, .6);
   --select-arrow: var(--select-arrow-dark);
 }
 
+/* ============================================================
+   LIGHT THEME (Improved Readability)
+   ============================================================ */
+
 html[data-theme="light"] {
-  --bg:      #f6f8fb;
+  --bg:      #f4f7fb;
   --top:     #ffffff;
   --card:    #ffffff;
-  --muted:   #42526b;
-  --line:    rgba(15, 23, 42, .12);
-  --text:    #0f172a;
-  --input:   #f3f6ff;
-  --shadow:  0 10px 26px rgba(8, 18, 40, .08);
+  --muted:   #3e4c66;
+  --line:    rgba(15, 23, 42, .14);
+  --text:    #0b1220;
+  --input:   #eef2ff;
+  --shadow:  0 14px 36px rgba(8, 18, 40, .10);
   --optionbg:   #ffffff;
-  --optionfg:   #0f172a;
-  --pillBorder: rgba(15, 23, 42, .14);
-  --activeViewRing: 0 0 0 1px rgba(46, 196, 182, .22), 0 12px 30px rgba(8, 18, 40, .10);
+  --optionfg:   #0b1220;
+  --pillBorder: rgba(15, 23, 42, .16);
+  --activeViewRing: 0 0 0 2px var(--accent-3), 0 18px 44px rgba(8, 18, 40, .12);
   --select-arrow: var(--select-arrow-light);
 }
 
-/* ---- Reset ------------------------------------------------- */
+/* ============================================================
+   RESET
+   ============================================================ */
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 
@@ -76,496 +87,187 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   font-variant-numeric: tabular-nums;
-  -webkit-text-size-adjust: 100%;
 }
 
-/* ---- Focus management ------------------------------------- */
+/* ============================================================
+   FOCUS SYSTEM
+   ============================================================ */
+
 :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 :focus:not(:focus-visible) { outline: none; }
 
-/* ---- Topbar ----------------------------------------------- */
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  background: var(--top);
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.topbar-left  { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-sm); }
-.topbar-right { display: flex; gap: var(--sp-sm); align-items: center; }
+/* ============================================================
+   TYPOGRAPHY IMPROVEMENTS
+   ============================================================ */
 
-.appmark { display: flex; align-items: center; }
-.appmark-dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: var(--accent);
-  display: inline-block;
-  flex-shrink: 0;
-}
-.appmark-title {
+.card-title,
+.drawer-title,
+.sheet-title {
   font-family: var(--font-head);
   font-weight: 800;
-  margin-left: 8px;
-  letter-spacing: .01em;
+  letter-spacing: .02em;
+  font-size: 18px;
 }
 
-.pill {
-  padding: 4px 8px;
-  border-radius: 16px;
-  font-size: 12px;
-  background: transparent;
-  border: 1px solid var(--pillBorder);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: color-mix(in oklab, var(--text) 78%, transparent);
-  white-space: nowrap;
-}
-.dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  display: inline-block;
-  background: var(--ok);
-  flex-shrink: 0;
-}
-
-/* ---- Layout ----------------------------------------------- */
-.layout {
-  display: flex;
-  max-width: 1200px;
-  margin: 20px auto;
-  padding: 0 16px;
-  gap: 18px;
-}
-
-.nav { width: 160px; flex-shrink: 0; }
-
-.navbtn {
-  display: block;
-  width: 100%;
-  padding: var(--sp-sm) 12px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: none;
-  color: color-mix(in oklab, var(--text) 60%, transparent);
-  text-align: left;
-  font-weight: 800;
-  font-size: inherit;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-.navbtn.active {
-  background: color-mix(in oklab, var(--card) 90%, var(--accent-2));
-  color: var(--text);
-  border-color: var(--pillBorder);
-}
-.navbtn:not(.active):hover {
-  background: color-mix(in oklab, var(--card) 92%, var(--accent-2));
-  color: var(--text);
-}
-
-.content { flex: 1; min-width: 0; }
-
-/* ---- Views ------------------------------------------------ */
-.view { scroll-margin-top: 84px; }
-.view.is-active {
-  box-shadow: var(--activeViewRing);
-  border-radius: 16px;
-}
-
-/* ---- Cards ------------------------------------------------ */
-.card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: var(--sp-md);
-  box-shadow: var(--shadow);
-}
-.card-title { font-family: var(--font-head); font-weight: 800; letter-spacing: .01em; }
-.subtle {
-  background: color-mix(in oklab, var(--card) 96%, transparent);
-  box-shadow: none;
-}
-
-.mini { background: transparent; border-radius: 10px; padding: 8px; }
 .minihead {
   font-weight: 900;
-  color: color-mix(in oklab, var(--text) 92%, transparent);
-  margin-bottom: 6px;
+  font-size: 14px;
+  letter-spacing: .02em;
 }
-.minibody { color: var(--muted); }
 
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.small { font-size: 12px; }
+.muted { color: var(--muted); }
 
-/* ---- Utilities --------------------------------------------- */
-.row     { display: flex; align-items: center; }
-.between { justify-content: space-between; }
-.gap     { gap: var(--sp-sm); }
-.wrap    { flex-wrap: wrap; }
-.small   { font-size: 12px; }
-.muted   { color: var(--muted); }
-.hr      { height: 1px; background: var(--line); margin: 12px 0; border-radius: 2px; }
-.mono    { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+/* ============================================================
+   ACTIVE VIEW CLARITY
+   ============================================================ */
 
-/* ---- Buttons ---------------------------------------------- */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: var(--sp-sm) 12px;
-  border-radius: 12px;
-  border: 1px solid var(--pillBorder);
+.view.is-active {
+  box-shadow: var(--activeViewRing);
+  border-radius: 18px;
+  transition: box-shadow .2s ease;
+}
+
+/* ============================================================
+   NAVIGATION IMPROVEMENTS
+   ============================================================ */
+
+.navbtn,
+.tab {
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+
+.navbtn.active,
+.tab.active {
   background: var(--accent-2);
   color: var(--text);
-  font-weight: 900;
-  font-size: inherit;
-  font-family: inherit;
-  line-height: 1;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  transition: filter var(--transition), background var(--transition);
-}
-.btn:hover  { filter: brightness(1.06); }
-.btn:active { filter: brightness(0.94); }
-.btn.ghost  { background: transparent; }
-.btn.danger {
-  background:   rgba(239, 68, 68, .14);
-  border-color: rgba(239, 68, 68, .35);
-}
-.btn:disabled,
-.btn[aria-disabled="true"] {
-  opacity: .45;
-  cursor: not-allowed;
-  pointer-events: none;
+  border-radius: 12px;
 }
 
-/* Light theme: solid accent buttons for better readability */
+.navbtn:not(.active):hover,
+.tab:not(.active):hover {
+  background: color-mix(in oklab, var(--card) 88%, var(--accent-2));
+}
+
+/* ============================================================
+   BUTTONS (Stronger Light Mode)
+   ============================================================ */
+
+.btn {
+  font-weight: 900;
+  border-radius: 14px;
+}
+
 html[data-theme="light"] .btn:not(.ghost):not(.danger) {
   background: var(--accent);
-  border-color: transparent;
   color: #fff;
-}
-html[data-theme="light"] .btn.ghost { border-color: var(--line); }
-
-/* ---- Icon / help buttons ---------------------------------- */
-.iconbtn {
-  width: 28px; height: 28px;
-  border-radius: 10px;
-  border: 1px solid var(--pillBorder);
-  background: transparent;
-  color: color-mix(in oklab, var(--text) 86%, transparent);
-  font-weight: 900;
-  font-size: inherit;
-  font-family: inherit;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background var(--transition);
-}
-.iconbtn:hover { background: color-mix(in oklab, var(--card) 85%, var(--accent-2)); }
-
-/* ---- Forms ------------------------------------------------ */
-.field label {
-  display: block;
-  font-size: 12px;
-  color: color-mix(in oklab, var(--text) 70%, transparent);
-  margin-bottom: 6px;
-  font-weight: 900;
+  border-color: transparent;
+  box-shadow: 0 10px 24px rgba(8, 18, 40, .12);
 }
 
-.field input[type="text"],
-.field input[type="email"],
-.field input[type="number"],
-.field input[type="password"],
-.field input[type="search"],
-.field input[type="date"],
+html[data-theme="light"] .btn:hover {
+  filter: brightness(1.06);
+}
+
+/* ============================================================
+   FORM IMPROVEMENTS
+   ============================================================ */
+
+.field input,
 .field select,
 .field textarea {
-  width: 100%;
-  padding: var(--sp-sm);
-  border-radius: 12px;
-  border: 1px solid var(--pillBorder);
-  background: var(--input);
-  color: var(--text);
-  font-family: inherit;
-  font-size: inherit;
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
-  transition: border-color var(--transition), box-shadow var(--transition);
-}
-.field input::placeholder {
-  color: color-mix(in oklab, var(--text) 52%, transparent);
-}
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
-  border-color: var(--accent);
-  box-shadow: var(--focus-ring);
+  font-weight: 500;
+  border-radius: 14px;
 }
 
-/* Single rule, theme-aware via --select-arrow custom property */
 .field select {
   background-image: var(--select-arrow);
   background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
-}
-.field select option { background: var(--optionbg); color: var(--optionfg); }
-.field textarea { min-height: 80px; resize: vertical; }
-
-/* ---- Drawer ----------------------------------------------- */
-.drawer {
-  position: fixed;
-  right: 0; top: 0;
-  height: 100%;
-  width: 390px;
-  background: var(--top);
-  border-left: 1px solid var(--line);
-  padding: 12px;
-  transform: translateX(100%);
-  transition: transform .26s ease;
-  z-index: 120;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-.drawer.open { transform: translateX(0); }
-
-.drawer-backdrop {
-  position: fixed; inset: 0;
-  background: rgba(2, 6, 12, .55);
-  z-index: 110;
-}
-.drawer-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--sp-sm);
-  padding: 6px 4px var(--sp-sm);
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-}
-.drawer-title { font-family: var(--font-head); font-weight: 800; }
-.drawer-body  { padding: var(--sp-sm) 4px; }
-.drawer-help  { width: 420px; }
-
-/* Light theme: slightly elevated shadow on drawers/cards */
-html[data-theme="light"] .card,
-html[data-theme="light"] .mini,
-html[data-theme="light"] .drawer {
-  box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+  background-position: right 12px center;
+  padding-right: 30px;
 }
 
-/* ---- Toast ------------------------------------------------ */
-.toast {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 28px;
-  background: var(--top);
-  padding: var(--sp-sm) var(--sp-md);
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  z-index: 200;
-  font-size: 13px;
-  white-space: nowrap;
-  max-width: calc(100vw - 32px);
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Better dropdown contrast in light mode */
+html[data-theme="light"] .field select {
+  background-color: #eef3ff;
 }
 
-/* ---- Undo toast ------------------------------------------- */
-#undoToast {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 132px;
-  background: var(--top);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: var(--sp-sm) 12px;
-  z-index: 220;
-  box-shadow: var(--shadow);
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-sm);
-  max-width: calc(100vw - 32px);
-}
-#undoToast button {
-  border: 1px solid var(--pillBorder);
-  background: var(--accent-2);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 7px var(--sp-sm);
-  font-weight: 900;
-  font-size: inherit;
-  font-family: inherit;
-  cursor: pointer;
-  flex-shrink: 0;
-}
+/* ============================================================
+   FAB ENHANCEMENT
+   ============================================================ */
 
-/* ---- FAB + Sheet ------------------------------------------ */
 .fab {
-  position: fixed;
-  right: 18px; bottom: 84px;
-  z-index: 140;
-  width: 56px; height: 56px;
-  border-radius: 18px;
-  border: 1px solid var(--pillBorder);
-  background: var(--accent-2);
-  color: var(--text);
-  font-size: 26px;
+  border-radius: 20px;
   font-weight: 900;
-  box-shadow: var(--shadow);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: filter var(--transition);
+  transition: transform .15s ease, filter .15s ease;
 }
-.fab:hover { filter: brightness(1.08); }
 
-.sheet-backdrop {
-  position: fixed; inset: 0;
-  background: rgba(2, 6, 12, .55);
-  z-index: 130;
+.fab:hover {
+  transform: translateY(-2px);
 }
-.sheet {
-  position: fixed;
+
+html[data-theme="light"] .fab {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(8, 18, 40, .16);
+}
+
+/* ============================================================
+   CARD LIFT IMPROVEMENT
+   ============================================================ */
+
+.card {
+  border-radius: 16px;
+  transition: box-shadow .2s ease, transform .15s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+}
+
+/* ============================================================
+   DRAWER
+   ============================================================ */
+
+.drawer {
+  border-radius: 0;
+}
+
+html[data-theme="light"] .drawer {
+  box-shadow: 0 18px 44px rgba(8, 18, 40, .12);
+}
+
+/* ============================================================
+   MOBILE IMPROVEMENTS
+   ============================================================ */
+
+.bottomnav {
+  backdrop-filter: blur(10px);
+}
+
+.tab.active {
+  position: relative;
+}
+
+.tab.active::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 18px;
-  z-index: 140;
-  width: min(520px, 94vw);
-  border: 1px solid var(--line);
-  background: var(--top);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-  overflow: hidden;
-  overscroll-behavior: contain;
-}
-.sheet-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px var(--sp-md);
-  border-bottom: 1px solid var(--line);
-}
-.sheet-title { font-family: var(--font-head); font-weight: 800; }
-.sheet-body  { padding: 12px var(--sp-md); display: grid; gap: var(--sp-sm); }
-
-/* ---- Mobile bottom nav ------------------------------------ */
-.bottomnav {
-  position: fixed;
-  left: 0; right: 0; bottom: 0;
-  background: var(--top);
-  border-top: 1px solid var(--line);
-  display: flex;
-  justify-content: space-around;
-  z-index: 100;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-.tab {
-  padding: 12px var(--sp-sm);
-  border: none;
-  background: none;
-  color: color-mix(in oklab, var(--text) 60%, transparent);
-  font-weight: 900;
-  font-size: inherit;
-  font-family: inherit;
-  cursor: pointer;
-  transition: color var(--transition);
-  flex: 1;
-}
-.tab.active { color: var(--text); }
-.tab:not(.active):hover { color: color-mix(in oklab, var(--text) 80%, transparent); }
-
-/* ---- Splash ----------------------------------------------- */
-.splash {
-  position: fixed; inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(circle at top, color-mix(in oklab, var(--accent) 25%, transparent), transparent 45%),
-    var(--top);
-  z-index: 300;
-  transition: opacity .25s ease;
-}
-.splash.hidden { opacity: 0; pointer-events: none; }
-
-.splash-card {
-  width: min(520px, 92vw);
-  background: var(--top);
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: var(--sp-lg);
-  box-shadow: var(--shadow);
-}
-.brand { display: flex; align-items: center; gap: 12px; }
-.logo-dot {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-}
-.brand-title { font-family: var(--font-head); font-weight: 800; font-size: 18px; }
-.brand-sub   { color: var(--muted); font-size: 12px; }
-
-.skeleton {
-  height: 10px;
+  width: 28px;
+  height: 3px;
   border-radius: 999px;
-  margin-top: var(--sp-sm);
-  background-image: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--text) 8%,  transparent),
-    color-mix(in oklab, var(--text) 16%, transparent),
-    color-mix(in oklab, var(--text) 8%,  transparent)
-  );
-  background-size: 220% 100%;
-  animation: shimmer 1.3s linear infinite;
-}
-.skeleton:nth-child(2) { animation-delay: .15s; width: 80%; }
-.skeleton:nth-child(3) { animation-delay: .30s; width: 55%; }
-
-@keyframes shimmer {
-  0%   { background-position: 0%   0; }
-  100% { background-position: 200% 0; }
+  background: var(--accent);
 }
 
-/* ---- Reduced motion --------------------------------------- */
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+
 @media (prefers-reduced-motion: reduce) {
-  .skeleton { animation: none; }
-  .btn, .navbtn, .tab, .drawer, .fab, .iconbtn, .splash { transition: none; }
-}
-
-/* ---- Responsive ------------------------------------------- */
-@media (max-width: 860px) {
-  .layout {
-    flex-direction: column;
-    margin: 10px auto;
-    padding: 12px;
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  .btn, .navbtn, .tab, .drawer, .fab, .card {
+    transition: none;
   }
-  .nav {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    scrollbar-width: none;
-    width: auto;
-  }
-  .nav::-webkit-scrollbar { display: none; }
-  .navbtn { white-space: nowrap; flex-shrink: 0; }
-  .grid2  { grid-template-columns: 1fr; }
-  .drawer,
-  .drawer-help { width: min(92vw, 420px); }
 }
