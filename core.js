@@ -1,8 +1,8 @@
-// core.js — v3.1.1 (Phase 1–2 stability + Today UX + safe dates + drawer + reset + render optimizations)
+// core.js — v3.2.0 (Phase 3–7: RBAC + PIQ Score + Heatmap + Nutrition + Risk + Periodization + active view focus)
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V31_1__) return;
-  window.__PIQ_CORE_V31_1__ = true;
+  if (window.__PIQ_CORE_V320__) return;
+  window.__PIQ_CORE_V320__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -11,25 +11,33 @@
   const SPORTS = ["basketball", "football", "soccer", "baseball", "volleyball", "track"];
 
   // ---------- Load state ----------
-  let state = (window.dataStore?.load) ? window.dataStore.load() : null;
-  if (!state) state = {};
-
-  // Normalize state shape (never trust old saves)
-  state.meta = state.meta || { version: "3.1.1", updated_at: nowISO() };
+  let state = (window.dataStore?.load) ? window.dataStore.load() : {};
+  state.meta = state.meta || { version: "3.2.0", updated_at: nowISO() };
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
   state.profile.sport = state.profile.sport || "basketball";
   state.profile.preferred_session_type = state.profile.preferred_session_type || "practice";
   state.profile.injuries = Array.isArray(state.profile.injuries) ? state.profile.injuries : [];
   state.profile.onboarded = !!state.profile.onboarded;
+  state.profile.theme = state.profile.theme || { mode: document.documentElement.getAttribute("data-theme") || "dark" };
 
-  state.team = state.team || { teams: [], active_team_id: null };
+  state.team = state.team || { teams: [], members: [], active_team_id: null };
+  state.team.teams = Array.isArray(state.team.teams) ? state.team.teams : [];
+  state.team.members = Array.isArray(state.team.members) ? state.team.members : [];
   state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
+
+  state.nutrition = state.nutrition || { logs: [], enabled: true };
+  state.nutrition.logs = Array.isArray(state.nutrition.logs) ? state.nutrition.logs : [];
+  state.wellness = state.wellness || { logs: [], enabled: true };
+  state.wellness.logs = Array.isArray(state.wellness.logs) ? state.wellness.logs : [];
+
+  state.risk = state.risk || { flags: [], updated_at: null };
+  state.dashboards = state.dashboards || { heatmap: null, updated_at: null };
+  state.piq = state.piq || { score: null, updated_at: null };
   state.periodization = state.periodization || { plan: null, updated_at: null };
   state.insights = state.insights || { weekly: [], updated_at: null };
   state.ui = state.ui || { view: "home", todaySession: null };
 
-  // Persist normalized state once
   try { window.dataStore?.save?.(state); } catch {}
 
   // ---------- Utilities ----------
@@ -45,7 +53,6 @@
 
   function persist(msg) {
     try {
-      state.meta = state.meta || {};
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -62,22 +69,11 @@
     _persistTimer = setTimeout(() => persist(msg), ms);
   }
 
-  function timeAgo(value) {
-    const d = safeDate(value);
-    if (!d) return "";
-    const diff = Date.now() - d.getTime();
-    const MIN = 60_000, HR = 3_600_000, DAY = 86_400_000;
-    if (diff < MIN) return "just now";
-    if (diff < HR) return Math.round(diff / MIN) + "m ago";
-    if (diff < DAY) return Math.round(diff / HR) + "h ago";
-    return Math.round(diff / DAY) + "d ago";
-  }
-
   function uid(prefix = "") {
     return (prefix ? prefix + "_" : "") + Math.random().toString(36).slice(2, 9);
   }
 
-  // ---------- Safe date helpers (fixes RangeError Invalid time value) ----------
+  // ---------- Safe date helpers ----------
   function safeDate(value) {
     const d = (value instanceof Date) ? value : new Date(value);
     return isFinite(d.getTime()) ? d : null;
@@ -94,6 +90,29 @@
     const weekNo = Math.ceil((((d - onejan) / 86400000) + onejan.getUTCDay() + 1) / 7);
     return `${y}-W${String(weekNo).padStart(2, "0")}`;
   }
+  function timeAgo(value) {
+    const d = safeDate(value);
+    if (!d) return "";
+    const diff = Date.now() - d.getTime();
+    const MIN = 60_000, HR = 3_600_000, DAY = 86_400_000;
+    if (diff < MIN) return "just now";
+    if (diff < HR) return Math.round(diff / MIN) + "m ago";
+    if (diff < DAY) return Math.round(diff / HR) + "h ago";
+    return Math.round(diff / DAY) + "d ago";
+  }
+
+  // ---------- RBAC ----------
+  const ROLE = {
+    OWNER: "owner",
+    COACH: "coach",
+    ATHLETE: "athlete",
+    PARENT: "parent",
+    VIEWER: "viewer"
+  };
+  function canCoach() {
+    const r = state.profile?.role;
+    return r === ROLE.OWNER || r === ROLE.COACH;
+  }
 
   // ---------- Status pill ----------
   function setDataStatusLabel(text, color) {
@@ -107,7 +126,7 @@
     setDataStatusLabel("Local saved", "var(--ok)");
   }
 
-  // ---------- Data libs ----------
+  // ---------- Workout library (kept) ----------
   const EXERCISE_LIB = {
     strength: {
       goblet_squat:        { title: "Goblet Squat",         cue: "3x8-10",        subs: { knee: "box_squat" } },
@@ -145,9 +164,7 @@
         { name: "Cone route tree", reps: "5 trees", cue: "explode out" },
         { name: "Hands drill", reps: "4x8", cue: "eyes through catch" }
       ],
-      throwing: [
-        { name: "QB quick set", reps: "8 min", cue: "base → rotate" }
-      ]
+      throwing: [{ name: "QB quick set", reps: "8 min", cue: "base → rotate" }]
     },
     soccer: {
       dribbling: [
@@ -184,7 +201,6 @@
     track:      ["goblet_squat", "rdl", "single_leg_deadlift"]
   };
 
-  // Session types -> what blocks appear
   const SESSION_RULES = {
     practice:          { warmup: true, skill: true,  strength: true,  plyo: true,  conditioning: true,  cooldown: true },
     strength:          { warmup: true, skill: false, strength: true,  plyo: false, conditioning: false, cooldown: true },
@@ -193,14 +209,12 @@
     competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true, conditioning: false, cooldown: true }
   };
 
-  // ---------- Warm-up generator (sport + session type) ----------
   function warmupItems(sport, sessionType) {
     const base = [
       { name: "Ankle/hip mobility", cue: "2–3 min" },
       { name: "Activation (glutes/core)", cue: "2 min" },
       { name: "Movement prep", cue: "4–5 min" }
     ];
-
     const sportAdds = {
       basketball: [{ name: "Pogo hops", cue: "2x20s" }, { name: "Decel snaps", cue: "3 reps" }],
       football:   [{ name: "A-skips", cue: "2x20m" }, { name: "Wall drills", cue: "3x10s" }],
@@ -209,7 +223,6 @@
       volleyball: [{ name: "Landing mechanics", cue: "5 reps" }, { name: "Approach rhythm", cue: "3 reps" }],
       track:      [{ name: "Drills (A/B skips)", cue: "2–3 min" }, { name: "Strides", cue: "3x60m easy" }]
     };
-
     const typeAdds = {
       strength: [{ name: "Ramp sets (light)", cue: "2 warm-up sets" }],
       speed: [{ name: "Build-ups", cue: "3x20m" }],
@@ -217,23 +230,17 @@
       competition_prep: [{ name: "Neural pop", cue: "2x10s fast" }],
       practice: []
     };
-
-    return base
-      .concat(sportAdds[sport] || [])
-      .concat(typeAdds[sessionType] || []);
+    return base.concat(sportAdds[sport] || []).concat(typeAdds[sessionType] || []);
   }
 
-  // ---------- Injury adjustments ----------
   function applyInjury(exKey, injuries) {
     const def = EXERCISE_LIB.strength[exKey];
     if (!def) return null;
-
     const inj = Array.isArray(injuries) ? injuries : [];
     let sub = null;
     for (const tag of inj) {
       if (def.subs?.[tag]) { sub = def.subs[tag]; break; }
     }
-
     return {
       key: exKey,
       name: def.title,
@@ -242,47 +249,26 @@
     };
   }
 
-  // ---------- Workout generation ----------
   function generateWorkoutFor(sport = "basketball", sessionType = "practice", injuries = []) {
     const rules = SESSION_RULES[sessionType] || SESSION_RULES.practice;
     const blocks = [];
 
     if (rules.warmup) {
-      blocks.push({
-        id: uid("warmup"),
-        type: "warmup",
-        title: "Dynamic Warm-up",
-        duration_min: 10,
-        items: warmupItems(sport, sessionType)
-      });
+      blocks.push({ id: uid("warmup"), type: "warmup", title: "Dynamic Warm-up", duration_min: 10, items: warmupItems(sport, sessionType) });
     }
-
     if (rules.skill) {
       const micro = SPORT_MICROBLOCKS[sport] || {};
       const keys = Object.keys(micro);
       const items = [];
       keys.slice(0, 2).forEach(k => (micro[k] || []).slice(0, 2).forEach(it => items.push(it)));
-      blocks.push({
-        id: uid("skill"),
-        type: "skill",
-        title: "Skill Microblocks",
-        duration_min: 15,
-        items
-      });
+      blocks.push({ id: uid("skill"), type: "skill", title: "Skill Microblocks", duration_min: 15, items });
     }
-
     if (rules.strength) {
-      const strengthItems = [];
       const pref = SPORT_STRENGTH_PREFS[sport] || ["goblet_squat", "rdl", "row"];
       const pick = pref.slice(0, 3);
+      const strengthItems = [];
+      pick.forEach(k => { const ex = applyInjury(k, injuries); if (ex) strengthItems.push(ex); });
 
-      pick.forEach(k => {
-        const ex = applyInjury(k, injuries);
-        if (!ex) return;
-        strengthItems.push(ex);
-      });
-
-      // competition_prep uses “light” strength
       const cueSuffix = (rules.strength === "light") ? " (light)" : "";
       blocks.push({
         id: uid("strength"),
@@ -296,7 +282,6 @@
         }))
       });
     }
-
     if (rules.plyo) {
       blocks.push({
         id: uid("plyo"),
@@ -309,19 +294,15 @@
         ]
       });
     }
-
     if (rules.conditioning) {
       blocks.push({
         id: uid("cond"),
         type: "conditioning",
         title: "Conditioning",
         duration_min: 8,
-        items: [
-          { name: EXERCISE_LIB.conditioning.tempo_runs.title, cue: EXERCISE_LIB.conditioning.tempo_runs.cue }
-        ]
+        items: [{ name: EXERCISE_LIB.conditioning.tempo_runs.title, cue: EXERCISE_LIB.conditioning.tempo_runs.cue }]
       });
     }
-
     if (rules.cooldown) {
       blocks.push({
         id: uid("cd"),
@@ -343,6 +324,217 @@
     };
   }
 
+  // ---------- PerformanceIQ Score (Phase 4) ----------
+  function computeTrainingAdherence() {
+    // last 7 days: minutes logged / (planned minutes if any, else 1)
+    const today = new Date();
+    const cutoff = new Date(today);
+    cutoff.setDate(cutoff.getDate() - 7);
+
+    const logs = state.sessions.filter(s => {
+      const d = safeDate(s?.created_at || s?.date);
+      return d && d >= cutoff;
+    });
+
+    const loggedMin = logs.reduce((a, s) => a + Number(s?.duration_min || 0), 0);
+    // If user has a periodization plan, use week target as "planned"
+    const weekTarget = state.periodization?.plan?.weeks?.[0]?.target_minutes;
+    const plannedMin = Number(weekTarget || Math.max(120, loggedMin || 0));
+    const ratio = plannedMin ? loggedMin / plannedMin : 0;
+    return Math.max(0, Math.min(1, ratio));
+  }
+
+  function computeLoadConsistency() {
+    const weekly = computeInsights().weekly || [];
+    if (weekly.length < 2) return 0.6; // neutral
+    const a = Number(weekly[0].load || 0);
+    const b = Number(weekly[1].load || 0);
+    if (b <= 0) return 0.6;
+    const change = Math.abs(a - b) / b; // 0 is stable
+    // 0–20% change = good, >60% = poor
+    if (change <= 0.20) return 1;
+    if (change >= 0.60) return 0.2;
+    return 1 - (change - 0.20) / 0.40 * 0.8;
+  }
+
+  function latestNutritionForDate(dateISO) {
+    const logs = state.nutrition?.logs || [];
+    // prefer exact date match
+    const exact = logs.slice().reverse().find(l => (l.date || "").slice(0, 10) === dateISO);
+    return exact || null;
+  }
+
+  function computeNutritionCompliance7d() {
+    if (state.nutrition?.enabled === false) return { score: 0.7, enabled: false };
+    const tgt = window.nutritionEngine?.targets?.(state.profile);
+    if (!tgt) return { score: 0.7, enabled: true };
+
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+
+    let sum = 0, count = 0;
+    for (const day of days) {
+      const log = latestNutritionForDate(day);
+      if (!log) continue;
+      const c = window.nutritionEngine.complianceForDay(log, tgt);
+      sum += Number(c.score || 0);
+      count++;
+    }
+    if (!count) return { score: 0.55, enabled: true }; // baseline if no logs
+    return { score: Math.max(0, Math.min(1, sum / count)), enabled: true };
+  }
+
+  function computeRiskScore() {
+    // convert risk flags into 0..1 (1 is low risk)
+    const flags = computeRiskFlags();
+    if (!flags.length) return 1;
+    const max = flags.reduce((m, f) => Math.max(m, f.severity || 0), 0);
+    // severity 1..3
+    return max === 3 ? 0.2 : max === 2 ? 0.55 : 0.8;
+  }
+
+  function computePIQScore() {
+    const a = computeTrainingAdherence();          // 0..1
+    const c = computeLoadConsistency();            // 0..1
+    const n = computeNutritionCompliance7d().score;// 0..1
+    const r = computeRiskScore();                  // 0..1
+
+    // weights: adherence 35, consistency 25, nutrition 20, risk 20
+    const score = Math.round((a * 35 + c * 25 + n * 20 + r * 20));
+    state.piq.score = score;
+    state.piq.updated_at = nowISO();
+    persistDebounced(null, 250);
+    return score;
+  }
+
+  // ---------- Insights ----------
+  function computeInsights() {
+    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    const byWeek = {};
+    sessions.forEach(s => {
+      const key = isoWeekKey(s?.created_at || s?.generated_at || s?.date);
+      if (!key) return;
+      byWeek[key] = byWeek[key] || { minutes: 0, load: 0, sessions: 0 };
+      byWeek[key].minutes += Number(s?.duration_min || 0);
+      byWeek[key].load += Number(s?.load || 0);
+      byWeek[key].sessions += 1;
+    });
+
+    const weekly = Object.entries(byWeek)
+      .map(([k, v]) => ({ week: k, minutes: v.minutes, load: v.load, sessions: v.sessions }))
+      .sort((a, b) => b.week.localeCompare(a.week))
+      .slice(0, 12);
+
+    state.insights.weekly = weekly;
+    state.insights.updated_at = nowISO();
+    return state.insights;
+  }
+
+  function computeStreak() {
+    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
+    if (!sessions.length) return 0;
+
+    const days = sessions
+      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
+      .filter(Boolean);
+
+    if (!days.length) return 0;
+    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
+
+    let streak = 1;
+    let cursor = new Date(uniq[0] + "T00:00:00.000Z");
+
+    for (let i = 1; i < uniq.length; i++) {
+      const d = new Date(uniq[i] + "T00:00:00.000Z");
+      const prev = new Date(cursor);
+      prev.setUTCDate(prev.getUTCDate() - 1);
+      if (d.getTime() === prev.getTime()) { streak++; cursor = d; } else break;
+    }
+    return streak;
+  }
+
+  // ---------- Heatmap (Phase 5) ----------
+  function computeHeatmap4w() {
+    // day-of-week buckets (Sun..Sat)
+    const buckets = Array.from({ length: 7 }, () => 0);
+
+    const now = new Date();
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 28);
+
+    state.sessions.forEach(s => {
+      const d = safeDate(s?.created_at || s?.date);
+      if (!d || d < cutoff) return;
+      const dow = d.getDay();
+      buckets[dow] += Number(s?.load || 0);
+    });
+
+    // normalize for simple shading labels
+    const max = Math.max(1, ...buckets);
+    const levels = buckets.map(v => {
+      const r = v / max;
+      if (r < 0.15) return 0;
+      if (r < 0.35) return 1;
+      if (r < 0.60) return 2;
+      if (r < 0.85) return 3;
+      return 4;
+    });
+
+    const out = { buckets, levels, updated_at: nowISO() };
+    state.dashboards.heatmap = out;
+    state.dashboards.updated_at = nowISO();
+    return out;
+  }
+
+  // ---------- Risk Detection (Phase 7) ----------
+  function computeRiskFlags() {
+    // ACWR estimate from weekly loads:
+    // acute = last 7 days, chronic = last 28 days avg per week.
+    const now = new Date();
+    const acuteCut = new Date(now); acuteCut.setDate(acuteCut.getDate() - 7);
+    const chronicCut = new Date(now); chronicCut.setDate(chronicCut.getDate() - 28);
+
+    let acute = 0, chronicTotal = 0;
+    state.sessions.forEach(s => {
+      const d = safeDate(s?.created_at || s?.date);
+      if (!d) return;
+      const load = Number(s?.load || 0);
+      if (d >= acuteCut) acute += load;
+      if (d >= chronicCut) chronicTotal += load;
+    });
+
+    const chronicWeeklyAvg = chronicTotal / 4;
+    const acwr = chronicWeeklyAvg > 0 ? acute / chronicWeeklyAvg : 0;
+
+    const flags = [];
+
+    // thresholds (simple)
+    if (acwr >= 1.6) flags.push({ type: "spike", label: "Load spike (ACWR high)", severity: 3, detail: `ACWR ${acwr.toFixed(2)}` });
+    else if (acwr >= 1.3) flags.push({ type: "spike", label: "Load trending high", severity: 2, detail: `ACWR ${acwr.toFixed(2)}` });
+
+    // wellness check (last 3 days)
+    const wlogs = (state.wellness?.logs || []).slice().reverse();
+    const recent = wlogs.slice(0, 3);
+    if (recent.length) {
+      const avgSleep = recent.reduce((a, x) => a + Number(x.sleep_hrs || 0), 0) / recent.length;
+      const avgSore  = recent.reduce((a, x) => a + Number(x.soreness_1_10 || 0), 0) / recent.length;
+      const avgStress= recent.reduce((a, x) => a + Number(x.stress_1_10 || 0), 0) / recent.length;
+
+      if (avgSleep > 0 && avgSleep < 6) flags.push({ type: "recovery", label: "Low sleep trend", severity: 2, detail: `~${avgSleep.toFixed(1)} hrs` });
+      if (avgSore >= 7) flags.push({ type: "fatigue", label: "High soreness trend", severity: 2, detail: `~${avgSore.toFixed(1)}/10` });
+      if (avgStress >= 7) flags.push({ type: "stress", label: "High stress trend", severity: 1, detail: `~${avgStress.toFixed(1)}/10` });
+    }
+
+    state.risk.flags = flags;
+    state.risk.updated_at = nowISO();
+    persistDebounced(null, 250);
+    return flags;
+  }
+
   // ---------- Today workflow ----------
   let todayTimer = null;
   let todayTimerStart = null;
@@ -362,7 +554,6 @@
 
     const planned = state.ui?.todaySession || null;
 
-    // In progress
     if (todayActiveSession) {
       container.innerHTML = `
         <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
@@ -377,7 +568,6 @@
       return;
     }
 
-    // Planned session (SHOW EXERCISES UNDER EACH BLOCK)
     if (planned) {
       const blocksHTML = (planned.blocks || []).map(b => {
         const items = (b.items || []).map(it => {
@@ -411,7 +601,6 @@
       return;
     }
 
-    // Nothing yet
     container.innerHTML = `
       <div class="minihead">No session generated</div>
       <div class="minibody">Press Generate to create a tailored session for today.</div>
@@ -478,7 +667,7 @@
 
     _clearTodayTimer();
     renderTodayBlock();
-    renderInsights();
+    renderHomeScore();
   }
 
   function cancelToday() {
@@ -487,7 +676,195 @@
     toast("Session cancelled");
   }
 
-  // ---------- Train tab ----------
+  // ---------- Team (Phase 3) ----------
+  function setTeamPill() {
+    const pill = $("teamPill");
+    if (!pill) return;
+    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
+    pill.textContent = `Team: ${teamName || "—"}`;
+  }
+
+  function joinCode() {
+    // offline pseudo code (no guarantee of uniqueness across devices)
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let out = "";
+    for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    return out;
+  }
+
+  function renderHeatmapBlock() {
+    const hm = computeHeatmap4w();
+    const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const chips = hm.levels.map((lvl, i) => {
+      const v = hm.buckets[i];
+      const bg =
+        lvl === 0 ? "transparent" :
+        lvl === 1 ? "rgba(46,196,182,.10)" :
+        lvl === 2 ? "rgba(46,196,182,.16)" :
+        lvl === 3 ? "rgba(46,196,182,.22)" :
+                   "rgba(46,196,182,.30)";
+      return `
+        <div style="flex:1;min-width:86px;border:1px solid var(--line);border-radius:12px;padding:10px;background:${bg}">
+          <div style="font-weight:900">${days[i]}</div>
+          <div class="small muted">load ${v}</div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">Team Heatmap (last 4 weeks)</div>
+        <div class="minibody">
+          <div style="display:flex;gap:10px;flex-wrap:wrap">${chips}</div>
+          <div class="small muted" style="margin-top:8px">Higher shading = higher total load for that weekday.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTeam() {
+    const body = $("teamBody");
+    if (!body) return;
+
+    const teams = state.team?.teams || [];
+    const active = teams.find(t => t.id === state.team?.active_team_id) || null;
+    const members = (state.team?.members || []).filter(m => !active || m.team_id === active.id);
+
+    const coachTools = canCoach();
+
+    const teamList = teams.length ? `
+      ${teams.map(t => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)">
+          <div>
+            <b>${t.name}</b>
+            <div class="small muted">${t.sport || ""} • code ${t.join_code || "—"}</div>
+          </div>
+          <button class="btn ghost" data-setteam="${t.id}">Set Active</button>
+        </div>
+      `).join("")}
+    ` : `<div class="small muted">No teams yet.</div>`;
+
+    const roster = active ? `
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">Roster — ${active.name}</div>
+        <div class="minibody">
+          ${members.length ? members.map(m => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line)">
+              <div><b>${m.name}</b> <span class="small muted">• ${m.role}</span></div>
+              ${coachTools ? `<button class="btn ghost" data-delmember="${m.id}">Remove</button>` : ""}
+            </div>
+          `).join("") : `<div class="small muted" style="margin-top:8px">No members added yet.</div>`}
+
+          ${coachTools ? `
+            <div class="hr"></div>
+            <div class="grid2">
+              <div class="field">
+                <label>Member name</label>
+                <input id="newMemberName" type="text" placeholder="e.g., Jordan" />
+              </div>
+              <div class="field">
+                <label>Role</label>
+                <select id="newMemberRole">
+                  <option value="coach">Coach</option>
+                  <option value="athlete">Athlete</option>
+                  <option value="parent">Parent</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:10px">
+              <button class="btn" id="btnAddMember">Add member</button>
+            </div>
+          ` : `
+            <div class="small muted" style="margin-top:10px">Coach tools hidden for your role.</div>
+          `}
+        </div>
+      </div>
+    ` : "";
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Teams</div>
+        <div class="minibody">
+          ${teamList}
+          <div class="hr"></div>
+
+          ${coachTools ? `
+            <div class="minihead">Create team (offline)</div>
+            <div class="grid2">
+              <div class="field">
+                <label>Team name</label>
+                <input id="teamName" type="text" placeholder="e.g., Virginia Trailblazers" />
+              </div>
+              <div class="field">
+                <label>Sport</label>
+                <select id="teamSport">
+                  ${SPORTS.map(s => `<option value="${s}">${s[0].toUpperCase()+s.slice(1)}</option>`).join("")}
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:10px">
+              <button class="btn" id="btnCreateTeam">Create</button>
+            </div>
+          ` : `
+            <div class="small muted">Create/manage teams is Coach/Owner only.</div>
+          `}
+
+          ${active ? `
+            <div class="hr"></div>
+            <div class="minihead">Active team</div>
+            <div class="small muted">${active.name} • join code: <b>${active.join_code}</b></div>
+          ` : ""}
+        </div>
+      </div>
+
+      ${active && coachTools ? renderHeatmapBlock() : ""}
+      ${active ? roster : ""}
+    `;
+
+    // actions
+    body.querySelectorAll("[data-setteam]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.team.active_team_id = btn.getAttribute("data-setteam");
+        persist("Active team updated");
+        setTeamPill();
+        renderTeam();
+      });
+    });
+
+    body.querySelectorAll("[data-delmember]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-delmember");
+        state.team.members = (state.team.members || []).filter(m => m.id !== id);
+        persist("Member removed");
+        renderTeam();
+      });
+    });
+
+    $("btnCreateTeam")?.addEventListener("click", () => {
+      const name = ($("teamName")?.value || "").trim();
+      const sport = $("teamSport")?.value || state.profile.sport;
+      if (!name) { toast("Team name required"); return; }
+      const t = { id: uid("team"), name, sport, join_code: joinCode(), created_at: nowISO() };
+      state.team.teams.push(t);
+      state.team.active_team_id = t.id;
+      persist("Team created");
+      setTeamPill();
+      renderTeam();
+    });
+
+    $("btnAddMember")?.addEventListener("click", () => {
+      if (!active) return;
+      const name = ($("newMemberName")?.value || "").trim();
+      const role = $("newMemberRole")?.value || "athlete";
+      if (!name) { toast("Member name required"); return; }
+      state.team.members.push({ id: uid("mem"), team_id: active.id, name, role, created_at: nowISO() });
+      persist("Member added");
+      renderTeam();
+    });
+  }
+
+  // ---------- Train ----------
   function renderTrain() {
     const sport = state.profile?.sport || "basketball";
     const role  = state.profile?.role || "coach";
@@ -565,7 +942,6 @@
       });
     }
 
-    // Initial card
     renderCard(generateWorkoutFor(sport, pref, state.profile.injuries || []));
 
     $("trainSportSelect")?.addEventListener("change", (e) => {
@@ -585,134 +961,147 @@
     });
   }
 
-  // ---------- Team ----------
-  function setTeamPill() {
-    const pill = $("teamPill");
-    if (!pill) return;
-    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
-    pill.textContent = `Team: ${teamName || "—"}`;
+  // ---------- Home Score ----------
+  function renderHomeScore() {
+    const el = $("piqScoreHome");
+    if (!el) return;
+    const score = computePIQScore();
+    const flags = computeRiskFlags();
+    const riskNote = flags.length ? ` • ${flags[0].label}` : " • No risk flags";
+    el.innerHTML = `<b>${score}</b><span class="small muted"> / 100</span><div class="small muted" style="margin-top:6px">${riskNote}</div>`;
   }
 
-  function renderTeam() {
-    const body = $("teamBody");
+  // ---------- Profile (Score + Risk + Nutrition + Periodization + Insights) ----------
+  function renderProfile() {
+    const body = $("profileBody");
     if (!body) return;
-    const teams = state.team?.teams || [];
-    if (!teams.length) {
-      body.innerHTML = `
-        <div class="mini">
-          <div class="minihead">No teams</div>
-          <div class="minibody">Create or join a team when cloud is enabled, or test locally.</div>
-        </div>
-      `;
-      return;
-    }
+
+    const score = computePIQScore();
+    const flags = computeRiskFlags();
+    const streak = computeStreak();
+
+    // nutrition targets
+    const tgt = window.nutritionEngine?.targets?.(state.profile) || null;
+    const today = new Date().toISOString().slice(0, 10);
+    const todayLog = (state.nutrition?.logs || []).slice().reverse().find(l => (l.date || "").slice(0, 10) === today) || null;
+
+    // periodization plan (if none, show generate)
+    const plan = state.periodization?.plan || null;
+
     body.innerHTML = `
       <div class="mini">
-        <div class="minihead">Teams</div>
+        <div class="minihead">Profile</div>
         <div class="minibody">
-          ${teams.map(t => `
-            <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)">
-              <div><b>${t.name}</b><div class="small muted">${t.sport || ""}</div></div>
-              <button class="btn ghost" data-setteam="${t.id}">Set Active</button>
-            </div>
-          `).join("")}
+          <div><b>Role</b>: ${state.profile.role}</div>
+          <div><b>Sport</b>: ${state.profile.sport}</div>
+          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
+
+          <div class="hr"></div>
+
+          <div class="minihead">PerformanceIQ Score</div>
+          <div class="minibody"><b>${score}</b><span class="small muted"> / 100</span></div>
+
+          <div class="hr"></div>
+
+          <div class="minihead">Risk Detection</div>
+          <div class="minibody">
+            ${flags.length ? flags.map(f => `
+              <div style="margin:6px 0;padding:10px;border:1px solid var(--line);border-radius:12px">
+                <b>${f.label}</b> <span class="small muted">• severity ${f.severity}</span>
+                <div class="small muted">${f.detail || ""}</div>
+              </div>
+            `).join("") : `<div class="small muted">No risk flags right now.</div>`}
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="minihead">Elite Nutrition</div>
+          <div class="minibody">
+            ${tgt ? `
+              <div class="small muted">Targets: ${tgt.calories} kcal • P ${tgt.protein_g}g • C ${tgt.carbs_g}g • F ${tgt.fat_g}g</div>
+              <div style="margin-top:8px">
+                <button class="btn ghost" id="btnOpenNutrition">Log nutrition</button>
+              </div>
+              <div class="small muted" style="margin-top:8px">${todayLog ? `Today logged: ${todayLog.calories} kcal` : "No log today yet."}</div>
+            ` : `<div class="small muted">Nutrition engine not loaded.</div>`}
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="minihead">Periodization</div>
+          <div class="minibody">
+            ${plan ? `
+              <div class="small muted">Plan starts ${plan.start_date} • base ${plan.base_minutes} min/wk</div>
+              <div style="margin-top:8px">
+                ${plan.weeks.map(w => `
+                  <div style="padding:8px 0;border-top:1px solid var(--line)">
+                    <b>Week ${w.week}</b> — target ${w.target_minutes} min
+                    <div class="small muted">${w.notes}</div>
+                  </div>
+                `).join("")}
+              </div>
+            ` : `
+              <div class="small muted">No plan yet. Generate a simple 4-week wave.</div>
+              <div style="margin-top:10px">
+                <button class="btn" id="btnGenPlan">Generate 4-week plan</button>
+              </div>
+            `}
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="minihead">Insights</div>
+          <div class="minibody">
+            <div><b>Current streak</b> — ${streak} days</div>
+            <div style="margin-top:8px" id="weeklyRows"></div>
+          </div>
         </div>
       </div>
     `;
-    body.querySelectorAll("[data-setteam]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.team.active_team_id = btn.getAttribute("data-setteam");
-        persist("Active team updated");
-        setTeamPill();
-      });
-    });
-  }
 
-  // ---------- Insights (SAFE) ----------
-  function computeInsights() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    const byWeek = {};
-
-    sessions.forEach(s => {
-      const key = isoWeekKey(s?.created_at || s?.generated_at || s?.date);
-      if (!key) return;
-      byWeek[key] = byWeek[key] || { minutes: 0, load: 0, sessions: 0 };
-      byWeek[key].minutes += Number(s?.duration_min || 0);
-      byWeek[key].load += Number(s?.load || 0);
-      byWeek[key].sessions += 1;
-    });
-
-    const weekly = Object.entries(byWeek)
-      .map(([k, v]) => ({ week: k, minutes: v.minutes, load: v.load, sessions: v.sessions }))
-      .sort((a, b) => b.week.localeCompare(a.week))
-      .slice(0, 12);
-
-    state.insights.weekly = weekly;
-    state.insights.updated_at = nowISO();
-    persistDebounced(null, 250);
-    return state.insights;
-  }
-
-  function computeStreak() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    if (!sessions.length) return 0;
-
-    const days = sessions
-      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
-      .filter(Boolean);
-
-    if (!days.length) return 0;
-
-    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
-
-    let streak = 1;
-    let cursor = new Date(uniq[0] + "T00:00:00.000Z");
-
-    for (let i = 1; i < uniq.length; i++) {
-      const d = new Date(uniq[i] + "T00:00:00.000Z");
-      const prev = new Date(cursor);
-      prev.setUTCDate(prev.getUTCDate() - 1);
-
-      if (d.getTime() === prev.getTime()) {
-        streak++;
-        cursor = d;
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  function renderInsights() {
-    computeInsights();
-    const profileBody = $("profileBody");
-    if (!profileBody) return;
-
-    const weekly = state.insights?.weekly || [];
+    // weekly rows
+    const weekly = computeInsights().weekly || [];
     const rows = weekly.map(w => `
       <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)">
         <div>${w.week}</div>
         <div>${w.minutes}m • load ${w.load}</div>
       </div>
-    `).join("");
+    `).join("") || `<div class="small muted">No sessions logged yet.</div>`;
 
-    const streak = computeStreak();
-    profileBody.querySelector(".piq-insights-block")?.remove();
+    const weeklyEl = body.querySelector("#weeklyRows");
+    if (weeklyEl) weeklyEl.innerHTML = rows;
 
-    const el = document.createElement("div");
-    el.className = "piq-insights-block";
-    el.style.marginTop = "12px";
-    el.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Insights</div>
-        <div class="minibody">
-          <div><b>Recent weeks</b></div>
-          <div style="margin-top:8px">${rows || '<div class="small muted">No sessions logged yet</div>'}</div>
-          <div style="margin-top:8px"><b>Current streak</b> — ${streak} days</div>
-        </div>
-      </div>
-    `;
-    profileBody.appendChild(el);
+    // bind plan gen
+    $("btnGenPlan")?.addEventListener("click", () => {
+      const gen = window.periodizationEngine?.generate4WeekPlan?.({
+        sport: state.profile.sport,
+        baseMinutes: 180,
+        startISO: new Date().toISOString().slice(0, 10)
+      });
+      if (!gen) { toast("Periodization engine not loaded"); return; }
+      state.periodization.plan = gen;
+      state.periodization.updated_at = nowISO();
+      persist("Plan generated");
+      renderProfile();
+    });
+
+    // quick nutrition modal via prompt (simple offline)
+    $("btnOpenNutrition")?.addEventListener("click", () => openNutritionQuickLog());
+  }
+
+  function openNutritionQuickLog() {
+    const tgt = window.nutritionEngine?.targets?.(state.profile);
+    const d = new Date().toISOString().slice(0, 10);
+    const cals = Number(prompt(`Calories for ${d}? (target ${tgt?.calories ?? "—"})`) || 0);
+    const p = Number(prompt(`Protein grams? (target ${tgt?.protein_g ?? "—"})`) || 0);
+    const carbs = Number(prompt(`Carbs grams? (target ${tgt?.carbs_g ?? "—"})`) || 0);
+    const fat = Number(prompt(`Fat grams? (target ${tgt?.fat_g ?? "—"})`) || 0);
+
+    if (!cals && !p && !carbs && !fat) { toast("No nutrition entered"); return; }
+    state.nutrition.logs.push({ id: uid("nut"), created_at: nowISO(), date: d, calories: cals, protein_g: p, carbs_g: carbs, fat_g: fat, notes: "" });
+    persist("Nutrition logged");
+    renderHomeScore();
+    if (state.ui.view === "profile") renderProfile();
   }
 
   // ---------- Data Management ----------
@@ -755,16 +1144,7 @@
     if (!ok) return;
     const typed = prompt("Type RESET to confirm");
     if (typed !== "RESET") { toast("Reset aborted"); return; }
-
-    // Remove common keys (safe) — include the dataStore KEY and known variants
-    const keysToTry = ["piq_local_state_v2", "piq_local_state_v3", "piq_state", "performanceiq_state"];
-    keysToTry.forEach(k => {
-      try { localStorage.removeItem(k); } catch (e) {}
-    });
-
-    // If dataStore exposes a clear function, call it (non-breaking)
-    try { if (window.dataStore?.clear) window.dataStore.clear(); } catch (e) {}
-
+    try { window.dataStore?.clear?.(); } catch {}
     toast("Local state reset — reloading");
     setTimeout(() => location.reload(), 700);
   }
@@ -774,22 +1154,33 @@
     if (!state.profile?.sport) issues.push("Profile sport not set");
     if (!state.ui?.todaySession && !state.sessions?.length) issues.push("No session generated/logged yet");
     const grade = issues.length === 0 ? "A" : issues.length === 1 ? "B" : "C";
-
     const report =
       `QA Grade: ${grade}\n\nIssues found:\n` +
       (issues.length ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n") : "None");
-
     const el = $("gradeReport");
     if (el) el.textContent = report;
     toast("QA grade complete");
   }
 
-  // ---------- Navigation ----------
+  // ---------- Navigation + focus active selection ----------
   function setActiveNav(view) {
     document.querySelectorAll(".navbtn, .bottomnav .tab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === view);
       btn.setAttribute("aria-current", btn.dataset.view === view ? "page" : "false");
     });
+  }
+
+  function focusActiveView(view) {
+    VIEWS.forEach(v => {
+      const el = $(`view-${v}`);
+      if (el) el.classList.toggle("is-active", v === view);
+    });
+    const active = $(`view-${view}`);
+    if (!active) return;
+
+    // ensure it's focusable and focus it (active screen)
+    active.setAttribute("tabindex", "-1");
+    try { active.focus({ preventScroll: false }); } catch { active.focus(); }
   }
 
   function showView(view) {
@@ -804,28 +1195,50 @@
 
     setActiveNav(view);
     renderAll();
+    focusActiveView(view);
   }
 
-  // ---------- Account / Help drawers ----------
-  // NOTE: sync drawer fields each time drawer opens to avoid stale selects
+  // ---------- Help drawer (expanded topics) ----------
+  function defaultHelpList() {
+    return [
+      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
+      { title: "Roles & access", snippet: "Owner/Coach can manage teams + dashboards. Athletes/Parents see limited tools." },
+      { title: "PerformanceIQ Score", snippet: "Score (0–100) updates from adherence, consistency, nutrition (if enabled), and risk." },
+      { title: "Heatmap", snippet: "Team view shows load by weekday (last 4 weeks). Coach-only by default." },
+      { title: "Risk detection", snippet: "Flags load spikes (ACWR) and low recovery trends (if wellness logs exist)." },
+      { title: "Nutrition", snippet: "Targets + quick nutrition log. Compliance contributes to Score." },
+      { title: "Periodization", snippet: "Generate a basic 4-week wave plan. Later phases can add athlete-specific blocks." },
+      { title: "Data Management", snippet: "Account → Export/Import/Reset. Reset requires typing RESET." }
+    ];
+  }
+  function searchHelp(q) {
+    const list = defaultHelpList();
+    if (!q) return list;
+    const s = q.toLowerCase();
+    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
+  }
+  function helpListHTML(list) {
+    return list.map(r =>
+      `<div style="padding:8px;border-bottom:1px solid var(--line)">
+        <b>${r.title}</b>
+        <div class="small muted">${r.snippet}</div>
+      </div>`
+    ).join("");
+  }
+
   function openDrawer() {
     const b = $("drawerBackdrop");
     const d = $("accountDrawer");
     if (!b || !d) return;
 
-    // Sync drawer fields every time it's opened
-    try {
-      if ($("roleSelect")) $("roleSelect").value = state.profile.role || "coach";
-      if ($("sportSelect")) $("sportSelect").value = state.profile.sport || "basketball";
-      if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type || "practice";
+    // Sync drawer fields each open
+    if ($("roleSelect")) $("roleSelect").value = state.profile.role || "coach";
+    if ($("sportSelect")) $("sportSelect").value = state.profile.sport || "basketball";
+    if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type || "practice";
 
-      const mode = state.profile?.theme?.mode || (document.documentElement.getAttribute("data-theme") || "dark");
-      if ($("themeModeSelect")) $("themeModeSelect").value = mode;
-      if ($("themeSportSelect")) $("themeSportSelect").value = state.profile.sport || "basketball";
-    } catch (e) {
-      // non-fatal — continue to open drawer
-      console.warn("openDrawer sync failed", e);
-    }
+    const mode = state.profile?.theme?.mode || (document.documentElement.getAttribute("data-theme") || "dark");
+    if ($("themeModeSelect")) $("themeModeSelect").value = mode;
+    if ($("themeSportSelect")) $("themeSportSelect").value = state.profile.sport || "basketball";
 
     b.hidden = false;
     d.classList.add("open");
@@ -839,7 +1252,6 @@
     d.classList.remove("open");
     d.setAttribute("aria-hidden", "true");
   }
-
   function openHelp() {
     const b = $("helpBackdrop");
     const d = $("helpDrawer");
@@ -860,31 +1272,6 @@
     d.classList.remove("open");
     d.setAttribute("aria-hidden", "true");
   }
-
-  function defaultHelpList() {
-    return [
-      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
-      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
-      { title: "Injury-friendly training", snippet: "Set injuries in onboarding (or later in Account). Strength block will show substitutions and lighter cues." },
-      { title: "Data Management", snippet: "Account → Data Management: Export/Import/Reset. Reset requires typing RESET." },
-      { title: "Insights", snippet: "Profile shows weekly minutes + training load and your current streak." }
-    ];
-  }
-  function searchHelp(q) {
-    const list = defaultHelpList();
-    if (!q) return list;
-    const s = q.toLowerCase();
-    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
-  }
-  function helpListHTML(list) {
-    return list.map(r =>
-      `<div style="padding:8px;border-bottom:1px solid var(--line)">
-        <b>${r.title}</b>
-        <div class="small muted">${r.snippet}</div>
-      </div>`
-    ).join("");
-  }
-
   function openHelpTopic(topic) {
     openHelp();
     const searchEl = $("helpSearch");
@@ -894,38 +1281,17 @@
   }
 
   // ---------- Render orchestration ----------
-  // Optimized: only render the active view plus essential top-level UI (team pill/status)
   function renderHome() {
     const homeSub = $("homeSub");
     if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
     renderTodayBlock();
-  }
-  function renderProfile() {
-    const body = $("profileBody");
-    if (!body) return;
-
-    // Keep it simple: Insights live here
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Profile</div>
-        <div class="minibody">
-          <div><b>Role</b>: ${state.profile.role}</div>
-          <div><b>Sport</b>: ${state.profile.sport}</div>
-          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
-          <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
-        </div>
-      </div>
-    `;
-    renderInsights();
+    renderHomeScore();
   }
 
   function renderAll() {
     try {
-      // Always update top-level pills/status
       setTeamPill();
       applyStatusFromMeta();
-
-      // Render only the active view to avoid unnecessary DOM churn
       const v = state.ui?.view || "home";
       if (v === "home") renderHome();
       if (v === "team") renderTeam();
@@ -936,7 +1302,7 @@
     }
   }
 
-  // ---------- Onboarding (Try now actually generates Today) ----------
+  // ---------- Onboarding ----------
   function ensureOnboarding() {
     if (state.profile.onboarded) return;
 
@@ -954,9 +1320,11 @@
             <div class="field">
               <label>Role</label>
               <select id="obRole">
+                <option value="owner">Owner</option>
                 <option value="coach">Coach</option>
                 <option value="athlete">Athlete</option>
                 <option value="parent">Parent</option>
+                <option value="viewer">Viewer</option>
               </select>
             </div>
 
@@ -998,12 +1366,33 @@
     `;
     document.body.appendChild(overlay);
 
+    // lightweight styles via inline (no extra file)
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.background = "rgba(2,6,12,.55)";
+    overlay.style.zIndex = "999";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.querySelector(".piq-modal").style.width = "min(560px, 92vw)";
+    overlay.querySelector(".piq-modal").style.background = "var(--top)";
+    overlay.querySelector(".piq-modal").style.border = "1px solid var(--line)";
+    overlay.querySelector(".piq-modal").style.borderRadius = "18px";
+    overlay.querySelector(".piq-modal").style.padding = "16px";
+    overlay.querySelector(".piq-modal").style.boxShadow = "var(--shadow)";
+
+    const head = overlay.querySelector(".piq-modal-head");
+    head.style.marginBottom = "10px";
+    head.querySelector(".piq-modal-title").style.fontFamily = "var(--font-head)";
+    head.querySelector(".piq-modal-title").style.fontWeight = "800";
+    head.querySelector(".piq-modal-title").style.fontSize = "18px";
+    head.querySelector(".piq-modal-sub").classList.add("small","muted");
+
     const roleEl = overlay.querySelector("#obRole");
     const sportEl = overlay.querySelector("#obSport");
     const typeEl = overlay.querySelector("#obType");
     const injRow = overlay.querySelector("#obInj");
 
-    // Prefill from state
     roleEl.value = state.profile.role || "coach";
     sportEl.value = state.profile.sport || "basketball";
     typeEl.value = state.profile.preferred_session_type || "practice";
@@ -1013,6 +1402,15 @@
       injRow.querySelectorAll(".piq-chip").forEach(btn => {
         const k = btn.getAttribute("data-inj");
         btn.classList.toggle("on", injSet.has(k));
+        btn.style.border = "1px solid var(--pillBorder)";
+        btn.style.borderRadius = "999px";
+        btn.style.padding = "7px 10px";
+        btn.style.marginRight = "8px";
+        btn.style.marginTop = "8px";
+        btn.style.background = injSet.has(k) ? "var(--accent-2)" : "transparent";
+        btn.style.color = "var(--text)";
+        btn.style.cursor = "pointer";
+        btn.style.fontWeight = "900";
       });
     }
     injRow.addEventListener("click", (e) => {
@@ -1045,43 +1443,43 @@
       showView("home");
       toast("Today ready — press Start", 2200);
       renderTodayBlock();
+      renderHomeScore();
     });
   }
 
   // ---------- Bind UI ----------
   function bindUI() {
-    // Nav
+    // nav
     document.querySelectorAll("[data-view]").forEach(btn => {
       if (btn.classList.contains("navbtn") || btn.classList.contains("tab")) {
         btn.addEventListener("click", () => showView(btn.dataset.view));
       }
     });
 
-    // Account drawer
+    // account drawer
     $("btnAccount")?.addEventListener("click", openDrawer);
     $("btnCloseDrawer")?.addEventListener("click", closeDrawer);
     $("drawerBackdrop")?.addEventListener("click", closeDrawer);
 
-    // Help drawer
+    // help drawer
     $("btnHelp")?.addEventListener("click", openHelp);
     $("btnCloseHelp")?.addEventListener("click", closeHelp);
     $("helpBackdrop")?.addEventListener("click", closeHelp);
-
     $("helpSearch")?.addEventListener("input", (e) => {
       const q = e.target.value.trim();
       const rEl = $("helpResults");
       if (rEl) rEl.innerHTML = helpListHTML(searchHelp(q));
     });
 
-    // Context help buttons (Phase 1 UX)
+    // context help buttons
     $("tipToday")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipQuick")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
     $("tipTrain2")?.addEventListener("click", () => openHelpTopic("session types"));
-    $("tipTeam")?.addEventListener("click", () => openHelpTopic("team"));
-    $("tipProfile")?.addEventListener("click", () => openHelpTopic("insights"));
+    $("tipTeam")?.addEventListener("click", () => openHelpTopic("roles"));
+    $("tipProfile")?.addEventListener("click", () => openHelpTopic("score"));
 
-    // Keyboard shortcuts
+    // keyboard
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { closeDrawer(); closeHelp(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -1091,7 +1489,7 @@
       }
     });
 
-    // Today button (Generate → Start → Log)
+    // today button
     $("todayButton")?.addEventListener("click", () => {
       if (!state.ui.todaySession) {
         state.ui.todaySession = _generateTodaySession();
@@ -1104,11 +1502,11 @@
       stopAndLogToday();
     });
 
-    // Quick actions
+    // quick actions
     $("qaTrain")?.addEventListener("click", () => showView("train"));
     $("qaTeam")?.addEventListener("click", () => showView("team"));
 
-    // Theme toggle (topbar)
+    // theme toggle
     $("btnThemeToggle")?.addEventListener("click", () => {
       const html = document.documentElement;
       const cur = html.getAttribute("data-theme") || "dark";
@@ -1119,7 +1517,7 @@
       persistDebounced("Theme updated", 0);
     });
 
-    // Drawer saves
+    // drawer saves
     $("btnSaveProfile")?.addEventListener("click", () => {
       state.profile.role = $("roleSelect")?.value || state.profile.role;
       state.profile.sport = $("sportSelect")?.value || state.profile.sport;
@@ -1134,9 +1532,10 @@
       state.profile.theme = state.profile.theme || {};
       state.profile.theme.mode = mode;
       persist("Theme saved");
+      renderAll();
     });
 
-    // Data management
+    // data management
     $("btnExport")?.addEventListener("click", exportJSON);
     $("fileImport")?.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
@@ -1145,7 +1544,7 @@
     $("btnResetLocal")?.addEventListener("click", resetLocalState);
     $("btnRunGrade")?.addEventListener("click", runQAGrade);
 
-    // FAB sheet
+    // FAB sheet (Phase 6 quick logs)
     $("fab")?.addEventListener("click", () => {
       const back = $("sheetBackdrop");
       const sheet = $("fabSheet");
@@ -1164,18 +1563,46 @@
       if (back) back.hidden = true;
       if (sheet) { sheet.hidden = true; sheet.setAttribute("aria-hidden", "true"); }
     });
+
+    $("fabLogWorkout")?.addEventListener("click", () => {
+      // quick manual workout log
+      const mins = Number(prompt("Minutes trained?") || 0);
+      const rpe = Number(prompt("sRPE 1–10? (default 6)") || 6);
+      if (!mins) { toast("No workout entered"); return; }
+      const load = Math.round(mins * rpe);
+      state.sessions.push({ id: uid("log"), created_at: nowISO(), sport: state.profile.sport, sessionType: "manual", duration_min: mins, sRPE: rpe, load, blocks: [] });
+      persist(`Logged ${mins} min • load ${load}`);
+      $("btnCloseSheet")?.click();
+      renderAll();
+    });
+
+    $("fabLogNutrition")?.addEventListener("click", () => {
+      openNutritionQuickLog();
+      $("btnCloseSheet")?.click();
+    });
+
+    $("fabLogWellness")?.addEventListener("click", () => {
+      const d = new Date().toISOString().slice(0, 10);
+      const sleep = Number(prompt(`Sleep hours for ${d}?`) || 0);
+      const sore  = Number(prompt("Soreness 1–10?") || 0);
+      const stress= Number(prompt("Stress 1–10?") || 0);
+      if (!sleep && !sore && !stress) { toast("No wellness entered"); return; }
+      state.wellness.logs.push({ id: uid("wel"), created_at: nowISO(), date: d, sleep_hrs: sleep, soreness_1_10: sore, stress_1_10: stress, notes: "" });
+      persist("Wellness logged");
+      $("btnCloseSheet")?.click();
+      renderAll();
+    });
   }
 
   // ---------- Boot ----------
   function boot() {
     bindUI();
 
-    // Prefill drawer selects (initial)
+    // prefill drawer selects (initial)
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
 
-    // Apply saved theme mode
     const mode = state.profile?.theme?.mode;
     if (mode) document.documentElement.setAttribute("data-theme", mode);
 
@@ -1195,6 +1622,9 @@
   // Debug
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
-    getState: () => state
+    getState: () => state,
+    computePIQScore,
+    computeRiskFlags,
+    computeHeatmap4w
   };
 })();
