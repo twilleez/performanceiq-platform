@@ -18,6 +18,10 @@
 
 <body>
   <!-- ===================== Splash ===================== -->
+  <!--
+    role="status" + aria-live="polite": announces loading state to screen readers.
+    aria-hidden is set to "true" by the inline script once loading completes.
+  -->
   <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading PerformanceIQ">
     <div class="splash-card">
       <div class="brand">
@@ -28,11 +32,13 @@
         </div>
       </div>
 
+      <!-- Skeleton is decorative; hidden from AT -->
       <div class="splash-loading" aria-hidden="true">
         <div class="skeleton"></div>
         <div class="skeleton"></div>
         <div class="skeleton"></div>
       </div>
+
       <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace…</div>
     </div>
   </div>
@@ -45,27 +51,41 @@
         <span class="appmark-title">PerformanceIQ</span>
       </div>
 
-      <span class="pill" id="savePill" title="Save status" aria-live="polite" aria-label="Save status">
+      <span class="pill" id="savePill"
+            title="Save status"
+            aria-live="polite"
+            aria-label="Save status">
         <span class="dot" id="saveDot" aria-hidden="true"></span>
         <span id="saveText">Saved</span>
       </span>
 
-      <span class="pill" id="teamPill"  title="Active team"   aria-live="polite" aria-label="Active team">Team: —</span>
-      <span class="pill" id="cloudPill" title="Cloud status"  aria-live="polite" aria-label="Cloud status">Cloud: Local</span>
+      <span class="pill" id="teamPill"
+            title="Active team"
+            aria-live="polite"
+            aria-label="Active team">Team: —</span>
+
+      <span class="pill" id="cloudPill"
+            title="Cloud status"
+            aria-live="polite"
+            aria-label="Cloud status">Cloud: Local</span>
 
       <button class="iconbtn" id="btnThemeToggle" type="button"
-              aria-label="Toggle dark/light mode" title="Toggle dark/light">☾</button>
+              aria-label="Toggle dark/light mode"
+              title="Toggle dark/light">☾</button>
     </div>
 
     <div class="topbar-right">
-      <button class="btn ghost" id="btnHelp" type="button">Help</button>
-      <button class="btn" id="btnAccount" type="button" aria-haspopup="dialog" aria-controls="accountDrawer">Account</button>
+      <button class="btn ghost" id="btnHelp"    type="button">Help</button>
+      <button class="btn"       id="btnAccount" type="button"
+              aria-haspopup="dialog"
+              aria-controls="accountDrawer">Account</button>
     </div>
   </header>
 
   <!-- ===================== Layout ===================== -->
   <main class="layout" id="mainContent">
-    <!-- Desktop nav -->
+
+    <!-- Desktop sidebar nav -->
     <nav class="nav" role="navigation" aria-label="Primary navigation" id="desktopNav">
       <button class="navbtn" data-view="home"    type="button" aria-current="page">Home</button>
       <button class="navbtn" data-view="team"    type="button">Team</button>
@@ -73,10 +93,12 @@
       <button class="navbtn" data-view="profile" type="button">Profile</button>
     </nav>
 
-    <!-- Content -->
+    <!-- Main content area — aria-live lets screen readers hear dynamic updates -->
     <section class="content" aria-live="polite" aria-atomic="false">
-      <!-- Home -->
-      <section class="view" id="view-home" role="region" aria-label="Home" tabindex="-1">
+
+      <!-- ---- Home ---- -->
+      <section class="view" id="view-home"
+               role="region" aria-label="Home" tabindex="-1">
         <div class="card">
           <div class="row between" style="gap:10px;flex-wrap:wrap">
             <div>
@@ -84,11 +106,15 @@
               <div class="small muted" id="homeSub">Welcome back.</div>
             </div>
             <div class="row gap wrap">
-              <button class="btn" id="todayButton" type="button" aria-label="Generate, start, or log today's session">
+              <button class="btn" id="todayButton" type="button"
+                      aria-label="Generate, start, or log today's session">
                 Generate → Start → Log
               </button>
-              <span class="pill" id="todayTimer" aria-live="polite" aria-label="Timer status">No timer running</span>
-              <button class="iconbtn" id="tipToday" type="button" aria-label="Help for today workflow">?</button>
+              <span class="pill" id="todayTimer"
+                    aria-live="polite"
+                    aria-label="Timer status">No timer running</span>
+              <button class="iconbtn" id="tipToday" type="button"
+                      aria-label="Help for today workflow">?</button>
             </div>
           </div>
 
@@ -96,7 +122,8 @@
             <div class="mini">
               <div class="row between">
                 <div class="minihead" role="heading" aria-level="2">Today</div>
-                <button class="iconbtn" id="tipQuick" type="button" aria-label="Help for today">?</button>
+                <button class="iconbtn" id="tipQuick" type="button"
+                        aria-label="Help for today">?</button>
               </div>
               <div class="minibody" id="todayBlock" aria-live="polite">—</div>
             </div>
@@ -104,7 +131,8 @@
             <div class="mini">
               <div class="row between">
                 <div class="minihead" role="heading" aria-level="2">Quick actions</div>
-                <button class="iconbtn" id="tipTrain" type="button" aria-label="Help for quick actions">?</button>
+                <button class="iconbtn" id="tipTrain" type="button"
+                        aria-label="Help for quick actions">?</button>
               </div>
 
               <div class="row gap wrap">
@@ -113,16 +141,18 @@
               </div>
 
               <div class="hr"></div>
-              <div class="minihead">PerformanceIQ Score</div>
-              <div class="minibody" id="piqScoreHome">—</div>
+
+              <div class="minihead" role="heading" aria-level="3">PerformanceIQ Score</div>
+              <div class="minibody" id="piqScoreHome" aria-live="polite">—</div>
               <div class="small muted" id="piqScoreNote" style="margin-top:6px">Score updates as you log.</div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Team -->
-      <section class="view" id="view-team" role="region" aria-label="Team" tabindex="-1" hidden>
+      <!-- ---- Team ---- -->
+      <section class="view" id="view-team"
+               role="region" aria-label="Team" tabindex="-1" hidden>
         <div class="card">
           <div class="row between">
             <div>
@@ -135,8 +165,9 @@
         </div>
       </section>
 
-      <!-- Train -->
-      <section class="view" id="view-train" role="region" aria-label="Train" tabindex="-1" hidden>
+      <!-- ---- Train ---- -->
+      <section class="view" id="view-train"
+               role="region" aria-label="Train" tabindex="-1" hidden>
         <div class="card">
           <div class="row between">
             <div>
@@ -149,8 +180,9 @@
         </div>
       </section>
 
-      <!-- Profile -->
-      <section class="view" id="view-profile" role="region" aria-label="Profile" tabindex="-1" hidden>
+      <!-- ---- Profile ---- -->
+      <section class="view" id="view-profile"
+               role="region" aria-label="Profile" tabindex="-1" hidden>
         <div class="card">
           <div class="row between">
             <div>
@@ -175,15 +207,24 @@
   </nav>
 
   <!-- ===================== FAB + sheet ===================== -->
-  <button class="fab" id="fab" type="button" aria-label="Quick log — open action sheet"
-          aria-haspopup="dialog" aria-controls="fabSheet">+</button>
+  <button class="fab" id="fab" type="button"
+          aria-label="Quick log — open action sheet"
+          aria-haspopup="dialog"
+          aria-controls="fabSheet">+</button>
 
   <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
-  <div class="sheet" id="fabSheet" role="dialog" aria-modal="true"
-       aria-labelledby="fabSheetTitle" aria-hidden="true" hidden>
+  <!--
+    aria-hidden="true" at rest; JS sets it to "false" when open.
+    Both `hidden` and `aria-hidden` must be toggled together.
+  -->
+  <div class="sheet" id="fabSheet"
+       role="dialog" aria-modal="true"
+       aria-labelledby="fabSheetTitle"
+       aria-hidden="true" hidden>
     <div class="sheet-head">
       <div class="sheet-title" id="fabSheetTitle">Quick log</div>
-      <button class="btn ghost" id="btnCloseSheet" type="button" aria-label="Close quick log">Close</button>
+      <button class="btn ghost" id="btnCloseSheet" type="button"
+              aria-label="Close quick log sheet">Close</button>
     </div>
     <div class="sheet-body">
       <button class="btn"       id="fabLogWorkout"   type="button">Log workout</button>
@@ -204,7 +245,8 @@
         <div class="drawer-title" id="drawerTitle">Account</div>
         <div class="small muted">Preferences • appearance • data management</div>
       </div>
-      <button class="btn ghost" id="btnCloseDrawer" type="button" aria-label="Close account drawer">Close</button>
+      <button class="btn ghost" id="btnCloseDrawer" type="button"
+              aria-label="Close account drawer">Close</button>
     </div>
 
     <div class="drawer-body">
@@ -212,6 +254,7 @@
       <!-- Role & Sport -->
       <div class="card subtle" role="group" aria-labelledby="sectionRoleSport">
         <div class="card-title" id="sectionRoleSport" role="heading" aria-level="2">Role &amp; Sport</div>
+
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label for="roleSelect">Role</label>
@@ -255,8 +298,10 @@
       </div>
 
       <!-- Appearance -->
-      <div class="card subtle" style="margin-top:12px" role="group" aria-labelledby="sectionAppearance">
+      <div class="card subtle" style="margin-top:12px"
+           role="group" aria-labelledby="sectionAppearance">
         <div class="card-title" id="sectionAppearance" role="heading" aria-level="2">Appearance</div>
+
         <div class="grid2" style="margin-top:10px">
           <div class="field">
             <label for="themeModeSelect">Mode</label>
@@ -277,18 +322,24 @@
             </select>
           </div>
         </div>
+
         <div class="row gap wrap" style="margin-top:10px">
           <button class="btn" id="btnSaveTheme" type="button">Save theme</button>
         </div>
       </div>
 
       <!-- Data Management -->
-      <div class="card subtle" style="margin-top:12px" role="group" aria-labelledby="sectionData">
+      <div class="card subtle" style="margin-top:12px"
+           role="group" aria-labelledby="sectionData">
         <div class="card-title" id="sectionData" role="heading" aria-level="2">Data Management</div>
         <div class="small muted">Export/Import/Reset are here. Risky actions require confirmation.</div>
 
         <div class="row gap wrap" style="margin-top:10px">
           <button class="btn ghost" id="btnExport" type="button">Export JSON</button>
+          <!--
+            Label wraps hidden file input — this pattern is keyboard & screen-reader accessible.
+            The visible label text serves as the accessible name for the input via the label association.
+          -->
           <label class="btn ghost" style="cursor:pointer">
             Import JSON
             <input id="fileImport" type="file" accept="application/json"
@@ -301,13 +352,18 @@
           <button class="btn" id="btnRunGrade" type="button">Run QA Grade</button>
         </div>
 
-        <div class="small muted" id="dataMsg" style="margin-top:8px" aria-live="polite">—</div>
+        <div class="small muted" id="dataMsg"
+             style="margin-top:8px"
+             aria-live="polite">—</div>
         <pre id="gradeReport" class="small muted"
              style="white-space:pre-wrap;margin-top:8px"
-             aria-live="polite" role="status">—</pre>
+             aria-live="polite"
+             role="status">—</pre>
       </div>
 
-      <div class="card subtle" style="margin-top:12px" role="group" aria-labelledby="sectionCloud">
+      <!-- Cloud -->
+      <div class="card subtle" style="margin-top:12px"
+           role="group" aria-labelledby="sectionCloud">
         <div class="card-title" id="sectionCloud" role="heading" aria-level="2">Cloud (optional)</div>
         <div class="small muted">Offline-first build. Cloud sync is a later phase.</div>
       </div>
@@ -327,44 +383,84 @@
         <div class="drawer-title" id="helpDrawerTitle">Help</div>
         <div class="small muted">Searchable guidance (Ctrl/⌘+K)</div>
       </div>
-      <button class="btn ghost" id="btnCloseHelp" type="button" aria-label="Close help drawer">Close</button>
+      <button class="btn ghost" id="btnCloseHelp" type="button"
+              aria-label="Close help drawer">Close</button>
     </div>
 
     <div class="drawer-body">
       <div class="field">
         <label for="helpSearch">Search</label>
+        <!--
+          type="search" gives a native clear (×) button on mobile browsers
+          and sends the correct keyboard type on iOS/Android.
+        -->
         <input id="helpSearch" type="search"
                placeholder="Try: today, session types, risk, nutrition, heatmap…"
-               autocomplete="off" spellcheck="false" />
+               autocomplete="off"
+               spellcheck="false" />
       </div>
-      <div id="helpResults" style="margin-top:10px" aria-live="polite" role="region" aria-label="Help results"></div>
+      <div id="helpResults"
+           style="margin-top:10px"
+           aria-live="polite"
+           role="region"
+           aria-label="Help results"></div>
     </div>
   </aside>
 
   <!-- ===================== Toasts ===================== -->
-  <div class="toast" id="toast" hidden role="status" aria-live="polite" aria-atomic="true"></div>
-  <div id="undoToast" hidden role="status" aria-live="assertive" aria-atomic="true"></div>
+  <div class="toast" id="toast"
+       hidden
+       role="status"
+       aria-live="polite"
+       aria-atomic="true"></div>
+
+  <!--
+    undoToast uses aria-live="assertive" so screen readers interrupt
+    current speech — appropriate for time-sensitive undo actions.
+  -->
+  <div id="undoToast"
+       hidden
+       role="status"
+       aria-live="assertive"
+       aria-atomic="true"></div>
 
   <!-- ===================== Scripts ===================== -->
+  <!--
+    Dependency order must be preserved: core.js depends on
+    dataStore, nutritionEngine, and periodizationEngine being defined first.
+    Scripts are at end of <body> so the DOM is fully parsed; no defer needed.
+  -->
   <script src="./dataStore.js"></script>
   <script src="./nutritionEngine.js"></script>
   <script src="./periodizationEngine.js"></script>
   <script src="./core.js"></script>
 
-  <!-- Splash hide — non-blocking -->
+  <!--
+    Splash hide — runs inline so it fires as soon as this tag is reached,
+    independent of whether the above scripts succeed or error.
+    Uses a backstop timer so the splash never gets permanently stuck.
+  -->
   <script>
     (function () {
       var splash     = document.getElementById("splash");
       var splashText = document.getElementById("splashText");
+
       function hide() {
         if (!splash) return;
         splash.setAttribute("aria-hidden", "true");
-        splash.style.display = "none";
+        /* Use .hidden class for fade-out (CSS: .splash.hidden { opacity:0 })
+           rather than display:none so the CSS transition can play */
+        splash.classList.add("hidden");
+        /* Remove from layout after transition completes */
+        setTimeout(function () { splash.style.display = "none"; }, 300);
       }
+
       setTimeout(function () {
         if (splashText) splashText.textContent = "Ready.";
         hide();
       }, 650);
+
+      /* Backstop: always hide within 2s regardless of script state */
       setTimeout(hide, 2000);
     })();
   </script>
