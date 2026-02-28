@@ -1,41 +1,41 @@
-// periodizationEngine.js — v1.1.0 (phase + volume/intensity helpers)
+// periodizationEngine.js — v1.0.0 (Periodization Engine, offline-safe)
 (function () {
   "use strict";
   if (window.periodizationEngine) return;
 
-  function adjustVolume(baseVolume, phase) {
-    const v = Number(baseVolume) || 0;
-    switch (phase) {
-      case "ACCUMULATION": return v * 1.1;
-      case "INTENSIFICATION": return v * 0.9;
-      case "DELOAD": return v * 0.6;
-      case "PEAK": return v * 0.75;
-      default: return v;
-    }
-  }
+  function nowISO() { return new Date().toISOString(); }
 
-  function getCurrentPhase(week) {
-    const w = Math.max(1, Number(week) || 1);
-    if (w % 8 === 0) return "PEAK";
-    if (w % 4 === 0) return "DELOAD";
-    // simple alternation to feel realistic
-    if (w % 3 === 0) return "INTENSIFICATION";
-    return "ACCUMULATION";
-  }
+  // Very simple 4-week wave generator (base load minutes target)
+  function generate4WeekPlan(opts) {
+    const sport = opts?.sport || "basketball";
+    const baseMinutes = Number(opts?.baseMinutes || 180); // total minutes/week target
+    const start = opts?.startISO || new Date().toISOString().slice(0, 10);
 
-  function phaseHint(phase) {
-    const map = {
-      ACCUMULATION: "Build volume + capacity.",
-      INTENSIFICATION: "Raise intensity, reduce volume slightly.",
-      DELOAD: "Reduce load, recover, sharpen technique.",
-      PEAK: "Keep quality high, lower fatigue."
+    // Wave: build, build, deload, peak
+    const factors = [1.00, 1.10, 0.75, 1.15];
+
+    const weeks = factors.map((f, i) => {
+      const target = Math.round(baseMinutes * f);
+      return {
+        week: i + 1,
+        sport,
+        target_minutes: target,
+        notes:
+          i === 2 ? "Deload week: reduce volume, keep quality."
+          : i === 3 ? "Peak week: crisp intensity, manage fatigue."
+          : "Build week: progressive volume + quality."
+      };
+    });
+
+    return {
+      id: "plan_" + Math.random().toString(36).slice(2, 9),
+      created_at: nowISO(),
+      start_date: start,
+      sport,
+      base_minutes: baseMinutes,
+      weeks
     };
-    return map[phase] || "";
   }
 
-  window.periodizationEngine = {
-    adjustVolume,
-    getCurrentPhase,
-    phaseHint
-  };
+  window.periodizationEngine = { generate4WeekPlan };
 })();
