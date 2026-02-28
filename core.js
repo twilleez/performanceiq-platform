@@ -1,14 +1,14 @@
-// core.js — v3.6.0 (Ripple + Spring physics + Animated score ring + softer dark theme support)
-// Keeps v3.5.0 functionality, adds:
-// - Ripple on .btn/.iconbtn/.navbtn/.tab/.pill
-// - Spring physics micro-bounce on press + view transitions
-// - Animated PIQ Score ring (SVG), ring anim + count-up + tier
-// - Sport palette still auto-applies to --accent / --accent-2
+// core.js — v3.7.0
+// Adds:
+// - Tab indicator glide (desktop nav + mobile bottom nav)
+// - Parallax blur layers (scroll + pointer; reduced-motion safe)
+// - Skeleton shimmer for cards during view transitions
+// Keeps all existing v3.6 functionality (today/train/profile/team/score/ripple/spring/theme).
 
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V360__) return;
-  window.__PIQ_CORE_V360__ = true;
+  if (window.__PIQ_CORE_V370__) return;
+  window.__PIQ_CORE_V370__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -47,7 +47,7 @@
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.6.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.7.0", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -79,6 +79,12 @@
 
   try { window.dataStore?.save?.(state); } catch {}
 
+  // ---------- Motion preference ----------
+  const prefersReducedMotion = (() => {
+    try { return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+    catch { return false; }
+  })();
+
   function syncThemeFromState() {
     const mode = state.profile?.theme?.mode || "dark";
     document.documentElement.setAttribute("data-theme", mode);
@@ -86,12 +92,6 @@
     const sportAccent = state.profile?.theme?.sport || state.profile?.sport || "basketball";
     applySportTheme(sportAccent);
   }
-
-  // ---------- Motion preference ----------
-  const prefersReducedMotion = (() => {
-    try { return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
-    catch { return false; }
-  })();
 
   // ---------- Toast ----------
   let _toastTimer = null;
@@ -108,7 +108,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.6.0";
+      state.meta.version = "3.7.0";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -170,7 +170,7 @@
   }
 
   // ===========================
-  // Spring + ripple interactions
+  // Micro-interactions (ripple + spring)
   // ===========================
   function canHaptic() {
     return !prefersReducedMotion && typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
@@ -184,9 +184,7 @@
   function springPress(el) {
     if (!el) return;
     el.classList.remove("spring-press");
-    // force reflow
-    // eslint-disable-next-line no-unused-expressions
-    el.offsetHeight;
+    el.offsetHeight; // force reflow
     el.classList.add("spring-press");
     window.setTimeout(() => el.classList.remove("spring-press"), 260);
   }
@@ -210,7 +208,6 @@
 
     ripple.addEventListener("animationend", () => {
       ripple.remove();
-      // Remove host class if no more ripples
       if (!target.querySelector(".ripple")) target.classList.remove("ripple-host");
     });
   }
@@ -222,14 +219,158 @@
 
       const isNav = t.classList.contains("navbtn") || t.classList.contains("tab");
       hapticTap(isNav ? "nav" : "light");
-
       springPress(t);
       makeRipple(t, e.clientX, e.clientY);
     }, { passive: true });
   }
 
   // ===========================
-  // Score: compute + ring anim
+  // Tab indicator glide (NEW)
+  // ===========================
+  let _navIndicator = null;
+  let _bottomIndicator = null;
+
+  function ensureIndicator(hostEl, className) {
+    if (!hostEl) return null;
+    let ind = hostEl.querySelector(`.${className}`);
+    if (ind) return ind;
+
+    ind = document.createElement("div");
+    ind.className = className;
+    hostEl.style.position = hostEl.style.position || "relative";
+    hostEl.appendChild(ind);
+    return ind;
+  }
+
+  function updateIndicatorFor(hostEl, indicatorEl, activeButton, opts) {
+    if (!hostEl || !indicatorEl || !activeButton) return;
+
+    const hostRect = hostEl.getBoundingClientRect();
+    const btnRect = activeButton.getBoundingClientRect();
+
+    const left = btnRect.left - hostRect.left;
+    const width = btnRect.width;
+
+    indicatorEl.style.opacity = "1";
+    indicatorEl.style.transform = `translateX(${left}px)`;
+    indicatorEl.style.width = `${width}px`;
+
+    if (opts?.height) indicatorEl.style.height = opts.height;
+    if (opts?.bottom != null) indicatorEl.style.bottom = opts.bottom;
+  }
+
+  function setupTabIndicators() {
+    const nav = $("desktopNav");
+    const bottom = $("bottomNav");
+
+    _navIndicator = ensureIndicator(nav, "nav-indicator");
+    _bottomIndicator = ensureIndicator(bottom, "bottom-indicator");
+
+    // First position
+    requestAnimationFrame(() => {
+      const activeNav = nav?.querySelector(".navbtn.active") || nav?.querySelector('[data-view="home"]');
+      const activeBottom = bottom?.querySelector(".tab.active") || bottom?.querySelector('[data-view="home"]');
+      if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px", bottom: "auto" });
+      if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
+    });
+
+    // Keep it correct on resize/orientation changes
+    window.addEventListener("resize", () => {
+      const view = state.ui?.view || "home";
+      requestAnimationFrame(() => {
+        const activeNav = nav?.querySelector(`.navbtn[data-view="${view}"]`);
+        const activeBottom = bottom?.querySelector(`.tab[data-view="${view}"]`);
+        if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px", bottom: "auto" });
+        if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
+      });
+    }, { passive: true });
+  }
+
+  // ===========================
+  // Parallax blur (NEW)
+  // ===========================
+  let _parallaxEl = null;
+  let _parallaxRAF = null;
+  let _px = 0, _py = 0;
+
+  function setupParallaxBlur() {
+    if (prefersReducedMotion) return;
+    if (_parallaxEl) return;
+
+    const wrap = document.createElement("div");
+    wrap.className = "piq-parallax";
+    wrap.innerHTML = `
+      <div class="pl a"></div>
+      <div class="pl b"></div>
+      <div class="pl c"></div>
+    `;
+    document.body.appendChild(wrap);
+    _parallaxEl = wrap;
+
+    function tick() {
+      _parallaxRAF = null;
+      const y = window.scrollY || 0;
+
+      // subtle depth movement
+      const dx = _px * 0.02;
+      const dy = _py * 0.02;
+
+      wrap.style.setProperty("--p1x", `${dx}px`);
+      wrap.style.setProperty("--p1y", `${(y * 0.05) + dy}px`);
+      wrap.style.setProperty("--p2x", `${dx * -1.4}px`);
+      wrap.style.setProperty("--p2y", `${(y * 0.035) + dy * 1.2}px`);
+      wrap.style.setProperty("--p3x", `${dx * 0.9}px`);
+      wrap.style.setProperty("--p3y", `${(y * 0.02) + dy * -1.1}px`);
+    }
+
+    function requestTick() {
+      if (_parallaxRAF) return;
+      _parallaxRAF = requestAnimationFrame(tick);
+    }
+
+    window.addEventListener("scroll", requestTick, { passive: true });
+    window.addEventListener("pointermove", (e) => {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      _px = (e.clientX - cx);
+      _py = (e.clientY - cy);
+      requestTick();
+    }, { passive: true });
+
+    requestTick();
+  }
+
+  // ===========================
+  // Skeleton shimmer (NEW)
+  // ===========================
+  function skeletonHTML(lines = 3) {
+    let s = `<div class="sk-card"><div class="sk-head"></div>`;
+    for (let i = 0; i < lines; i++) s += `<div class="sk-line"></div>`;
+    s += `</div>`;
+    return s;
+  }
+
+  function showViewSkeletons(view) {
+    if (prefersReducedMotion) return;
+
+    const map = {
+      home:   [{ id: "todayBlock", lines: 6 }, { id: "piqScoreHome", lines: 3 }],
+      team:   [{ id: "teamBody", lines: 7 }],
+      train:  [{ id: "trainBody", lines: 7 }],
+      profile:[{ id: "profileBody", lines: 9 }]
+    };
+
+    const targets = map[view] || [];
+    targets.forEach(t => {
+      const el = $(t.id);
+      if (el) {
+        el.innerHTML = `<div class="sk-wrap">${skeletonHTML(t.lines)}</div>`;
+      }
+    });
+  }
+
+  // ===========================
+  // Score (same as before)
   // ===========================
   function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
@@ -318,7 +459,6 @@
 
     const start = performance.now();
     const diff = to - from;
-
     function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
     function step(now) {
@@ -347,8 +487,6 @@
     }
 
     prog.classList.remove("ring-anim");
-    // force
-    // eslint-disable-next-line no-unused-expressions
     prog.offsetHeight;
     prog.classList.add("ring-anim");
     prog.style.strokeDashoffset = String(offset);
@@ -362,13 +500,11 @@
     if (!host) return;
 
     const res = computePIQScore();
-
     const prev = (typeof _lastScoreRendered === "number")
       ? _lastScoreRendered
       : (typeof state.score?.value === "number" ? state.score.value : 0);
 
     _lastScoreRendered = res.value;
-
     state.score.value = res.value;
     state.score.updated_at = nowISO();
     persistDebounced(null, 250);
@@ -377,29 +513,14 @@
       <div class="piq-score-ring" aria-label="PerformanceIQ Score">
         <div class="ring-wrap">
           <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="Score ring">
-            <defs>
-              <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="3" result="blur" />
-                <feColorMatrix type="matrix"
-                  values="1 0 0 0 0
-                          0 1 0 0 0
-                          0 0 1 0 0
-                          0 0 0 .55 0" />
-                <feMerge>
-                  <feMergeNode in="blur"/>
-                  <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-              </filter>
-            </defs>
             <circle class="ring-bg" cx="60" cy="60" r="46"></circle>
-            <circle class="ring-prog" cx="60" cy="60" r="46" filter="url(#softGlow)"></circle>
+            <circle class="ring-prog" cx="60" cy="60" r="46"></circle>
           </svg>
           <div class="ring-center">
             <div class="piq-score-num" id="piqScoreNum">0</div>
             <div class="piq-score-sub">/ 100</div>
           </div>
         </div>
-
         <div class="piq-score-side">
           <div class="piq-score-chip">${scoreTier(res.value)}</div>
           <div class="piq-score-hint muted small">Updates from logs (14d)</div>
@@ -410,17 +531,13 @@
     const numEl = $("piqScoreNum");
     animateNumber(numEl, prev, res.value, 760);
 
-    // ring progress
     const svg = host.querySelector("svg.ring");
     setRingProgress(svg, res.value, true);
 
-    // pulse on change
     if (prev !== res.value && !prefersReducedMotion) {
       const ringWrap = host.querySelector(".ring-wrap");
       if (ringWrap) {
         ringWrap.classList.remove("score-bump");
-        // force
-        // eslint-disable-next-line no-unused-expressions
         ringWrap.offsetHeight;
         ringWrap.classList.add("score-bump");
         window.setTimeout(() => ringWrap.classList.remove("score-bump"), 420);
@@ -431,7 +548,7 @@
     if (noteEl) noteEl.textContent = res.note;
   }
 
-  // ---------- Workout generation libs ----------
+  // ---------- Workout libs (same as before) ----------
   const EXERCISE_LIB = {
     strength: {
       goblet_squat:        { title: "Goblet Squat",         cue: "3x8–10",     subs: { knee: "box_squat" } },
@@ -1122,7 +1239,6 @@
         window.dataStore.importJSON(e.target.result);
         state = window.dataStore.load() || state;
 
-        // Re-normalize
         state.profile = state.profile || {};
         state.profile.sport = clampSport(state.profile.sport || "basketball");
         state.profile.theme = state.profile.theme || { mode: "dark", sport: state.profile.sport };
@@ -1171,10 +1287,23 @@
 
   // ---------- Navigation + focus/scroll + animated transitions ----------
   function setActiveNav(view) {
+    const desktopNav = $("desktopNav");
+    const bottomNav = $("bottomNav");
+
     document.querySelectorAll(".navbtn, .bottomnav .tab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === view);
       btn.setAttribute("aria-current", btn.dataset.view === view ? "page" : "false");
     });
+
+    // glide indicators
+    if (_navIndicator && desktopNav) {
+      const btn = desktopNav.querySelector(`.navbtn[data-view="${view}"]`);
+      if (btn) updateIndicatorFor(desktopNav, _navIndicator, btn, { height: "40px" });
+    }
+    if (_bottomIndicator && bottomNav) {
+      const btn = bottomNav.querySelector(`.tab[data-view="${view}"]`);
+      if (btn) updateIndicatorFor(bottomNav, _bottomIndicator, btn, { height: "3px", bottom: "6px" });
+    }
   }
 
   function focusAndScrollTop(view) {
@@ -1212,17 +1341,14 @@
     el.hidden = false;
     if (!prefersReducedMotion) {
       el.classList.add("view-enter");
-      // force reflow
-      // eslint-disable-next-line no-unused-expressions
       el.offsetHeight;
       el.classList.add("view-enter-active");
-
-      // spring settle
       window.setTimeout(() => el.classList.add("view-spring"), 140);
-      window.setTimeout(() => el.classList.remove("view-enter", "view-enter-active", "view-spring"), 360);
+      window.setTimeout(() => el.classList.remove("view-enter", "view-enter-active", "view-spring"), 380);
     }
   }
 
+  // NEW: skeleton pass before render
   function showView(view) {
     if (!VIEWS.includes(view)) view = "home";
     state.ui.view = view;
@@ -1232,11 +1358,24 @@
     setActiveViewClass(view);
     transitionToView(view);
 
-    renderAll();
-    requestAnimationFrame(() => focusAndScrollTop(view));
+    // show skeleton shimmer quickly, then render real content
+    showViewSkeletons(view);
+
+    if (prefersReducedMotion) {
+      renderAll();
+      requestAnimationFrame(() => focusAndScrollTop(view));
+      return;
+    }
+
+    // slight delay for premium feel (fast enough not to annoy)
+    window.setTimeout(() => {
+      renderAll();
+      renderPIQScore();
+      requestAnimationFrame(() => focusAndScrollTop(view));
+    }, 110);
   }
 
-  // ---------- Onboarding ----------
+  // ---------- Onboarding (same as before) ----------
   function ensureOnboarding() {
     if (state.profile.onboarded) return;
 
@@ -1328,7 +1467,6 @@
       persist("Onboarding skipped");
       overlay.remove();
       showView("home");
-      renderPIQScore();
     });
 
     overlay.querySelector("#obTry").addEventListener("click", () => {
@@ -1348,7 +1486,6 @@
       showView("home");
       toast("Today ready — press Start", 2200);
       renderTodayBlock();
-      renderPIQScore();
     });
   }
 
@@ -1422,7 +1559,7 @@
     }
   }
 
-  // ---------- Drawers ----------
+  // ---------- Drawers + Help ----------
   function openDrawer() {
     const b = $("drawerBackdrop");
     const d = $("accountDrawer");
@@ -1493,19 +1630,16 @@
 
   // ---------- Bind UI ----------
   function bindUI() {
-    // Nav
     document.querySelectorAll("[data-view]").forEach(btn => {
       if (btn.classList.contains("navbtn") || btn.classList.contains("tab")) {
         btn.addEventListener("click", () => showView(btn.dataset.view));
       }
     });
 
-    // Account drawer
     $("btnAccount")?.addEventListener("click", openDrawer);
     $("btnCloseDrawer")?.addEventListener("click", closeDrawer);
     $("drawerBackdrop")?.addEventListener("click", closeDrawer);
 
-    // Help drawer
     $("btnHelp")?.addEventListener("click", openHelp);
     $("btnCloseHelp")?.addEventListener("click", closeHelp);
     $("helpBackdrop")?.addEventListener("click", closeHelp);
@@ -1516,7 +1650,6 @@
       if (rEl) rEl.innerHTML = helpListHTML(searchHelp(q));
     });
 
-    // Context help buttons
     $("tipToday")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipQuick")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
@@ -1524,7 +1657,6 @@
     $("tipTeam")?.addEventListener("click", () => openHelpTopic("team"));
     $("tipProfile")?.addEventListener("click", () => openHelpTopic("score"));
 
-    // Keyboard shortcuts
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { closeDrawer(); closeHelp(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -1534,7 +1666,6 @@
       }
     });
 
-    // Today button
     $("todayButton")?.addEventListener("click", () => {
       if (!state.ui.todaySession) {
         state.ui.todaySession = _generateTodaySession();
@@ -1547,11 +1678,9 @@
       stopAndLogToday();
     });
 
-    // Quick actions
     $("qaTrain")?.addEventListener("click", () => showView("train"));
     $("qaTeam")?.addEventListener("click", () => showView("team"));
 
-    // Theme toggle
     $("btnThemeToggle")?.addEventListener("click", () => {
       const html = document.documentElement;
       const cur = html.getAttribute("data-theme") || "dark";
@@ -1563,7 +1692,6 @@
       renderPIQScore();
     });
 
-    // Drawer saves
     $("btnSaveProfile")?.addEventListener("click", () => {
       const newSport = clampSport($("sportSelect")?.value || state.profile.sport);
 
@@ -1571,7 +1699,7 @@
       state.profile.sport = newSport;
       state.profile.preferred_session_type = $("preferredSessionSelect")?.value || state.profile.preferred_session_type;
 
-      state.profile.theme.sport = newSport; // keep smart-follow
+      state.profile.theme.sport = newSport;
       syncThemeFromState();
 
       persist("Profile preferences saved");
@@ -1591,7 +1719,6 @@
       renderAll();
     });
 
-    // Data management (Account drawer)
     $("btnExport")?.addEventListener("click", exportJSON);
     $("fileImport")?.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
@@ -1600,7 +1727,6 @@
     $("btnResetLocal")?.addEventListener("click", resetLocalState);
     $("btnRunGrade")?.addEventListener("click", () => runQAGrade("gradeReport"));
 
-    // FAB sheet open/close
     $("fab")?.addEventListener("click", () => {
       const back = $("sheetBackdrop");
       const sheet = $("fabSheet");
@@ -1627,19 +1753,19 @@
     bindUI();
     syncThemeFromState();
 
-    // Prefill drawer selects
+    // NEW polish systems
+    setupTabIndicators();
+    setupParallaxBlur();
+
+    // Prefill selects
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
-
     if ($("themeModeSelect")) $("themeModeSelect").value = state.profile?.theme?.mode || "dark";
     if ($("themeSportSelect")) $("themeSportSelect").value = state.profile?.theme?.sport || state.profile.sport;
 
     ensureOnboarding();
-
     showView(state.ui.view || "home");
-    renderAll();
-    renderPIQScore();
     toast("PerformanceIQ ready", 1400);
   }
 
