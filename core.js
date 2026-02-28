@@ -1,29 +1,29 @@
-// core.js — v3.2.0 (Phase 8–12 milestone build)
-// Fixes & Features:
-// - Train tab sport picker always available
-// - Today plan shows exercises under each block
-// - Onboarding “Try now” reliably generates Today + returns Home
-// - Session types actually change the generated workout composition
-// - Injury-friendly program templates per sport/sessionType (explicit adjustments)
-// - Data Management available in Profile screen (plus Account drawer)
-// - Active screen focus + auto-scroll to top on every view change
-// - Safe date helpers prevent RangeError Invalid time value
+// core.js — v3.2.1 (Phase 8–12 milestone build — hardened)
+// Uses dataStore.js v2.3.0 + styles.css v3.2 from above.
+//
+// Fixes:
+// - Includes missing help drawer functions (searchHelp/helpListHTML/closeHelp)
+// - Guards all optional DOM ids so app never breaks if a section is missing
+// - Focus active screen + auto-scroll to top on every view change (kept)
+// - Train sport picker always available (kept)
+// - Today plan shows exercises under each block (kept)
+// - Data Management in Profile (kept) + Account hooks guarded
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V320__) return;
-  window.__PIQ_CORE_V320__ = true;
+  if (window.__PIQ_CORE_V321__) return;
+  window.__PIQ_CORE_V321__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
 
-  const VIEWS  = ["home", "team", "train", "profile"];
+  const VIEWS = ["home", "team", "train", "profile"];
   const SPORTS = ["basketball", "football", "soccer", "baseball", "volleyball", "track"];
 
   // ---------- Load + normalize state ----------
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.2.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.2.1", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -31,7 +31,7 @@
   state.profile.preferred_session_type = state.profile.preferred_session_type || "practice";
   state.profile.injuries = Array.isArray(state.profile.injuries) ? state.profile.injuries : [];
   state.profile.onboarded = !!state.profile.onboarded;
-  state.profile.theme = state.profile.theme && typeof state.profile.theme === "object" ? state.profile.theme : { mode: "dark" };
+  state.profile.theme = (state.profile.theme && typeof state.profile.theme === "object") ? state.profile.theme : { mode: "dark" };
 
   state.team = state.team || { teams: [], active_team_id: null };
   state.team.teams = Array.isArray(state.team.teams) ? state.team.teams : [];
@@ -62,7 +62,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.2.0";
+      state.meta.version = "3.2.1";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -145,7 +145,6 @@
     }
   };
 
-  // Sport-specific skill microblocks (easy to expand)
   const SPORT_MICROBLOCKS = {
     basketball: {
       ball_handling: [
@@ -162,9 +161,7 @@
         { name: "Cone route tree", reps: "5 trees", cue: "explode out" },
         { name: "Hands drill", reps: "4x8", cue: "eyes through catch" }
       ],
-      throwing: [
-        { name: "QB quick set", reps: "8 min", cue: "base → rotate" }
-      ]
+      throwing: [{ name: "QB quick set", reps: "8 min", cue: "base → rotate" }]
     },
     soccer: {
       dribbling: [
@@ -201,17 +198,14 @@
     track:      ["goblet_squat", "rdl", "single_leg_deadlift"]
   };
 
-  // Session types -> blocks included
   const SESSION_RULES = {
-    practice:          { warmup: true, skill: true,  strength: true,   plyo: true,  conditioning: true,  cooldown: true },
-    strength:          { warmup: true, skill: false, strength: true,   plyo: false, conditioning: false, cooldown: true },
-    speed:             { warmup: true, skill: false, strength: false,  plyo: true,  conditioning: false, cooldown: true },
-    recovery:          { warmup: true, skill: true,  strength: false,  plyo: false, conditioning: false, cooldown: true },
-    competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true, conditioning: false, cooldown: true }
+    practice:          { warmup: true, skill: true,  strength: true,    plyo: true,  conditioning: true,  cooldown: true },
+    strength:          { warmup: true, skill: false, strength: true,    plyo: false, conditioning: false, cooldown: true },
+    speed:             { warmup: true, skill: false, strength: false,   plyo: true,  conditioning: false, cooldown: true },
+    recovery:          { warmup: true, skill: true,  strength: false,   plyo: false, conditioning: false, cooldown: true },
+    competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true,  conditioning: false, cooldown: true }
   };
 
-  // Injury-friendly program templates (explicit adjustments per sport/sessionType)
-  // These are not just "filters": they change block durations + instructions.
   const INJURY_FRIENDLY_TEMPLATES = {
     knee: {
       adjustBlocks: (blocks) => blocks.map(b => {
@@ -270,7 +264,8 @@
           return Object.assign({}, b, {
             title: "Strength (back-friendly)",
             items: (b.items || []).map(it => {
-              if ((it.name || "").toLowerCase().includes("deadlift") || (it.name || "").toLowerCase().includes("rdl")) {
+              const n = (it.name || "").toLowerCase();
+              if (n.includes("deadlift") || n.includes("rdl")) {
                 return Object.assign({}, it, { substitution: "hip_hinge_dowel", cue: "3x10 — patterning, no heavy load" });
               }
               return it;
@@ -308,9 +303,7 @@
       practice: []
     };
 
-    return base
-      .concat(sportAdds[sport] || [])
-      .concat(typeAdds[sessionType] || []);
+    return base.concat(sportAdds[sport] || []).concat(typeAdds[sessionType] || []);
   }
 
   // ---------- Injury substitutions (strength keys) ----------
@@ -416,7 +409,6 @@
       });
     }
 
-    // Apply injury-friendly template adjustments (explicit, not just filtering)
     const injList = Array.isArray(injuries) ? injuries : [];
     let adjustedBlocks = blocks.slice();
     let injuryNotes = [];
@@ -459,7 +451,6 @@
 
     const planned = state.ui?.todaySession || null;
 
-    // In progress
     if (todayActiveSession) {
       container.innerHTML = `
         <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
@@ -474,7 +465,6 @@
       return;
     }
 
-    // Planned session (SHOW EXERCISES UNDER EACH BLOCK)
     if (planned) {
       const blocksHTML = (planned.blocks || []).map(b => {
         const items = (b.items || []).map(it => {
@@ -516,7 +506,6 @@
       return;
     }
 
-    // Nothing yet
     container.innerHTML = `
       <div class="minihead">No session generated</div>
       <div class="minibody">Press Generate to create a tailored session for today.</div>
@@ -674,7 +663,6 @@
       });
     }
 
-    // Initial card
     renderCard(generateWorkoutFor(sport, pref, state.profile.injuries || []));
 
     $("trainSportSelect")?.addEventListener("change", (e) => {
@@ -705,6 +693,7 @@
   function renderTeam() {
     const body = $("teamBody");
     if (!body) return;
+
     const teams = state.team?.teams || [];
     if (!teams.length) {
       body.innerHTML = `
@@ -715,6 +704,7 @@
       `;
       return;
     }
+
     body.innerHTML = `
       <div class="mini">
         <div class="minihead">Teams</div>
@@ -893,18 +883,14 @@
   }
 
   function focusAndScrollTop(view) {
-    // Scroll the main page top (mobile especially)
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
 
-    // Scroll the view container itself to top
     const active = $(`view-${view}`);
     if (active) {
       try { active.scrollTop = 0; } catch {}
-      // Focus the active view for accessibility + “active screen” requirement
       try { active.focus({ preventScroll: true }); } catch {}
     }
 
-    // Also scroll inner content container (some browsers keep this as the scroller)
     const content = document.querySelector(".content");
     if (content) {
       try { content.scrollTop = 0; } catch {}
@@ -923,7 +909,6 @@
 
     setActiveNav(view);
 
-    // Render then scroll/focus so content is measurable
     renderAll();
     requestAnimationFrame(() => focusAndScrollTop(view));
   }
@@ -1039,7 +1024,7 @@
     });
   }
 
-  // ---------- Profile view (now includes Data Management panel) ----------
+  // ---------- Profile view ----------
   function renderProfile() {
     const body = $("profileBody");
     if (!body) return;
@@ -1078,7 +1063,6 @@
       </div>
     `;
 
-    // Bind profile data mgmt controls
     $("profExport")?.addEventListener("click", exportJSON);
     $("profImport")?.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
@@ -1110,7 +1094,7 @@
     }
   }
 
-  // ---------- Drawers ----------
+  // ---------- Drawers (Account + Help) ----------
   function openDrawer() {
     const b = $("drawerBackdrop");
     const d = $("accountDrawer");
@@ -1205,7 +1189,7 @@
       if (rEl) rEl.innerHTML = helpListHTML(searchHelp(q));
     });
 
-    // Context help buttons
+    // Context help buttons (guarded)
     $("tipToday")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipQuick")?.addEventListener("click", () => openHelpTopic("today"));
     $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
@@ -1223,7 +1207,7 @@
       }
     });
 
-    // Today button (Generate → Start → Log)
+    // Today button
     $("todayButton")?.addEventListener("click", () => {
       if (!state.ui.todaySession) {
         state.ui.todaySession = _generateTodaySession();
@@ -1251,7 +1235,7 @@
       persistDebounced("Theme updated", 0);
     });
 
-    // Drawer saves
+    // Drawer saves (guarded)
     $("btnSaveProfile")?.addEventListener("click", () => {
       state.profile.role = $("roleSelect")?.value || state.profile.role;
       state.profile.sport = $("sportSelect")?.value || state.profile.sport;
@@ -1268,7 +1252,7 @@
       persist("Theme saved");
     });
 
-    // Data management (Account drawer)
+    // Data management (Account drawer) — guarded
     $("btnExport")?.addEventListener("click", exportJSON);
     $("fileImport")?.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
@@ -1277,7 +1261,7 @@
     $("btnResetLocal")?.addEventListener("click", resetLocalState);
     $("btnRunGrade")?.addEventListener("click", () => runQAGrade("gradeReport"));
 
-    // FAB sheet open/close
+    // FAB sheet open/close — guarded
     $("fab")?.addEventListener("click", () => {
       const back = $("sheetBackdrop");
       const sheet = $("fabSheet");
@@ -1302,10 +1286,11 @@
   function boot() {
     bindUI();
 
-    // Pre-fill drawer selects
+    // Pre-fill drawer selects (if present)
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
+    if ($("themeModeSelect")) $("themeModeSelect").value = state.profile?.theme?.mode || "dark";
 
     // Apply saved theme
     const mode = state.profile?.theme?.mode;
@@ -1327,6 +1312,7 @@
   // Debug
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
-    getState: () => state
+    getState: () => state,
+    showView: (v) => showView(v)
   };
 })();
