@@ -7,657 +7,201 @@
   <title>PerformanceIQ</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="data-store.js" defer></script>
+
+  <style>
+    /* ===== DASHBOARD ENHANCEMENTS ===== */
+    .dashboard-hero {
+      display:flex;
+      flex-wrap:wrap;
+      gap:16px;
+      margin-bottom:20px;
+    }
+    .dashboard-stat {
+      background:var(--card);
+      padding:14px 18px;
+      border-radius:12px;
+      min-width:140px;
+      font-weight:600;
+      font-size:14px;
+    }
+    .dashboard-stat.green { border-left:4px solid #16a34a; }
+    .dashboard-stat.yellow { border-left:4px solid #eab308; }
+    .dashboard-stat.red { border-left:4px solid #dc2626; }
+
+    .heatmap-table {
+      width:100%;
+      border-collapse:collapse;
+      margin-top:10px;
+    }
+    .heatmap-table th,
+    .heatmap-table td {
+      padding:10px;
+      text-align:left;
+      border-bottom:1px solid var(--line);
+      font-size:13px;
+    }
+    .heatmap-table th {
+      background:var(--card2);
+      font-weight:600;
+    }
+
+    .severity-badge {
+      padding:4px 8px;
+      border-radius:6px;
+      font-size:12px;
+      font-weight:600;
+      color:white;
+    }
+    .sev-green { background:#16a34a; }
+    .sev-yellow { background:#eab308; color:black; }
+    .sev-red { background:#dc2626; }
+
+    .trend-up { color:#16a34a; }
+    .trend-down { color:#dc2626; }
+  </style>
 </head>
+
 <body>
 
-<!-- ─── SPLASH ─── -->
-<div class="splash" id="splash" aria-live="polite" aria-label="Loading PerformanceIQ" style="
-  position:fixed;inset:0;z-index:500;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:var(--bg);gap:14px;
-">
-  <div style="font-family:var(--font-head);font-size:38px;letter-spacing:4px;color:var(--text);text-shadow:0 0 24px color-mix(in oklab,var(--accent) 40%,transparent)">PERFORMANCEIQ</div>
-  <div style="font-size:13px;color:var(--muted);font-weight:300;letter-spacing:1px;">OFFLINE-FIRST · TEAM-READY</div>
-  <div style="width:48px;height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:8px;">
-    <div style="height:100%;background:var(--accent);border-radius:2px;animation:splashBar 1.1s var(--ease-out) forwards;"></div>
-  </div>
-  <style>@keyframes splashBar{from{width:0%}to{width:100%}}</style>
+<!-- SPLASH -->
+<div class="splash" id="splash">
+  <div style="font-size:34px;letter-spacing:4px;">PERFORMANCEIQ</div>
+  <div style="font-size:12px;opacity:.6;">OFFLINE-FIRST · TEAM-READY</div>
 </div>
 
 <script>
-  // Remove splash after short delay
-  window.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-      const s = document.getElementById('splash');
-      if (s) { s.style.transition = 'opacity .35s'; s.style.opacity = '0'; setTimeout(() => s.remove(), 360); }
-    }, 900);
-  });
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => document.getElementById('splash')?.remove(), 900);
+});
 </script>
 
-<!-- ─── TOPBAR ─── -->
-<header class="topbar" role="banner">
-  <div class="topbar-left">
-    <div class="appmark">
-      <div class="appmark-dot"></div>
-      <div class="appmark-title">PerformanceIQ</div>
-    </div>
-
-    <!-- Status pills -->
-    <div class="pill" id="savePill" aria-label="Save status">
-      <span class="dot" id="saveDot"></span>
-      <span id="saveText">Saved</span>
-    </div>
-    <div class="pill" id="teamPill" aria-label="Active team">Team: —</div>
-    <div class="pill" aria-label="Sync status">
-      <span style="font-size:11px;opacity:.7">Cloud:</span>
-      <span style="font-size:12px;font-weight:600">Local</span>
-    </div>
-  </div>
-
-  <div class="topbar-right">
-    <button class="iconbtn ripple-host" id="btnThemeToggle" aria-label="Toggle theme" title="Toggle theme">☾</button>
-    <button class="btn ghost ripple-host" id="btnHelp" style="font-size:13px;padding:8px 14px;" aria-label="Open help (Ctrl+K)">Help</button>
-    <button class="btn ghost ripple-host" id="btnAccount" style="font-size:13px;padding:8px 14px;" aria-label="Open account settings">Account</button>
+<header class="topbar">
+  <div><strong>PerformanceIQ</strong></div>
+  <div>
+    <button id="btnAccount">Account</button>
   </div>
 </header>
 
-<!-- ─── MAIN LAYOUT ─── -->
 <div class="layout">
 
-  <!-- LEFT NAV -->
-  <nav class="nav" id="desktopNav" aria-label="Main navigation">
-    <button class="navbtn ripple-host active" data-view="home" aria-current="page" aria-label="Home">🏠 Home</button>
-    <button class="navbtn ripple-host" data-view="team" aria-label="Team">👥 Team</button>
-    <button class="navbtn ripple-host" data-view="train" aria-label="Train">⚡ Train</button>
-    <button class="navbtn ripple-host" data-view="profile" aria-label="Profile">👤 Profile</button>
-  </nav>
-
-  <!-- CONTENT AREA -->
-  <div class="content" role="main">
-
-    <!-- ═══════════════ HOME VIEW ═══════════════ -->
-    <section class="view" id="view-home" tabindex="-1" aria-label="Home">
-
-      <!-- Greeting + status chips -->
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px;">
-        <div>
-          <div class="piq-greeting">WELCOME BACK</div>
-          <div class="piq-greeting-sub" id="homeSub">Loading…</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-          <div class="piq-chip-status ok"><span class="dot"></span> Ready to train</div>
-          <div class="piq-chip-status accent" id="homeSeasonChip">Pre-season</div>
-        </div>
-      </div>
-
-      <!-- PIQ Score Hero -->
-      <div class="piq-score-hero" aria-label="PerformanceIQ Score overview">
-        <!-- Score Ring (reused by core.js) -->
-        <div id="piqScoreHome" aria-label="PIQ Score ring">—</div>
-
-        <!-- Pillar breakdown -->
-        <div class="piq-score-details">
-          <div>
-            <div class="piq-score-title" id="homeScoreTitle">LOG A SESSION TO BUILD YOUR SCORE</div>
-            <div class="piq-score-desc" id="homeScoreDesc">Score updates as you log workouts, nutrition, and wellness check-ins. Log consistently to unlock insights.</div>
-          </div>
-          <div class="piq-pillars" id="homePillars" aria-label="Score pillars">
-            <div class="piq-pillar">
-              <div class="piq-pillar-icon">💪</div>
-              <div class="piq-pillar-score muted">—</div>
-              <div class="piq-pillar-bar"><div class="piq-pillar-bar-fill" style="width:0%;background:var(--ok)"></div></div>
-              <div class="piq-pillar-name">Load</div>
-            </div>
-            <div class="piq-pillar">
-              <div class="piq-pillar-icon">⚡</div>
-              <div class="piq-pillar-score muted">—</div>
-              <div class="piq-pillar-bar"><div class="piq-pillar-bar-fill" style="width:0%;background:var(--accent)"></div></div>
-              <div class="piq-pillar-name">Streak</div>
-            </div>
-            <div class="piq-pillar">
-              <div class="piq-pillar-icon">🎯</div>
-              <div class="piq-pillar-score muted">—</div>
-              <div class="piq-pillar-bar"><div class="piq-pillar-bar-fill" style="width:0%;background:var(--warn)"></div></div>
-              <div class="piq-pillar-name">Variety</div>
-            </div>
-            <div class="piq-pillar">
-              <div class="piq-pillar-icon">📅</div>
-              <div class="piq-pillar-score muted">—</div>
-              <div class="piq-pillar-bar"><div class="piq-pillar-bar-fill" style="width:0%;background:var(--info)"></div></div>
-              <div class="piq-pillar-name">Sessions</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Stat cards row -->
-      <div class="grid3" id="homeStatCards">
-        <div class="card" aria-label="Today's timer status">
-          <div class="card-label">Today's Timer</div>
-          <div id="todayTimer" style="font-family:var(--font-mono);font-size:14px;color:var(--muted);">No timer running</div>
-        </div>
-        <div class="card" aria-label="Quick actions">
-          <div class="card-label">Quick Actions</div>
-          <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
-            <button class="btn primary ripple-host" id="todayButton" type="button" aria-label="Generate, start, or stop today session" style="width:100%;font-size:14px;">
-              Generate → Start → Log
-            </button>
-            <div style="display:flex;gap:8px;">
-              <button class="btn ghost ripple-host" id="qaTrain" type="button" style="flex:1;font-size:13px;" aria-label="Open Train tab">Open Train</button>
-              <button class="btn ghost ripple-host" id="qaTeam" type="button" style="flex:1;font-size:13px;" aria-label="Manage Team">Team</button>
-            </div>
-          </div>
-        </div>
-        <div class="card" aria-label="Score note">
-          <div class="card-label">Score Note</div>
-          <div id="piqScoreNote" style="font-size:13px;color:var(--muted);line-height:1.6;">Score updates as you log.</div>
-        </div>
-      </div>
-
-      <!-- Today block -->
-      <div>
-        <div class="piq-section-label">
-          TODAY'S SESSION
-          <button class="btn ghost ripple-host" id="btnGenerateTopLevel" type="button" style="font-size:12px;padding:6px 12px;min-height:32px;" aria-label="Generate new session">+ Generate</button>
-        </div>
-        <div id="todayBlock" aria-live="polite">
-          <div class="card subtle" style="color:var(--muted);font-size:14px;padding:20px;text-align:center;">
-            Press Generate to create a tailored session for today.
-          </div>
-        </div>
-      </div>
-
-      <!-- View placeholder tips (hidden after onboarding) -->
-      <div class="grid3" id="homeViewCards" style="margin-top:4px;">
-        <div class="card subtle">
-          <div class="card-title" style="font-size:17px;margin-bottom:8px;">Team</div>
-          <div class="small muted">Roster, roles, join codes, and dashboards.</div>
-          <button class="btn ghost ripple-host" data-view="team" style="margin-top:12px;font-size:13px;width:100%;" type="button">
-            <span id="tipTeam">?</span> Go to Team
-          </button>
-        </div>
-        <div class="card subtle">
-          <div class="card-title" style="font-size:17px;margin-bottom:8px;">Train</div>
-          <div class="small muted">Workouts tailored to the selected sport.</div>
-          <button class="btn ghost ripple-host" data-view="train" style="margin-top:12px;font-size:13px;width:100%;" type="button">
-            <span id="tipTrain">?</span> Open Train
-          </button>
-        </div>
-        <div class="card subtle">
-          <div class="card-title" style="font-size:17px;margin-bottom:8px;">Profile</div>
-          <div class="small muted">Your role, preferences, score, risks, and insights.</div>
-          <button class="btn ghost ripple-host" data-view="profile" style="margin-top:12px;font-size:13px;width:100%;" type="button">
-            <span id="tipProfile">?</span> View Profile
-          </button>
-        </div>
-      </div>
-
-    </section><!-- /home -->
-
-    <!-- ═══════════════ TEAM VIEW ═══════════════ -->
-    <section class="view" id="view-team" tabindex="-1" aria-label="Team" hidden>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-        <div class="piq-greeting" style="font-size:28px;">TEAM</div>
-      </div>
-      <div id="teamBody" aria-live="polite">—</div>
-    </section>
-
-    <!-- ═══════════════ TRAIN VIEW ═══════════════ -->
-    <section class="view" id="view-train" tabindex="-1" aria-label="Train" hidden>
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-        <div>
-          <div class="piq-greeting" style="font-size:28px;">TRAIN</div>
-          <div class="piq-greeting-sub" id="trainSub">Generate sport-specific sessions</div>
-        </div>
-      </div>
-      <div id="trainBody" aria-live="polite">—</div>
-    </section>
-
-    <!-- ═══════════════ PROFILE VIEW ═══════════════ -->
-    <section class="view" id="view-profile" tabindex="-1" aria-label="Profile" hidden>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
-        <div class="piq-greeting" style="font-size:28px;">PROFILE</div>
-        <div class="piq-chip-status accent" id="tipToday" style="cursor:pointer;">?&nbsp; Today workflow</div>
-      </div>
-      <div id="profileBody" aria-live="polite">—</div>
-    </section>
-
-  </div><!-- /content -->
-
-  <!-- RIGHT SIDEBAR PANEL -->
-  <aside class="piq-sidebar" aria-label="Team readiness and upcoming events">
-
-    <!-- Onboarding progress -->
-    <div class="piq-onboarding" id="sidebarOnboarding">
-      <div class="piq-onboarding-title">GET STARTED</div>
-
-      <div class="piq-ob-step">
-        <div class="piq-ob-dot active" id="obDot1">1</div>
-        <div style="font-size:13px;" id="obLabel1">Set sport &amp; role</div>
-      </div>
-      <div class="piq-ob-line"></div>
-      <div class="piq-ob-step">
-        <div class="piq-ob-dot pending" id="obDot2">2</div>
-        <div style="font-size:13px;color:var(--muted);" id="obLabel2">Generate a session</div>
-      </div>
-      <div class="piq-ob-line"></div>
-      <div class="piq-ob-step">
-        <div class="piq-ob-dot pending" id="obDot3">3</div>
-        <div style="font-size:13px;color:var(--muted);" id="obLabel3">Start &amp; log it</div>
-      </div>
-      <div class="piq-ob-line"></div>
-      <div class="piq-ob-step">
-        <div class="piq-ob-dot pending" id="obDot4">4</div>
-        <div style="font-size:13px;color:var(--muted);" id="obLabel4">Unlock your PIQ Score</div>
-      </div>
-
-      <button class="btn primary ripple-host" id="obCTABtn" type="button" style="width:100%;margin-top:14px;font-size:13px;" aria-label="Open account to set up">
-        Set Up Profile →
-      </button>
-    </div>
-
-    <!-- Quick wellness check-in -->
-    <div class="card" id="sidebarWellness" aria-label="Wellness check-in">
-      <div class="piq-section-label" style="margin-bottom:12px;">WELLNESS TODAY</div>
-      <div class="piq-wellness-grid">
-        <div class="piq-wellness-item">
-          <div class="piq-wellness-label">Sleep</div>
-          <div class="piq-wellness-emoji">😴</div>
-          <div class="piq-wellness-val muted">—</div>
-        </div>
-        <div class="piq-wellness-item">
-          <div class="piq-wellness-label">Soreness</div>
-          <div class="piq-wellness-emoji">💢</div>
-          <div class="piq-wellness-val muted">—</div>
-        </div>
-        <div class="piq-wellness-item">
-          <div class="piq-wellness-label">Energy</div>
-          <div class="piq-wellness-emoji">⚡</div>
-          <div class="piq-wellness-val muted">—</div>
-        </div>
-      </div>
-      <button class="btn ghost ripple-host" style="width:100%;margin-top:12px;font-size:13px;" id="btnCheckIn" type="button">
-        Log Check-in
-      </button>
-    </div>
-
-    <!-- Upcoming events placeholder -->
-    <div class="card" id="sidebarEvents" aria-label="Upcoming events">
-      <div class="piq-section-label" style="margin-bottom:12px;">UPCOMING</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div class="piq-event-item">
-          <div class="piq-event-days">
-            <div class="piq-event-days-num">—</div>
-            <div class="piq-event-days-label">days</div>
-          </div>
-          <div>
-            <div class="piq-event-name">Next Game</div>
-            <div class="piq-event-meta">Add to your calendar</div>
-          </div>
-          <div style="margin-left:auto;font-size:18px;">📅</div>
-        </div>
-      </div>
-      <button class="btn ghost ripple-host" style="width:100%;margin-top:12px;font-size:13px;" id="btnAddEvent" type="button">
-        Add Event
-      </button>
-    </div>
-
-  </aside><!-- /sidebar -->
-
-</div><!-- /layout -->
-
-<!-- ─── BOTTOM NAV (mobile) ─── -->
-<nav class="bottomnav" id="bottomNav" aria-label="Mobile navigation">
-  <button class="tab tap44 ripple-host active" data-view="home" aria-current="page" aria-label="Home" style="padding:14px 10px;">
-    <div>🏠</div><div style="font-size:11px;margin-top:2px;">Home</div>
-  </button>
-  <button class="tab tap44 ripple-host" data-view="team" aria-label="Team" style="padding:14px 10px;">
-    <div>👥</div><div style="font-size:11px;margin-top:2px;">Team</div>
-  </button>
-  <button class="tab tap44 ripple-host" data-view="train" aria-label="Train" style="padding:14px 10px;">
-    <div>⚡</div><div style="font-size:11px;margin-top:2px;">Train</div>
-  </button>
-  <button class="tab tap44 ripple-host" data-view="profile" aria-label="Profile" style="padding:14px 10px;">
-    <div>👤</div><div style="font-size:11px;margin-top:2px;">Profile</div>
-  </button>
+<nav class="nav">
+  <button data-view="home" class="active">Home</button>
+  <button data-view="team">Team</button>
+  <button data-view="train">Train</button>
+  <button data-view="profile">Profile</button>
 </nav>
 
-<!-- ─── FAB ─── -->
-<button class="fab ripple-host" id="fab" type="button" aria-label="Quick log" aria-haspopup="dialog">+</button>
+<div class="content">
 
-<!-- ─── FAB SHEET ─── -->
-<div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
-<div class="sheet" id="fabSheet" role="dialog" aria-modal="true" aria-label="Quick log" hidden aria-hidden="true">
-  <div class="sheet-head">
-    <div class="sheet-title">Quick Log</div>
-    <button class="iconbtn ripple-host" id="btnCloseSheet" aria-label="Close quick log">✕</button>
+<!-- HOME -->
+<section id="view-home" class="view">
+  <h2>Welcome Back</h2>
+  <div id="homeScore">Score loading…</div>
+</section>
+
+<!-- TEAM (ELITE DASHBOARD) -->
+<section id="view-team" class="view" hidden>
+
+  <h2>Team Dashboard</h2>
+
+  <!-- HERO SUMMARY -->
+  <div class="dashboard-hero" id="dashboardHero">
+    <div class="dashboard-stat green">🟢 Ready: <span id="statReady">—</span></div>
+    <div class="dashboard-stat yellow">🟡 Monitor: <span id="statMonitor">—</span></div>
+    <div class="dashboard-stat red">🔴 High Risk: <span id="statRisk">—</span></div>
+    <div class="dashboard-stat">Avg PIQ: <span id="statAvg">—</span></div>
   </div>
-  <div class="sheet-body">
-    <button class="btn ghost ripple-host" data-view="home" id="sheetLogWorkout" style="width:100%;justify-content:flex-start;gap:12px;font-size:14px;" type="button">🏋️ Log workout</button>
-    <button class="btn ghost ripple-host" id="sheetLogNutrition" style="width:100%;justify-content:flex-start;gap:12px;font-size:14px;" type="button">🥗 Log nutrition</button>
-    <button class="btn ghost ripple-host" id="sheetLogWellness" style="width:100%;justify-content:flex-start;gap:12px;font-size:14px;" type="button">🌙 Log wellness</button>
+
+  <!-- HEATMAP -->
+  <div class="card">
+    <h3>Athlete Readiness Board</h3>
+    <table class="heatmap-table">
+      <thead>
+        <tr>
+          <th>Athlete</th>
+          <th>PIQ</th>
+          <th>ACR</th>
+          <th>Flags</th>
+          <th>Trend</th>
+        </tr>
+      </thead>
+      <tbody id="heatmapBody">
+        <tr><td colspan="5">Loading team data…</td></tr>
+      </tbody>
+    </table>
   </div>
+
+</section>
+
+<!-- TRAIN -->
+<section id="view-train" class="view" hidden>
+  <h2>Train</h2>
+</section>
+
+<!-- PROFILE -->
+<section id="view-profile" class="view" hidden>
+  <h2>Profile</h2>
+</section>
+
+</div>
 </div>
 
-<!-- ─── ACCOUNT DRAWER ─── -->
-<div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
-<div class="drawer" id="accountDrawer" role="dialog" aria-modal="true" aria-label="Account settings" aria-hidden="true">
-  <div class="drawer-head">
-    <div class="drawer-title">Account</div>
-    <button class="iconbtn ripple-host" id="btnCloseDrawer" aria-label="Close account">✕</button>
-  </div>
-  <div class="drawer-body" style="display:grid;gap:18px;">
-
-    <div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);font-weight:600;margin-bottom:12px;">ROLE &amp; SPORT</div>
-      <div class="grid2">
-        <div class="field">
-          <label for="roleSelect">Role</label>
-          <select id="roleSelect" aria-label="Select role">
-            <option value="owner">Owner</option>
-            <option value="coach">Coach</option>
-            <option value="athlete">Athlete</option>
-            <option value="parent">Parent</option>
-            <option value="viewer">Viewer</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="sportSelect">Sport</label>
-          <select id="sportSelect" aria-label="Select sport">
-            <option value="basketball">Basketball</option>
-            <option value="football">Football</option>
-            <option value="soccer">Soccer</option>
-            <option value="baseball">Baseball</option>
-            <option value="volleyball">Volleyball</option>
-            <option value="track">Track</option>
-          </select>
-        </div>
-      </div>
-      <div class="field" style="margin-top:10px;">
-        <label for="preferredSessionSelect">Preferred session type</label>
-        <select id="preferredSessionSelect" aria-label="Select preferred session type">
-          <option value="practice">Practice</option>
-          <option value="strength">Strength</option>
-          <option value="speed">Speed</option>
-          <option value="conditioning">Conditioning</option>
-          <option value="recovery">Recovery</option>
-          <option value="competition_prep">Competition Prep</option>
-        </select>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="btn primary ripple-host" id="btnSaveProfile" style="flex:1;font-size:14px;" type="button" aria-label="Save profile preferences">Save</button>
-        <button class="btn ghost ripple-host" id="tipQuick" style="font-size:13px;" type="button" aria-label="Tour this tab">Tour this tab</button>
-      </div>
-    </div>
-
-    <div class="hr"></div>
-
-    <div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);font-weight:600;margin-bottom:12px;">APPEARANCE</div>
-      <div class="grid2">
-        <div class="field">
-          <label for="themeModeSelect">Mode</label>
-          <select id="themeModeSelect" aria-label="Select theme mode">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="themeSportSelect">Accent sport</label>
-          <select id="themeSportSelect" aria-label="Select accent sport">
-            <option value="basketball">Basketball</option>
-            <option value="football">Football</option>
-            <option value="soccer">Soccer</option>
-            <option value="baseball">Baseball</option>
-            <option value="volleyball">Volleyball</option>
-            <option value="track">Track</option>
-          </select>
-        </div>
-      </div>
-      <button class="btn ghost ripple-host" id="btnSaveTheme" style="margin-top:10px;font-size:14px;width:100%;" type="button">Save theme</button>
-    </div>
-
-    <div class="hr"></div>
-
-    <div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);font-weight:600;margin-bottom:8px;">DATA MANAGEMENT</div>
-      <div class="small muted" style="margin-bottom:12px;line-height:1.5;">Export/Import/Reset are here. Risky actions require confirmation.</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn ghost ripple-host" id="btnExport" type="button" style="font-size:13px;" aria-label="Export JSON">Export JSON</button>
-        <label class="btn ghost ripple-host" style="cursor:pointer;font-size:13px;" tabindex="0">
-          Import JSON
-          <input id="fileImport" type="file" accept="application/json" style="display:none" aria-label="Import JSON file" />
-        </label>
-        <button class="btn danger ripple-host" id="btnResetLocal" type="button" style="font-size:13px;" aria-label="Reset local data">Reset local</button>
-      </div>
-      <div style="margin-top:12px;">
-        <button class="btn ghost ripple-host" id="btnRunGrade" type="button" style="font-size:13px;" aria-label="Run QA Grade">Run QA Grade</button>
-      </div>
-      <pre id="gradeReport" class="small muted" style="white-space:pre-wrap;margin-top:10px;padding:10px;background:var(--card2);border-radius:10px;">—</pre>
-    </div>
-
-    <div class="hr"></div>
-
-    <div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);font-weight:600;margin-bottom:8px;">CLOUD (OPTIONAL)</div>
-      <div class="small muted" style="line-height:1.6;">Offline-first build. Cloud sync is a later phase.</div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ─── HELP DRAWER ─── -->
-<div class="drawer-backdrop" id="helpBackdrop" hidden></div>
-<div class="drawer drawer-help" id="helpDrawer" role="dialog" aria-modal="true" aria-label="Help" aria-hidden="true">
-  <div class="drawer-head">
-    <div class="drawer-title">Help</div>
-    <button class="iconbtn ripple-host" id="btnCloseHelp" aria-label="Close help">✕</button>
-  </div>
-  <div class="drawer-body">
-    <div class="small muted" style="margin-bottom:10px;">Searchable guidance (Ctrl/⌘+K)</div>
-    <div class="field">
-      <input type="search" id="helpSearch" placeholder="Search…" autocomplete="off" aria-label="Search help" />
-    </div>
-    <div id="helpResults" style="margin-top:12px;"></div>
-  </div>
-</div>
-
-<!-- ─── TOAST ─── -->
-<div class="toast" id="toast" role="status" aria-live="polite" hidden>—</div>
-
-<!-- ─── CORE SCRIPT ─── -->
-<script src="core.js"></script>
-
-<!-- ─── SIDEBAR ENHANCEMENT SCRIPT ─── -->
 <script>
-(function() {
-  "use strict";
-
-  // ─── Onboarding step tracker ───
-  function updateOnboardingSteps() {
-    // Reflect state from core.js
-    const state = window.__PIQ_DEBUG__?.getState?.();
-    if (!state) return;
-
-    const hasSport = !!state.profile?.sport;
-    const hasSessions = Array.isArray(state.sessions) && state.sessions.length > 0;
-    const hasScore = state.score?.value > 0;
-    const hasToday = !!state.ui?.todaySession;
-
-    const steps = [
-      { dot: 'obDot1', label: 'obLabel1', done: hasSport, text: 'Set sport & role' },
-      { dot: 'obDot2', label: 'obLabel2', done: hasToday || hasSessions, text: 'Generate a session' },
-      { dot: 'obDot3', label: 'obLabel3', done: hasSessions, text: 'Start & log it' },
-      { dot: 'obDot4', label: 'obLabel4', done: hasScore, text: 'Unlock your PIQ Score ✨' }
-    ];
-
-    let activeSet = false;
-    steps.forEach((s, i) => {
-      const dot = document.getElementById(s.dot);
-      const lbl = document.getElementById(s.label);
-      if (!dot || !lbl) return;
-
-      dot.classList.remove('done','active','pending');
-      if (s.done) {
-        dot.classList.add('done');
-        dot.textContent = '✓';
-        lbl.style.color = '';
-      } else if (!activeSet) {
-        dot.classList.add('active');
-        dot.textContent = String(i + 1);
-        lbl.style.color = '';
-        activeSet = true;
-      } else {
-        dot.classList.add('pending');
-        dot.textContent = String(i + 1);
-        lbl.style.color = 'var(--muted)';
-      }
-    });
-
-    // Hide onboarding panel once all done
-    const panel = document.getElementById('sidebarOnboarding');
-    if (panel && hasScore) {
-      panel.style.opacity = '.5';
-      panel.querySelector('#obCTABtn').textContent = 'All steps complete 🎉';
-    }
-  }
-
-  // ─── Pillar breakdown (syncs with core score computation) ───
-  function updatePillars() {
-    const state = window.__PIQ_DEBUG__?.getState?.();
-    if (!state) return;
-
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    const now = Date.now();
-    const days14 = 14 * 86400000;
-
-    let sessions14 = 0, minutes14 = 0;
-    const types = new Set();
-    sessions.forEach(s => {
-      const d = new Date(s?.created_at || s?.generated_at || s?.date || 0);
-      if (!isFinite(d)) return;
-      if (now - d.getTime() <= days14) {
-        sessions14++;
-        minutes14 += Number(s?.duration_min || 0);
-        if (s?.sessionType) types.add(s.sessionType);
-      }
-    });
-
-    // Streak
-    const days = sessions.map(s => {
-      const d = new Date(s?.created_at || s?.generated_at || s?.date || 0);
-      return isFinite(d) ? d.toISOString().slice(0,10) : null;
-    }).filter(Boolean);
-    const uniq = Array.from(new Set(days)).sort((a,b) => b.localeCompare(a));
-    let streak = 0;
-    if (uniq.length) {
-      streak = 1;
-      let cursor = new Date(uniq[0] + 'T00:00:00.000Z');
-      for (let i = 1; i < uniq.length; i++) {
-        const prev = new Date(cursor); prev.setUTCDate(prev.getUTCDate() - 1);
-        const d = new Date(uniq[i] + 'T00:00:00.000Z');
-        if (d.getTime() === prev.getTime()) { streak++; cursor = d; } else break;
-      }
-    }
-
-    const pillars = document.querySelectorAll('#homePillars .piq-pillar');
-    if (!pillars.length) return;
-
-    const loadPct  = Math.min(100, Math.round((minutes14 / 240) * 100));
-    const strkPct  = Math.min(100, streak * 10);
-    const varPct   = Math.min(100, types.size * 25);
-    const sessPct  = Math.min(100, Math.round((sessions14 / 6) * 100));
-
-    const colors = ['var(--ok)', 'var(--accent)', 'var(--warn)', 'var(--info)'];
-    const vals = [
-      minutes14 ? (minutes14 + 'm') : '—',
-      streak ? (streak + 'd') : '—',
-      types.size ? (types.size + ' types') : '—',
-      sessions14 ? sessions14 : '—'
-    ];
-    const pcts = [loadPct, strkPct, varPct, sessPct];
-
-    pillars.forEach((p, i) => {
-      const score = p.querySelector('.piq-pillar-score');
-      const fill  = p.querySelector('.piq-pillar-bar-fill');
-      if (score) { score.textContent = String(vals[i]); score.style.color = pcts[i] > 0 ? colors[i] : ''; }
-      if (fill)  { fill.style.width = pcts[i] + '%'; fill.style.background = colors[i]; }
-    });
-
-    // Update score title/desc
-    const score = window.__PIQ_DEBUG__?.getState?.()?.score?.value || 0;
-    const title = document.getElementById('homeScoreTitle');
-    const desc  = document.getElementById('homeScoreDesc');
-    if (title && score > 0) {
-      if (score >= 85) title.textContent = 'ELITE — KEEP STACKING';
-      else if (score >= 70) title.textContent = 'STRONG — TRENDING UP';
-      else if (score >= 50) title.textContent = 'BUILDING — GOOD MOMENTUM';
-      else if (score >= 25) title.textContent = 'STARTER — LOG MORE SESSIONS';
-      else title.textContent = 'LOG A SESSION TO BUILD YOUR SCORE';
-    }
-    if (desc && streak > 0) {
-      desc.textContent = `${streak}-day streak active. You've logged ${sessions14} session${sessions14 !== 1 ? 's' : ''} in the last 14 days across ${types.size} workout type${types.size !== 1 ? 's' : ''}.`;
-    }
-  }
-
-  // ─── Wire sidebar CTA to account drawer ───
-  document.addEventListener('DOMContentLoaded', () => {
-    const obBtn = document.getElementById('obCTABtn');
-    if (obBtn) {
-      obBtn.addEventListener('click', () => {
-        // Open account drawer
-        const btn = document.getElementById('btnAccount');
-        if (btn) btn.click();
-      });
-    }
-
-    const checkInBtn = document.getElementById('btnCheckIn');
-    if (checkInBtn) {
-      checkInBtn.addEventListener('click', () => {
-        const fab = document.getElementById('fab');
-        if (fab) fab.click();
-      });
-    }
-
-    const addEventBtn = document.getElementById('btnAddEvent');
-    if (addEventBtn) {
-      addEventBtn.addEventListener('click', () => {
-        const el = document.getElementById('sidebarEvents');
-        if (el) {
-          const hint = document.createElement('div');
-          hint.className = 'piq-alert ok';
-          hint.style.marginTop = '8px';
-          hint.innerHTML = '<div class="piq-alert-icon">📅</div><div><div class="piq-alert-title">Coming soon</div><div class="piq-alert-body">Event scheduling is part of the cloud sync phase.</div></div>';
-          addEventBtn.before(hint);
-          setTimeout(() => hint.remove(), 3000);
-        }
-      });
-    }
-
-    // Top-level generate button
-    const genBtn = document.getElementById('btnGenerateTopLevel');
-    if (genBtn) {
-      genBtn.addEventListener('click', () => {
-        const mainBtn = document.getElementById('todayButton');
-        if (mainBtn) mainBtn.click();
-      });
-    }
-
-    // Poll for state changes and update sidebar + pillars
-    function poll() { updateOnboardingSteps(); updatePillars(); }
-    setTimeout(poll, 500);
-    setTimeout(poll, 1500);
-    setInterval(poll, 5000);
-
-    // Also update after any button click that could change state
-    document.addEventListener('click', (e) => {
-      if (e.target.closest('.btn')) {
-        setTimeout(poll, 400);
-      }
-    }, { passive: true });
+/* ========= SIMPLE ROUTER ========= */
+document.querySelectorAll('[data-view]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.view').forEach(v=>v.hidden=true);
+    document.getElementById('view-'+btn.dataset.view).hidden=false;
   });
+});
 
-})();
+/* ========= DASHBOARD LOGIC ========= */
+async function loadDashboard() {
+
+  const demo = [
+    { athlete_name:"J. Smith", piq_total:84, severity:"green", acr:1.08, delta:6 },
+    { athlete_name:"D. Brown", piq_total:61, severity:"yellow", acr:1.42, delta:-12 },
+    { athlete_name:"M. Davis", piq_total:48, severity:"red", acr:1.61, delta:-20 }
+  ];
+
+  renderHeatmap(demo);
+}
+
+function renderHeatmap(rows){
+  const body = document.getElementById("heatmapBody");
+  if(!rows.length){
+    body.innerHTML='<tr><td colspan="5">No data</td></tr>';
+    return;
+  }
+
+  let ready=0, monitor=0, risk=0, total=0;
+
+  body.innerHTML = rows.map(r=>{
+    total+=r.piq_total;
+    if(r.severity==="green") ready++;
+    if(r.severity==="yellow") monitor++;
+    if(r.severity==="red") risk++;
+
+    return `
+      <tr>
+        <td>${r.athlete_name}</td>
+        <td><span class="severity-badge sev-${r.severity}">${r.piq_total}</span></td>
+        <td>${r.acr ?? '—'}</td>
+        <td>${r.severity.toUpperCase()}</td>
+        <td class="${r.delta>=0?'trend-up':'trend-down'}">
+          ${r.delta>=0?'↑':'↓'} ${Math.abs(r.delta)}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  document.getElementById("statReady").textContent=ready;
+  document.getElementById("statMonitor").textContent=monitor;
+  document.getElementById("statRisk").textContent=risk;
+  document.getElementById("statAvg").textContent=Math.round(total/rows.length);
+}
+
+loadDashboard();
 </script>
 
 </body>
