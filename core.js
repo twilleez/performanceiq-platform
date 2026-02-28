@@ -1,13 +1,14 @@
-// core.js — v3.5.0 (Micro-interactions + Score animation + sport palettes + animated transitions)
-// Keeps all v3.4.0 functionality, adds:
-// - Micro-interactions: press pop, subtle haptics (optional), UI “done before” feel
-// - PerformanceIQ Score: computed from usage, animated count-up + pulse on change
-// - Score updates on log/import/reset + renders on Home
+// core.js — v3.6.0 (Ripple + Spring physics + Animated score ring + softer dark theme support)
+// Keeps v3.5.0 functionality, adds:
+// - Ripple on .btn/.iconbtn/.navbtn/.tab/.pill
+// - Spring physics micro-bounce on press + view transitions
+// - Animated PIQ Score ring (SVG), ring anim + count-up + tier
+// - Sport palette still auto-applies to --accent / --accent-2
 
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V350__) return;
-  window.__PIQ_CORE_V350__ = true;
+  if (window.__PIQ_CORE_V360__) return;
+  window.__PIQ_CORE_V360__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -19,17 +20,15 @@
   // Sport palettes (smart accent)
   // -----------------------------
   const SPORT_PALETTES = {
-    basketball: { accent: "#F97316", accentSoft: "rgba(249,115,22,.14)" },   // orange
-    football:   { accent: "#22C55E", accentSoft: "rgba(34,197,94,.14)" },    // green
-    soccer:     { accent: "#3B82F6", accentSoft: "rgba(59,130,246,.14)" },   // blue
-    baseball:   { accent: "#EF4444", accentSoft: "rgba(239,68,68,.14)" },    // red
-    volleyball: { accent: "#A855F7", accentSoft: "rgba(168,85,247,.14)" },   // purple
-    track:      { accent: "#14B8A6", accentSoft: "rgba(20,184,166,.14)" }    // teal
+    basketball: { accent: "#F97316", accentSoft: "rgba(249,115,22,.14)" },
+    football:   { accent: "#22C55E", accentSoft: "rgba(34,197,94,.14)" },
+    soccer:     { accent: "#3B82F6", accentSoft: "rgba(59,130,246,.14)" },
+    baseball:   { accent: "#EF4444", accentSoft: "rgba(239,68,68,.14)" },
+    volleyball: { accent: "#A855F7", accentSoft: "rgba(168,85,247,.14)" },
+    track:      { accent: "#14B8A6", accentSoft: "rgba(20,184,166,.14)" }
   };
 
-  function clampSport(s) {
-    return SPORTS.includes(s) ? s : "basketball";
-  }
+  function clampSport(s) { return SPORTS.includes(s) ? s : "basketball"; }
 
   function applySportTheme(sport) {
     sport = clampSport(sport);
@@ -48,7 +47,7 @@
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.5.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.6.0", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -76,7 +75,6 @@
   state.ui.view = VIEWS.includes(state.ui.view) ? state.ui.view : "home";
   state.ui.todaySession = state.ui.todaySession || null;
 
-  // Persist score snapshot (optional cache, safe)
   state.score = state.score && typeof state.score === "object" ? state.score : { value: 0, updated_at: null };
 
   try { window.dataStore?.save?.(state); } catch {}
@@ -110,7 +108,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.5.0";
+      state.meta.version = "3.6.0";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -172,36 +170,66 @@
   }
 
   // ===========================
-  // Micro-interactions (premium)
+  // Spring + ripple interactions
   // ===========================
   function canHaptic() {
     return !prefersReducedMotion && typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
   }
   function hapticTap(kind = "light") {
-    // Keep this subtle to feel native
     if (!canHaptic()) return;
     const pattern = kind === "nav" ? 8 : kind === "success" ? [10, 20, 12] : 8;
     try { navigator.vibrate(pattern); } catch {}
   }
 
-  function microPress(el, kind = "light") {
+  function springPress(el) {
     if (!el) return;
-    el.classList.add("micro-press");
-    window.setTimeout(() => el.classList.remove("micro-press"), 160);
-    hapticTap(kind);
+    el.classList.remove("spring-press");
+    // force reflow
+    // eslint-disable-next-line no-unused-expressions
+    el.offsetHeight;
+    el.classList.add("spring-press");
+    window.setTimeout(() => el.classList.remove("spring-press"), 260);
+  }
+
+  function makeRipple(target, clientX, clientY) {
+    if (!target || prefersReducedMotion) return;
+
+    const rect = target.getBoundingClientRect();
+    const x = (clientX ?? (rect.left + rect.width / 2)) - rect.left;
+    const y = (clientY ?? (rect.top + rect.height / 2)) - rect.top;
+
+    const d = Math.max(rect.width, rect.height) * 1.35;
+    const ripple = document.createElement("span");
+    ripple.className = "ripple";
+    ripple.style.width = ripple.style.height = d + "px";
+    ripple.style.left = (x - d / 2) + "px";
+    ripple.style.top = (y - d / 2) + "px";
+
+    target.classList.add("ripple-host");
+    target.appendChild(ripple);
+
+    ripple.addEventListener("animationend", () => {
+      ripple.remove();
+      // Remove host class if no more ripples
+      if (!target.querySelector(".ripple")) target.classList.remove("ripple-host");
+    });
   }
 
   function wireMicroInteractions() {
-    // Delegated tap effect for the whole app
     document.addEventListener("pointerdown", (e) => {
       const t = e.target.closest(".btn, .iconbtn, .navbtn, .tab, .pill");
       if (!t) return;
-      microPress(t, t.classList.contains("navbtn") || t.classList.contains("tab") ? "nav" : "light");
+
+      const isNav = t.classList.contains("navbtn") || t.classList.contains("tab");
+      hapticTap(isNav ? "nav" : "light");
+
+      springPress(t);
+      makeRipple(t, e.clientX, e.clientY);
     }, { passive: true });
   }
 
   // ===========================
-  // Score: compute + animation
+  // Score: compute + ring anim
   // ===========================
   function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
@@ -236,12 +264,6 @@
   }
 
   function computePIQScore() {
-    // Score is intentionally simple, stable, and offline-safe.
-    // Signals:
-    // - Consistency (sessions last 14 days)
-    // - Training load volume (minutes last 14 days)
-    // - Streak
-    // - Variety (session types last 14 days)
     const sessions = Array.isArray(state.sessions) ? state.sessions : [];
     if (!sessions.length) return { value: 0, note: "Log sessions to build your score." };
 
@@ -266,16 +288,12 @@
     const streak = computeStreak();
     const variety = types.size;
 
-    // Normalize:
-    // sessions14 target: 6 in 14 days
-    // minutes14 target: 240 mins in 14 days
     const sScore = clamp((sessions14 / 6) * 35, 0, 35);
     const mScore = clamp((minutes14 / 240) * 35, 0, 35);
     const stScore = clamp(streak * 3, 0, 18);
     const vScore = clamp(variety * 3, 0, 12);
 
-    const raw = sScore + mScore + stScore + vScore; // max 100
-    const value = Math.round(clamp(raw, 0, 100));
+    const value = Math.round(clamp(sScore + mScore + stScore + vScore, 0, 100));
 
     let note = "Keep logging sessions for momentum.";
     if (value >= 85) note = "Elite consistency — keep stacking days.";
@@ -286,14 +304,22 @@
     return { value, note };
   }
 
-  function animateNumber(el, from, to, ms = 650) {
+  function scoreTier(v) {
+    if (v >= 85) return "Elite";
+    if (v >= 70) return "Strong";
+    if (v >= 50) return "Building";
+    if (v >= 25) return "Starter";
+    return "New";
+  }
+
+  function animateNumber(el, from, to, ms = 720) {
     if (!el) return;
     if (prefersReducedMotion) { el.textContent = String(to); return; }
 
     const start = performance.now();
     const diff = to - from;
 
-    function easeOut(t) { return 1 - Math.pow(1 - t, 3); } // smooth
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
 
     function step(now) {
       const p = clamp((now - start) / ms, 0, 1);
@@ -302,6 +328,30 @@
       if (p < 1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
+  }
+
+  function setRingProgress(svgRoot, value, animate = true) {
+    if (!svgRoot) return;
+    const prog = svgRoot.querySelector(".ring-prog");
+    if (!prog) return;
+
+    const r = Number(prog.getAttribute("r") || 0);
+    const C = 2 * Math.PI * r;
+
+    prog.style.strokeDasharray = String(C);
+    const offset = C * (1 - clamp(value, 0, 100) / 100);
+
+    if (prefersReducedMotion || !animate) {
+      prog.style.strokeDashoffset = String(offset);
+      return;
+    }
+
+    prog.classList.remove("ring-anim");
+    // force
+    // eslint-disable-next-line no-unused-expressions
+    prog.offsetHeight;
+    prog.classList.add("ring-anim");
+    prog.style.strokeDashoffset = String(offset);
   }
 
   let _lastScoreRendered = null;
@@ -319,45 +369,69 @@
 
     _lastScoreRendered = res.value;
 
-    // Cache to state (safe)
     state.score.value = res.value;
     state.score.updated_at = nowISO();
     persistDebounced(null, 250);
 
-    // Render with animation
     host.innerHTML = `
-      <div class="piq-score">
-        <div class="piq-score-num" id="piqScoreNum">0</div>
-        <div class="piq-score-meta">
-          <div class="piq-score-label">/ 100</div>
+      <div class="piq-score-ring" aria-label="PerformanceIQ Score">
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="Score ring">
+            <defs>
+              <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feColorMatrix type="matrix"
+                  values="1 0 0 0 0
+                          0 1 0 0 0
+                          0 0 1 0 0
+                          0 0 0 .55 0" />
+                <feMerge>
+                  <feMergeNode in="blur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <circle class="ring-bg" cx="60" cy="60" r="46"></circle>
+            <circle class="ring-prog" cx="60" cy="60" r="46" filter="url(#softGlow)"></circle>
+          </svg>
+          <div class="ring-center">
+            <div class="piq-score-num" id="piqScoreNum">0</div>
+            <div class="piq-score-sub">/ 100</div>
+          </div>
+        </div>
+
+        <div class="piq-score-side">
           <div class="piq-score-chip">${scoreTier(res.value)}</div>
+          <div class="piq-score-hint muted small">Updates from logs (14d)</div>
         </div>
       </div>
     `;
 
     const numEl = $("piqScoreNum");
-    if (numEl) {
-      animateNumber(numEl, prev, res.value, 700);
-      // Pulse if score changed
-      if (prev !== res.value) {
-        numEl.classList.add("score-bump");
-        window.setTimeout(() => numEl.classList.remove("score-bump"), 360);
-        hapticTap(res.value > prev ? "success" : "light");
+    animateNumber(numEl, prev, res.value, 760);
+
+    // ring progress
+    const svg = host.querySelector("svg.ring");
+    setRingProgress(svg, res.value, true);
+
+    // pulse on change
+    if (prev !== res.value && !prefersReducedMotion) {
+      const ringWrap = host.querySelector(".ring-wrap");
+      if (ringWrap) {
+        ringWrap.classList.remove("score-bump");
+        // force
+        // eslint-disable-next-line no-unused-expressions
+        ringWrap.offsetHeight;
+        ringWrap.classList.add("score-bump");
+        window.setTimeout(() => ringWrap.classList.remove("score-bump"), 420);
       }
+      hapticTap(res.value > prev ? "success" : "light");
     }
 
     if (noteEl) noteEl.textContent = res.note;
   }
 
-  function scoreTier(v) {
-    if (v >= 85) return "Elite";
-    if (v >= 70) return "Strong";
-    if (v >= 50) return "Building";
-    if (v >= 25) return "Starter";
-    return "New";
-  }
-
-  // ---------- Libraries (workouts) ----------
+  // ---------- Workout generation libs ----------
   const EXERCISE_LIB = {
     strength: {
       goblet_squat:        { title: "Goblet Squat",         cue: "3x8–10",     subs: { knee: "box_squat" } },
@@ -536,9 +610,7 @@
       practice: []
     };
 
-    return base
-      .concat(sportAdds[sport] || [])
-      .concat(typeAdds[sessionType] || []);
+    return base.concat(sportAdds[sport] || []).concat(typeAdds[sessionType] || []);
   }
 
   function applyInjury(exKey, injuries) {
@@ -726,7 +798,7 @@
 
       container.innerHTML = `
         <div class="minihead">${planned.sessionType} • ${planned.sport} • ${planned.total_min} min</div>
-        <div class="minibody">${blocksHTML}${notes}</div>
+        <div class="minobody">${blocksHTML}${notes}</div>
         <div style="margin-top:8px" class="row gap wrap">
           <button class="btn" id="btnStartToday" type="button">Start</button>
           <button class="btn ghost" id="btnGenerateNew" type="button">Generate new</button>
@@ -743,7 +815,7 @@
 
     container.innerHTML = `
       <div class="minihead">No session generated</div>
-      <div class="minibody">Press Generate to create a tailored session for today.</div>
+      <div class="minobody">Press Generate to create a tailored session for today.</div>
       <div style="margin-top:8px" class="row gap wrap">
         <button class="btn" id="btnGenerateOnly" type="button">Generate</button>
         <button class="btn ghost" id="btnOpenTrain" type="button">Open Train</button>
@@ -817,7 +889,50 @@
     toast("Session cancelled");
   }
 
-  // ---------- Train tab ----------
+  // ---------- Team ----------
+  function setTeamPill() {
+    const pill = $("teamPill");
+    if (!pill) return;
+    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
+    pill.textContent = `Team: ${teamName || "—"}`;
+  }
+
+  function renderTeam() {
+    const body = $("teamBody");
+    if (!body) return;
+    const teams = state.team?.teams || [];
+    if (!teams.length) {
+      body.innerHTML = `
+        <div class="mini">
+          <div class="minihead">No teams</div>
+          <div class="minibody">Create or join a team when cloud is enabled, or test locally.</div>
+        </div>
+      `;
+      return;
+    }
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Teams</div>
+        <div class="minibody">
+          ${teams.map(t => `
+            <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)">
+              <div><b>${t.name}</b><div class="small muted">${t.sport || ""}</div></div>
+              <button class="btn ghost" data-setteam="${t.id}" type="button">Set Active</button>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+    body.querySelectorAll("[data-setteam]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.team.active_team_id = btn.getAttribute("data-setteam");
+        persist("Active team updated");
+        setTeamPill();
+      });
+    });
+  }
+
+  // ---------- Train ----------
   function renderTrain() {
     const sport = state.profile?.sport || "basketball";
     const role  = state.profile?.role || "coach";
@@ -904,7 +1019,7 @@
     $("trainSportSelect")?.addEventListener("change", (e) => {
       const s = clampSport(e.target.value);
       state.profile.sport = s;
-      state.profile.theme.sport = s; // smart follow
+      state.profile.theme.sport = s;
       syncThemeFromState();
       persist("Sport updated");
       renderTrain();
@@ -918,53 +1033,9 @@
       state.profile.preferred_session_type = t;
       state.profile.theme.sport = s;
       syncThemeFromState();
-
       const gen = generateWorkoutFor(s, t, state.profile.injuries || []);
       persistDebounced(null);
       renderCard(gen);
-    });
-  }
-
-  // ---------- Team ----------
-  function setTeamPill() {
-    const pill = $("teamPill");
-    if (!pill) return;
-    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
-    pill.textContent = `Team: ${teamName || "—"}`;
-  }
-
-  function renderTeam() {
-    const body = $("teamBody");
-    if (!body) return;
-    const teams = state.team?.teams || [];
-    if (!teams.length) {
-      body.innerHTML = `
-        <div class="mini">
-          <div class="minihead">No teams</div>
-          <div class="minibody">Create or join a team when cloud is enabled, or test locally.</div>
-        </div>
-      `;
-      return;
-    }
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Teams</div>
-        <div class="minibody">
-          ${teams.map(t => `
-            <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)">
-              <div><b>${t.name}</b><div class="small muted">${t.sport || ""}</div></div>
-              <button class="btn ghost" data-setteam="${t.id}" type="button">Set Active</button>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-    `;
-    body.querySelectorAll("[data-setteam]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.team.active_team_id = btn.getAttribute("data-setteam");
-        persist("Active team updated");
-        setTeamPill();
-      });
     });
   }
 
@@ -1098,7 +1169,7 @@
     toast("QA grade complete");
   }
 
-  // ---------- Navigation + elite transitions ----------
+  // ---------- Navigation + focus/scroll + animated transitions ----------
   function setActiveNav(view) {
     document.querySelectorAll(".navbtn, .bottomnav .tab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === view);
@@ -1132,7 +1203,7 @@
       const el = $(`view-${v}`);
       if (!el) return;
       el.hidden = true;
-      el.classList.remove("view-enter", "view-enter-active");
+      el.classList.remove("view-enter", "view-enter-active", "view-spring");
     });
 
     const el = $(`view-${view}`);
@@ -1145,7 +1216,10 @@
       // eslint-disable-next-line no-unused-expressions
       el.offsetHeight;
       el.classList.add("view-enter-active");
-      window.setTimeout(() => el.classList.remove("view-enter", "view-enter-active"), 260);
+
+      // spring settle
+      window.setTimeout(() => el.classList.add("view-spring"), 140);
+      window.setTimeout(() => el.classList.remove("view-enter", "view-enter-active", "view-spring"), 360);
     }
   }
 
@@ -1278,7 +1352,7 @@
     });
   }
 
-  // ---------- Profile view ----------
+  // ---------- Profile ----------
   function renderProfile() {
     const body = $("profileBody");
     if (!body) return;
@@ -1477,7 +1551,7 @@
     $("qaTrain")?.addEventListener("click", () => showView("train"));
     $("qaTeam")?.addEventListener("click", () => showView("team"));
 
-    // Theme toggle (dark/light)
+    // Theme toggle
     $("btnThemeToggle")?.addEventListener("click", () => {
       const html = document.documentElement;
       const cur = html.getAttribute("data-theme") || "dark";
@@ -1497,15 +1571,9 @@
       state.profile.sport = newSport;
       state.profile.preferred_session_type = $("preferredSessionSelect")?.value || state.profile.preferred_session_type;
 
-      // If accent sport was tracking the profile sport, keep tracking it.
-      if (state.profile.theme?.sport === state.profile.sport) {
-        state.profile.theme.sport = newSport;
-      } else {
-        // Default behavior: still follow new sport unless user chose something else explicitly
-        state.profile.theme.sport = newSport;
-      }
-
+      state.profile.theme.sport = newSport; // keep smart-follow
       syncThemeFromState();
+
       persist("Profile preferences saved");
       renderAll();
     });
@@ -1557,11 +1625,9 @@
   function boot() {
     wireMicroInteractions();
     bindUI();
-
-    // Apply theme + sport palette
     syncThemeFromState();
 
-    // Pre-fill drawer selects
+    // Prefill drawer selects
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
@@ -1583,11 +1649,9 @@
     boot();
   }
 
-  // Debug
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
     getState: () => state,
-    applySportTheme,
     computePIQScore
   };
 })();
