@@ -1,14 +1,14 @@
-// core.js — v3.7.0
+// core.js — v3.8.0 (Apple-level polish pass)
 // Adds:
-// - Tab indicator glide (desktop nav + mobile bottom nav)
-// - Parallax blur layers (scroll + pointer; reduced-motion safe)
-// - Skeleton shimmer for cards during view transitions
-// Keeps all existing v3.6 functionality (today/train/profile/team/score/ripple/spring/theme).
+// - Shared-element transition for PIQ Score ring (Home <-> Profile)
+// - Elevation ramp hooks + refined micro-interactions timing
+// - Skeleton shimmer variants (card + blocklist)
+// Keeps: all existing functionality (offline-first app, views, today/train/profile/team, score ring, ripple, spring, themes).
 
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V370__) return;
-  window.__PIQ_CORE_V370__ = true;
+  if (window.__PIQ_CORE_V380__) return;
+  window.__PIQ_CORE_V380__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -47,7 +47,7 @@
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.7.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.8.0", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -108,7 +108,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.7.0";
+      state.meta.version = "3.8.0";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -177,14 +177,14 @@
   }
   function hapticTap(kind = "light") {
     if (!canHaptic()) return;
-    const pattern = kind === "nav" ? 8 : kind === "success" ? [10, 20, 12] : 8;
+    const pattern = kind === "nav" ? 8 : kind === "success" ? [10, 18, 10] : 8;
     try { navigator.vibrate(pattern); } catch {}
   }
 
   function springPress(el) {
     if (!el) return;
     el.classList.remove("spring-press");
-    el.offsetHeight; // force reflow
+    el.offsetHeight;
     el.classList.add("spring-press");
     window.setTimeout(() => el.classList.remove("spring-press"), 260);
   }
@@ -214,7 +214,7 @@
 
   function wireMicroInteractions() {
     document.addEventListener("pointerdown", (e) => {
-      const t = e.target.closest(".btn, .iconbtn, .navbtn, .tab, .pill");
+      const t = e.target.closest(".btn, .iconbtn, .navbtn, .tab, .pill, .blockcard, .card");
       if (!t) return;
 
       const isNav = t.classList.contains("navbtn") || t.classList.contains("tab");
@@ -225,7 +225,7 @@
   }
 
   // ===========================
-  // Tab indicator glide (NEW)
+  // Tab indicator glide
   // ===========================
   let _navIndicator = null;
   let _bottomIndicator = null;
@@ -266,28 +266,27 @@
     _navIndicator = ensureIndicator(nav, "nav-indicator");
     _bottomIndicator = ensureIndicator(bottom, "bottom-indicator");
 
-    // First position
     requestAnimationFrame(() => {
-      const activeNav = nav?.querySelector(".navbtn.active") || nav?.querySelector('[data-view="home"]');
-      const activeBottom = bottom?.querySelector(".tab.active") || bottom?.querySelector('[data-view="home"]');
-      if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px", bottom: "auto" });
+      const view = state.ui?.view || "home";
+      const activeNav = nav?.querySelector(`.navbtn[data-view="${view}"]`) || nav?.querySelector('[data-view="home"]');
+      const activeBottom = bottom?.querySelector(`.tab[data-view="${view}"]`) || bottom?.querySelector('[data-view="home"]');
+      if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px" });
       if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
     });
 
-    // Keep it correct on resize/orientation changes
     window.addEventListener("resize", () => {
       const view = state.ui?.view || "home";
       requestAnimationFrame(() => {
         const activeNav = nav?.querySelector(`.navbtn[data-view="${view}"]`);
         const activeBottom = bottom?.querySelector(`.tab[data-view="${view}"]`);
-        if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px", bottom: "auto" });
+        if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "40px" });
         if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
       });
     }, { passive: true });
   }
 
   // ===========================
-  // Parallax blur (NEW)
+  // Parallax blur layers
   // ===========================
   let _parallaxEl = null;
   let _parallaxRAF = null;
@@ -311,7 +310,6 @@
       _parallaxRAF = null;
       const y = window.scrollY || 0;
 
-      // subtle depth movement
       const dx = _px * 0.02;
       const dy = _py * 0.02;
 
@@ -341,9 +339,23 @@
   }
 
   // ===========================
-  // Skeleton shimmer (NEW)
+  // Skeleton shimmer variants
   // ===========================
-  function skeletonHTML(lines = 3) {
+  function skeletonHTML({ lines = 3, variant = "card" } = {}) {
+    if (variant === "blocklist") {
+      // looks like workout blocks
+      return `
+        <div class="sk-card sk-variant-blocklist">
+          <div class="sk-head"></div>
+          <div class="sk-row"></div>
+          <div class="sk-row short"></div>
+          <div class="sk-block"></div>
+          <div class="sk-block"></div>
+          <div class="sk-block short"></div>
+        </div>
+      `;
+    }
+
     let s = `<div class="sk-card"><div class="sk-head"></div>`;
     for (let i = 0; i < lines; i++) s += `<div class="sk-line"></div>`;
     s += `</div>`;
@@ -354,23 +366,23 @@
     if (prefersReducedMotion) return;
 
     const map = {
-      home:   [{ id: "todayBlock", lines: 6 }, { id: "piqScoreHome", lines: 3 }],
-      team:   [{ id: "teamBody", lines: 7 }],
-      train:  [{ id: "trainBody", lines: 7 }],
-      profile:[{ id: "profileBody", lines: 9 }]
+      home:   [{ id: "todayBlock", variant: "blocklist" }, { id: "piqScoreHome", variant: "card", lines: 3 }],
+      team:   [{ id: "teamBody", variant: "card", lines: 7 }],
+      train:  [{ id: "trainBody", variant: "blocklist" }],
+      profile:[{ id: "profileBody", variant: "card", lines: 10 }, { id: "piqScoreProfile", variant: "card", lines: 3 }]
     };
 
     const targets = map[view] || [];
     targets.forEach(t => {
       const el = $(t.id);
       if (el) {
-        el.innerHTML = `<div class="sk-wrap">${skeletonHTML(t.lines)}</div>`;
+        el.innerHTML = `<div class="sk-wrap">${skeletonHTML({ lines: t.lines, variant: t.variant })}</div>`;
       }
     });
   }
 
   // ===========================
-  // Score (same as before)
+  // Score computation + ring render
   // ===========================
   function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
 
@@ -494,10 +506,29 @@
 
   let _lastScoreRendered = null;
 
-  function renderPIQScore() {
-    const host = $("piqScoreHome");
-    const noteEl = $("piqScoreNote");
-    if (!host) return;
+  function scoreMarkup() {
+    return `
+      <div class="piq-score-ring" aria-label="PerformanceIQ Score">
+        <div class="ring-wrap" data-shared="scoreRing">
+          <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="Score ring">
+            <circle class="ring-bg" cx="60" cy="60" r="46"></circle>
+            <circle class="ring-prog" cx="60" cy="60" r="46"></circle>
+          </svg>
+          <div class="ring-center">
+            <div class="piq-score-num" data-score-num>0</div>
+            <div class="piq-score-sub">/ 100</div>
+          </div>
+        </div>
+        <div class="piq-score-side">
+          <div class="piq-score-chip" data-score-tier>—</div>
+          <div class="piq-score-hint muted small">Updates from logs (14d)</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderPIQScoreInto(containerEl) {
+    if (!containerEl) return;
 
     const res = computePIQScore();
     const prev = (typeof _lastScoreRendered === "number")
@@ -509,33 +540,18 @@
     state.score.updated_at = nowISO();
     persistDebounced(null, 250);
 
-    host.innerHTML = `
-      <div class="piq-score-ring" aria-label="PerformanceIQ Score">
-        <div class="ring-wrap">
-          <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="Score ring">
-            <circle class="ring-bg" cx="60" cy="60" r="46"></circle>
-            <circle class="ring-prog" cx="60" cy="60" r="46"></circle>
-          </svg>
-          <div class="ring-center">
-            <div class="piq-score-num" id="piqScoreNum">0</div>
-            <div class="piq-score-sub">/ 100</div>
-          </div>
-        </div>
-        <div class="piq-score-side">
-          <div class="piq-score-chip">${scoreTier(res.value)}</div>
-          <div class="piq-score-hint muted small">Updates from logs (14d)</div>
-        </div>
-      </div>
-    `;
+    containerEl.innerHTML = scoreMarkup();
 
-    const numEl = $("piqScoreNum");
+    const numEl = containerEl.querySelector("[data-score-num]");
+    const tierEl = containerEl.querySelector("[data-score-tier]");
+    const svg = containerEl.querySelector("svg.ring");
+
+    if (tierEl) tierEl.textContent = scoreTier(res.value);
     animateNumber(numEl, prev, res.value, 760);
-
-    const svg = host.querySelector("svg.ring");
     setRingProgress(svg, res.value, true);
 
     if (prev !== res.value && !prefersReducedMotion) {
-      const ringWrap = host.querySelector(".ring-wrap");
+      const ringWrap = containerEl.querySelector(".ring-wrap");
       if (ringWrap) {
         ringWrap.classList.remove("score-bump");
         ringWrap.offsetHeight;
@@ -545,10 +561,100 @@
       hapticTap(res.value > prev ? "success" : "light");
     }
 
-    if (noteEl) noteEl.textContent = res.note;
+    return { value: res.value, note: res.note };
   }
 
-  // ---------- Workout libs (same as before) ----------
+  function renderPIQScore() {
+    const homeHost = $("piqScoreHome");
+    const profHost = $("piqScoreProfile");
+    const noteEl = $("piqScoreNote");
+
+    const homeRes = homeHost ? renderPIQScoreInto(homeHost) : null;
+    const profRes = profHost ? renderPIQScoreInto(profHost) : null;
+
+    const res = homeRes || profRes;
+    if (noteEl && res?.note) noteEl.textContent = res.note;
+  }
+
+  // ===========================
+  // Shared-element transition (Apple-style)
+  // ===========================
+  function getScoreRingEl(view) {
+    const hostId = (view === "home") ? "piqScoreHome" : (view === "profile") ? "piqScoreProfile" : null;
+    if (!hostId) return null;
+    const host = $(hostId);
+    if (!host) return null;
+    return host.querySelector(".piq-score-ring") || null;
+  }
+
+  function animateSharedRing(fromView, toView) {
+    if (prefersReducedMotion) return;
+    if (!((fromView === "home" && toView === "profile") || (fromView === "profile" && toView === "home"))) return;
+
+    const fromRing = getScoreRingEl(fromView);
+    const toRing   = getScoreRingEl(toView);
+    if (!fromRing || !toRing) return;
+
+    const fromRect = fromRing.getBoundingClientRect();
+    const toRect = toRing.getBoundingClientRect();
+
+    // Hide destination briefly so the clone “lands”
+    toRing.style.visibility = "hidden";
+
+    const clone = fromRing.cloneNode(true);
+    clone.classList.add("shared-clone");
+    clone.style.position = "fixed";
+    clone.style.left = fromRect.left + "px";
+    clone.style.top = fromRect.top + "px";
+    clone.style.width = fromRect.width + "px";
+    clone.style.height = fromRect.height + "px";
+    clone.style.margin = "0";
+    clone.style.zIndex = "999";
+    clone.style.transformOrigin = "top left";
+    clone.style.pointerEvents = "none";
+
+    document.body.appendChild(clone);
+
+    // Subtle blur + scale while moving
+    const dx = toRect.left - fromRect.left;
+    const dy = toRect.top - fromRect.top;
+    const sx = toRect.width / fromRect.width;
+    const sy = toRect.height / fromRect.height;
+
+    // Ensure GPU path
+    clone.offsetHeight;
+
+    clone.style.transition =
+      "transform 520ms cubic-bezier(.16, 1, .3, 1), filter 520ms cubic-bezier(.16, 1, .3, 1), opacity 520ms cubic-bezier(.16, 1, .3, 1)";
+    clone.style.filter = "blur(0px)";
+    clone.style.opacity = "1";
+
+    requestAnimationFrame(() => {
+      clone.style.filter = "blur(2px)";
+      clone.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`;
+      clone.style.opacity = "0.98";
+    });
+
+    const done = () => {
+      clone.removeEventListener("transitionend", done);
+      clone.remove();
+      toRing.style.visibility = "visible";
+      // tiny settle pop
+      const wrap = toRing.querySelector(".ring-wrap");
+      if (wrap) {
+        wrap.classList.remove("score-land");
+        wrap.offsetHeight;
+        wrap.classList.add("score-land");
+        window.setTimeout(() => wrap.classList.remove("score-land"), 260);
+      }
+    };
+
+    clone.addEventListener("transitionend", done);
+    // safety timeout
+    window.setTimeout(done, 900);
+  }
+
+  // ---------- Workout generation libs (unchanged from v3.7) ----------
   const EXERCISE_LIB = {
     strength: {
       goblet_squat:        { title: "Goblet Squat",         cue: "3x8–10",     subs: { knee: "box_squat" } },
@@ -899,7 +1005,7 @@
           return `<div style="margin:4px 0">• ${name}${reps}${cue}${sub}</div>`;
         }).join("");
         return `
-          <div class="blockcard">
+          <div class="blockcard elevate" tabindex="0">
             <div class="blockcard-head">
               <div class="blockcard-title">${b.title}</div>
               <div class="small muted">${b.duration_min} min</div>
@@ -1100,7 +1206,7 @@
           <div class="minihead">${gen.sessionType} • ${gen.sport} • ${gen.total_min} min</div>
           <div class="minibody">
             ${gen.blocks.map(b => `
-              <div class="blockcard">
+              <div class="blockcard elevate" tabindex="0">
                 <div class="blockcard-head">
                   <div class="blockcard-title">${b.title}</div>
                   <div class="small muted">${b.duration_min} min</div>
@@ -1285,7 +1391,7 @@
     toast("QA grade complete");
   }
 
-  // ---------- Navigation + focus/scroll + animated transitions ----------
+  // ---------- Navigation + transitions ----------
   function setActiveNav(view) {
     const desktopNav = $("desktopNav");
     const bottomNav = $("bottomNav");
@@ -1295,7 +1401,6 @@
       btn.setAttribute("aria-current", btn.dataset.view === view ? "page" : "false");
     });
 
-    // glide indicators
     if (_navIndicator && desktopNav) {
       const btn = desktopNav.querySelector(`.navbtn[data-view="${view}"]`);
       if (btn) updateIndicatorFor(desktopNav, _navIndicator, btn, { height: "40px" });
@@ -1348,9 +1453,11 @@
     }
   }
 
-  // NEW: skeleton pass before render
+  // NEW: Apple-style view switch with shared score ring
   function showView(view) {
     if (!VIEWS.includes(view)) view = "home";
+
+    const fromView = state.ui.view || "home";
     state.ui.view = view;
     persistDebounced(null);
 
@@ -1358,24 +1465,29 @@
     setActiveViewClass(view);
     transitionToView(view);
 
-    // show skeleton shimmer quickly, then render real content
     showViewSkeletons(view);
 
     if (prefersReducedMotion) {
       renderAll();
+      renderPIQScore();
       requestAnimationFrame(() => focusAndScrollTop(view));
       return;
     }
 
-    // slight delay for premium feel (fast enough not to annoy)
+    // Render real content, then run shared-element animation
     window.setTimeout(() => {
       renderAll();
       renderPIQScore();
-      requestAnimationFrame(() => focusAndScrollTop(view));
+
+      // After DOM is ready, animate shared ring (Home <-> Profile)
+      requestAnimationFrame(() => {
+        animateSharedRing(fromView, view);
+        focusAndScrollTop(view);
+      });
     }, 110);
   }
 
-  // ---------- Onboarding (same as before) ----------
+  // ---------- Onboarding ----------
   function ensureOnboarding() {
     if (state.profile.onboarded) return;
 
@@ -1503,6 +1615,11 @@
           <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
           <div class="small muted" style="margin-top:8px">Tip: Use Train to generate by sport/session type and push to Today.</div>
         </div>
+      </div>
+
+      <div class="mini" style="margin-top:12px">
+        <div class="minihead">PerformanceIQ Score</div>
+        <div id="piqScoreProfile" style="margin-top:10px">—</div>
       </div>
 
       <div class="mini" style="margin-top:12px">
@@ -1753,11 +1870,9 @@
     bindUI();
     syncThemeFromState();
 
-    // NEW polish systems
     setupTabIndicators();
     setupParallaxBlur();
 
-    // Prefill selects
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
