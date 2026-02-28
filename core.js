@@ -1,13 +1,13 @@
-// core.js — v3.4.0 (NEXT apple-level pass)
+// core.js — v3.5.0 (Next milestone polish)
 // Adds:
-// - View Transitions API (startViewTransition) with fallback
-// - Haptics (vibration) opt-in toggle (injected into Account drawer)
-// - Per-role density: Parent/Viewer => comfort mode (larger, clearer)
-// Keeps v3.3 functionality intact.
+// - One-hand mode toggle (left/right) for parents (moves FAB + nudges sheet)
+// - Sticky Today mini-summary on scroll (Coach/Athlete only)
+// - Smart accent auto-contrast tokens to keep light theme readable
+// Keeps all v3.4 functionality intact.
 (function () {
   "use strict";
-  if (window.__PIQ_CORE_V340__) return;
-  window.__PIQ_CORE_V340__ = true;
+  if (window.__PIQ_CORE_V350__) return;
+  window.__PIQ_CORE_V350__ = true;
 
   const $ = (id) => document.getElementById(id);
   const nowISO = () => new Date().toISOString();
@@ -19,7 +19,7 @@
   let state = (window.dataStore?.load) ? window.dataStore.load() : null;
   if (!state || typeof state !== "object") state = {};
 
-  state.meta = state.meta || { version: "3.4.0", updated_at: nowISO() };
+  state.meta = state.meta || { version: "3.5.0", updated_at: nowISO() };
 
   state.profile = state.profile || {};
   state.profile.role = state.profile.role || "coach";
@@ -31,9 +31,10 @@
     ? state.profile.theme
     : { mode: (document.documentElement.getAttribute("data-theme") || "dark") };
 
-  // NEW: UX preferences
+  // UX prefs
   state.profile.ux = (state.profile.ux && typeof state.profile.ux === "object") ? state.profile.ux : {};
-  state.profile.ux.haptics = !!state.profile.ux.haptics; // opt-in
+  state.profile.ux.haptics = !!state.profile.ux.haptics;
+  state.profile.ux.hand = (state.profile.ux.hand === "left" || state.profile.ux.hand === "right") ? state.profile.ux.hand : "right";
 
   state.team = state.team || { teams: [], active_team_id: null };
   state.team.teams = Array.isArray(state.team.teams) ? state.team.teams : [];
@@ -64,7 +65,7 @@
   function persist(msg) {
     try {
       state.meta = state.meta || {};
-      state.meta.version = "3.4.0";
+      state.meta.version = "3.5.0";
       state.meta.updated_at = nowISO();
       window.dataStore?.save?.(state);
       if (msg) toast(msg);
@@ -121,12 +122,10 @@
     dot.style.background = color || "var(--ok)";
     txt.textContent = text || "Saved";
   }
-  function applyStatusFromMeta() {
-    setDataStatusLabel("Local saved", "var(--ok)");
-  }
+  function applyStatusFromMeta() { setDataStatusLabel("Local saved", "var(--ok)"); }
 
   // ==========================================================
-  //  Density by role (Parent/Viewer comfort mode)
+  // Density + one-hand mode (role-driven defaults)
   // ==========================================================
   function applyDensityForRole(role) {
     const html = document.documentElement;
@@ -134,16 +133,21 @@
     html.setAttribute("data-density", comfort ? "comfort" : "compact");
   }
 
+  function applyHandMode(hand) {
+    const html = document.documentElement;
+    html.setAttribute("data-hand", (hand === "left") ? "left" : "right");
+  }
+
   // ==========================================================
-  //  Sport Theme Palettes + smart accent auto-adjust
+  // Sport palettes + auto-contrast
   // ==========================================================
   const SPORT_PALETTES = {
-    basketball: { accent: "#2EC4B6", accent2: "rgba(46,196,182,.16)", accent3: "rgba(46,196,182,.26)" },
-    football:   { accent: "#F59E0B", accent2: "rgba(245,158,11,.16)", accent3: "rgba(245,158,11,.26)" },
-    soccer:     { accent: "#22C55E", accent2: "rgba(34,197,94,.16)",  accent3: "rgba(34,197,94,.26)"  },
-    baseball:   { accent: "#3B82F6", accent2: "rgba(59,130,246,.16)", accent3: "rgba(59,130,246,.26)" },
-    volleyball: { accent: "#A855F7", accent2: "rgba(168,85,247,.16)", accent3: "rgba(168,85,247,.26)" },
-    track:      { accent: "#EF4444", accent2: "rgba(239,68,68,.14)",  accent3: "rgba(239,68,68,.22)"  }
+    basketball: { accent: "#2EC4B6" },
+    football:   { accent: "#F59E0B" },
+    soccer:     { accent: "#22C55E" },
+    baseball:   { accent: "#3B82F6" },
+    volleyball: { accent: "#A855F7" },
+    track:      { accent: "#EF4444" }
   };
 
   function toRGBA(hex, a) {
@@ -159,33 +163,53 @@
     }
   }
 
+  function luminanceFromHex(hex) {
+    const h = (hex || "").replace("#", "");
+    if (h.length !== 6) return 0.5;
+    const r = parseInt(h.slice(0,2),16)/255;
+    const g = parseInt(h.slice(2,4),16)/255;
+    const b = parseInt(h.slice(4,6),16)/255;
+    const lin = (c) => (c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4));
+    const R = lin(r), G = lin(g), B = lin(b);
+    return 0.2126*R + 0.7152*G + 0.0722*B;
+  }
+
+  function pickAccentText(accentHex) {
+    // Simple but effective: choose dark text for very bright accents (yellow/orange),
+    // white for others. This fixes “hard to read on light theme” complaints.
+    const L = luminanceFromHex(accentHex);
+    // threshold tuned for legibility on light UI
+    return (L > 0.62) ? "#0b1426" : "#ffffff";
+  }
+
   function applySportTheme(sport, mode) {
     const html = document.documentElement;
     const s = SPORT_PALETTES[sport] || SPORT_PALETTES.basketball;
 
-    html.style.setProperty("--accent", s.accent);
-    html.style.setProperty("--accent-2", s.accent2);
-    html.style.setProperty("--accent-3", s.accent3);
+    const accent = s.accent;
+    html.style.setProperty("--accent", accent);
+    html.style.setProperty("--accent-2", toRGBA(accent, 0.16));
+    html.style.setProperty("--accent-3", toRGBA(accent, 0.26));
 
-    html.style.setProperty("--focus-ring", `0 0 0 3px ${toRGBA(s.accent, mode === "light" ? 0.22 : 0.30)}`);
+    html.style.setProperty("--focus-ring", `0 0 0 3px ${toRGBA(accent, mode === "light" ? 0.22 : 0.30)}`);
+
+    // Auto-contrast tokens for accent surfaces (esp. light theme buttons)
+    const text = pickAccentText(accent);
+    html.style.setProperty("--accent-text", text);
+    html.style.setProperty("--accent-text-muted", text === "#ffffff" ? "rgba(255,255,255,.86)" : "rgba(11,20,38,.72)");
 
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", mode === "light" ? "#ffffff" : "#0b1017");
   }
 
   // ==========================================================
-  //  Haptics (opt-in) + Ripple micro-interactions
+  // Haptics + Ripple
   // ==========================================================
-  function canHaptic() {
-    return !!(navigator && typeof navigator.vibrate === "function");
-  }
-  function haptic(type) {
+  function canHaptic(){ return !!(navigator && typeof navigator.vibrate === "function"); }
+  function haptic(type){
     if (!state.profile?.ux?.haptics) return;
     if (!canHaptic()) return;
-    // Keep it subtle (Apple-like): short ticks only
-    const pattern = type === "success" ? [10, 30, 10] :
-                    type === "warning" ? [15] :
-                    [10];
+    const pattern = type === "success" ? [10,30,10] : type === "warning" ? [15] : [10];
     try { navigator.vibrate(pattern); } catch {}
   }
 
@@ -193,8 +217,6 @@
     document.addEventListener("pointerdown", (e) => {
       const el = e.target.closest(".btn, .iconbtn, .navbtn, .tab, .fab");
       if (!el) return;
-
-      // Subtle haptic on press (opt-in)
       haptic("tap");
 
       if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -217,7 +239,7 @@
   }
 
   // ==========================================================
-  //  Tab indicator glide (desktop + bottom)
+  // Tab indicators
   // ==========================================================
   let navIndicator = null;
   let bottomIndicator = null;
@@ -257,7 +279,8 @@
         navIndicator.classList.add("on");
         navIndicator.style.width = rBtn.width + "px";
         navIndicator.style.height = rBtn.height + "px";
-        navIndicator.style.transform = `translate3d(${Math.round(rBtn.left - rNav.left)}px, ${Math.round(rBtn.top - rNav.top)}px, 0)`;
+        navIndicator.style.transform =
+          `translate3d(${Math.round(rBtn.left - rNav.left)}px, ${Math.round(rBtn.top - rNav.top)}px, 0)`;
       }
     }
 
@@ -269,60 +292,39 @@
         const rBtn = btn.getBoundingClientRect();
         bottomIndicator.classList.add("on");
         bottomIndicator.style.width = Math.round(rBtn.width * 0.55) + "px";
-        bottomIndicator.style.transform = `translate3d(${Math.round((rBtn.left - rBottom.left) + (rBtn.width * 0.225))}px, 0, 0)`;
+        bottomIndicator.style.transform =
+          `translate3d(${Math.round((rBtn.left - rBottom.left) + (rBtn.width * 0.225))}px, 0, 0)`;
       }
     }
   }
 
   // ==========================================================
-  //  View Transitions API wrapper (fallback safe)
+  // View Transitions API wrapper
   // ==========================================================
-  function supportsViewTransitions() {
-    return typeof document.startViewTransition === "function";
-  }
-
+  function supportsViewTransitions() { return typeof document.startViewTransition === "function"; }
   function withViewTransition(fn) {
     const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) { fn(); return; }
-    if (!supportsViewTransitions()) { fn(); return; }
-    try {
-      document.startViewTransition(() => fn());
-    } catch {
-      fn();
-    }
+    if (reduce || !supportsViewTransitions()) { fn(); return; }
+    try { document.startViewTransition(() => fn()); } catch { fn(); }
   }
 
   // ==========================================================
-  //  PIQ Score (animated ring + count-up) [unchanged logic]
+  // PIQ Score (ring + count-up)
   // ==========================================================
-  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+  function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
 
   function computeStreak() {
     const sessions = Array.isArray(state.sessions) ? state.sessions : [];
     if (!sessions.length) return 0;
-
-    const days = sessions
-      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
-      .filter(Boolean);
-
+    const days = sessions.map(s => isoDay(s?.created_at || s?.generated_at || s?.date)).filter(Boolean);
     if (!days.length) return 0;
-
-    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
-
+    const uniq = Array.from(new Set(days)).sort((a,b)=>b.localeCompare(a));
     let streak = 1;
     let cursor = new Date(uniq[0] + "T00:00:00.000Z");
-
-    for (let i = 1; i < uniq.length; i++) {
+    for (let i=1;i<uniq.length;i++){
       const d = new Date(uniq[i] + "T00:00:00.000Z");
-      const prev = new Date(cursor);
-      prev.setUTCDate(prev.getUTCDate() - 1);
-
-      if (d.getTime() === prev.getTime()) {
-        streak++;
-        cursor = d;
-      } else {
-        break;
-      }
+      const prev = new Date(cursor); prev.setUTCDate(prev.getUTCDate()-1);
+      if (d.getTime() === prev.getTime()) { streak++; cursor = d; } else break;
     }
     return streak;
   }
@@ -365,10 +367,7 @@
     if (!host) return;
 
     const { score, note } = computePIQScore();
-    if (noteEl) {
-      noteEl.textContent = note;
-      noteEl.classList.add("caption-illusion");
-    }
+    if (noteEl) { noteEl.textContent = note; noteEl.classList.add("caption-illusion"); }
 
     host.innerHTML = `
       <div class="piq-score" aria-label="PerformanceIQ Score">
@@ -421,19 +420,18 @@
   }
 
   // ==========================================================
-  //  Workout generation + rendering (same as v3.3)
-  //  (Kept intact; shortened here only where not modified)
+  // Workout generation (unchanged from your v3.2+ baseline)
   // ==========================================================
   const EXERCISE_LIB = {
     strength: {
-      goblet_squat: { title:"Goblet Squat", cue:"3x8–10", subs:{ knee:"box_squat" } },
-      split_squat: { title:"Split Squat", cue:"3x6–8/leg", subs:{ knee:"reverse_lunge" } },
-      rdl: { title:"Romanian Deadlift", cue:"3x6–8", subs:{ back:"hip_hinge_dowel" } },
-      trap_bar_deadlift: { title:"Trap Bar Deadlift", cue:"3x4–6", subs:{ back:"kb_deadlift" } },
-      bench: { title:"Bench Press", cue:"3x5–8", subs:{ shoulder:"landmine_press" } },
-      row: { title:"Row (DB/Band)", cue:"3x8–12", subs:{ back:"band_row" } },
-      push_press: { title:"Push Press", cue:"3x5", subs:{ shoulder:"landmine_press" } },
-      single_leg_deadlift: { title:"Single-Leg RDL", cue:"3x6/leg", subs:{ balance:"rack_step_down" } }
+      goblet_squat:{ title:"Goblet Squat", cue:"3x8–10", subs:{ knee:"box_squat" } },
+      split_squat:{ title:"Split Squat", cue:"3x6–8/leg", subs:{ knee:"reverse_lunge" } },
+      rdl:{ title:"Romanian Deadlift", cue:"3x6–8", subs:{ back:"hip_hinge_dowel" } },
+      trap_bar_deadlift:{ title:"Trap Bar Deadlift", cue:"3x4–6", subs:{ back:"kb_deadlift" } },
+      bench:{ title:"Bench Press", cue:"3x5–8", subs:{ shoulder:"landmine_press" } },
+      row:{ title:"Row (DB/Band)", cue:"3x8–12", subs:{ back:"band_row" } },
+      push_press:{ title:"Push Press", cue:"3x5", subs:{ shoulder:"landmine_press" } },
+      single_leg_deadlift:{ title:"Single-Leg RDL", cue:"3x6/leg", subs:{ balance:"rack_step_down" } }
     },
     plyo: {
       approach_jumps:{ title:"Approach Jumps", cue:"6 reps", subs:{ knee:"low_box_jump" } },
@@ -654,6 +652,7 @@
         state.ui.todaySession = _generateTodaySession();
         persist("New session generated");
         renderTodayBlock();
+        updateStickyToday();
       });
       return;
     }
@@ -670,6 +669,7 @@
       state.ui.todaySession = _generateTodaySession();
       persist("Session generated");
       renderTodayBlock();
+      updateStickyToday();
     });
     $("btnOpenTrain")?.addEventListener("click", () => showView("train"));
   }
@@ -686,10 +686,12 @@
     if (timerEl) timerEl.textContent = "Running…";
 
     haptic("success");
+    updateStickyToday();
 
     todayTimer = setInterval(() => {
       const el = $("todayRunning");
       if (el) el.textContent = "Started " + timeAgo(todayTimerStart);
+      updateStickyToday();
     }, 1500);
   }
 
@@ -700,6 +702,7 @@
     todayActiveSession = null;
     const timerEl = $("todayTimer");
     if (timerEl) timerEl.textContent = "No timer running";
+    updateStickyToday();
   }
 
   function stopAndLogToday() {
@@ -739,7 +742,101 @@
     haptic("warning");
   }
 
-  // ---------- Train tab ----------
+  // ==========================================================
+  // Sticky Today mini-summary (Coach/Athlete only)
+  // ==========================================================
+  let stickyEl = null;
+  let stickyBound = false;
+
+  function shouldShowSticky() {
+    const role = state.profile.role;
+    if (role === "parent" || role === "viewer") return false;
+    if ((state.ui.view || "home") !== "home") return false;
+    return true;
+  }
+
+  function ensureStickyToday() {
+    const homeView = $("view-home");
+    if (!homeView) return;
+
+    if (!stickyEl) {
+      stickyEl = document.createElement("div");
+      stickyEl.id = "stickyToday";
+      stickyEl.className = "sticky-today hidden";
+      stickyEl.innerHTML = `
+        <div>
+          <div class="title" id="stickyTodayTitle">Today</div>
+          <div class="meta" id="stickyTodayMeta">—</div>
+        </div>
+        <div class="actions">
+          <button class="btn" id="stickyTodayAction" type="button">Start</button>
+        </div>
+      `;
+      // Insert at top of home view content
+      homeView.prepend(stickyEl);
+
+      stickyEl.querySelector("#stickyTodayAction")?.addEventListener("click", () => {
+        haptic("tap");
+        if (todayActiveSession) { stopAndLogToday(); return; }
+        if (state.ui.todaySession) { startToday(state.ui.todaySession); return; }
+        state.ui.todaySession = _generateTodaySession();
+        persist("Generated Today session");
+        renderTodayBlock();
+        updateStickyToday();
+      });
+    }
+
+    if (!stickyBound) {
+      stickyBound = true;
+      document.addEventListener("scroll", () => updateStickyToday(), { passive: true });
+      const content = document.querySelector(".content");
+      if (content) content.addEventListener("scroll", () => updateStickyToday(), { passive: true });
+      window.addEventListener("resize", () => updateStickyToday());
+    }
+  }
+
+  function updateStickyToday() {
+    if (!stickyEl) return;
+
+    if (!shouldShowSticky()) {
+      stickyEl.classList.add("hidden");
+      return;
+    }
+
+    // Only show after user scrolls down a bit
+    const y = (document.scrollingElement ? document.scrollingElement.scrollTop : window.scrollY) || 0;
+    const show = y > 120;
+
+    if (!show) {
+      stickyEl.classList.add("hidden");
+      return;
+    }
+
+    const title = stickyEl.querySelector("#stickyTodayTitle");
+    const meta  = stickyEl.querySelector("#stickyTodayMeta");
+    const btn   = stickyEl.querySelector("#stickyTodayAction");
+
+    const planned = state.ui.todaySession;
+    if (todayActiveSession) {
+      if (title) title.textContent = "In progress";
+      if (meta) meta.textContent = `${todayActiveSession.sessionType} • ${todayActiveSession.sport} • ${timeAgo(todayTimerStart)}`;
+      if (btn) { btn.textContent = "Stop & Log"; btn.classList.remove("ghost"); }
+    } else if (planned) {
+      if (title) title.textContent = "Today ready";
+      if (meta) meta.textContent = `${planned.sessionType} • ${planned.sport} • ${planned.total_min} min`;
+      if (btn) { btn.textContent = "Start"; }
+    } else {
+      if (title) title.textContent = "No plan";
+      if (meta) meta.textContent = "Generate a session for today.";
+      if (btn) { btn.textContent = "Generate"; }
+    }
+
+    stickyEl.classList.remove("hidden");
+  }
+
+  // ==========================================================
+  // Train tab
+  // ==========================================================
   function renderTrain() {
     const sport = state.profile?.sport || "basketball";
     const role  = state.profile?.role || "coach";
@@ -811,6 +908,7 @@
         state.ui.todaySession = gen;
         persist("Pushed to Today");
         showView("home");
+        updateStickyToday();
         haptic("tap");
       });
 
@@ -847,7 +945,7 @@
     });
   }
 
-  // ---------- Team ----------
+  // Team
   function setTeamPill() {
     const pill = $("teamPill");
     if (!pill) return;
@@ -891,11 +989,10 @@
     });
   }
 
-  // ---------- Insights ----------
+  // Insights
   function computeInsights() {
     const sessions = Array.isArray(state.sessions) ? state.sessions : [];
     const byWeek = {};
-
     sessions.forEach(s => {
       const key = isoWeekKey(s?.created_at || s?.generated_at || s?.date);
       if (!key) return;
@@ -948,7 +1045,7 @@
     host.appendChild(el);
   }
 
-  // ---------- Data Management ----------
+  // Data Management
   function exportJSON() {
     if (!window.dataStore?.exportJSON) { toast("Export not available"); return; }
     const json = window.dataStore.exportJSON();
@@ -975,10 +1072,14 @@
         window.dataStore.importJSON(e.target.result);
         state = window.dataStore.load() || state;
         toast("Import complete");
+        applyDensityForRole(state.profile.role);
+        applyHandMode(state.profile.ux?.hand || "right");
+        applySportTheme(state.profile.sport, document.documentElement.getAttribute("data-theme") || "dark");
         renderAll();
         updateIndicators();
         renderPIQScore();
-        applyDensityForRole(state.profile.role);
+        ensureStickyToday();
+        updateStickyToday();
         haptic("success");
       } catch (err) {
         console.error(err);
@@ -1016,7 +1117,7 @@
     haptic("tap");
   }
 
-  // ---------- Navigation + focus/scroll ----------
+  // Navigation + focus/scroll
   function setActiveNav(view) {
     document.querySelectorAll(".navbtn, .bottomnav .tab").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.view === view);
@@ -1061,7 +1162,6 @@
   function showView(view) {
     if (!VIEWS.includes(view)) view = "home";
 
-    // Wrap view swap in View Transitions when supported
     withViewTransition(() => {
       state.ui.view = view;
       persistDebounced(null);
@@ -1082,11 +1182,13 @@
       focusAndScrollTop(view);
       animateViewIn(view);
       updateIndicators();
+      ensureStickyToday();
+      updateStickyToday();
       setTimeout(() => setViewLoading(view, false), 260);
     });
   }
 
-  // ---------- Help drawer ----------
+  // Help drawer
   function openHelp() {
     const b = $("helpBackdrop");
     const d = $("helpDrawer");
@@ -1113,8 +1215,8 @@
       { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
       { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
       { title: "Injury-friendly templates", snippet: "Injuries change the plan (knee/ankle = low impact conditioning; shoulder/back adjust strength patterns)." },
-      { title: "Haptics (optional)", snippet: "Account → Feedback → Haptics. On mobile devices, subtle taps confirm actions." },
-      { title: "Comfort mode", snippet: "Parent/Viewer roles automatically use larger text + spacing to reduce eye strain." }
+      { title: "One-hand mode", snippet: "Account → Feedback → Hand mode. Moves FAB and nudges sheet for reach." },
+      { title: "Sticky Today", snippet: "Coach/Athlete: a small Today bar appears when you scroll, for quick start/stop." }
     ];
   }
   function searchHelp(q) {
@@ -1139,7 +1241,7 @@
     if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
   }
 
-  // ---------- Account Drawer ----------
+  // Account Drawer
   function openDrawer() {
     const b = $("drawerBackdrop");
     const d = $("accountDrawer");
@@ -1157,7 +1259,7 @@
     d.setAttribute("aria-hidden", "true");
   }
 
-  // Inject Feedback card (Haptics toggle) without editing index.html
+  // Inject Feedback card (Haptics + One-hand)
   function ensureFeedbackCard() {
     const drawerBody = document.querySelector("#accountDrawer .drawer-body");
     if (!drawerBody) return;
@@ -1170,7 +1272,7 @@
     wrap.setAttribute("aria-labelledby", "sectionFeedback");
     wrap.innerHTML = `
       <div class="card-title" id="sectionFeedback" role="heading" aria-level="2">Feedback</div>
-      <div class="small muted">Optional tactile confirmations (mobile). Off by default.</div>
+      <div class="small muted">Optional tactile confirmations + reach controls. Off by default.</div>
 
       <div style="margin-top:10px" class="toggle-row">
         <div>
@@ -1179,32 +1281,57 @@
         </div>
         <button class="toggle-pill" id="btnToggleHaptics" type="button" aria-pressed="false">Off</button>
       </div>
+
+      <div style="margin-top:10px" class="toggle-row">
+        <div>
+          <b>Hand mode</b>
+          <div class="small muted">Moves the + button for easier reach.</div>
+        </div>
+        <button class="toggle-pill" id="btnToggleHand" type="button" aria-pressed="false">Right</button>
+      </div>
     `;
     drawerBody.appendChild(wrap);
 
-    const btn = wrap.querySelector("#btnToggleHaptics");
-    if (!btn) return;
+    const btnH = wrap.querySelector("#btnToggleHaptics");
+    const btnHand = wrap.querySelector("#btnToggleHand");
 
-    function sync() {
+    function syncHaptics() {
       const on = !!state.profile?.ux?.haptics;
-      btn.textContent = on ? "On" : "Off";
-      btn.setAttribute("aria-pressed", on ? "true" : "false");
-      btn.style.borderColor = on ? "color-mix(in oklab, var(--accent) 55%, transparent)" : "";
-      btn.style.background = on ? "var(--accent-2)" : "";
-      btn.style.color = on ? "var(--text)" : "";
+      btnH.textContent = on ? "On" : "Off";
+      btnH.setAttribute("aria-pressed", on ? "true" : "false");
+      btnH.style.borderColor = on ? "color-mix(in oklab, var(--accent) 55%, transparent)" : "";
+      btnH.style.background = on ? "var(--accent-2)" : "";
     }
-    sync();
+    function syncHand() {
+      const hand = (state.profile?.ux?.hand === "left") ? "left" : "right";
+      btnHand.textContent = hand[0].toUpperCase() + hand.slice(1);
+      btnHand.setAttribute("aria-pressed", hand === "left" ? "true" : "false");
+      btnHand.style.borderColor = "color-mix(in oklab, var(--accent) 55%, transparent)";
+      btnHand.style.background = "var(--accent-2)";
+      applyHandMode(hand);
+    }
 
-    btn.addEventListener("click", () => {
+    syncHaptics();
+    syncHand();
+
+    btnH.addEventListener("click", () => {
       state.profile.ux = state.profile.ux || {};
       state.profile.ux.haptics = !state.profile.ux.haptics;
       persist("Feedback updated");
-      sync();
+      syncHaptics();
       haptic("success");
+    });
+
+    btnHand.addEventListener("click", () => {
+      state.profile.ux = state.profile.ux || {};
+      state.profile.ux.hand = (state.profile.ux.hand === "left") ? "right" : "left";
+      persist("Hand mode updated");
+      syncHand();
+      haptic("tap");
     });
   }
 
-  // ---------- Profile view (kept) ----------
+  // Profile view (unchanged layout)
   function renderProfile() {
     const body = $("profileBody");
     if (!body) return;
@@ -1257,17 +1384,15 @@
   function renderHome() {
     const homeSub = $("homeSub");
     if (homeSub) {
-      // Parent/Viewer: reduce clutter, still informative
       const role = state.profile.role;
-      if (role === "parent" || role === "viewer") {
-        homeSub.textContent = `${state.profile.sport} • ${state.profile.preferred_session_type}`;
-      } else {
-        homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
-      }
+      if (role === "parent" || role === "viewer") homeSub.textContent = `${state.profile.sport} • ${state.profile.preferred_session_type}`;
+      else homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
       homeSub.classList.add("caption-illusion");
     }
     renderTodayBlock();
     renderPIQScore();
+    ensureStickyToday();
+    updateStickyToday();
   }
 
   function renderAll() {
@@ -1283,7 +1408,7 @@
     }
   }
 
-  // ---------- Bind UI ----------
+  // Bind UI
   function bindUI() {
     document.querySelectorAll("[data-view]").forEach(btn => {
       if (btn.classList.contains("navbtn") || btn.classList.contains("tab")) {
@@ -1327,6 +1452,7 @@
         state.ui.todaySession = _generateTodaySession();
         persist("Generated Today session");
         renderTodayBlock();
+        updateStickyToday();
         toast("Session generated — press Start");
         return;
       }
@@ -1351,6 +1477,7 @@
 
       updateIndicators();
       renderPIQScore();
+      updateStickyToday();
     });
 
     $("btnSaveProfile")?.addEventListener("click", () => {
@@ -1359,6 +1486,14 @@
       state.profile.preferred_session_type = $("preferredSessionSelect")?.value || state.profile.preferred_session_type;
 
       applyDensityForRole(state.profile.role);
+
+      // Parent default: enable one-hand mode UI support (still user-controlled)
+      if ((state.profile.role === "parent" || state.profile.role === "viewer") && !state.profile.ux?.hand) {
+        state.profile.ux = state.profile.ux || {};
+        state.profile.ux.hand = "right";
+      }
+      applyHandMode(state.profile.ux?.hand || "right");
+
       applySportTheme(state.profile.sport, document.documentElement.getAttribute("data-theme") || "dark");
 
       persist("Profile preferences saved");
@@ -1366,6 +1501,7 @@
       updateIndicators();
       renderPIQScore();
       ensureFeedbackCard();
+      updateStickyToday();
       haptic("success");
     });
 
@@ -1379,6 +1515,7 @@
       persist("Theme saved");
       updateIndicators();
       renderPIQScore();
+      updateStickyToday();
       haptic("success");
     });
 
@@ -1411,12 +1548,13 @@
     });
   }
 
-  // ---------- Boot ----------
+  // Boot
   function boot() {
     const mode = state.profile?.theme?.mode || document.documentElement.getAttribute("data-theme") || "dark";
     document.documentElement.setAttribute("data-theme", mode);
 
     applyDensityForRole(state.profile.role);
+    applyHandMode(state.profile.ux?.hand || "right");
     applySportTheme(state.profile.sport || "basketball", mode);
 
     bindUI();
@@ -1427,17 +1565,16 @@
     if ($("roleSelect")) $("roleSelect").value = state.profile.role;
     if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
     if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
-
-    // Also set theme selects if present
     if ($("themeModeSelect")) $("themeModeSelect").value = mode;
     if ($("themeSportSelect")) $("themeSportSelect").value = state.profile.sport || "basketball";
 
-    // Ensure feedback card is ready (but don't force drawer open)
     ensureFeedbackCard();
+    ensureStickyToday();
 
     showView(state.ui.view || "home");
     renderAll();
     updateIndicators();
+    updateStickyToday();
     toast("PerformanceIQ ready", 1400);
   }
 
