@@ -1,15 +1,14 @@
 /* ============================================================
-   styles.css — PerformanceIQ v3.4
-   NEXT polish pass:
-   - View Transitions API support (where available)
-   - Per-role UI density (Parent/Viewer comfort mode)
-   - Haptics toggle UI styles (injected by JS)
-   - Extra WCAG polish + reduced noise for comfort mode
+   styles.css — PerformanceIQ v3.5
+   Adds:
+   - One-hand mode (data-hand="left|right") for FAB + sheet ergonomics
+   - Sticky Today mini-summary styles (injected by core.js)
+   - Smart contrast tokens for accent surfaces (auto-contrast from JS)
+   - Comfort mode improvements for parents/viewers
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
 
-/* ---- Design tokens ---------------------------------------- */
 :root{
   --ok:#22C55E; --warn:#F59E0B; --danger:#EF4444; --info:#3B82F6;
 
@@ -20,8 +19,7 @@
   --font-body:"DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
   --font-head:"Barlow Condensed","DM Sans",system-ui,sans-serif;
 
-  /* Defaults (coach/athlete density) */
-  --base-font: 16.5px;
+  --base-font:16.5px;
   --tap:44px;
 
   --sp-xs:6px; --sp-sm:10px; --sp-md:14px; --sp-lg:18px;
@@ -39,12 +37,18 @@
   --shimmer-b: color-mix(in oklab, var(--text) 16%, transparent);
 
   --captionGlow: radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--accent) 32%, transparent), transparent 55%);
+
+  /* Auto-contrast tokens set by JS (fallback defaults) */
+  --accent-text: #ffffff;
+  --accent-text-muted: rgba(255,255,255,.86);
+
+  /* One-hand layout offsets */
+  --hand-pad: 18px;
 }
 
-/* ---- Density modes ---------------------------------------- */
-/* comfort mode for Parent/Viewer: larger text, more spacing, less visual noise */
+/* Density modes */
 html[data-density="comfort"]{
-  --base-font: 17.5px;
+  --base-font:17.5px;
   --tap:48px;
   --sp-sm:12px;
   --sp-md:16px;
@@ -53,11 +57,11 @@ html[data-density="comfort"]{
   --shadow: 0 12px 34px rgba(0,0,0,.42);
 }
 html[data-density="compact"]{
-  --base-font: 16px;
+  --base-font:16px;
   --tap:44px;
 }
 
-/* ---- Color schemes ---------------------------------------- */
+/* Color schemes */
 html[data-theme="dark"]{
   --bg:#0a0d12;
   --top:#0b1017;
@@ -98,7 +102,7 @@ html[data-theme="light"]{
   --topbarBlurBg: rgba(255,255,255,.72);
 }
 
-/* ---- Reset ------------------------------------------------- */
+/* Reset */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
@@ -111,11 +115,11 @@ body{
   -webkit-text-size-adjust:100%;
 }
 
-/* ---- Focus management ------------------------------------- */
+/* Focus */
 :focus-visible{outline:none;box-shadow:var(--focus-ring)}
 :focus:not(:focus-visible){outline:none}
 
-/* ---- Topbar ----------------------------------------------- */
+/* Topbar */
 .topbar{
   display:flex;justify-content:space-between;align-items:center;
   padding:12px 20px;
@@ -151,12 +155,12 @@ body{
 }
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--ok);flex-shrink:0}
 
-/* ---- Layout ----------------------------------------------- */
+/* Layout */
 .layout{display:flex;max-width:1200px;margin:20px auto;padding:0 16px;gap:18px}
 .nav{width:160px;flex-shrink:0; position:relative}
 .content{flex:1;min-width:0}
 
-/* ---- Nav buttons ------------------------------------------ */
+/* Nav buttons */
 .navbtn{
   display:block;width:100%;
   min-height:var(--tap);
@@ -198,19 +202,19 @@ body{
 }
 .nav-indicator.on{opacity:1}
 
-/* ---- Views + transitions ---------------------------------- */
+/* Views */
 .view{scroll-margin-top:92px}
 .view.is-active{box-shadow:var(--activeViewRing);border-radius:var(--radius)}
 .view.fx-enter{animation:viewIn .24s cubic-bezier(.2,.8,.2,1) both}
 @keyframes viewIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
-/* View Transitions API (Chrome/Edge/Safari TP) */
 ::view-transition-old(root),
-::view-transition-new(root){animation-duration:240ms; animation-timing-function:cubic-bezier(.2,.8,.2,1)}
-::view-transition-old(root){opacity:1}
-::view-transition-new(root){opacity:1}
+::view-transition-new(root){
+  animation-duration:240ms;
+  animation-timing-function:cubic-bezier(.2,.8,.2,1)
+}
 
-/* ---- Cards ------------------------------------------------- */
+/* Cards */
 .card{
   background:var(--card);
   border:1px solid var(--line);
@@ -220,8 +224,6 @@ body{
 }
 .card-title{font-family:var(--font-head);font-weight:800;letter-spacing:.01em}
 .subtle{background:color-mix(in oklab,var(--card) 96%,transparent);box-shadow:none}
-
-/* comfort mode: reduce “prototype” noise */
 html[data-density="comfort"] .subtle{border-color: color-mix(in oklab, var(--line) 70%, transparent)}
 
 .mini{background:transparent;border-radius:14px;padding:8px}
@@ -229,7 +231,6 @@ html[data-density="comfort"] .subtle{border-color: color-mix(in oklab, var(--lin
 .minibody{color:var(--muted)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
-/* Block cards */
 .blockcard{
   margin:10px 0;
   padding:12px;
@@ -248,7 +249,7 @@ html[data-density="comfort"] .subtle{border-color: color-mix(in oklab, var(--lin
   color:color-mix(in oklab,var(--text) 86%,transparent);
 }
 
-/* ---- Utilities --------------------------------------------- */
+/* Utilities */
 .row{display:flex;align-items:center}
 .between{justify-content:space-between}
 .gap{gap:var(--sp-sm)}
@@ -272,7 +273,7 @@ html[data-density="comfort"] .subtle{border-color: color-mix(in oklab, var(--lin
 }
 @keyframes captionFloat{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(10px,-6px,0)}}
 
-/* ---- Buttons ---------------------------------------------- */
+/* Buttons */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
   min-height:var(--tap);
@@ -295,13 +296,15 @@ html[data-density="comfort"] .subtle{border-color: color-mix(in oklab, var(--lin
 .btn.danger{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.35)}
 .btn:disabled,.btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed;pointer-events:none}
 
+/* Accent buttons in light theme use auto-contrast text tokens */
 html[data-theme="light"] .btn:not(.ghost):not(.danger){
   background:var(--accent);
   border-color:transparent;
-  color:#fff;
+  color:var(--accent-text);
 }
+html[data-theme="light"] .btn:not(.ghost):not(.danger) .small{color:var(--accent-text-muted)}
 
-/* ---- Icon buttons ----------------------------------------- */
+/* Icon buttons */
 .iconbtn{
   width:var(--tap);height:var(--tap);
   border-radius:14px;
@@ -319,7 +322,7 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
 .iconbtn:hover{background:color-mix(in oklab,var(--card) 85%,var(--accent-2))}
 .iconbtn:active{transform:scale(.98)}
 
-/* ---- Ripple ------------------------------------------------ */
+/* Ripple */
 .ripple{
   position:absolute;
   border-radius:999px;
@@ -335,7 +338,7 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
   100%{opacity:0;transform:translate(-50%,-50%) scale(1.15)}
 }
 
-/* ---- Forms ------------------------------------------------- */
+/* Forms */
 .field label{
   display:block;font-size:12px;
   color:color-mix(in oklab,var(--text) 72%,transparent);
@@ -377,27 +380,22 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
 
 /* Toggle row (injected) */
 .toggle-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding:10px 12px;
-  border-radius:14px;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:10px 12px;border-radius:14px;
   border:1px solid var(--line);
   background:color-mix(in oklab, var(--card) 92%, transparent);
 }
 .toggle-row b{font-weight:1000}
 .toggle-pill{
   min-height:var(--tap);
-  padding:10px 12px;
-  border-radius:999px;
+  padding:10px 12px;border-radius:999px;
   border:1px solid var(--pillBorder);
   background:transparent;
   font-weight:1000;
   cursor:pointer;
 }
 
-/* ---- Drawer ----------------------------------------------- */
+/* Drawer */
 .drawer{
   position:fixed;right:0;top:0;height:100%;
   width:390px;
@@ -423,7 +421,7 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
 .drawer-body{padding:var(--sp-sm) 4px}
 .drawer-help{width:420px}
 
-/* ---- Toast ------------------------------------------------ */
+/* Toast */
 .toast{
   position:fixed;left:50%;transform:translateX(-50%);
   bottom:28px;
@@ -439,9 +437,12 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
   overflow:hidden;text-overflow:ellipsis;
 }
 
-/* ---- FAB + Sheet ------------------------------------------ */
+/* FAB + Sheet */
 .fab{
-  position:fixed;right:18px;bottom:84px;z-index:140;
+  position:fixed;
+  right:var(--hand-pad);
+  bottom:84px;
+  z-index:140;
   width:56px;height:56px;border-radius:18px;
   border:1px solid var(--pillBorder);
   background:var(--accent-2);
@@ -455,10 +456,13 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
 }
 .fab:hover{filter:brightness(1.08)}
 .fab:active{transform:scale(.98)}
+html[data-hand="left"] .fab{ left:var(--hand-pad); right:auto; }
 
 .sheet-backdrop{position:fixed;inset:0;background:rgba(2,6,12,.55);z-index:130}
 .sheet{
-  position:fixed;left:50%;transform:translateX(-50%);
+  position:fixed;
+  left:50%;
+  transform:translateX(-50%);
   bottom:18px;z-index:140;
   width:min(520px,94vw);
   border:1px solid var(--line);
@@ -467,11 +471,15 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
   box-shadow:var(--shadow);
   overflow:hidden;
 }
+/* One-hand mode: nudge sheet slightly toward active hand */
+html[data-hand="left"] .sheet{ transform:translateX(-50%) translateX(-18px); }
+html[data-hand="right"] .sheet{ transform:translateX(-50%) translateX(18px); }
+
 .sheet-head{display:flex;justify-content:space-between;align-items:center;padding:12px var(--sp-md);border-bottom:1px solid var(--line)}
 .sheet-title{font-family:var(--font-head);font-weight:800}
 .sheet-body{padding:12px var(--sp-md);display:grid;gap:var(--sp-sm)}
 
-/* ---- Mobile bottom nav ------------------------------------ */
+/* Mobile bottom nav */
 .bottomnav{
   position:fixed;left:0;right:0;bottom:0;
   background:var(--top);
@@ -496,6 +504,9 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
 .tab.active{color:var(--text)}
 .tab:active{transform:scale(.98)}
 
+/* Parent comfort: bigger bottom nav */
+html[data-density="comfort"] .tab{ padding:14px var(--sp-sm); }
+
 .bottom-indicator{
   position:absolute;left:0;bottom:0;
   height:3px;border-radius:999px;
@@ -508,7 +519,7 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
 }
 .bottom-indicator.on{opacity:1}
 
-/* ---- Splash ----------------------------------------------- */
+/* Splash */
 .splash{
   position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
   background:
@@ -552,7 +563,7 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
   pointer-events:none;
 }
 
-/* ---- PIQ Score ring --------------------------------------- */
+/* PIQ Score ring */
 .piq-score{display:flex;align-items:center;gap:12px}
 .piq-ring{width:54px;height:54px;display:grid;place-items:center;position:relative}
 .piq-ring svg{width:54px;height:54px;transform:rotate(-90deg)}
@@ -567,7 +578,40 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
   color:color-mix(in oklab,var(--text) 92%,transparent);
 }
 
-/* ---- Reduced motion --------------------------------------- */
+/* Sticky Today mini-summary (injected) */
+.sticky-today{
+  position:sticky;
+  top:66px;
+  z-index:9;
+  margin:10px 0 0;
+  padding:10px 12px;
+  border-radius:18px;
+  border:1px solid var(--line);
+  background: color-mix(in oklab, var(--top) 78%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 34px rgba(0,0,0,.18);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.sticky-today .title{
+  font-weight:1000;
+  letter-spacing:.01em;
+}
+.sticky-today .meta{
+  color:var(--muted);
+  font-size:12px;
+}
+.sticky-today .actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.sticky-today.hidden{ display:none; }
+
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce){
   .skeleton{animation:none}
   .btn,.navbtn,.tab,.drawer,.fab,.iconbtn,.splash,.nav-indicator,.bottom-indicator{transition:none}
@@ -577,7 +621,7 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){
   ::view-transition-old(root), ::view-transition-new(root){animation:none}
 }
 
-/* ---- Responsive ------------------------------------------- */
+/* Responsive */
 @media (max-width: 860px){
   .layout{
     flex-direction:column;
