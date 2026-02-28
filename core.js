@@ -1,1974 +1,809 @@
-// core.js — v3.8.1 (Apple-level polish + WCAG + caption illusion)
-// Adds:
-// - "Soft ambient audio-less caption illusion" (tiny floating caption near tap)
-// - WCAG-ish interaction tweaks: larger effective tap targets + safer focus
-// Keeps: existing functionality + ripples + spring + shared score ring + parallax + skeleton
-
-(function () {
-  "use strict";
-  if (window.__PIQ_CORE_V381__) return;
-  window.__PIQ_CORE_V381__ = true;
-
-  const $ = (id) => document.getElementById(id);
-  const nowISO = () => new Date().toISOString();
-
-  const VIEWS  = ["home", "team", "train", "profile"];
-  const SPORTS = ["basketball", "football", "soccer", "baseball", "volleyball", "track"];
-
-  // -----------------------------
-  // Brand + Sport palettes
-  // -----------------------------
-  const SPORT_PALETTES = {
-    basketball: { accent: "#F97316", accentSoft: "rgba(249,115,22,.14)" },
-    football:   { accent: "#22C55E", accentSoft: "rgba(34,197,94,.14)" },
-    soccer:     { accent: "#3B82F6", accentSoft: "rgba(59,130,246,.14)" },
-    baseball:   { accent: "#EF4444", accentSoft: "rgba(239,68,68,.14)" },
-    volleyball: { accent: "#A855F7", accentSoft: "rgba(168,85,247,.14)" },
-    track:      { accent: "#14B8A6", accentSoft: "rgba(20,184,166,.14)" }
-  };
-
-  function clampSport(s) { return SPORTS.includes(s) ? s : "basketball"; }
-
-  function applySportTheme(sport) {
-    sport = clampSport(sport);
-    const pal = SPORT_PALETTES[sport] || SPORT_PALETTES.basketball;
-
-    const html = document.documentElement;
-
-    // Brand system tokens
-    html.style.setProperty("--brand-accent", pal.accent);
-    html.style.setProperty("--brand-accent-soft", pal.accentSoft);
-
-    // Back-compat tokens used elsewhere
-    html.style.setProperty("--accent", pal.accent);
-    html.style.setProperty("--accent-2", pal.accentSoft);
-    html.style.setProperty("--accent-3", "color-mix(in oklab, var(--accent) 26%, transparent)");
-
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", pal.accent);
-  }
-
-  // ---------- Load + normalize state ----------
-  let state = (window.dataStore?.load) ? window.dataStore.load() : null;
-  if (!state || typeof state !== "object") state = {};
-
-  state.meta = state.meta || { version: "3.8.1", updated_at: nowISO() };
-
-  state.profile = state.profile || {};
-  state.profile.role = state.profile.role || "coach";
-  state.profile.sport = clampSport(state.profile.sport || "basketball");
-  state.profile.preferred_session_type = state.profile.preferred_session_type || "practice";
-  state.profile.injuries = Array.isArray(state.profile.injuries) ? state.profile.injuries : [];
-  state.profile.onboarded = !!state.profile.onboarded;
-  state.profile.theme =
-    state.profile.theme && typeof state.profile.theme === "object"
-      ? state.profile.theme
-      : { mode: "dark", sport: state.profile.sport };
-
-  state.profile.theme.mode = state.profile.theme.mode || "dark";
-  state.profile.theme.sport = clampSport(state.profile.theme.sport || state.profile.sport);
-
-  state.team = state.team || { teams: [], active_team_id: null };
-  state.team.teams = Array.isArray(state.team.teams) ? state.team.teams : [];
-  state.team.active_team_id = state.team.active_team_id || null;
-
-  state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
-  state.periodization = state.periodization || { plan: null, updated_at: null };
-  state.insights = state.insights || { weekly: [], updated_at: null };
-
-  state.ui = state.ui || {};
-  state.ui.view = VIEWS.includes(state.ui.view) ? state.ui.view : "home";
-  state.ui.todaySession = state.ui.todaySession || null;
-
-  state.score = state.score && typeof state.score === "object" ? state.score : { value: 0, updated_at: null };
-
-  try { window.dataStore?.save?.(state); } catch {}
-
-  // ---------- Motion preference ----------
-  const prefersReducedMotion = (() => {
-    try { return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
-    catch { return false; }
-  })();
-
-  function syncThemeFromState() {
-    const mode = state.profile?.theme?.mode || "dark";
-    document.documentElement.setAttribute("data-theme", mode);
-
-    const sportAccent = state.profile?.theme?.sport || state.profile?.sport || "basketball";
-    applySportTheme(sportAccent);
-  }
-
-  // ---------- Toast ----------
-  let _toastTimer = null;
-  function toast(msg, ms = 2200) {
-    const t = $("toast");
-    if (!t) { console.log("toast:", msg); return; }
-    t.textContent = msg;
-    t.hidden = false;
-    clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(() => { t.hidden = true; }, ms);
-  }
-
-  // ---------- Persist ----------
-  function persist(msg) {
-    try {
-      state.meta = state.meta || {};
-      state.meta.version = "3.8.1";
-      state.meta.updated_at = nowISO();
-      window.dataStore?.save?.(state);
-      if (msg) toast(msg);
-    } catch (e) {
-      console.error("Persist failed", e);
-      toast("Save failed");
-    }
-    applyStatusFromMeta();
-  }
-
-  let _persistTimer = null;
-  function persistDebounced(msg, ms = 250) {
-    clearTimeout(_persistTimer);
-    _persistTimer = setTimeout(() => persist(msg), ms);
-  }
-
-  // ---------- Safe date helpers ----------
-  function safeDate(value) {
-    const d = (value instanceof Date) ? value : new Date(value);
-    return isFinite(d.getTime()) ? d : null;
-  }
-  function isoDay(value) {
-    const d = safeDate(value);
-    return d ? d.toISOString().slice(0, 10) : null;
-  }
-  function isoWeekKey(value) {
-    const d = safeDate(value);
-    if (!d) return null;
-    const y = d.getUTCFullYear();
-    const onejan = new Date(Date.UTC(y, 0, 1));
-    const weekNo = Math.ceil((((d - onejan) / 86400000) + onejan.getUTCDay() + 1) / 7);
-    return `${y}-W${String(weekNo).padStart(2, "0")}`;
-  }
-  function timeAgo(value) {
-    const d = safeDate(value);
-    if (!d) return "";
-    const diff = Date.now() - d.getTime();
-    const MIN = 60_000, HR = 3_600_000, DAY = 86_400_000;
-    if (diff < MIN) return "just now";
-    if (diff < HR) return Math.round(diff / MIN) + "m ago";
-    if (diff < DAY) return Math.round(diff / HR) + "h ago";
-    return Math.round(diff / DAY) + "d ago";
-  }
-
-  function uid(prefix = "") {
-    return (prefix ? prefix + "_" : "") + Math.random().toString(36).slice(2, 9);
-  }
-
-  // ---------- Status pill ----------
-  function setDataStatusLabel(text, color) {
-    const dot = $("saveDot");
-    const txt = $("saveText");
-    if (!dot || !txt) return;
-    dot.style.background = color || "var(--ok)";
-    txt.textContent = text || "Saved";
-  }
-  function applyStatusFromMeta() { setDataStatusLabel("Local saved", "var(--ok)"); }
-
-  // ===========================
-  // WCAG-ish touch target helper
-  // ===========================
-  function enforceMinTapTargets() {
-    // Adds a class for CSS to guarantee ~44px targets on small controls.
-    document.querySelectorAll(".iconbtn, .tab, .navbtn").forEach(el => {
-      el.classList.add("tap44");
-    });
-  }
-
-  // ===========================
-  // Micro-interactions (ripple + spring + caption illusion)
-  // ===========================
-  function canHaptic() {
-    return !prefersReducedMotion && typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
-  }
-  function hapticTap(kind = "light") {
-    if (!canHaptic()) return;
-    const pattern = kind === "nav" ? 8 : kind === "success" ? [10, 18, 10] : 8;
-    try { navigator.vibrate(pattern); } catch {}
-  }
-
-  function springPress(el) {
-    if (!el) return;
-    el.classList.remove("spring-press");
-    el.offsetHeight;
-    el.classList.add("spring-press");
-    window.setTimeout(() => el.classList.remove("spring-press"), 260);
-  }
-
-  function makeRipple(target, clientX, clientY) {
-    if (!target || prefersReducedMotion) return;
-
-    const rect = target.getBoundingClientRect();
-    const x = (clientX ?? (rect.left + rect.width / 2)) - rect.left;
-    const y = (clientY ?? (rect.top + rect.height / 2)) - rect.top;
-
-    const d = Math.max(rect.width, rect.height) * 1.35;
-    const ripple = document.createElement("span");
-    ripple.className = "ripple";
-    ripple.style.width = ripple.style.height = d + "px";
-    ripple.style.left = (x - d / 2) + "px";
-    ripple.style.top = (y - d / 2) + "px";
-
-    target.classList.add("ripple-host");
-    target.appendChild(ripple);
-
-    ripple.addEventListener("animationend", () => {
-      ripple.remove();
-      if (!target.querySelector(".ripple")) target.classList.remove("ripple-host");
-    });
-  }
-
-  // --- Soft ambient audio-less caption illusion ---
-  // A tiny floating caption appears near the tap, like an iOS "silent feedback" moment.
-  let _capEl = null;
-  let _capTimer = null;
-  let _capLastAt = 0;
-
-  function ensureCaptionEl() {
-    if (_capEl) return _capEl;
-    const el = document.createElement("div");
-    el.id = "piqCaptionIllusion";
-    el.className = "piq-caption";
-    el.setAttribute("aria-hidden", "true");
-    el.style.display = "none";
-    document.body.appendChild(el);
-    _capEl = el;
-    return el;
-  }
-
-  function captionTextFor(target) {
-    if (!target) return null;
-
-    // Prefer explicit labels
-    const aria = target.getAttribute("aria-label");
-    if (aria) return aria;
-
-    const title = target.getAttribute("title");
-    if (title) return title;
-
-    // Button content
-    const txt = (target.textContent || "").trim().replace(/\s+/g, " ");
-    if (txt && txt.length <= 28) return txt;
-
-    // Icon button fallback
-    if (target.classList.contains("iconbtn")) return "Tap";
-
-    return null;
-  }
-
-  function showCaptionIllusion(target, clientX, clientY) {
-    if (prefersReducedMotion) return;
-
-    const now = Date.now();
-    if (now - _capLastAt < 240) return; // rate limit (prevents spam on rapid taps)
-    _capLastAt = now;
-
-    const text = captionTextFor(target);
-    if (!text) return;
-
-    const el = ensureCaptionEl();
-    el.textContent = text;
-
-    // Position near tap, but keep on-screen.
-    const vx = Math.max(12, Math.min(window.innerWidth - 12, clientX || window.innerWidth / 2));
-    const vy = Math.max(12, Math.min(window.innerHeight - 12, clientY || window.innerHeight / 2));
-
-    el.style.display = "block";
-    el.classList.remove("show");
-    el.style.left = vx + "px";
-    el.style.top = vy + "px";
-    el.style.transform = "translate(-50%, -110%) scale(.98)";
-    el.style.opacity = "0";
-
-    // Force reflow then animate
-    el.offsetHeight;
-    el.classList.add("show");
-
-    clearTimeout(_capTimer);
-    _capTimer = setTimeout(() => {
-      el.classList.remove("show");
-      // allow transition to finish
-      setTimeout(() => { if (el) el.style.display = "none"; }, 180);
-    }, 650);
-  }
-
-  function wireMicroInteractions() {
-    document.addEventListener("pointerdown", (e) => {
-      const t = e.target.closest(".btn, .iconbtn, .navbtn, .tab, .pill, .blockcard, .card");
-      if (!t) return;
-
-      const isNav = t.classList.contains("navbtn") || t.classList.contains("tab");
-      hapticTap(isNav ? "nav" : "light");
-      springPress(t);
-      makeRipple(t, e.clientX, e.clientY);
-      showCaptionIllusion(t, e.clientX, e.clientY);
-    }, { passive: true });
-  }
-
-  // ===========================
-  // Tab indicator glide
-  // ===========================
-  let _navIndicator = null;
-  let _bottomIndicator = null;
-
-  function ensureIndicator(hostEl, className) {
-    if (!hostEl) return null;
-    let ind = hostEl.querySelector(`.${className}`);
-    if (ind) return ind;
-
-    ind = document.createElement("div");
-    ind.className = className;
-    hostEl.style.position = hostEl.style.position || "relative";
-    hostEl.appendChild(ind);
-    return ind;
-  }
-
-  function updateIndicatorFor(hostEl, indicatorEl, activeButton, opts) {
-    if (!hostEl || !indicatorEl || !activeButton) return;
-
-    const hostRect = hostEl.getBoundingClientRect();
-    const btnRect = activeButton.getBoundingClientRect();
-
-    const left = btnRect.left - hostRect.left;
-    const width = btnRect.width;
-
-    indicatorEl.style.opacity = "1";
-    indicatorEl.style.transform = `translateX(${left}px)`;
-    indicatorEl.style.width = `${width}px`;
-
-    if (opts?.height) indicatorEl.style.height = opts.height;
-    if (opts?.bottom != null) indicatorEl.style.bottom = opts.bottom;
-  }
-
-  function setupTabIndicators() {
-    const nav = $("desktopNav");
-    const bottom = $("bottomNav");
-
-    _navIndicator = ensureIndicator(nav, "nav-indicator");
-    _bottomIndicator = ensureIndicator(bottom, "bottom-indicator");
-
-    requestAnimationFrame(() => {
-      const view = state.ui?.view || "home";
-      const activeNav = nav?.querySelector(`.navbtn[data-view="${view}"]`) || nav?.querySelector('[data-view="home"]');
-      const activeBottom = bottom?.querySelector(`.tab[data-view="${view}"]`) || bottom?.querySelector('[data-view="home"]');
-      if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "44px" });
-      if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
-    });
-
-    window.addEventListener("resize", () => {
-      const view = state.ui?.view || "home";
-      requestAnimationFrame(() => {
-        const nav = $("desktopNav");
-        const bottom = $("bottomNav");
-        const activeNav = nav?.querySelector(`.navbtn[data-view="${view}"]`);
-        const activeBottom = bottom?.querySelector(`.tab[data-view="${view}"]`);
-        if (_navIndicator && activeNav) updateIndicatorFor(nav, _navIndicator, activeNav, { height: "44px" });
-        if (_bottomIndicator && activeBottom) updateIndicatorFor(bottom, _bottomIndicator, activeBottom, { height: "3px", bottom: "6px" });
-      });
-    }, { passive: true });
-  }
-
-  // ===========================
-  // Parallax blur layers
-  // ===========================
-  let _parallaxEl = null;
-  let _parallaxRAF = null;
-  let _px = 0, _py = 0;
-
-  function setupParallaxBlur() {
-    if (prefersReducedMotion) return;
-    if (_parallaxEl) return;
-
-    const wrap = document.createElement("div");
-    wrap.className = "piq-parallax";
-    wrap.innerHTML = `
-      <div class="pl a"></div>
-      <div class="pl b"></div>
-      <div class="pl c"></div>
-    `;
-    document.body.appendChild(wrap);
-    _parallaxEl = wrap;
-
-    function tick() {
-      _parallaxRAF = null;
-      const y = window.scrollY || 0;
-
-      const dx = _px * 0.02;
-      const dy = _py * 0.02;
-
-      wrap.style.setProperty("--p1x", `${dx}px`);
-      wrap.style.setProperty("--p1y", `${(y * 0.05) + dy}px`);
-      wrap.style.setProperty("--p2x", `${dx * -1.4}px`);
-      wrap.style.setProperty("--p2y", `${(y * 0.035) + dy * 1.2}px`);
-      wrap.style.setProperty("--p3x", `${dx * 0.9}px`);
-      wrap.style.setProperty("--p3y", `${(y * 0.02) + dy * -1.1}px`);
-    }
-
-    function requestTick() {
-      if (_parallaxRAF) return;
-      _parallaxRAF = requestAnimationFrame(tick);
-    }
-
-    window.addEventListener("scroll", requestTick, { passive: true });
-    window.addEventListener("pointermove", (e) => {
-      const cx = window.innerWidth / 2;
-      const cy = window.innerHeight / 2;
-      _px = (e.clientX - cx);
-      _py = (e.clientY - cy);
-      requestTick();
-    }, { passive: true });
-
-    requestTick();
-  }
-
-  // ===========================
-  // Skeleton shimmer variants
-  // ===========================
-  function skeletonHTML({ lines = 3, variant = "card" } = {}) {
-    if (variant === "blocklist") {
-      return `
-        <div class="sk-card sk-variant-blocklist">
-          <div class="sk-head"></div>
-          <div class="sk-row"></div>
-          <div class="sk-row short"></div>
-          <div class="sk-block"></div>
-          <div class="sk-block"></div>
-          <div class="sk-block short"></div>
-        </div>
-      `;
-    }
-
-    let s = `<div class="sk-card"><div class="sk-head"></div>`;
-    for (let i = 0; i < lines; i++) s += `<div class="sk-line"></div>`;
-    s += `</div>`;
-    return s;
-  }
-
-  function showViewSkeletons(view) {
-    if (prefersReducedMotion) return;
-
-    const map = {
-      home:   [{ id: "todayBlock", variant: "blocklist" }, { id: "piqScoreHome", variant: "card", lines: 3 }],
-      team:   [{ id: "teamBody", variant: "card", lines: 7 }],
-      train:  [{ id: "trainBody", variant: "blocklist" }],
-      profile:[{ id: "profileBody", variant: "card", lines: 10 }, { id: "piqScoreProfile", variant: "card", lines: 3 }]
-    };
-
-    const targets = map[view] || [];
-    targets.forEach(t => {
-      const el = $(t.id);
-      if (el) el.innerHTML = `<div class="sk-wrap">${skeletonHTML({ lines: t.lines, variant: t.variant })}</div>`;
-    });
-  }
-
-  // ===========================
-  // Score computation + ring render
-  // ===========================
-  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
-
-  function computeStreak() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    if (!sessions.length) return 0;
-
-    const days = sessions
-      .map(s => isoDay(s?.created_at || s?.generated_at || s?.date))
-      .filter(Boolean);
-
-    if (!days.length) return 0;
-
-    const uniq = Array.from(new Set(days)).sort((a, b) => b.localeCompare(a));
-
-    let streak = 1;
-    let cursor = new Date(uniq[0] + "T00:00:00.000Z");
-
-    for (let i = 1; i < uniq.length; i++) {
-      const d = new Date(uniq[i] + "T00:00:00.000Z");
-      const prev = new Date(cursor);
-      prev.setUTCDate(prev.getUTCDate() - 1);
-
-      if (d.getTime() === prev.getTime()) {
-        streak++;
-        cursor = d;
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  function computePIQScore() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    if (!sessions.length) return { value: 0, note: "Log sessions to build your score." };
-
-    const now = Date.now();
-    const days14 = 14 * 86_400_000;
-
-    let minutes14 = 0;
-    let sessions14 = 0;
-    const types = new Set();
-
-    sessions.forEach(s => {
-      const d = safeDate(s?.created_at || s?.generated_at || s?.date);
-      if (!d) return;
-      const age = now - d.getTime();
-      if (age <= days14) {
-        sessions14 += 1;
-        minutes14 += Number(s?.duration_min || 0);
-        if (s?.sessionType) types.add(String(s.sessionType));
-      }
-    });
-
-    const streak = computeStreak();
-    const variety = types.size;
-
-    const sScore = clamp((sessions14 / 6) * 35, 0, 35);
-    const mScore = clamp((minutes14 / 240) * 35, 0, 35);
-    const stScore = clamp(streak * 3, 0, 18);
-    const vScore = clamp(variety * 3, 0, 12);
-
-    const value = Math.round(clamp(sScore + mScore + stScore + vScore, 0, 100));
-
-    let note = "Keep logging sessions for momentum.";
-    if (value >= 85) note = "Elite consistency — keep stacking days.";
-    else if (value >= 70) note = "Strong rhythm — push one more quality session.";
-    else if (value >= 50) note = "Good base — build a 3–4 day streak.";
-    else if (value >= 25) note = "Start small — log 2 sessions this week.";
-
-    return { value, note };
-  }
-
-  function scoreTier(v) {
-    if (v >= 85) return "Elite";
-    if (v >= 70) return "Strong";
-    if (v >= 50) return "Building";
-    if (v >= 25) return "Starter";
-    return "New";
-  }
-
-  function animateNumber(el, from, to, ms = 720) {
-    if (!el) return;
-    if (prefersReducedMotion) { el.textContent = String(to); return; }
-
-    const start = performance.now();
-    const diff = to - from;
-    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
-
-    function step(now) {
-      const p = clamp((now - start) / ms, 0, 1);
-      const v = Math.round(from + diff * easeOut(p));
-      el.textContent = String(v);
-      if (p < 1) requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
-  }
-
-  function setRingProgress(svgRoot, value, animate = true) {
-    if (!svgRoot) return;
-    const prog = svgRoot.querySelector(".ring-prog");
-    if (!prog) return;
-
-    const r = Number(prog.getAttribute("r") || 0);
-    const C = 2 * Math.PI * r;
-
-    prog.style.strokeDasharray = String(C);
-    const offset = C * (1 - clamp(value, 0, 100) / 100);
-
-    if (prefersReducedMotion || !animate) {
-      prog.style.strokeDashoffset = String(offset);
-      return;
-    }
-
-    prog.classList.remove("ring-anim");
-    prog.offsetHeight;
-    prog.classList.add("ring-anim");
-    prog.style.strokeDashoffset = String(offset);
-  }
-
-  let _lastScoreRendered = null;
-
-  function scoreMarkup() {
-    return `
-      <div class="piq-score-ring" aria-label="PerformanceIQ Score">
-        <div class="ring-wrap" data-shared="scoreRing">
-          <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="Score ring">
-            <circle class="ring-bg" cx="60" cy="60" r="46"></circle>
-            <circle class="ring-prog" cx="60" cy="60" r="46"></circle>
-          </svg>
-          <div class="ring-center">
-            <div class="piq-score-num" data-score-num>0</div>
-            <div class="piq-score-sub">/ 100</div>
-          </div>
-        </div>
-        <div class="piq-score-side">
-          <div class="piq-score-chip" data-score-tier>—</div>
-          <div class="piq-score-hint muted small">Updates from logs (14d)</div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderPIQScoreInto(containerEl) {
-    if (!containerEl) return;
-
-    const res = computePIQScore();
-    const prev = (typeof _lastScoreRendered === "number")
-      ? _lastScoreRendered
-      : (typeof state.score?.value === "number" ? state.score.value : 0);
-
-    _lastScoreRendered = res.value;
-    state.score.value = res.value;
-    state.score.updated_at = nowISO();
-    persistDebounced(null, 250);
-
-    containerEl.innerHTML = scoreMarkup();
-
-    const numEl = containerEl.querySelector("[data-score-num]");
-    const tierEl = containerEl.querySelector("[data-score-tier]");
-    const svg = containerEl.querySelector("svg.ring");
-
-    if (tierEl) tierEl.textContent = scoreTier(res.value);
-    animateNumber(numEl, prev, res.value, 760);
-    setRingProgress(svg, res.value, true);
-
-    if (prev !== res.value && !prefersReducedMotion) {
-      const ringWrap = containerEl.querySelector(".ring-wrap");
-      if (ringWrap) {
-        ringWrap.classList.remove("score-bump");
-        ringWrap.offsetHeight;
-        ringWrap.classList.add("score-bump");
-        window.setTimeout(() => ringWrap.classList.remove("score-bump"), 420);
-      }
-      hapticTap(res.value > prev ? "success" : "light");
-    }
-
-    return { value: res.value, note: res.note };
-  }
-
-  function renderPIQScore() {
-    const homeHost = $("piqScoreHome");
-    const profHost = $("piqScoreProfile");
-    const noteEl = $("piqScoreNote");
-
-    const homeRes = homeHost ? renderPIQScoreInto(homeHost) : null;
-    const profRes = profHost ? renderPIQScoreInto(profHost) : null;
-
-    const res = homeRes || profRes;
-    if (noteEl && res?.note) noteEl.textContent = res.note;
-  }
-
-  // ===========================
-  // Shared-element transition (Home <-> Profile)
-  // ===========================
-  function getScoreRingEl(view) {
-    const hostId = (view === "home") ? "piqScoreHome" : (view === "profile") ? "piqScoreProfile" : null;
-    if (!hostId) return null;
-    const host = $(hostId);
-    if (!host) return null;
-    return host.querySelector(".piq-score-ring") || null;
-  }
-
-  function animateSharedRing(fromView, toView) {
-    if (prefersReducedMotion) return;
-    if (!((fromView === "home" && toView === "profile") || (fromView === "profile" && toView === "home"))) return;
-
-    const fromRing = getScoreRingEl(fromView);
-    const toRing   = getScoreRingEl(toView);
-    if (!fromRing || !toRing) return;
-
-    const fromRect = fromRing.getBoundingClientRect();
-    const toRect = toRing.getBoundingClientRect();
-
-    toRing.style.visibility = "hidden";
-
-    const clone = fromRing.cloneNode(true);
-    clone.classList.add("shared-clone");
-    clone.style.position = "fixed";
-    clone.style.left = fromRect.left + "px";
-    clone.style.top = fromRect.top + "px";
-    clone.style.width = fromRect.width + "px";
-    clone.style.height = fromRect.height + "px";
-    clone.style.margin = "0";
-    clone.style.zIndex = "999";
-    clone.style.transformOrigin = "top left";
-    clone.style.pointerEvents = "none";
-
-    document.body.appendChild(clone);
-
-    const dx = toRect.left - fromRect.left;
-    const dy = toRect.top - fromRect.top;
-    const sx = toRect.width / fromRect.width;
-    const sy = toRect.height / fromRect.height;
-
-    clone.offsetHeight;
-
-    clone.style.transition =
-      "transform 520ms cubic-bezier(.16, 1, .3, 1), filter 520ms cubic-bezier(.16, 1, .3, 1), opacity 520ms cubic-bezier(.16, 1, .3, 1)";
-    clone.style.filter = "blur(0px)";
-    clone.style.opacity = "1";
-
-    requestAnimationFrame(() => {
-      clone.style.filter = "blur(2px)";
-      clone.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sx}, ${sy})`;
-      clone.style.opacity = "0.98";
-    });
-
-    const done = () => {
-      clone.removeEventListener("transitionend", done);
-      clone.remove();
-      toRing.style.visibility = "visible";
-      const wrap = toRing.querySelector(".ring-wrap");
-      if (wrap) {
-        wrap.classList.remove("score-land");
-        wrap.offsetHeight;
-        wrap.classList.add("score-land");
-        window.setTimeout(() => wrap.classList.remove("score-land"), 260);
-      }
-    };
-
-    clone.addEventListener("transitionend", done);
-    window.setTimeout(done, 900);
-  }
-
-  // ---------- Workout/session generation (unchanged from v3.8.0) ----------
-  const EXERCISE_LIB = {
-    strength: {
-      goblet_squat:        { title: "Goblet Squat",         cue: "3x8–10",     subs: { knee: "box_squat" } },
-      split_squat:         { title: "Split Squat",          cue: "3x6–8/leg",  subs: { knee: "reverse_lunge" } },
-      rdl:                 { title: "Romanian Deadlift",    cue: "3x6–8",      subs: { back: "hip_hinge_dowel" } },
-      trap_bar_deadlift:   { title: "Trap Bar Deadlift",    cue: "3x4–6",      subs: { back: "kb_deadlift" } },
-      bench:               { title: "Bench Press",          cue: "3x5–8",      subs: { shoulder: "dumbbell_press" } },
-      row:                 { title: "Row (DB/Band)",        cue: "3x8–12",     subs: { back: "band_row" } },
-      push_press:          { title: "Push Press",           cue: "3x5",        subs: { shoulder: "landmine_press" } },
-      single_leg_deadlift: { title: "Single-Leg RDL",       cue: "3x6/leg",    subs: { balance: "rack_step_down" } }
-    },
-    plyo: {
-      approach_jumps: { title: "Approach Jumps", cue: "6 reps", subs: { knee: "low_box_jump" } },
-      lateral_bounds: { title: "Lateral Bounds", cue: "4x6",    subs: { ankle: "lateral_step_up" } }
-    },
-    conditioning: {
-      tempo_runs: { title: "Tempo Runs", cue: "6x200m", subs: { ankle: "bike_intervals" } },
-      shuttles:   { title: "Shuttles",   cue: "6x20s",  subs: { knee: "rower_intervals" } }
-    }
-  };
-
-  const SPORT_MICROBLOCKS = {
-    basketball: {
-      ball_handling: [
-        { name: "Two-ball stationary", reps: "6 min", cue: "soft hands" },
-        { name: "Cone weaves", reps: "6 reps", cue: "low hips" }
-      ],
-      shooting: [
-        { name: "Catch & shoot", reps: "5x10", cue: "quick feet" },
-        { name: "Pull-up 3s", reps: "4x8", cue: "create space" }
-      ]
-    },
-    football: {
-      route_running: [
-        { name: "Cone route tree", reps: "5 trees", cue: "explode out" },
-        { name: "Hands drill", reps: "4x8", cue: "eyes through catch" }
-      ],
-      throwing: [{ name: "QB quick set", reps: "8 min", cue: "base → rotate" }]
-    },
-    soccer: {
-      dribbling: [
-        { name: "1v1 close control", reps: "8 reps", cue: "soft touches" },
-        { name: "Passing circuit", reps: "10 min", cue: "weight & timing" }
-      ]
-    },
-    baseball: {
-      throwing: [
-        { name: "Long toss", reps: "10–15 min", cue: "smooth build" },
-        { name: "Band throw pattern", reps: "3 sets", cue: "scap control" }
-      ]
-    },
-    volleyball: {
-      hitting: [
-        { name: "Approach + arm swing", reps: "5x6", cue: "fast last two" },
-        { name: "Block footwork", reps: "6 reps", cue: "timing" }
-      ]
-    },
-    track: {
-      sprint: [
-        { name: "Acceleration 30m", reps: "6 reps", cue: "drive phase" },
-        { name: "A-skips", reps: "3x30s", cue: "stiff ankles" }
-      ]
-    }
-  };
-
-  const SPORT_STRENGTH_PREFS = {
-    basketball: ["goblet_squat", "rdl", "push_press"],
-    football:   ["trap_bar_deadlift", "bench", "row"],
-    soccer:     ["goblet_squat", "single_leg_deadlift", "row"],
-    baseball:   ["trap_bar_deadlift", "bench", "row"],
-    volleyball: ["goblet_squat", "rdl", "push_press"],
-    track:      ["goblet_squat", "rdl", "single_leg_deadlift"]
-  };
-
-  const SESSION_RULES = {
-    practice:          { warmup: true, skill: true,  strength: true,   plyo: true,  conditioning: true,  cooldown: true },
-    strength:          { warmup: true, skill: false, strength: true,   plyo: false, conditioning: false, cooldown: true },
-    speed:             { warmup: true, skill: false, strength: false,  plyo: true,  conditioning: false, cooldown: true },
-    recovery:          { warmup: true, skill: true,  strength: false,  plyo: false, conditioning: false, cooldown: true },
-    competition_prep:  { warmup: true, skill: true,  strength: "light", plyo: true, conditioning: false, cooldown: true }
-  };
-
-  const INJURY_FRIENDLY_TEMPLATES = {
-    knee: {
-      adjustBlocks: (blocks) => blocks.map(b => {
-        if (b.type === "plyo") {
-          return Object.assign({}, b, {
-            title: "Power & Plyo (knee-friendly)",
-            duration_min: Math.max(6, Math.round((b.duration_min || 10) * 0.7)),
-            items: [
-              { name: "Low box jump", cue: "4–6 reps (stick landings)" },
-              { name: "Snap-downs", cue: "3x3 (quiet landings)" }
-            ]
-          });
-        }
-        if (b.type === "conditioning") {
-          return Object.assign({}, b, {
-            title: "Conditioning (low impact)",
-            items: [{ name: "Bike intervals", cue: "6x20s hard / 70s easy" }]
-          });
-        }
-        return b;
-      }),
-      note: "Knee-friendly: reduce impact, emphasize landing control."
-    },
-    ankle: {
-      adjustBlocks: (blocks) => blocks.map(b => {
-        if (b.type === "conditioning") {
-          return Object.assign({}, b, {
-            title: "Conditioning (ankle-friendly)",
-            items: [{ name: "Rower intervals", cue: "6x30s / 60s easy" }]
-          });
-        }
-        return b;
-      }),
-      note: "Ankle-friendly: reduce cutting volume; choose low-impact conditioning."
-    },
-    shoulder: {
-      adjustBlocks: (blocks) => blocks.map(b => {
-        if (b.type === "strength") {
-          return Object.assign({}, b, {
-            title: "Strength (shoulder-friendly)",
-            items: (b.items || []).map(it => {
-              if ((it.name || "").toLowerCase().includes("press")) {
-                return Object.assign({}, it, { substitution: "landmine_press", cue: "3x8 light — controlled tempo" });
-              }
-              return it;
-            })
-          });
-        }
-        return b;
-      }),
-      note: "Shoulder-friendly: reduce overhead; use landmine/band patterns."
-    },
-    back: {
-      adjustBlocks: (blocks) => blocks.map(b => {
-        if (b.type === "strength") {
-          return Object.assign({}, b, {
-            title: "Strength (back-friendly)",
-            items: (b.items || []).map(it => {
-              const n = (it.name || "").toLowerCase();
-              if (n.includes("deadlift") || n.includes("rdl")) {
-                return Object.assign({}, it, { substitution: "hip_hinge_dowel", cue: "3x10 — patterning, no heavy load" });
-              }
-              return it;
-            })
-          });
-        }
-        return b;
-      }),
-      note: "Back-friendly: focus on hinge patterning and trunk control."
-    }
-  };
-
-  function warmupItems(sport, sessionType) {
-    const base = [
-      { name: "Ankle/hip mobility", cue: "2–3 min" },
-      { name: "Activation (glutes/core)", cue: "2 min" },
-      { name: "Movement prep", cue: "4–5 min" }
-    ];
-
-    const sportAdds = {
-      basketball: [{ name: "Pogo hops", cue: "2x20s" }, { name: "Decel snaps", cue: "3 reps" }],
-      football:   [{ name: "A-skips", cue: "2x20m" }, { name: "Wall drills", cue: "3x10s" }],
-      soccer:     [{ name: "Adductor rocks", cue: "8/side" }, { name: "Copenhagen (easy)", cue: "2x10s" }],
-      baseball:   [{ name: "Band shoulder series", cue: "2 min" }, { name: "T-spine openers", cue: "6/side" }],
-      volleyball: [{ name: "Landing mechanics", cue: "5 reps" }, { name: "Approach rhythm", cue: "3 reps" }],
-      track:      [{ name: "Drills (A/B skips)", cue: "2–3 min" }, { name: "Strides", cue: "3x60m easy" }]
-    };
-
-    const typeAdds = {
-      strength: [{ name: "Ramp sets (light)", cue: "2 warm-up sets" }],
-      speed: [{ name: "Build-ups", cue: "3x20m" }],
-      recovery: [{ name: "Breathing reset", cue: "60–90s" }],
-      competition_prep: [{ name: "Neural pop", cue: "2x10s fast" }],
-      practice: []
-    };
-
-    return base.concat(sportAdds[sport] || []).concat(typeAdds[sessionType] || []);
-  }
-
-  function applyInjury(exKey, injuries) {
-    const def = EXERCISE_LIB.strength[exKey];
-    if (!def) return null;
-
-    const inj = Array.isArray(injuries) ? injuries : [];
-    let sub = null;
-    for (const tag of inj) {
-      if (def.subs?.[tag]) { sub = def.subs[tag]; break; }
-    }
-
-    return {
-      key: exKey,
-      name: def.title,
-      cue: sub ? (def.cue + " — lighter load / controlled tempo") : def.cue,
-      substitution: sub
-    };
-  }
-
-  function generateWorkoutFor(sport = "basketball", sessionType = "practice", injuries = []) {
-    sport = clampSport(sport);
-    const rules = SESSION_RULES[sessionType] || SESSION_RULES.practice;
-    const blocks = [];
-
-    if (rules.warmup) {
-      blocks.push({
-        id: uid("warmup"),
-        type: "warmup",
-        title: "Dynamic Warm-up",
-        duration_min: 10,
-        items: warmupItems(sport, sessionType)
-      });
-    }
-
-    if (rules.skill) {
-      const micro = SPORT_MICROBLOCKS[sport] || {};
-      const keys = Object.keys(micro);
-      const items = [];
-      keys.slice(0, 2).forEach(k => (micro[k] || []).slice(0, 2).forEach(it => items.push(it)));
-      blocks.push({
-        id: uid("skill"),
-        type: "skill",
-        title: "Skill Microblocks",
-        duration_min: 15,
-        items
-      });
-    }
-
-    if (rules.strength) {
-      const pref = SPORT_STRENGTH_PREFS[sport] || ["goblet_squat", "rdl", "row"];
-      const strengthItems = [];
-      pref.slice(0, 3).forEach(k => {
-        const ex = applyInjury(k, injuries);
-        if (ex) strengthItems.push(ex);
-      });
-
-      const isLight = (rules.strength === "light");
-      blocks.push({
-        id: uid("strength"),
-        type: "strength",
-        title: isLight ? "Strength (light)" : "Strength",
-        duration_min: isLight ? 12 : 20,
-        items: strengthItems.map(x => ({
-          name: x.name,
-          cue: isLight ? "2x6–8 light, fast intent" : x.cue,
-          substitution: x.substitution || null
-        }))
-      });
-    }
-
-    if (rules.plyo) {
-      blocks.push({
-        id: uid("plyo"),
-        type: "plyo",
-        title: "Power & Plyo",
-        duration_min: 10,
-        items: [
-          { name: EXERCISE_LIB.plyo.approach_jumps.title, cue: EXERCISE_LIB.plyo.approach_jumps.cue },
-          { name: EXERCISE_LIB.plyo.lateral_bounds.title, cue: EXERCISE_LIB.plyo.lateral_bounds.cue }
-        ]
-      });
-    }
-
-    if (rules.conditioning) {
-      blocks.push({
-        id: uid("cond"),
-        type: "conditioning",
-        title: "Conditioning",
-        duration_min: 8,
-        items: [{ name: EXERCISE_LIB.conditioning.tempo_runs.title, cue: EXERCISE_LIB.conditioning.tempo_runs.cue }]
-      });
-    }
-
-    if (rules.cooldown) {
-      blocks.push({
-        id: uid("cd"),
-        type: "cooldown",
-        title: "Cool-down",
-        duration_min: 5,
-        items: [{ name: "Breathing + calves/hips", cue: "5 min easy" }]
-      });
-    }
-
-    const injList = Array.isArray(injuries) ? injuries : [];
-    let adjustedBlocks = blocks.slice();
-    let injuryNotes = [];
-
-    injList.forEach(tag => {
-      const tpl = INJURY_FRIENDLY_TEMPLATES[tag];
-      if (tpl?.adjustBlocks) {
-        adjustedBlocks = tpl.adjustBlocks(adjustedBlocks);
-        if (tpl.note) injuryNotes.push(tpl.note);
-      }
-    });
-
-    return {
-      id: uid("sess"),
-      sport,
-      sessionType,
-      injuries: injList,
-      injury_notes: injuryNotes,
-      generated_at: nowISO(),
-      blocks: adjustedBlocks,
-      total_min: adjustedBlocks.reduce((sum, b) => sum + (b.duration_min || 0), 0)
-    };
-  }
-
-  // ---------- Today workflow ----------
-  let todayTimer = null;
-  let todayTimerStart = null;
-  let todayActiveSession = null;
-
-  function _generateTodaySession() {
-    return generateWorkoutFor(
-      state.profile.sport || "basketball",
-      state.profile.preferred_session_type || "practice",
-      state.profile.injuries || []
-    );
-  }
-
-  function renderTodayBlock() {
-    const container = $("todayBlock");
-    if (!container) return;
-
-    const planned = state.ui?.todaySession || null;
-
-    if (todayActiveSession) {
-      container.innerHTML = `
-        <div class="minihead">In progress: ${todayActiveSession.sessionType} • ${todayActiveSession.sport}</div>
-        <div class="minibody mono" id="todayRunning">Started ${timeAgo(todayTimerStart)}</div>
-        <div style="margin-top:10px" class="row gap wrap">
-          <button class="btn danger" id="btnStopNow" type="button" aria-label="Stop and log session">Stop &amp; Log</button>
-          <button class="btn ghost" id="btnCancelNow" type="button" aria-label="Cancel session">Cancel</button>
-        </div>
-      `;
-      $("btnStopNow")?.addEventListener("click", stopAndLogToday);
-      $("btnCancelNow")?.addEventListener("click", cancelToday);
-      return;
-    }
-
-    if (planned) {
-      const blocksHTML = (planned.blocks || []).map(b => {
-        const items = (b.items || []).map(it => {
-          const name = it.name || it.title || it.key || "Item";
-          const cue  = it.cue ? ` <span class="small muted">— ${it.cue}</span>` : "";
-          const sub  = it.substitution ? ` <span class="small muted">• sub: ${it.substitution}</span>` : "";
-          const reps = it.reps ? ` <span class="small muted">• ${it.reps}</span>` : "";
-          return `<div class="piq-li">• ${name}${reps}${cue}${sub}</div>`;
-        }).join("");
-        return `
-          <div class="blockcard elevate" tabindex="0">
-            <div class="blockcard-head">
-              <div class="blockcard-title">${b.title}</div>
-              <div class="small muted">${b.duration_min} min</div>
-            </div>
-            <div class="small muted">${items || "—"}</div>
-          </div>
-        `;
-      }).join("");
-
-      const notes = (planned.injury_notes && planned.injury_notes.length)
-        ? `<div class="note" style="margin-top:12px"><b>Injury-friendly notes:</b><br/>${planned.injury_notes.map(n => `• ${n}`).join("<br/>")}</div>`
-        : "";
-
-      container.innerHTML = `
-        <div class="minihead">${planned.sessionType} • ${planned.sport} • ${planned.total_min} min</div>
-        <div class="minobody">${blocksHTML}${notes}</div>
-        <div style="margin-top:10px" class="row gap wrap">
-          <button class="btn" id="btnStartToday" type="button" aria-label="Start today session">Start</button>
-          <button class="btn ghost" id="btnGenerateNew" type="button" aria-label="Generate a new session">Generate new</button>
-        </div>
-      `;
-      $("btnStartToday")?.addEventListener("click", () => startToday(planned));
-      $("btnGenerateNew")?.addEventListener("click", () => {
-        state.ui.todaySession = _generateTodaySession();
-        persist("New session generated");
-        renderTodayBlock();
-      });
-      return;
-    }
-
-    container.innerHTML = `
-      <div class="minihead">No session generated</div>
-      <div class="minobody">Press Generate to create a tailored session for today.</div>
-      <div style="margin-top:10px" class="row gap wrap">
-        <button class="btn" id="btnGenerateOnly" type="button" aria-label="Generate today session">Generate</button>
-        <button class="btn ghost" id="btnOpenTrain" type="button" aria-label="Open Train tab">Open Train</button>
-      </div>
-    `;
-    $("btnGenerateOnly")?.addEventListener("click", () => {
-      state.ui.todaySession = _generateTodaySession();
-      persist("Session generated");
-      renderTodayBlock();
-    });
-    $("btnOpenTrain")?.addEventListener("click", () => showView("train"));
-  }
-
-  function startToday(session) {
-    if (!session) session = state.ui.todaySession;
-    if (!session) { toast("No session to start"); return; }
-
-    todayActiveSession = session;
-    todayTimerStart = Date.now();
-    renderTodayBlock();
-
-    const timerEl = $("todayTimer");
-    if (timerEl) timerEl.textContent = "Running…";
-
-    todayTimer = setInterval(() => {
-      const el = $("todayRunning");
-      if (el) el.textContent = "Started " + timeAgo(todayTimerStart);
-    }, 1500);
-  }
-
-  function _clearTodayTimer() {
-    if (todayTimer) clearInterval(todayTimer);
-    todayTimer = null;
-    todayTimerStart = null;
-    todayActiveSession = null;
-    const timerEl = $("todayTimer");
-    if (timerEl) timerEl.textContent = "No timer running";
-  }
-
-  function stopAndLogToday() {
-    if (!todayActiveSession) return;
-
-    const durationMin = Math.max(1, Math.round((Date.now() - todayTimerStart) / 60000));
-    const sRPE = 6;
-    const load = Math.round(durationMin * sRPE);
-
-    const record = {
-      id: uid("log"),
-      created_at: nowISO(),
-      sport: todayActiveSession.sport,
-      sessionType: todayActiveSession.sessionType,
-      duration_min: durationMin,
-      sRPE,
-      load,
-      blocks: todayActiveSession.blocks
-    };
-
-    state.sessions.push(record);
-    state.ui.todaySession = null;
-    persist(`Logged ${durationMin} min • load ${load}`);
-
-    _clearTodayTimer();
-    renderTodayBlock();
-    renderInsights();
-    renderPIQScore();
-  }
-
-  function cancelToday() {
-    _clearTodayTimer();
-    renderTodayBlock();
-    toast("Session cancelled");
-  }
-
-  // ---------- Team ----------
-  function setTeamPill() {
-    const pill = $("teamPill");
-    if (!pill) return;
-    const teamName = (state.team?.teams || []).find(t => t.id === state.team?.active_team_id)?.name;
-    pill.textContent = `Team: ${teamName || "—"}`;
-  }
-
-  function renderTeam() {
-    const body = $("teamBody");
-    if (!body) return;
-    const teams = state.team?.teams || [];
-    if (!teams.length) {
-      body.innerHTML = `
-        <div class="mini">
-          <div class="minihead">No teams</div>
-          <div class="minibody">Create or join a team when cloud is enabled, or test locally.</div>
-        </div>
-      `;
-      return;
-    }
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Teams</div>
-        <div class="minibody">
-          ${teams.map(t => `
-            <div class="piq-rowline">
-              <div><b>${t.name}</b><div class="small muted">${t.sport || ""}</div></div>
-              <button class="btn ghost" data-setteam="${t.id}" type="button" aria-label="Set active team to ${t.name}">Set Active</button>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-    `;
-    body.querySelectorAll("[data-setteam]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.team.active_team_id = btn.getAttribute("data-setteam");
-        persist("Active team updated");
-        setTeamPill();
-      });
-    });
-  }
-
-  // ---------- Train ----------
-  function renderTrain() {
-    const sport = state.profile?.sport || "basketball";
-    const role  = state.profile?.role || "coach";
-    const pref  = state.profile?.preferred_session_type || "practice";
-
-    const body = $("trainBody");
-    const trainSub = $("trainSub");
-    if (trainSub) trainSub.textContent = `${role} • ${sport} • ${pref}`;
-    if (!body) return;
-
-    const sportOptions = SPORTS.map(s =>
-      `<option value="${s}" ${s === sport ? "selected" : ""}>${s[0].toUpperCase() + s.slice(1)}</option>`
-    ).join("");
-
-    body.innerHTML = `
-      <div class="row gap wrap" style="align-items:flex-end;margin-bottom:12px">
-        <div class="field" style="flex:1;min-width:180px">
-          <label for="trainSportSelect">Sport</label>
-          <select id="trainSportSelect">${sportOptions}</select>
-        </div>
-
-        <div class="field" style="width:240px">
-          <label for="trainSessionType">Session type</label>
-          <select id="trainSessionType">
-            <option value="practice">Practice</option>
-            <option value="strength">Strength</option>
-            <option value="speed">Speed</option>
-            <option value="recovery">Recovery</option>
-            <option value="competition_prep">Competition Prep</option>
-          </select>
-        </div>
-
-        <button class="btn" id="btnGenTrain" type="button" aria-label="Generate training session">Generate</button>
-      </div>
-
-      <div id="trainCardArea"></div>
-    `;
-
-    const sessionEl = $("trainSessionType");
-    if (sessionEl) sessionEl.value = pref;
-
-    function renderCard(gen) {
-      const area = $("trainCardArea");
-      if (!area) return;
-
-      area.innerHTML = `
-        <div class="mini">
-          <div class="minihead">${gen.sessionType} • ${gen.sport} • ${gen.total_min} min</div>
-          <div class="minibody">
-            ${gen.blocks.map(b => `
-              <div class="blockcard elevate" tabindex="0">
-                <div class="blockcard-head">
-                  <div class="blockcard-title">${b.title}</div>
-                  <div class="small muted">${b.duration_min} min</div>
-                </div>
-                <div class="small muted">${(b.items||[]).map(it => it.name || it.title || it.key).join(", ")}</div>
-              </div>
-            `).join("")}
-
-            <div style="margin-top:12px" class="row gap wrap">
-              <button class="btn" id="btnPushToday2" type="button" aria-label="Push to Today">Push to Today</button>
-              <button class="btn ghost" id="btnStartNow" type="button" aria-label="Start session now">Start Now</button>
-            </div>
-          </div>
-        </div>
-      `;
-
-      $("btnPushToday2")?.addEventListener("click", () => {
-        state.ui.todaySession = gen;
-        persist("Pushed to Today");
-        showView("home");
-      });
-
-      $("btnStartNow")?.addEventListener("click", () => {
-        state.ui.todaySession = gen;
-        persist("Pushed to Today and starting");
-        showView("home");
-        startToday(gen);
-      });
-    }
-
-    renderCard(generateWorkoutFor(sport, pref, state.profile.injuries || []));
-
-    $("trainSportSelect")?.addEventListener("change", (e) => {
-      const s = clampSport(e.target.value);
-      state.profile.sport = s;
-      state.profile.theme.sport = s;
-      syncThemeFromState();
-      persist("Sport updated");
-      renderTrain();
-      renderPIQScore();
-    });
-
-    $("btnGenTrain")?.addEventListener("click", () => {
-      const s = clampSport($("trainSportSelect")?.value || sport);
-      const t = $("trainSessionType")?.value || pref;
-      state.profile.sport = s;
-      state.profile.preferred_session_type = t;
-      state.profile.theme.sport = s;
-      syncThemeFromState();
-      const gen = generateWorkoutFor(s, t, state.profile.injuries || []);
-      persistDebounced(null);
-      renderCard(gen);
-    });
-  }
-
-  // ---------- Insights ----------
-  function computeInsights() {
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    const byWeek = {};
-
-    sessions.forEach(s => {
-      const key = isoWeekKey(s?.created_at || s?.generated_at || s?.date);
-      if (!key) return;
-      byWeek[key] = byWeek[key] || { minutes: 0, load: 0, sessions: 0 };
-      byWeek[key].minutes += Number(s?.duration_min || 0);
-      byWeek[key].load += Number(s?.load || 0);
-      byWeek[key].sessions += 1;
-    });
-
-    const weekly = Object.entries(byWeek)
-      .map(([k, v]) => ({ week: k, minutes: v.minutes, load: v.load, sessions: v.sessions }))
-      .sort((a, b) => b.week.localeCompare(a.week))
-      .slice(0, 12);
-
-    state.insights.weekly = weekly;
-    state.insights.updated_at = nowISO();
-    persistDebounced(null, 250);
-    return state.insights;
-  }
-
-  function renderInsights(intoEl) {
-    computeInsights();
-    const weekly = state.insights?.weekly || [];
-    const rows = weekly.map(w => `
-      <div class="piq-rowline">
-        <div>${w.week}</div>
-        <div>${w.minutes}m • load ${w.load}</div>
-      </div>
-    `).join("");
-
-    const streak = computeStreak();
-    const host = intoEl || $("profileBody");
-    if (!host) return;
-
-    host.querySelector(".piq-insights-block")?.remove();
-
-    const el = document.createElement("div");
-    el.className = "piq-insights-block";
-    el.style.marginTop = "12px";
-    el.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Insights</div>
-        <div class="minibody">
-          <div><b>Recent weeks</b></div>
-          <div style="margin-top:10px">${rows || '<div class="small muted">No sessions logged yet</div>'}</div>
-          <div style="margin-top:10px"><b>Current streak</b> — ${streak} days</div>
-        </div>
-      </div>
-    `;
-    host.appendChild(el);
-  }
-
-  // ---------- Data Management ----------
-  function exportJSON() {
-    if (!window.dataStore?.exportJSON) { toast("Export not available"); return; }
-    const json = window.dataStore.exportJSON();
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `piq_export_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast("Export started");
-  }
-
-  function importJSONFile(file) {
-    if (!file) return;
-    const r = new FileReader();
-    r.onerror = () => toast("Could not read file");
-    r.onload = (e) => {
-      try {
-        if (!window.dataStore?.importJSON) { toast("Import not available"); return; }
-        window.dataStore.importJSON(e.target.result);
-        state = window.dataStore.load() || state;
-
-        state.profile = state.profile || {};
-        state.profile.sport = clampSport(state.profile.sport || "basketball");
-        state.profile.theme = state.profile.theme || { mode: "dark", sport: state.profile.sport };
-        state.profile.theme.mode = state.profile.theme.mode || "dark";
-        state.profile.theme.sport = clampSport(state.profile.theme.sport || state.profile.sport);
-
-        state.sessions = Array.isArray(state.sessions) ? state.sessions : [];
-        state.score = state.score && typeof state.score === "object" ? state.score : { value: 0, updated_at: null };
-
-        syncThemeFromState();
-        toast("Import complete");
-        renderAll();
-        renderPIQScore();
-      } catch (err) {
-        console.error(err);
-        toast("Import failed: " + (err.message || "unknown error"));
-      }
-    };
-    r.readAsText(file);
-  }
-
-  function resetLocalState() {
-    const ok = confirm("Reset local state? This will remove all local data.");
-    if (!ok) return;
-    const typed = prompt("Type RESET to confirm");
-    if (typed !== "RESET") { toast("Reset aborted"); return; }
-    localStorage.removeItem("piq_local_state_v2");
-    toast("Local state reset — reloading");
-    setTimeout(() => location.reload(), 700);
-  }
-
-  function runQAGrade(intoElId) {
-    const issues = [];
-    if (!state.profile?.sport) issues.push("Profile sport not set");
-    if (!state.ui?.todaySession && !(state.sessions && state.sessions.length)) issues.push("No session generated/logged yet");
-    const grade = issues.length === 0 ? "A" : issues.length === 1 ? "B" : "C";
-
-    const report =
-      `QA Grade: ${grade}\n\nIssues found:\n` +
-      (issues.length ? issues.map((x, i) => `${i + 1}. ${x}`).join("\n") : "None");
-
-    const el = $(intoElId || "gradeReport");
-    if (el) el.textContent = report;
-    toast("QA grade complete");
-  }
-
-  // ---------- Navigation + transitions ----------
-  function setActiveNav(view) {
-    const desktopNav = $("desktopNav");
-    const bottomNav = $("bottomNav");
-
-    document.querySelectorAll(".navbtn, .bottomnav .tab").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.view === view);
-      btn.setAttribute("aria-current", btn.dataset.view === view ? "page" : "false");
-    });
-
-    if (_navIndicator && desktopNav) {
-      const btn = desktopNav.querySelector(`.navbtn[data-view="${view}"]`);
-      if (btn) updateIndicatorFor(desktopNav, _navIndicator, btn, { height: "44px" });
-    }
-    if (_bottomIndicator && bottomNav) {
-      const btn = bottomNav.querySelector(`.tab[data-view="${view}"]`);
-      if (btn) updateIndicatorFor(bottomNav, _bottomIndicator, btn, { height: "3px", bottom: "6px" });
-    }
-  }
-
-  function focusAndScrollTop(view) {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    const active = $(`view-${view}`);
-    if (active) {
-      try { active.scrollTop = 0; } catch {}
-      try { active.focus({ preventScroll: true }); } catch {}
-    }
-  }
-
-  function setActiveViewClass(view) {
-    VIEWS.forEach(v => {
-      const el = $(`view-${v}`);
-      if (!el) return;
-      el.classList.toggle("is-active", v === view);
-    });
-  }
-
-  function transitionToView(view) {
-    VIEWS.forEach(v => {
-      const el = $(`view-${v}`);
-      if (!el) return;
-      el.hidden = true;
-      el.classList.remove("view-enter", "view-enter-active", "view-spring");
-    });
-
-    const el = $(`view-${view}`);
-    if (!el) return;
-
-    el.hidden = false;
-    if (!prefersReducedMotion) {
-      el.classList.add("view-enter");
-      el.offsetHeight;
-      el.classList.add("view-enter-active");
-      window.setTimeout(() => el.classList.add("view-spring"), 140);
-      window.setTimeout(() => el.classList.remove("view-enter", "view-enter-active", "view-spring"), 380);
-    }
-  }
-
-  function showView(view) {
-    if (!VIEWS.includes(view)) view = "home";
-
-    const fromView = state.ui.view || "home";
-    state.ui.view = view;
-    persistDebounced(null);
-
-    setActiveNav(view);
-    setActiveViewClass(view);
-    transitionToView(view);
-
-    showViewSkeletons(view);
-
-    if (prefersReducedMotion) {
-      renderAll();
-      renderPIQScore();
-      requestAnimationFrame(() => focusAndScrollTop(view));
-      return;
-    }
-
-    window.setTimeout(() => {
-      renderAll();
-      renderPIQScore();
-
-      requestAnimationFrame(() => {
-        animateSharedRing(fromView, view);
-        focusAndScrollTop(view);
-      });
-    }, 110);
-  }
-
-  // ---------- Onboarding ----------
-  function ensureOnboarding() {
-    if (state.profile.onboarded) return;
-
-    const overlay = document.createElement("div");
-    overlay.className = "piq-modal-backdrop";
-    overlay.innerHTML = `
-      <div class="piq-modal" role="dialog" aria-modal="true" aria-label="Get started">
-        <div class="piq-modal-head">
-          <div class="piq-modal-title">Welcome to PerformanceIQ</div>
-          <div class="piq-modal-sub">Pick role, sport, and session type — then hit “Try now” to generate Today.</div>
-        </div>
-
-        <div class="piq-modal-body">
-          <div class="grid2">
-            <div class="field">
-              <label for="obRole">Role</label>
-              <select id="obRole">
-                <option value="coach">Coach</option>
-                <option value="athlete">Athlete</option>
-                <option value="parent">Parent</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label for="obSport">Sport</label>
-              <select id="obSport">
-                ${SPORTS.map(s => `<option value="${s}">${s[0].toUpperCase() + s.slice(1)}</option>`).join("")}
-              </select>
-            </div>
-          </div>
-
-          <div class="field" style="margin-top:10px">
-            <label for="obType">Session type</label>
-            <select id="obType">
-              <option value="practice">Practice</option>
-              <option value="strength">Strength</option>
-              <option value="speed">Speed</option>
-              <option value="recovery">Recovery</option>
-              <option value="competition_prep">Competition prep</option>
-            </select>
-          </div>
-
-          <div style="margin-top:12px">
-            <div class="small muted"><b>Injury filters</b> (optional):</div>
-            <div class="piq-chiprow" id="obInj">
-              ${["knee","ankle","shoulder","back"].map(x => `<button class="piq-chip" data-inj="${x}" type="button" aria-label="Toggle injury filter ${x}">${x}</button>`).join("")}
-            </div>
-          </div>
-
-          <div class="row between" style="margin-top:14px">
-            <div class="small muted">You can change this anytime in Account.</div>
-            <div class="row gap wrap">
-              <button class="btn ghost" id="obSkip" type="button" aria-label="Skip onboarding">Skip</button>
-              <button class="btn" id="obTry" type="button" aria-label="Save onboarding and generate Today">Try now</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-
-    const roleEl = overlay.querySelector("#obRole");
-    const sportEl = overlay.querySelector("#obSport");
-    const typeEl = overlay.querySelector("#obType");
-    const injRow = overlay.querySelector("#obInj");
-
-    roleEl.value = state.profile.role || "coach";
-    sportEl.value = state.profile.sport || "basketball";
-    typeEl.value = state.profile.preferred_session_type || "practice";
-
-    const injSet = new Set(state.profile.injuries || []);
-    function syncInjUI() {
-      injRow.querySelectorAll(".piq-chip").forEach(btn => {
-        const k = btn.getAttribute("data-inj");
-        btn.classList.toggle("on", injSet.has(k));
-      });
-    }
-    injRow.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-inj]");
-      if (!btn) return;
-      const k = btn.getAttribute("data-inj");
-      if (injSet.has(k)) injSet.delete(k); else injSet.add(k);
-      syncInjUI();
-    });
-    syncInjUI();
-
-    overlay.querySelector("#obSkip").addEventListener("click", () => {
-      state.profile.onboarded = true;
-      persist("Onboarding skipped");
-      overlay.remove();
-      showView("home");
-    });
-
-    overlay.querySelector("#obTry").addEventListener("click", () => {
-      state.profile.role = roleEl.value;
-      state.profile.sport = clampSport(sportEl.value);
-      state.profile.preferred_session_type = typeEl.value;
-      state.profile.injuries = Array.from(injSet);
-      state.profile.onboarded = true;
-
-      state.profile.theme.sport = state.profile.sport;
-      syncThemeFromState();
-
-      state.ui.todaySession = _generateTodaySession();
-      persist("Onboarding saved • Today generated");
-
-      overlay.remove();
-      showView("home");
-      toast("Today ready — press Start", 2200);
-      renderTodayBlock();
-    });
-  }
-
-  // ---------- Profile ----------
-  function renderProfile() {
-    const body = $("profileBody");
-    if (!body) return;
-
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Profile</div>
-        <div class="minibody">
-          <div><b>Role</b>: ${state.profile.role}</div>
-          <div><b>Sport</b>: ${state.profile.sport}</div>
-          <div><b>Preferred session</b>: ${state.profile.preferred_session_type}</div>
-          <div class="small muted" style="margin-top:10px">Tip: Use Train to generate by sport/session type and push to Today.</div>
-        </div>
-      </div>
-
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">PerformanceIQ Score</div>
-        <div id="piqScoreProfile" style="margin-top:10px">—</div>
-      </div>
-
-      <div class="mini" style="margin-top:12px">
-        <div class="minihead">Data Management</div>
-        <div class="minibody">
-          <div class="small muted">Export/Import/Reset are available here (and in Account).</div>
-
-          <div class="row gap wrap" style="margin-top:12px">
-            <button class="btn ghost" id="profExport" type="button" aria-label="Export JSON">Export JSON</button>
-            <label class="btn ghost" style="cursor:pointer">
-              Import JSON
-              <input id="profImport" type="file" accept="application/json" style="display:none" aria-label="Import JSON file" />
-            </label>
-            <button class="btn danger" id="profReset" type="button" aria-label="Reset local data">Reset local</button>
-          </div>
-
-          <div class="row gap wrap" style="margin-top:12px">
-            <button class="btn" id="profGrade" type="button" aria-label="Run QA Grade">Run QA Grade</button>
-          </div>
-
-          <pre id="profGradeReport" class="small muted" style="white-space:pre-wrap;margin-top:10px">—</pre>
-        </div>
-      </div>
-    `;
-
-    $("profExport")?.addEventListener("click", exportJSON);
-    $("profImport")?.addEventListener("change", (e) => {
-      const f = e.target.files?.[0];
-      if (f) importJSONFile(f);
-    });
-    $("profReset")?.addEventListener("click", resetLocalState);
-    $("profGrade")?.addEventListener("click", () => runQAGrade("profGradeReport"));
-
-    renderInsights(body);
-  }
-
-  function renderHome() {
-    const homeSub = $("homeSub");
-    if (homeSub) homeSub.textContent = `${state.profile.role} • ${state.profile.sport} • ${state.profile.preferred_session_type}`;
-    renderTodayBlock();
-    renderPIQScore();
-  }
-
-  function renderAll() {
-    try {
-      setTeamPill();
-      renderHome();
-      renderTeam();
-      renderTrain();
-      renderProfile();
-      applyStatusFromMeta();
-    } catch (e) {
-      console.error("Render error", e);
-    }
-  }
-
-  // ---------- Drawers + Help ----------
-  function openDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-  }
-  function closeDrawer() {
-    const b = $("drawerBackdrop");
-    const d = $("accountDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-
-  function openHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = false;
-    d.classList.add("open");
-    d.setAttribute("aria-hidden", "false");
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = "";
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(defaultHelpList());
-  }
-  function closeHelp() {
-    const b = $("helpBackdrop");
-    const d = $("helpDrawer");
-    if (!b || !d) return;
-    b.hidden = true;
-    d.classList.remove("open");
-    d.setAttribute("aria-hidden", "true");
-  }
-
-  function defaultHelpList() {
-    return [
-      { title: "Today workflow", snippet: "Home → Generate → Start → Stop & Log. Train can push sessions into Today." },
-      { title: "Session types", snippet: "Practice = all blocks. Strength = lift focus. Speed = plyo/speed. Recovery = light skill + mobility. Competition prep = sharp + light." },
-      { title: "Smart sport theme", snippet: "Accent color auto-updates based on sport. Change sport in Train or Account → Appearance." },
-      { title: "PerformanceIQ Score", snippet: "Score increases with consistency, minutes, streaks, and variety in the last 14 days." }
-    ];
-  }
-  function searchHelp(q) {
-    const list = defaultHelpList();
-    if (!q) return list;
-    const s = q.toLowerCase();
-    return list.filter(item => (item.title + " " + item.snippet).toLowerCase().includes(s));
-  }
-  function helpListHTML(list) {
-    return list.map(r =>
-      `<div class="piq-helpitem">
-        <b>${r.title}</b>
-        <div class="small muted">${r.snippet}</div>
-      </div>`
-    ).join("");
-  }
-  function openHelpTopic(topic) {
-    openHelp();
-    const searchEl = $("helpSearch");
-    if (searchEl) searchEl.value = topic;
-    const rEl = $("helpResults");
-    if (rEl) rEl.innerHTML = helpListHTML(searchHelp(topic));
-  }
-
-  // ---------- Bind UI ----------
-  function bindUI() {
-    document.querySelectorAll("[data-view]").forEach(btn => {
-      if (btn.classList.contains("navbtn") || btn.classList.contains("tab")) {
-        btn.addEventListener("click", () => showView(btn.dataset.view));
-      }
-    });
-
-    $("btnAccount")?.addEventListener("click", openDrawer);
-    $("btnCloseDrawer")?.addEventListener("click", closeDrawer);
-    $("drawerBackdrop")?.addEventListener("click", closeDrawer);
-
-    $("btnHelp")?.addEventListener("click", openHelp);
-    $("btnCloseHelp")?.addEventListener("click", closeHelp);
-    $("helpBackdrop")?.addEventListener("click", closeHelp);
-
-    $("helpSearch")?.addEventListener("input", (e) => {
-      const q = e.target.value.trim();
-      const rEl = $("helpResults");
-      if (rEl) rEl.innerHTML = helpListHTML(searchHelp(q));
-    });
-
-    $("tipToday")?.addEventListener("click", () => openHelpTopic("today"));
-    $("tipQuick")?.addEventListener("click", () => openHelpTopic("today"));
-    $("tipTrain")?.addEventListener("click", () => openHelpTopic("session types"));
-    $("tipTrain2")?.addEventListener("click", () => openHelpTopic("session types"));
-    $("tipTeam")?.addEventListener("click", () => openHelpTopic("team"));
-    $("tipProfile")?.addEventListener("click", () => openHelpTopic("score"));
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { closeDrawer(); closeHelp(); }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        openHelp();
-        $("helpSearch")?.focus();
-        e.preventDefault();
-      }
-    });
-
-    $("todayButton")?.addEventListener("click", () => {
-      if (!state.ui.todaySession) {
-        state.ui.todaySession = _generateTodaySession();
-        persist("Generated Today session");
-        renderTodayBlock();
-        toast("Session generated — press Start");
-        return;
-      }
-      if (!todayActiveSession) { startToday(state.ui.todaySession); return; }
-      stopAndLogToday();
-    });
-
-    $("qaTrain")?.addEventListener("click", () => showView("train"));
-    $("qaTeam")?.addEventListener("click", () => showView("team"));
-
-    $("btnThemeToggle")?.addEventListener("click", () => {
-      const html = document.documentElement;
-      const cur = html.getAttribute("data-theme") || "dark";
-      const next = cur === "dark" ? "light" : "dark";
-      html.setAttribute("data-theme", next);
-      state.profile.theme = state.profile.theme || {};
-      state.profile.theme.mode = next;
-      persistDebounced("Theme updated", 0);
-      renderPIQScore();
-    });
-
-    $("btnSaveProfile")?.addEventListener("click", () => {
-      const newSport = clampSport($("sportSelect")?.value || state.profile.sport);
-
-      state.profile.role = $("roleSelect")?.value || state.profile.role;
-      state.profile.sport = newSport;
-      state.profile.preferred_session_type = $("preferredSessionSelect")?.value || state.profile.preferred_session_type;
-
-      state.profile.theme.sport = newSport;
-      syncThemeFromState();
-
-      persist("Profile preferences saved");
-      renderAll();
-    });
-
-    $("btnSaveTheme")?.addEventListener("click", () => {
-      const mode = $("themeModeSelect")?.value || "dark";
-      const themeSport = clampSport($("themeSportSelect")?.value || state.profile.sport);
-
-      state.profile.theme = state.profile.theme || {};
-      state.profile.theme.mode = mode;
-      state.profile.theme.sport = themeSport;
-
-      syncThemeFromState();
-      persist("Theme saved");
-      renderAll();
-    });
-
-    $("btnExport")?.addEventListener("click", exportJSON);
-    $("fileImport")?.addEventListener("change", (e) => {
-      const f = e.target.files?.[0];
-      if (f) importJSONFile(f);
-    });
-    $("btnResetLocal")?.addEventListener("click", resetLocalState);
-    $("btnRunGrade")?.addEventListener("click", () => runQAGrade("gradeReport"));
-
-    $("fab")?.addEventListener("click", () => {
-      const back = $("sheetBackdrop");
-      const sheet = $("fabSheet");
-      if (back) back.hidden = false;
-      if (sheet) { sheet.hidden = false; sheet.setAttribute("aria-hidden", "false"); }
-    });
-    $("btnCloseSheet")?.addEventListener("click", () => {
-      const back = $("sheetBackdrop");
-      const sheet = $("fabSheet");
-      if (back) back.hidden = true;
-      if (sheet) { sheet.hidden = true; sheet.setAttribute("aria-hidden", "true"); }
-    });
-    $("sheetBackdrop")?.addEventListener("click", () => {
-      const back = $("sheetBackdrop");
-      const sheet = $("fabSheet");
-      if (back) back.hidden = true;
-      if (sheet) { sheet.hidden = true; sheet.setAttribute("aria-hidden", "true"); }
-    });
-  }
-
-  // ---------- Boot ----------
-  function boot() {
-    enforceMinTapTargets();
-    wireMicroInteractions();
-    bindUI();
-    syncThemeFromState();
-
-    setupTabIndicators();
-    setupParallaxBlur();
-
-    if ($("roleSelect")) $("roleSelect").value = state.profile.role;
-    if ($("sportSelect")) $("sportSelect").value = state.profile.sport;
-    if ($("preferredSessionSelect")) $("preferredSessionSelect").value = state.profile.preferred_session_type;
-    if ($("themeModeSelect")) $("themeModeSelect").value = state.profile?.theme?.mode || "dark";
-    if ($("themeSportSelect")) $("themeSportSelect").value = state.profile?.theme?.sport || state.profile.sport;
-
-    ensureOnboarding();
-    showView(state.ui.view || "home");
-    toast("PerformanceIQ ready", 1400);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
-
-  window.__PIQ_DEBUG__ = {
-    generateWorkoutFor,
-    getState: () => state,
-    computePIQScore
-  };
-})();
+/* ============================================================
+   styles.css — PerformanceIQ v4.0.0
+   Full redesign: command-center dark aesthetic with:
+   - Bebas Neue display font for stats + headings
+   - Sport-accent color system (preserved from v3.8)
+   - PIQ Score hero ring with pillar breakdown
+   - Team readiness sidebar panel
+   - Activity feed
+   - Onboarding progress stepper
+   - Wellness check-in cards
+   - Stat cards with mini sparkbar charts
+   - Game countdown chips
+   - Full WCAG tap targets + reduced-motion support
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  /* Brand tokens */
+  --brand-accent: #2EC4B6;
+  --brand-accent-soft: rgba(46,196,182,.14);
+
+  --accent: var(--brand-accent);
+  --accent-2: var(--brand-accent-soft);
+  --accent-3: rgba(46,196,182,.28);
+
+  --ok: #22C55E;    --ok-soft: rgba(34,197,94,.13);
+  --warn: #F59E0B;  --warn-soft: rgba(245,158,11,.13);
+  --danger: #EF4444; --danger-soft: rgba(239,68,68,.12);
+  --info: #3B82F6;  --info-soft: rgba(59,130,246,.12);
+
+  --font-body: "DM Sans", system-ui, sans-serif;
+  --font-head: "Bebas Neue", "Barlow Condensed", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --base-font: 16px;
+  --base-line: 1.55;
+  --text-max: 72ch;
+
+  --sp-xs: 6px; --sp-sm: 10px; --sp-md: 14px; --sp-lg: 20px;
+
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent) 38%, transparent);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-in:  cubic-bezier(.7, 0, .84, 0);
+
+  --e0: 0 0 0 rgba(0,0,0,0);
+  --e1: 0 10px 26px rgba(0,0,0,.2);
+  --e2: 0 18px 44px rgba(0,0,0,.26);
+  --e3: 0 26px 70px rgba(0,0,0,.32);
+
+  --select-arrow-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23c4cede' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  --select-arrow-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234a5876' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  --select-arrow: var(--select-arrow-dark);
+}
+
+/* ─── DARK THEME ─── */
+html[data-theme="dark"] {
+  --bg: #080c10;
+  --top: #0e1419;
+  --card: #111c26;
+  --card2: #141e2a;
+  --muted: #8a9bb5;
+  --line: rgba(255,255,255,.08);
+  --text: #eef3ff;
+  --input: #0f1827;
+  --shadow: var(--e2);
+  --optionbg: #0f1827; --optionfg: #eef3ff;
+  --pillBorder: rgba(255,255,255,.14);
+  --activeViewRing: 0 0 0 2px var(--accent-3), 0 22px 80px rgba(0,0,0,.45);
+  --select-arrow: var(--select-arrow-dark);
+}
+
+/* ─── LIGHT THEME ─── */
+html[data-theme="light"] {
+  --bg: #f0f4f8;
+  --top: #ffffff;
+  --card: #ffffff;
+  --card2: #f8fafc;
+  --muted: #4a5876;
+  --line: rgba(15,23,42,.12);
+  --text: #0b1220;
+  --input: #eef2ff;
+  --shadow: 0 10px 36px rgba(8,18,40,.1);
+  --optionbg: #fff; --optionfg: #0b1220;
+  --pillBorder: rgba(15,23,42,.15);
+  --activeViewRing: 0 0 0 2px var(--accent-3), 0 18px 50px rgba(8,18,40,.12);
+  --select-arrow: var(--select-arrow-light);
+}
+
+/* ─── RESET ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--base-font);
+  line-height: var(--base-line);
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+}
+
+/* Noise texture */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0.5;
+}
+
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+:focus:not(:focus-visible) { outline: none; }
+
+/* ─── PARALLAX ─── */
+.piq-parallax {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: .9; filter: saturate(1.1);
+}
+.piq-parallax .pl {
+  position: absolute; border-radius: 999px;
+  filter: blur(52px); opacity: .35;
+  transform: translate3d(0,0,0); will-change: transform;
+}
+.piq-parallax .pl.a {
+  width: 540px; height: 540px; left: -200px; top: -140px;
+  background: radial-gradient(circle at 30% 30%, color-mix(in oklab, var(--accent) 28%, transparent) 0%, transparent 62%);
+  transform: translate3d(var(--p1x,0px), var(--p1y,0px), 0);
+}
+.piq-parallax .pl.b {
+  width: 680px; height: 680px; right: -300px; top: 100px;
+  background: radial-gradient(circle at 40% 40%, color-mix(in oklab, var(--accent) 20%, transparent) 0%, transparent 66%);
+  transform: translate3d(var(--p2x,0px), var(--p2y,0px), 0);
+}
+.piq-parallax .pl.c {
+  width: 800px; height: 800px; left: 18%; bottom: -500px;
+  background: radial-gradient(circle at 50% 50%, color-mix(in oklab, var(--accent) 15%, transparent) 0%, transparent 70%);
+  transform: translate3d(var(--p3x,0px), var(--p3y,0px), 0);
+}
+
+/* Keep content above parallax */
+.topbar, .layout, .bottomnav, .toast, .drawer, .sheet, .splash, .piq-sidebar { position: relative; z-index: 1; }
+
+/* ─── TOPBAR ─── */
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 20px;
+  background: color-mix(in oklab, var(--top) 85%, transparent);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(18px);
+  gap: 12px;
+}
+.topbar-left { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-sm); }
+.topbar-right { display: flex; gap: var(--sp-sm); align-items: center; }
+
+.appmark { display: flex; align-items: center; gap: 8px; }
+.appmark-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); flex-shrink: 0;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 24%, transparent);
+}
+.appmark-title {
+  font-family: var(--font-head);
+  font-size: 22px; letter-spacing: 2px;
+  color: var(--text);
+  text-shadow: 0 0 18px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* ─── PILLS / CHIPS ─── */
+.pill, .piq-chip-status {
+  position: relative; overflow: hidden;
+  padding: 5px 12px; border-radius: 999px; font-size: 13px;
+  background: transparent; border: 1px solid var(--pillBorder);
+  display: inline-flex; align-items: center; gap: 8px;
+  color: color-mix(in oklab, var(--text) 85%, transparent);
+  white-space: nowrap; font-weight: 500;
+}
+.piq-chip-status.ok { background: var(--ok-soft); border-color: color-mix(in oklab, var(--ok) 30%, transparent); color: var(--ok); }
+.piq-chip-status.warn { background: var(--warn-soft); border-color: color-mix(in oklab, var(--warn) 30%, transparent); color: var(--warn); }
+.piq-chip-status.danger { background: var(--danger-soft); border-color: color-mix(in oklab, var(--danger) 30%, transparent); color: var(--danger); }
+.piq-chip-status.accent { background: var(--accent-2); border-color: var(--accent-3); color: var(--accent); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; animation: dotPulse 2.2s infinite; }
+.dot.warn { background: var(--warn); }
+.dot.danger { background: var(--danger); }
+@keyframes dotPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ─── LAYOUT ─── */
+.layout {
+  display: grid;
+  grid-template-columns: 180px 1fr 280px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px 16px;
+  gap: 20px;
+  align-items: start;
+}
+.layout.no-sidebar { grid-template-columns: 180px 1fr; }
+
+.nav { width: 180px; flex-shrink: 0; position: relative; padding-bottom: 6px; display: grid; gap: 6px; }
+.content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+
+/* ─── DESKTOP NAV ─── */
+.navbtn {
+  position: relative; overflow: hidden;
+  display: block; width: 100%; padding: 12px 14px; border-radius: 14px;
+  border: 1px solid transparent; background: none;
+  color: color-mix(in oklab, var(--text) 60%, transparent);
+  text-align: left; font-weight: 700; font-family: var(--font-body);
+  font-size: 14px; letter-spacing: .01em;
+  cursor: pointer; min-height: 44px;
+  transition: color .18s var(--ease-out), transform .18s var(--ease-out);
+  z-index: 1;
+}
+.navbtn.active { color: var(--text); }
+.navbtn:not(.active):hover { color: var(--text); transform: translateY(-1px); }
+
+.nav-indicator {
+  position: absolute; left: 0; top: 0; height: 44px; width: 0;
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--card) 82%, var(--accent-2));
+  border: 1px solid color-mix(in oklab, var(--accent) 26%, var(--pillBorder));
+  box-shadow: 0 12px 32px color-mix(in oklab, var(--accent) 10%, transparent);
+  transition: transform .28s var(--ease-out), width .28s var(--ease-out);
+  z-index: 0; opacity: 0;
+}
+
+/* ─── RIGHT SIDEBAR PANEL ─── */
+.piq-sidebar {
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* ─── VIEWS ─── */
+.view { scroll-margin-top: 84px; }
+.view.is-active { box-shadow: var(--activeViewRing); border-radius: 18px; }
+.view-enter { opacity: 0; transform: translateY(12px) scale(.99); filter: blur(10px); }
+.view-enter-active {
+  opacity: 1; transform: translateY(0) scale(1); filter: blur(0);
+  transition: opacity .26s var(--ease-out), transform .26s var(--ease-out), filter .26s var(--ease-out);
+}
+.view-spring { animation: viewSpring .24s var(--ease-out); }
+@keyframes viewSpring {
+  0% { transform: translateY(0) scale(1); }
+  60% { transform: translateY(-2px) scale(1.006); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* ─── CARDS ─── */
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 18px; padding: var(--sp-md);
+  box-shadow: var(--shadow);
+  transform: translate3d(0,0,0);
+  transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out), border-color .18s var(--ease-out);
+}
+.card:hover { transform: translateY(-2px); box-shadow: var(--e3); border-color: color-mix(in oklab, var(--accent) 20%, var(--line)); }
+.card.subtle { background: color-mix(in oklab, var(--card) 96%, transparent); box-shadow: none; }
+
+.card-title { font-family: var(--font-head); font-weight: 400; letter-spacing: .06em; font-size: 20px; }
+.card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+
+.elevate {
+  transform: translate3d(0,0,0);
+  transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.elevate:hover { transform: translateY(-2px); box-shadow: var(--e3); }
+
+/* ─── MINI / SECTION BLOCKS ─── */
+.mini { background: transparent; border-radius: 10px; padding: 8px; }
+.minihead {
+  font-weight: 700; letter-spacing: .01em; margin-bottom: 8px;
+  color: color-mix(in oklab, var(--text) 95%, transparent);
+}
+.minibody { color: var(--muted); }
+.piq-section-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 2px;
+  color: var(--muted); font-weight: 600; margin-bottom: 10px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.piq-section-label a, .piq-see-all {
+  font-size: 12px; color: var(--accent); cursor: pointer;
+  opacity: .75; text-decoration: none; font-weight: 500;
+}
+.piq-see-all:hover { opacity: 1; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+.piq-rowline {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--line);
+}
+.piq-li { margin: 6px 0; }
+.hr { height: 1px; background: var(--line); margin: 12px 0; border-radius: 2px; }
+
+/* ─── STAT CARDS ─── */
+.stat-big {
+  font-family: var(--font-head);
+  font-size: 52px; letter-spacing: 1px; line-height: 1;
+  color: var(--accent);
+}
+.stat-unit { font-family: var(--font-body); font-size: 18px; color: var(--muted); margin-left: 4px; }
+.stat-trend { font-size: 12px; margin-top: 6px; display: flex; align-items: center; gap: 4px; font-weight: 500; }
+.stat-trend.up { color: var(--ok); }
+.stat-trend.down { color: var(--danger); }
+.stat-trend.neutral { color: var(--muted); }
+
+/* Mini sparkbar chart */
+.piq-spark {
+  display: flex; align-items: flex-end; gap: 3px;
+  height: 36px; margin-top: 14px;
+}
+.piq-spark-bar {
+  flex: 1; border-radius: 3px 3px 0 0;
+  min-width: 4px;
+  transition: height .3s var(--ease-out);
+  background: color-mix(in oklab, var(--accent) 35%, transparent);
+}
+.piq-spark-bar.active { background: var(--accent); }
+.piq-spark-bar.ok { background: color-mix(in oklab, var(--ok) 40%, transparent); }
+.piq-spark-bar.ok.active { background: var(--ok); }
+
+/* ─── PIQ SCORE HERO ─── */
+.piq-score-hero {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 24px; align-items: center;
+  padding: 22px;
+  background: color-mix(in oklab, var(--card) 88%, var(--accent-2));
+  border: 1px solid color-mix(in oklab, var(--accent) 18%, var(--line));
+  border-radius: 20px; box-shadow: var(--e2);
+  position: relative; overflow: hidden;
+}
+.piq-score-hero::before {
+  content: '';
+  position: absolute; top: -80px; right: -80px;
+  width: 260px; height: 260px;
+  background: radial-gradient(circle, color-mix(in oklab, var(--accent) 12%, transparent) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Ring */
+.piq-score-ring {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px; border-radius: 18px; border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--card) 86%, var(--accent-2));
+  box-shadow: var(--e2);
+}
+.ring-wrap { position: relative; width: 120px; height: 120px; border-radius: 999px; }
+.ring { width: 120px; height: 120px; transform: rotate(-90deg); display: block; }
+.ring-bg { fill: none; stroke: color-mix(in oklab, var(--text) 10%, transparent); stroke-width: 10; }
+.ring-prog {
+  fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round;
+  stroke-dasharray: 0; stroke-dashoffset: 0;
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--accent) 60%, transparent));
+  transition: stroke-dashoffset .75s var(--ease-out);
+}
+.ring-prog.ring-anim { transition: stroke-dashoffset .75s var(--ease-out); }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; pointer-events: none; }
+.piq-score-num { font-family: var(--font-head); font-size: 42px; line-height: 1; letter-spacing: 2px; color: var(--accent); text-shadow: 0 0 20px color-mix(in oklab, var(--accent) 50%, transparent); }
+.piq-score-sub { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 1px; }
+.piq-score-side { display: grid; gap: 8px; align-content: start; }
+.piq-score-chip {
+  display: inline-flex; align-items: center; justify-content: center; width: fit-content;
+  font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--accent) 30%, var(--line));
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
+  color: color-mix(in oklab, var(--text) 92%, transparent);
+  letter-spacing: .5px;
+}
+.piq-score-hint { font-size: 12px; }
+.score-bump { animation: scoreBump .40s var(--ease-out); }
+@keyframes scoreBump { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+.score-land { animation: scoreLand .24s var(--ease-out); }
+@keyframes scoreLand { 0% { transform: scale(.985); } 100% { transform: scale(1); } }
+.shared-clone { border-radius: 18px; box-shadow: var(--e3); }
+
+/* Pillar breakdown */
+.piq-score-details { display: flex; flex-direction: column; gap: 14px; }
+.piq-score-title { font-family: var(--font-head); font-size: 26px; letter-spacing: 1px; line-height: 1.1; }
+.piq-score-desc { font-size: 13px; color: var(--muted); font-weight: 300; line-height: 1.6; }
+
+.piq-pillars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 4px; }
+.piq-pillar {
+  background: var(--card2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 10px; text-align: center;
+  transition: border-color .18s var(--ease-out);
+}
+.piq-pillar:hover { border-color: color-mix(in oklab, var(--accent) 25%, var(--line)); }
+.piq-pillar-icon { font-size: 18px; margin-bottom: 5px; }
+.piq-pillar-score { font-family: var(--font-head); font-size: 22px; line-height: 1; margin-bottom: 4px; }
+.piq-pillar-bar { height: 3px; background: var(--line); border-radius: 2px; margin: 5px 0; overflow: hidden; }
+.piq-pillar-bar-fill { height: 100%; border-radius: 2px; transition: width .8s var(--ease-out); }
+.piq-pillar-name { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+
+/* ─── WORKOUT BLOCK CARDS ─── */
+.blockcard {
+  margin: 10px 0; padding: 14px;
+  border: 1px solid var(--line); border-radius: 16px;
+  background: color-mix(in oklab, var(--card) 90%, var(--accent-2));
+  box-shadow: var(--e1); outline: none;
+  transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out), border-color .18s var(--ease-out);
+}
+.blockcard:hover { transform: translateY(-2px); box-shadow: var(--e2); border-color: color-mix(in oklab, var(--accent) 25%, var(--line)); }
+.blockcard:focus-visible { box-shadow: var(--focus-ring), var(--e2); }
+.blockcard-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.blockcard-title { font-weight: 700; letter-spacing: .01em; }
+
+/* Today session workout card */
+.piq-workout-card {
+  background: linear-gradient(135deg, color-mix(in oklab, var(--card) 95%, var(--accent-2)), var(--card));
+  border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--line));
+  border-radius: 16px; padding: 18px; cursor: pointer;
+  transition: all .2s var(--ease-out); position: relative; overflow: hidden;
+}
+.piq-workout-card::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+.piq-workout-card:hover { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); transform: translateY(-2px); box-shadow: var(--e3); }
+.piq-workout-type { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--accent); margin-bottom: 7px; font-weight: 700; }
+.piq-workout-name { font-family: var(--font-head); font-size: 28px; letter-spacing: 1px; margin-bottom: 8px; line-height: 1.1; }
+.piq-workout-meta { display: flex; gap: 16px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.piq-workout-meta span { display: flex; align-items: center; gap: 4px; }
+
+/* ─── ACTIVITY FEED ─── */
+.piq-feed { display: flex; flex-direction: column; }
+.piq-feed-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 11px 0; border-bottom: 1px solid var(--line);
+}
+.piq-feed-item:last-child { border-bottom: none; }
+.piq-feed-icon {
+  width: 32px; height: 32px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.piq-feed-icon.ok { background: var(--ok-soft); }
+.piq-feed-icon.warn { background: var(--warn-soft); }
+.piq-feed-icon.accent { background: var(--accent-2); }
+.piq-feed-icon.danger { background: var(--danger-soft); }
+.piq-feed-text { font-size: 13px; line-height: 1.5; flex: 1; }
+.piq-feed-time { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ─── TEAM READINESS ─── */
+.piq-roster-list { display: flex; flex-direction: column; gap: 8px; }
+.piq-roster-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 11px;
+  background: var(--card2); border: 1px solid var(--line);
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.piq-roster-item:hover { background: color-mix(in oklab, var(--card2) 80%, var(--accent-2)); border-color: color-mix(in oklab, var(--accent) 20%, var(--line)); }
+.piq-roster-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0; letter-spacing: .5px;
+}
+.piq-roster-name { font-size: 13px; font-weight: 600; }
+.piq-roster-pos { font-size: 11px; color: var(--muted); }
+.piq-readiness-bar { width: 52px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.piq-readiness-fill { height: 100%; border-radius: 2px; transition: width .6s var(--ease-out); }
+.piq-readiness-score { font-family: var(--font-mono); font-size: 12px; font-weight: 600; min-width: 24px; text-align: right; }
+
+/* ─── WELLNESS CHECK-IN ─── */
+.piq-wellness-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.piq-wellness-item {
+  background: var(--card2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px; text-align: center;
+  transition: border-color .18s;
+}
+.piq-wellness-item:hover { border-color: color-mix(in oklab, var(--accent) 22%, var(--line)); }
+.piq-wellness-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+.piq-wellness-emoji { font-size: 22px; margin-bottom: 4px; }
+.piq-wellness-val { font-family: var(--font-mono); font-size: 18px; font-weight: 600; }
+
+/* ─── ONBOARDING PROGRESS ─── */
+.piq-onboarding {
+  background: color-mix(in oklab, var(--accent-2) 60%, var(--card));
+  border: 1px solid color-mix(in oklab, var(--accent) 28%, var(--line));
+  border-radius: 16px; padding: 18px;
+}
+.piq-onboarding-title { font-family: var(--font-head); font-size: 20px; letter-spacing: 1px; margin-bottom: 14px; }
+.piq-ob-step { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 5px 0; }
+.piq-ob-dot {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700;
+}
+.piq-ob-dot.done { background: var(--ok); color: #000; }
+.piq-ob-dot.active { background: var(--accent); color: #000; animation: obGlow 2s infinite; }
+.piq-ob-dot.pending { background: color-mix(in oklab, var(--text) 14%, transparent); color: var(--muted); }
+@keyframes obGlow { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+.piq-ob-line { width: 2px; height: 14px; background: var(--line); margin: 0 10px; }
+
+/* ─── UPCOMING EVENTS ─── */
+.piq-event-item {
+  display: flex; gap: 12px; align-items: center;
+  padding: 11px 12px; background: var(--card2); border: 1px solid var(--line);
+  border-radius: 12px; transition: border-color .18s;
+}
+.piq-event-item:hover { border-color: color-mix(in oklab, var(--accent) 22%, var(--line)); }
+.piq-event-days { text-align: center; min-width: 38px; }
+.piq-event-days-num { font-family: var(--font-head); font-size: 22px; color: var(--accent); line-height: 1; }
+.piq-event-days-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.piq-event-name { font-size: 13px; font-weight: 600; }
+.piq-event-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+/* ─── ALERTS ─── */
+.piq-alert {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px; border-radius: 12px; font-size: 13px;
+}
+.piq-alert.warn { background: var(--warn-soft); border: 1px solid color-mix(in oklab, var(--warn) 28%, transparent); color: var(--warn); }
+.piq-alert.danger { background: var(--danger-soft); border: 1px solid color-mix(in oklab, var(--danger) 28%, transparent); color: var(--danger); }
+.piq-alert.ok { background: var(--ok-soft); border: 1px solid color-mix(in oklab, var(--ok) 28%, transparent); color: var(--ok); }
+.piq-alert-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+.piq-alert-title { font-weight: 700; margin-bottom: 2px; }
+.piq-alert-body { line-height: 1.5; }
+
+/* ─── TOPBAR GREETING ─── */
+.piq-greeting { font-family: var(--font-head); font-size: 32px; letter-spacing: 2px; line-height: 1; }
+.piq-greeting-sub { font-size: 13px; color: var(--muted); margin-top: 3px; font-weight: 300; }
+
+/* ─── UTILITIES ─── */
+.row { display: flex; align-items: center; }
+.between { justify-content: space-between; }
+.gap { gap: var(--sp-sm); }
+.wrap { flex-wrap: wrap; }
+.small { font-size: 13px; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--font-mono); }
+.accent-text { color: var(--accent); }
+.ok-text { color: var(--ok); }
+.warn-text { color: var(--warn); }
+.danger-text { color: var(--danger); }
+.font-head { font-family: var(--font-head); }
+
+/* ─── BUTTONS ─── */
+.btn {
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 16px; border-radius: 14px;
+  border: 1px solid var(--pillBorder);
+  background: var(--accent-2); color: var(--text);
+  font-weight: 700; font-family: inherit; font-size: 15px; line-height: 1;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  min-height: 44px;
+  transform: translate3d(0,0,0);
+  transition: transform .18s var(--ease-out), filter .18s var(--ease-out), background .18s, box-shadow .18s var(--ease-out);
+}
+.btn:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: var(--e1); }
+.btn:active { transform: translateY(0); filter: brightness(.96); box-shadow: var(--e0); }
+.btn.ghost { background: transparent; }
+.btn.danger { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.35); }
+.btn.primary { background: var(--accent); color: #000; border-color: transparent; font-weight: 800; }
+.btn.primary:hover { box-shadow: 0 0 22px color-mix(in oklab, var(--accent) 35%, transparent); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; pointer-events: none; }
+
+html[data-theme="light"] .btn:not(.ghost):not(.danger):not(.primary) {
+  background: var(--accent); border-color: transparent; color: #fff;
+  box-shadow: 0 14px 34px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+html[data-theme="light"] .btn.ghost { border-color: var(--line); }
+
+/* ─── ICON BUTTONS ─── */
+.iconbtn {
+  position: relative; overflow: hidden;
+  width: 44px; height: 44px; border-radius: 14px;
+  border: 1px solid var(--pillBorder); background: transparent;
+  color: color-mix(in oklab, var(--text) 88%, transparent);
+  font-weight: 700; font-family: inherit;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: background .18s var(--ease-out), transform .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.iconbtn:hover { background: color-mix(in oklab, var(--card) 84%, var(--accent-2)); transform: translateY(-1px); box-shadow: var(--e1); }
+
+/* Tap targets */
+.tap44 { min-height: 44px; }
+.tab.tap44 { padding: 14px 10px; }
+
+/* ─── FORMS ─── */
+.field label {
+  display: block; font-size: 13px;
+  color: color-mix(in oklab, var(--text) 78%, transparent);
+  margin-bottom: 8px; font-weight: 700;
+}
+.field input[type="text"], .field input[type="email"], .field input[type="number"],
+.field input[type="password"], .field input[type="search"], .field input[type="date"],
+.field select, .field textarea {
+  width: 100%; padding: 11px 14px; border-radius: 14px;
+  border: 1px solid var(--pillBorder); background: var(--input);
+  color: var(--text); font-family: inherit; font-size: 16px;
+  outline: none; appearance: none; -webkit-appearance: none; min-height: 44px;
+  transition: border-color .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.field input::placeholder { color: color-mix(in oklab, var(--text) 55%, transparent); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); box-shadow: var(--focus-ring); }
+.field select { background-image: var(--select-arrow); background-repeat: no-repeat; background-position: right 12px center; padding-right: 34px; }
+.field select option { background: var(--optionbg); color: var(--optionfg); }
+.field textarea { min-height: 96px; resize: vertical; }
+
+/* ─── DRAWER ─── */
+.drawer {
+  position: fixed; right: 0; top: 0; height: 100%; width: 390px;
+  background: var(--top); border-left: 1px solid var(--line); padding: 12px;
+  transform: translateX(100%);
+  transition: transform .28s var(--ease-out);
+  z-index: 120; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; backdrop-filter: blur(18px);
+}
+.drawer.open { transform: translateX(0); }
+.drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(2,6,12,.6); z-index: 110;
+  backdrop-filter: blur(10px);
+}
+.drawer-head {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: var(--sp-sm); padding: 6px 4px var(--sp-sm); border-bottom: 1px solid var(--line);
+}
+.drawer-title { font-family: var(--font-head); font-weight: 400; letter-spacing: .06em; font-size: 24px; }
+.drawer-body { padding: var(--sp-sm) 4px; }
+.drawer-help { width: 420px; }
+.piq-helpitem { padding: 12px 10px; border-bottom: 1px solid var(--line); }
+
+/* ─── TOAST ─── */
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 28px;
+  background: color-mix(in oklab, var(--top) 90%, transparent);
+  padding: 11px 16px; border-radius: 16px; border: 1px solid var(--line);
+  box-shadow: var(--e2); z-index: 200; font-size: 14px; font-weight: 500;
+  white-space: nowrap; max-width: calc(100vw - 32px);
+  overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(18px);
+}
+
+/* ─── FAB + SHEET ─── */
+.fab {
+  position: fixed; right: 18px; bottom: 84px; z-index: 140;
+  width: 58px; height: 58px; border-radius: 22px;
+  border: 1px solid var(--pillBorder); background: var(--accent-2);
+  color: var(--text); font-size: 28px; font-weight: 700;
+  box-shadow: var(--e2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .18s var(--ease-out), filter .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.fab:hover { transform: translateY(-3px); filter: brightness(1.07); box-shadow: var(--e3); }
+html[data-theme="light"] .fab { background: var(--accent); color: #fff; border-color: transparent; box-shadow: 0 14px 36px color-mix(in oklab, var(--accent) 25%, transparent); }
+
+.sheet-backdrop { position: fixed; inset: 0; background: rgba(2,6,12,.6); z-index: 130; backdrop-filter: blur(10px); }
+.sheet {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 140;
+  width: min(520px, 94vw); border: 1px solid var(--line);
+  background: var(--top); border-radius: 18px; box-shadow: var(--e3); overflow: hidden; backdrop-filter: blur(18px);
+}
+.sheet-head { display: flex; justify-content: space-between; align-items: center; padding: 12px var(--sp-md); border-bottom: 1px solid var(--line); }
+.sheet-title { font-family: var(--font-head); font-weight: 400; letter-spacing: .06em; font-size: 22px; }
+.sheet-body { padding: 12px var(--sp-md); display: grid; gap: var(--sp-sm); }
+
+/* ─── BOTTOM NAV ─── */
+.bottomnav {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  background: color-mix(in oklab, var(--top) 90%, transparent);
+  border-top: 1px solid var(--line);
+  display: flex; justify-content: space-around;
+  z-index: 100; padding-bottom: env(safe-area-inset-bottom, 0px);
+  backdrop-filter: blur(18px);
+}
+.tab {
+  position: relative; overflow: hidden; border: none; background: none;
+  color: color-mix(in oklab, var(--text) 65%, transparent);
+  font-weight: 700; font-family: inherit; cursor: pointer; flex: 1;
+  transition: color .18s var(--ease-out), transform .18s var(--ease-out);
+}
+.tab.active { color: var(--text); }
+.tab:active { transform: translateY(1px); }
+.bottom-indicator {
+  position: absolute; left: 0; bottom: 6px;
+  height: 3px; width: 0; border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 14px color-mix(in oklab, var(--accent) 25%, transparent);
+  transition: transform .28s var(--ease-out), width .28s var(--ease-out);
+  opacity: 0; pointer-events: none;
+}
+
+/* ─── RIPPLE ─── */
+.ripple-host { position: relative; overflow: hidden; }
+.ripple {
+  position: absolute; border-radius: 999px; pointer-events: none;
+  transform: scale(0); opacity: .2;
+  background: radial-gradient(circle, color-mix(in oklab, var(--accent) 38%, transparent) 0%, transparent 70%);
+  animation: ripple .52s var(--ease-out) forwards;
+}
+@keyframes ripple { 0% { transform: scale(.12); opacity: .2; } 100% { transform: scale(1); opacity: 0; } }
+
+/* ─── SPRING PRESS ─── */
+.spring-press { animation: pressSpring .26s var(--ease-out); }
+@keyframes pressSpring { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(1px) scale(.985); } 100% { transform: translateY(0) scale(1); } }
+
+/* ─── CAPTION ILLUSION ─── */
+.piq-caption {
+  position: fixed; z-index: 9999; padding: 7px 12px; border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--accent) 28%, var(--line));
+  background: color-mix(in oklab, var(--top) 86%, transparent);
+  color: color-mix(in oklab, var(--text) 92%, transparent);
+  font-weight: 700; font-size: 13px; letter-spacing: .01em;
+  box-shadow: 0 14px 44px rgba(0,0,0,.32);
+  backdrop-filter: blur(18px);
+  opacity: 0; transform: translate(-50%, -110%) scale(.98);
+  transition: opacity .18s var(--ease-out), transform .18s var(--ease-out), filter .18s var(--ease-out);
+  pointer-events: none; filter: blur(2px);
+}
+.piq-caption.show { opacity: 1; transform: translate(-50%, -130%) scale(1); filter: blur(0); }
+
+/* ─── SKELETON ─── */
+.sk-wrap { padding: 4px; }
+.sk-card {
+  border-radius: 18px; border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+  box-shadow: var(--e1); padding: 14px; overflow: hidden; position: relative;
+}
+.sk-head { height: 16px; width: 62%; border-radius: 999px; background: color-mix(in oklab, var(--text) 10%, transparent); margin-bottom: 12px; }
+.sk-line { height: 12px; width: 100%; border-radius: 999px; background: color-mix(in oklab, var(--text) 9%, transparent); margin-top: 10px; }
+.sk-line:nth-child(3) { width: 86%; } .sk-line:nth-child(4) { width: 72%; }
+.sk-line:nth-child(5) { width: 92%; } .sk-line:nth-child(6) { width: 64%; }
+.sk-variant-blocklist .sk-row { height: 12px; width: 90%; border-radius: 999px; background: color-mix(in oklab, var(--text) 10%, transparent); margin-top: 10px; }
+.sk-variant-blocklist .sk-row.short { width: 62%; }
+.sk-variant-blocklist .sk-block { height: 54px; width: 100%; border-radius: 16px; background: color-mix(in oklab, var(--text) 9%, transparent); margin-top: 12px; }
+.sk-variant-blocklist .sk-block.short { width: 80%; }
+.sk-card::after {
+  content: ""; position: absolute; inset: -40% -60%;
+  background: linear-gradient(90deg, transparent 0%, color-mix(in oklab, var(--accent) 10%, transparent) 45%, color-mix(in oklab, var(--text) 14%, transparent) 55%, transparent 100%);
+  transform: translateX(-40%); animation: skShimmer 1.25s linear infinite; opacity: .7;
+}
+@keyframes skShimmer { 0% { transform: translateX(-40%) rotate(10deg); } 100% { transform: translateX(70%) rotate(10deg); } }
+
+/* ─── PIQ SCORE CHIP (injury style) ─── */
+.piq-chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.piq-chip {
+  padding: 6px 12px; border-radius: 999px; border: 1px solid var(--pillBorder);
+  background: transparent; color: var(--text); font-family: inherit;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.piq-chip.on { background: var(--accent-2); border-color: var(--accent-3); color: var(--accent); }
+
+/* ─── MODALS (onboarding) ─── */
+.piq-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(2,6,12,.65);
+  z-index: 300; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(12px);
+}
+.piq-modal {
+  background: var(--top); border: 1px solid var(--line);
+  border-radius: 22px; padding: 24px;
+  width: min(520px, 94vw); box-shadow: var(--e3);
+  max-height: 90vh; overflow-y: auto;
+}
+.piq-modal-head { margin-bottom: 18px; }
+.piq-modal-title { font-family: var(--font-head); font-size: 30px; letter-spacing: 1px; }
+.piq-modal-sub { font-size: 14px; color: var(--muted); margin-top: 6px; }
+.piq-modal-body { display: grid; gap: 10px; }
+
+/* ─── REDUCED MOTION ─── */
+@media (prefers-reduced-motion: reduce) {
+  .btn, .navbtn, .tab, .drawer, .fab, .iconbtn, .splash, .view-enter-active, .card, .score-bump,
+  .spring-press, .ripple, .view-spring, .sk-card::after, .nav-indicator, .bottom-indicator,
+  .score-land, .piq-caption, .piq-ob-dot, .piq-pillar-bar-fill, .piq-readiness-fill,
+  .ring-prog, .piq-workout-card {
+    transition: none !important; animation: none !important;
+  }
+  .piq-parallax { display: none !important; }
+}
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 180px 1fr; }
+  .piq-sidebar { display: none; }
+}
+
+@media (max-width: 860px) {
+  .layout {
+    display: flex; flex-direction: column;
+    margin: 10px auto; padding: 12px;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    gap: 14px;
+  }
+  .nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; width: auto; padding-bottom: 0; }
+  .nav::-webkit-scrollbar { display: none; }
+  .navbtn { white-space: nowrap; flex-shrink: 0; }
+  .nav-indicator { display: none; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  .piq-pillars { grid-template-columns: repeat(2, 1fr); }
+  .piq-score-hero { grid-template-columns: 1fr; }
+  .drawer, .drawer-help { width: min(92vw, 420px); }
+  .piq-sidebar { display: flex; }
+}
+
+@media (max-width: 420px) {
+  :root { --base-font: 16px; }
+  .topbar { padding: 10px 12px; }
+  .appmark-title { font-size: 18px; }
+  .pill { font-size: 12px; }
+  .piq-score-num { font-size: 38px; }
+  .stat-big { font-size: 44px; }
+  .piq-greeting { font-size: 26px; }
+}
