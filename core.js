@@ -1,31 +1,11 @@
-applyTheme(getTheme());
-/* ─── THEME (dark/light) ─── */
-function getTheme(){
-  return (localStorage.getItem('piq_theme') || document.documentElement.dataset.theme || 'dark').toLowerCase();
-}
-function applyTheme(theme){
-  const t = (theme === 'light') ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', t);
-  localStorage.setItem('piq_theme', t);
-
-  const btn = el('btnTheme');
-  if (btn) btn.textContent = (t === 'dark') ? '🌙' : '☀️';
-
-  const sel = el('settingTheme');
-  if (sel) sel.value = t;
-}
-function toggleTheme(){
-  applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
-}
-
 /* ================================================================
-   PerformanceIQ — core.js  v5.2  Elite UI Pass
-   Added:
-   - Smart sport palettes + auto accent/contrast
-   - Animated tab transitions + indicator glide
-   - Ripple + spring micro-interactions
-   - Animated score number tween
-   - Interactive Today workflow tour (no audio; caption illusion)
+   PerformanceIQ — core.js  v5.2.1  Elite UI Pass (Consolidated)
+   Fixes applied:
+   - Removed duplicate theme + sport theme function declarations
+   - Fixed renderGeneratedSession -> generateSession call signature
+   - Fixed buildWorkoutCardHTML second-arg usage (boolean)
+   - Removed undefined persistState calls (use saveState)
+   - Removed undefined animateNumber dependency (use tweenNumber only)
    ================================================================ */
 'use strict';
 
@@ -34,18 +14,63 @@ const STORAGE_KEY_ONBOARDED = 'piq_onboarded_v2';
 const STORAGE_KEY_STATE     = 'piq_state_v2';
 const STORAGE_KEY_ATHLETES  = 'piq_athletes_v2';
 const STORAGE_KEY_TOUR      = 'piq_tour_today_v1';
+const THEME_KEY             = 'piq_theme';
+
+/* ─── DOM UTILS ─── */
+const el  = id => document.getElementById(id);
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+const pct = (t, f) => Math.round(t * f);
+
+/* ─────────────────────────────────────────────
+   LIGHT / DARK THEME (html[data-theme])
+───────────────────────────────────────────── */
+function getThemePref(){
+  const saved = (localStorage.getItem(THEME_KEY) || "").toLowerCase();
+  if (saved === "light" || saved === "dark") return saved;
+
+  const dom = (document.documentElement.getAttribute("data-theme") || "").toLowerCase();
+  return (dom === "light" || dom === "dark") ? dom : "dark";
+}
+function applyTheme(theme){
+  const t = (theme === "light") ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t);
+  localStorage.setItem(THEME_KEY, t);
+
+  const btn = el("btnTheme");
+  if (btn) btn.textContent = (t === "dark") ? "🌙" : "☀️";
+
+  const sel = el("settingTheme");
+  if (sel) sel.value = t;
+}
+function toggleTheme(){
+  applyTheme(getThemePref() === "dark" ? "light" : "dark");
+}
 
 /* ─── STATE ─── */
 const STATE = (() => {
   try {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY_STATE) || 'null');
-    return Object.assign({ role:'coach', sport:'basketball', injuries:[],
-      teamName:'Westview Varsity Basketball', season:'Pre-Season',
-      currentView:'dashboard', selectedAthleteId: null }, s || {});
+    return Object.assign({
+      role:'coach',
+      sport:'basketball',
+      injuries:[],
+      teamName:'Westview Varsity Basketball',
+      season:'Pre-Season',
+      currentView:'dashboard',
+      selectedAthleteId: null,
+      sessionLibrary: []
+    }, s || {});
   } catch {
-    return { role:'coach', sport:'basketball', injuries:[],
-      teamName:'Westview Varsity Basketball', season:'Pre-Season',
-      currentView:'dashboard', selectedAthleteId: null };
+    return {
+      role:'coach',
+      sport:'basketball',
+      injuries:[],
+      teamName:'Westview Varsity Basketball',
+      season:'Pre-Season',
+      currentView:'dashboard',
+      selectedAthleteId: null,
+      sessionLibrary: []
+    };
   }
 })();
 
@@ -112,7 +137,9 @@ let ATHLETES = (() => {
   } catch { return DEFAULT_ATHLETES.map(a => ({...a})); }
 })();
 
-function saveAthletes() { try { localStorage.setItem(STORAGE_KEY_ATHLETES, JSON.stringify(ATHLETES)); } catch {} }
+function saveAthletes() {
+  try { localStorage.setItem(STORAGE_KEY_ATHLETES, JSON.stringify(ATHLETES)); } catch {}
+}
 
 /* ─── DEMO DATA ─── */
 const EVENTS = [
@@ -146,11 +173,6 @@ const WEEK_LOAD = [
   { day:'S', au:620 },
 ];
 
-/* ─── DOM UTILS ─── */
-const el = id => document.getElementById(id);
-const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
-const pct = (t, f) => Math.round(t * f);
-
 /* ─── SPORT THEME (auto-adjust + sport palettes) ─── */
 function setCSS(name, value) {
   try { document.documentElement.style.setProperty(name, value); } catch {}
@@ -175,6 +197,7 @@ function blendHex(fg, bg, amount) {
   const b = Math.round(A.b*(1-a) + B.b*a);
   return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
 }
+
 const SPORT_THEMES = {
   basketball: { accent:'#2EC4B6', blue:'#4a9eff', orange:'#ff6b2b' },
   football:   { accent:'#7CFF57', blue:'#3B82F6', orange:'#F59E0B' },
@@ -184,27 +207,9 @@ const SPORT_THEMES = {
   track:      { accent:'#00d4aa', blue:'#4a9eff', orange:'#F59E0B' },
 };
 
-function _hexToRgb(hex) {
-  const h = String(hex || "").replace("#", "").trim();
-  if (h.length === 3) {
-    const r = parseInt(h[0] + h[0], 16);
-    const g = parseInt(h[1] + h[1], 16);
-    const b = parseInt(h[2] + h[2], 16);
-    return { r, g, b };
-  }
-  if (h.length === 6) {
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    return { r, g, b };
-  }
-  return { r: 0, g: 212, b: 170 };
-}
-
 function applySportTheme(sport) {
   const theme = SPORT_THEMES[String(sport || '').toLowerCase()] || SPORT_THEMES.basketball;
 
-  // Theme-aware accent tuning (keeps brand pop but reduces neon glare in dark mode)
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   const bgHex  = isDark ? '#070b12' : '#ffffff';
 
@@ -216,23 +221,21 @@ function applySportTheme(sport) {
   setCSS('--blue', blue);
   setCSS('--orange', orange);
 
-  // Derive matching system tokens used throughout styles.css
   setCSS('--accent-dim',    hexToRgba(accent, 0.11));
   setCSS('--accent-2',      hexToRgba(accent, 0.16));
   setCSS('--accent-glow',   hexToRgba(accent, 0.30));
   setCSS('--accent-border', hexToRgba(accent, 0.22));
 
-  // Sync browser chrome on mobile
   try {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', isDark ? '#070b12' : '#f5f7fb');
   } catch {}
 }
 
+/* ─── TOAST ─── */
 function toast(msg, ms = 2800) {
   const c = el('toastContainer') || el('toastContainer'.toLowerCase()) || el('toastcontainer') || el('toastContainer'.replace('C','c'));
   const host = c || (() => {
-    // fallback: create toast container if markup missing
     const div = document.createElement('div');
     div.id = 'toastContainer';
     document.body.appendChild(div);
@@ -249,70 +252,6 @@ function toast(msg, ms = 2800) {
   }, ms);
 }
 
-
-/* ─────────────────────────────────────────────
-   LIGHT / DARK THEME (html[data-theme])
-───────────────────────────────────────────── */
-const THEME_KEY = "piq_theme";
-function getThemePref(){
-  const saved = (localStorage.getItem(THEME_KEY) || "").toLowerCase();
-  if (saved === "light" || saved === "dark") return saved;
-  const dom = (document.documentElement.getAttribute("data-theme") || "").toLowerCase();
-  return (dom === "light" || dom === "dark") ? dom : "dark";
-}
-function applyTheme(theme){
-  const t = (theme === "light") ? "light" : "dark";
-  document.documentElement.setAttribute("data-theme", t);
-  localStorage.setItem(THEME_KEY, t);
-  const btn = document.getElementById("btnTheme");
-  if (btn) btn.textContent = (t === "dark") ? "🌙" : "☀️";
-  const sel = document.getElementById("settingTheme");
-  if (sel) sel.value = t;
-}
-function toggleTheme(){ applyTheme(getThemePref() === "dark" ? "light" : "dark"); }
-
-/* ─── SPORT THEMES (smart auto-adjust) ─── */
-
-function _hexToRgb(hex){
-  const h = (hex||'').replace('#','').trim();
-  if (h.length !== 6) return null;
-  const n = parseInt(h,16);
-  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
-}
-function _rgba(hex, a){
-  const rgb = _hexToRgb(hex); if(!rgb) return `rgba(0,212,170,${a})`;
-  return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
-}
-function setCSSVar(name, val){
-  try { document.documentElement.style.setProperty(name, val); } catch {}
-}
-function applySportTheme(sport) {
-  const theme = SPORT_THEMES[String(sport || '').toLowerCase()] || SPORT_THEMES.basketball;
-
-  // Theme-aware accent tuning (keeps brand pop but reduces neon glare in dark mode)
-  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-  const bgHex  = isDark ? '#070b12' : '#ffffff';
-
-  const accent = blendHex(theme.accent, bgHex, isDark ? 0.08 : 0.00);
-  const blue   = theme.blue   || '#4a9eff';
-  const orange = theme.orange || '#ff6b2b';
-
-  setCSS('--accent', accent);
-  setCSS('--blue', blue);
-  setCSS('--orange', orange);
-
-  // Derive matching system tokens used throughout styles.css
-  setCSS('--accent-dim',    hexToRgba(accent, 0.11));
-  setCSS('--accent-2',      hexToRgba(accent, 0.16));
-  setCSS('--accent-glow',   hexToRgba(accent, 0.30));
-  setCSS('--accent-border', hexToRgba(accent, 0.22));
-
-  // Sync browser chrome on mobile
-  try {
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark ? '#070b12' : '#f5f7fb');
-  } catch {}
-}
 /* ─── MICRO-INTERACTIONS (ripple + spring) ─── */
 function addRipple(ev, target){
   const r = document.createElement('span');
@@ -358,14 +297,13 @@ function moveIndicatorTo(btn){
   const host = ind.parentElement;
   const b = btn.getBoundingClientRect();
   const h = host.getBoundingClientRect();
-  const left = b.left - h.left + (btn.offsetWidth ? 0 : 0);
+  const left = b.left - h.left;
   const width = Math.max(26, b.width * 0.55);
   const x = left + (b.width - width) / 2;
   ind.style.width = width + 'px';
   ind.style.transform = `translate3d(${Math.round(x)}px,0,0)`;
   ind.classList.add('on');
 }
-
 function updateTabIndicators(viewId){
   const btn = document.querySelector(`[data-view="${viewId}"]`);
   if (btn) moveIndicatorTo(btn);
@@ -379,7 +317,7 @@ function tweenNumber(node, to, ms=700){
   const start = performance.now();
   function tick(now){
     const t = Math.min(1, (now - start) / ms);
-    const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+    const eased = 1 - Math.pow(1 - t, 3);
     const val = Math.round(from + (end - from) * eased);
     node.textContent = String(val);
     if (t < 1) requestAnimationFrame(tick);
@@ -439,7 +377,7 @@ function renderDashboard(){
   const now = new Date();
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  el('dashSub') && (el('dashSub').textContent = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()} · ${STATE.teamName}`);
+  if (el('dashSub')) el('dashSub').textContent = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()} · ${STATE.teamName}`;
 
   const logged  = ATHLETES.filter(a => a.score > 0);
   const ready   = ATHLETES.filter(a => a.severity === 'green').length;
@@ -448,35 +386,37 @@ function renderDashboard(){
   const avg     = logged.length ? Math.round(logged.reduce((s,a) => s+a.score, 0) / logged.length) : 0;
   const BASE    = 65;
 
-  if (el('statAvg')) { el('statAvg').textContent = avg || '—';
-  if (avg) animateNumber(el('statAvg'), 0, avg, 650); if (avg) tweenNumber(el('statAvg'), avg, 520); }
-  el('statReady') && (el('statReady').textContent = ready);
-  el('statMonitor') && (el('statMonitor').textContent = monitor);
-  el('statRisk') && (el('statRisk').textContent = risk);
+  if (el('statAvg')) {
+    el('statAvg').textContent = avg ? String(avg) : '—';
+    if (avg) tweenNumber(el('statAvg'), avg, 650);
+  }
+  if (el('statReady'))   el('statReady').textContent = String(ready);
+  if (el('statMonitor')) el('statMonitor').textContent = String(monitor);
+  if (el('statRisk'))    el('statRisk').textContent = String(risk);
 
   if (el('statAvgSub')) {
     el('statAvgSub').className = 'stat-sub ' + (avg >= BASE ? 'up' : 'down');
     el('statAvgSub').textContent = avg ? (avg >= BASE ? `↑ ${avg-BASE} pts vs last week` : `↓ ${BASE-avg} pts vs last week`) : '—';
   }
-  el('statReadySub') && (el('statReadySub').textContent = `${ready} of ${ATHLETES.length} athletes`);
-  el('statMonitorSub') && (el('statMonitorSub').textContent = monitor > 0 ? `↑ Check load today` : 'All clear');
+  if (el('statReadySub'))   el('statReadySub').textContent = `${ready} of ${ATHLETES.length} athletes`;
+  if (el('statMonitorSub')) el('statMonitorSub').textContent = monitor > 0 ? `↑ Check load today` : 'All clear';
 
   const badge = el('riskBadge');
   const flags = risk + monitor;
-  if (badge) { badge.textContent = flags; badge.style.display = flags > 0 ? 'flex' : 'none'; }
+  if (badge) { badge.textContent = String(flags); badge.style.display = flags > 0 ? 'flex' : 'none'; }
 
-  el('chipOnlineText') && (el('chipOnlineText').textContent = `${ATHLETES.length - 1} online`);
+  if (el('chipOnlineText')) el('chipOnlineText').textContent = `${Math.max(0, ATHLETES.length - 1)} online`;
   if (el('chipFlags')) el('chipFlags').style.display = risk > 0 ? 'inline-flex' : 'none';
-  el('chipFlagsText') && (el('chipFlagsText').textContent = `${risk} flag${risk !== 1 ? 's' : ''}`);
+  if (el('chipFlagsText')) el('chipFlagsText').textContent = `${risk} flag${risk !== 1 ? 's' : ''}`;
   if (el('chipGame')) el('chipGame').style.display = 'inline-flex';
-  el('chipGameText2') && (el('chipGameText2').textContent = `Game in ${EVENTS[0].days}d`);
+  if (el('chipGameText2')) el('chipGameText2').textContent = `Game in ${EVENTS[0]?.days ?? 0}d`;
 
-  el('pillOnlineText') && (el('pillOnlineText').textContent = `Team · ${ATHLETES.length - 1} online`);
-  el('pillSeason') && (el('pillSeason').textContent = STATE.season);
+  if (el('pillOnlineText')) el('pillOnlineText').textContent = `Team · ${Math.max(0, ATHLETES.length - 1)} online`;
+  if (el('pillSeason')) el('pillSeason').textContent = STATE.season;
   if (el('pillGame')) el('pillGame').style.display = 'inline-flex';
-  el('pillGameText') && (el('pillGameText').textContent = `Game in ${EVENTS[0].days} days`);
+  if (el('pillGameText')) el('pillGameText').textContent = `Game in ${EVENTS[0]?.days ?? 0} days`;
 
-  buildSparkline('sparkAvg', [55,58,63,66,68,70,avg], 'var(--accent)');
+  buildSparkline('sparkAvg', [55,58,63,66,68,70,avg || 0], 'var(--accent)');
 
   renderHeatmap();
   renderLoadBars();
@@ -486,7 +426,10 @@ function renderDashboard(){
   renderEvents('eventList');
 
   if (el('insightText')) {
-    el('insightText').innerHTML = `When athletes sleep <strong>8+ hours</strong>, team PIQ averages <strong>+11 points higher</strong>. With Friday's game, sleep is this week's #1 performance lever. <div class="caption-illusion">Tip: tap an athlete row to open the detail view instantly.</div>`;
+    el('insightText').innerHTML =
+      `When athletes sleep <strong>8+ hours</strong>, team PIQ averages <strong>+11 points higher</strong>.
+       With Friday's game, sleep is this week's #1 performance lever.
+       <div class="caption-illusion">Tip: tap an athlete row to open the detail view instantly.</div>`;
   }
 }
 
@@ -522,6 +465,7 @@ function renderHeatmap(){
       <td><span class="trend-val ${a.trend>0?'up':a.trend<0?'down':''}">${a.trend>0?'↑':a.trend<0?'↓':'—'}${Math.abs(a.trend)}</span></td>
     </tr>`;
   }).join('');
+
   el('heatmapBody').querySelectorAll('tr[data-id]').forEach(row =>
     row.addEventListener('click', () => {
       const a = ATHLETES.find(x => x.id === +row.dataset.id);
@@ -591,6 +535,7 @@ function renderRosterMini(){
       </div>
     </div>`;
   }).join('');
+
   wrap.querySelectorAll('.roster-row').forEach(r =>
     r.addEventListener('click', () => {
       const a = ATHLETES.find(x => x.id === +r.dataset.id);
@@ -628,13 +573,16 @@ function renderAthletesView(filter = ''){
   const filtered = filter
     ? ATHLETES.filter(a => a.name.toLowerCase().includes(filter.toLowerCase()) || a.pos.toLowerCase().includes(filter.toLowerCase()))
     : ATHLETES;
-  el('athleteCountSub') && (el('athleteCountSub').textContent = `${ATHLETES.length} athletes on roster`);
+
+  if (el('athleteCountSub')) el('athleteCountSub').textContent = `${ATHLETES.length} athletes on roster`;
   const grid = el('athleteCardGrid');
   if (!grid) return;
+
   if (!filtered.length) {
     grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-dim)">No athletes match "<em>${filter}</em>"</div>`;
     return;
   }
+
   grid.innerHTML = filtered.map(a => {
     const t = getTier(a.score);
     const color = getSevColor(a.severity);
@@ -658,10 +606,16 @@ function renderAthletesView(filter = ''){
       </div>
     </div>`;
   }).join('');
+
   grid.querySelectorAll('[data-id]').forEach(card => {
-    const open = () => { const a = ATHLETES.find(x => x.id === +card.dataset.id); if (a) openAthleteDetail(a); };
+    const open = () => {
+      const a = ATHLETES.find(x => x.id === +card.dataset.id);
+      if (a) openAthleteDetail(a);
+    };
     card.addEventListener('click', open);
-    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
   });
 }
 
@@ -691,8 +645,9 @@ function openAthleteDetail(a){
     STATE.currentView = 'athletes';
   }
   STATE.selectedAthleteId = a.id;
-  el('athleteCardGrid') && (el('athleteCardGrid').style.display = 'none');
-  el('athleteDetail') && (el('athleteDetail').style.display  = 'flex');
+
+  if (el('athleteCardGrid')) el('athleteCardGrid').style.display = 'none';
+  if (el('athleteDetail'))   el('athleteDetail').style.display  = 'flex';
 
   const t = getTier(a.score);
   const color = getSevColor(a.severity);
@@ -715,17 +670,17 @@ function openAthleteDetail(a){
       <div class="score-tier ${t.cls}" style="font-size:11px">${t.label}</div>
     </div>`;
 
-  // Ring
   const rf = el('detailRingFill');
   const rc = getRingClass(a.score);
-  if (rf) rf.className = 'ring-fill' + (rc ? ' '+rc : '');
-  if (el('detailRingNum')) {
-    const ringNumEl = el('detailRingNum');
-  ringNumEl.textContent = a.score || '—';
-  if (a.score) animateNumber(ringNumEl, 0, a.score, 850);
-    el('detailRingNum').className   = 'ring-number' + (rc ? ' '+rc : '');
-    if (a.score) tweenNumber(el('detailRingNum'), a.score, 900);
+  if (rf) rf.className = 'ring-fill' + (rc ? ' ' + rc : '');
+
+  const ringNumEl = el('detailRingNum');
+  if (ringNumEl) {
+    ringNumEl.textContent = a.score ? String(a.score) : '—';
+    ringNumEl.className   = 'ring-number' + (rc ? ' ' + rc : '');
+    if (a.score) tweenNumber(ringNumEl, a.score, 900);
   }
+
   const de = el('detailRingDelta');
   if (de) {
     if (a.trend) {
@@ -735,11 +690,12 @@ function openAthleteDetail(a){
   }
   animateRing(rf, a.score, 440);
 
-  // Tier + note
-  if (el('detailTier')) { el('detailTier').className = 'score-tier ' + t.cls; el('detailTier').textContent = t.label; }
-  el('detailScoreNote') && (el('detailScoreNote').innerHTML = getScoreNote(a));
+  if (el('detailTier')) {
+    el('detailTier').className = 'score-tier ' + t.cls;
+    el('detailTier').textContent = t.label;
+  }
+  if (el('detailScoreNote')) el('detailScoreNote').innerHTML = getScoreNote(a);
 
-  // Pillars
   if (el('detailPillars')) el('detailPillars').innerHTML = getPillars(a).map(p => `
     <div class="pillar">
       <div class="pillar-icon">${p.icon}</div>
@@ -748,17 +704,16 @@ function openAthleteDetail(a){
       <div class="pillar-name">${p.name}</div>
     </div>`).join('');
 
-  // Wellness
   const wItems = [
-    { emoji:'😴', label:'Sleep',    v:a.sleep,
-      display: a.sleep    != null ? `${a.sleep}h`        : '—',
+    { emoji:'😴', label:'Sleep',
+      display: a.sleep    != null ? `${a.sleep}h`      : '—',
       color:   a.sleep    == null ? 'var(--text-dim)' : a.sleep    >= 7.5 ? 'var(--green)' : a.sleep    >= 6 ? 'var(--yellow)' : 'var(--red)' },
-    { emoji:'💢', label:'Soreness', v:a.soreness,
-      display: a.soreness != null ? `${a.soreness}/10`   : '—',
-      color:   a.soreness == null ? 'var(--text-dim)' : a.soreness <=  3 ? 'var(--green)' : a.soreness <= 6 ? 'var(--yellow)' : 'var(--red)' },
-    { emoji:'⚡', label:'Energy',   v:a.energy,
-      display: a.energy   != null ? `${a.energy}/10`     : '—',
-      color:   a.energy   == null ? 'var(--text-dim)' : a.energy   >=  7 ? 'var(--green)' : a.energy   >= 4 ? 'var(--yellow)' : 'var(--red)' },
+    { emoji:'💢', label:'Soreness',
+      display: a.soreness != null ? `${a.soreness}/10` : '—',
+      color:   a.soreness == null ? 'var(--text-dim)' : a.soreness <= 3 ? 'var(--green)' : a.soreness <= 6 ? 'var(--yellow)' : 'var(--red)' },
+    { emoji:'⚡', label:'Energy',
+      display: a.energy   != null ? `${a.energy}/10`   : '—',
+      color:   a.energy   == null ? 'var(--text-dim)' : a.energy   >= 7 ? 'var(--green)' : a.energy   >= 4 ? 'var(--yellow)' : 'var(--red)' },
   ];
   if (el('detailWellness')) el('detailWellness').innerHTML = wItems.map(w => `
     <div class="wellness-item">
@@ -767,7 +722,6 @@ function openAthleteDetail(a){
       <div class="wellness-value" style="color:${w.color}">${w.display}</div>
     </div>`).join('');
 
-  // Load bar
   if (el('detailLoad')) el('detailLoad').innerHTML = a.acr != null
     ? `<div class="load-bar-item">
         <div class="load-bar-name">ACWR</div>
@@ -777,10 +731,9 @@ function openAthleteDetail(a){
       </div>`
     : `<div style="font-size:13px;color:var(--text-dim)">No load data available.</div>`;
 
-  el('detailInsight') && (el('detailInsight').innerHTML = a.insight);
+  if (el('detailInsight')) el('detailInsight').innerHTML = a.insight;
   renderDetailWorkout(a);
 
-  // PRs
   const prTable = el('detailPRs');
   const prTbody = prTable ? prTable.querySelector('tbody') : null;
   if (prTbody) {
@@ -793,8 +746,8 @@ function openAthleteDetail(a){
       : `<tr><td colspan="4" style="color:var(--text-dim);text-align:center;padding:20px">No PRs logged yet</td></tr>`;
   }
 
-  // Hero score tween
-  if (el('detailHeroScore') && a.score) tweenNumber(el('detailHeroScore'), a.score, 750);
+  const heroScoreEl = el('detailHeroScore');
+  if (heroScoreEl && a.score) tweenNumber(heroScoreEl, a.score, 750);
 }
 
 function renderDetailWorkout(a){
@@ -807,12 +760,12 @@ function renderDetailWorkout(a){
     </div>`;
     return;
   }
-  const session = generateSession(STATE.sport, a.riskLevel==='watch'?'recovery':'practice', 60, 'moderate', []);
+  const session = generateSession(STATE.sport, a.riskLevel==='watch' ? 'recovery' : 'practice', 60, 'moderate', []);
   wrap.innerHTML = buildWorkoutCardHTML(session, false);
 }
 
 /* ══════════════════════════════════════════════
-   TRAIN VIEW
+   TRAIN VIEW + GENERATOR
 ══════════════════════════════════════════════ */
 function renderTrainView(){
   if (!el('sessionLibrary')) return;
@@ -826,8 +779,7 @@ function renderTrainView(){
   }).join('');
 }
 
-
-// Exercise bank (demo-quality) — used by Train generator
+// Exercise bank (demo-quality)
 const EXERCISE_BANK = {
   basketball: {
     practice: [
@@ -862,26 +814,19 @@ function getExercisesFor(sport, type){
   return Array.isArray(arr) ? arr : [];
 }
 
-function applyInjuryFiltersToExercise(name, injuries){
-  const inj = new Set((injuries||[]).map(x=>String(x).toLowerCase()));
-  if (!inj.size) return name;
-  const risky = /(jump|plyo|bounds|depth|sprint|max velocity)/i;
-  if ((inj.has("knee") || inj.has("ankle")) && risky.test(name)) return name.replace(risky, "low-impact");
-  return name;
-}
-
 function generateSession(sport, type, duration, intensity, injuries){
   const SE = {basketball:'🏀',football:'🏈',soccer:'⚽',baseball:'⚾',volleyball:'🏐',track:'🏃'};
   const TL = {practice:'Practice',strength:'Strength',speed:'Speed',conditioning:'Conditioning',recovery:'Recovery',competition:'Competition Prep'};
   const IL = {low:'Low',moderate:'Moderate',high:'High'};
-  const inj = injuries.length ? ' · ' + injuries.map(i=>cap(i)+'-friendly').join(', ') : '';
+  const inj = (injuries && injuries.length) ? ' · ' + injuries.map(i=>cap(i)+'-friendly').join(', ') : '';
+
   const BLOCKS = {
     practice:[
-      {dot:'var(--blue)',   name:'Dynamic Warm-up',                                                              time:pct(duration,.16)},
-      {dot:'var(--accent)', name:'Skill Microblocks — Sport-specific',                                           time:pct(duration,.25)},
-      {dot:'var(--orange)', name:'Strength Block'+(injuries.includes('knee')?' (knee-friendly)':''),             time:pct(duration,.28)},
-      {dot:'var(--yellow)', name:'Power & Conditioning',                                                          time:pct(duration,.18)},
-      {dot:'var(--green)',  name:'Cool-down + Mobility',                                                          time:pct(duration,.13)},
+      {dot:'var(--blue)',   name:'Dynamic Warm-up',                                      time:pct(duration,.16)},
+      {dot:'var(--accent)', name:'Skill Microblocks — Sport-specific',                   time:pct(duration,.25)},
+      {dot:'var(--orange)', name:'Strength Block',                                       time:pct(duration,.28)},
+      {dot:'var(--yellow)', name:'Power & Conditioning',                                time:pct(duration,.18)},
+      {dot:'var(--green)',  name:'Cool-down + Mobility',                                time:pct(duration,.13)},
     ],
     strength:[
       {dot:'var(--blue)',   name:'Warm-up + Movement Prep',       time:pct(duration,.14)},
@@ -893,9 +838,9 @@ function generateSession(sport, type, duration, intensity, injuries){
     speed:[
       {dot:'var(--blue)',   name:'Neural Warm-up',                   time:pct(duration,.18)},
       {dot:'var(--accent)', name:'Acceleration Mechanics × 6 sets',  time:pct(duration,.30)},
-      {dot:'var(--orange)', name:'Max Velocity Runs',                 time:pct(duration,.25)},
-      {dot:'var(--yellow)', name:'Change of Direction Drills',        time:pct(duration,.17)},
-      {dot:'var(--green)',  name:'Cool-down + PNF Stretch',           time:pct(duration,.10)},
+      {dot:'var(--orange)', name:'Max Velocity Runs',                time:pct(duration,.25)},
+      {dot:'var(--yellow)', name:'Change of Direction Drills',       time:pct(duration,.17)},
+      {dot:'var(--green)',  name:'Cool-down + PNF Stretch',          time:pct(duration,.10)},
     ],
     recovery:[
       {dot:'var(--blue)',   name:'Light Cardio — Zone 1',             time:pct(duration,.30)},
@@ -906,17 +851,27 @@ function generateSession(sport, type, duration, intensity, injuries){
     conditioning:[
       {dot:'var(--blue)',   name:'Dynamic Warm-up',               time:pct(duration,.15)},
       {dot:'var(--orange)', name:'Aerobic Base — Steady State',   time:pct(duration,.30)},
-      {dot:'var(--accent)', name:'Interval Circuits × 4 rounds', time:pct(duration,.30)},
+      {dot:'var(--accent)', name:'Interval Circuits × 4 rounds',  time:pct(duration,.30)},
       {dot:'var(--yellow)', name:'Lactate Tolerance Drills',      time:pct(duration,.15)},
       {dot:'var(--green)',  name:'Cool-down',                     time:pct(duration,.10)},
     ],
     competition:[
       {dot:'var(--blue)',   name:'Pre-Game Activation',             time:pct(duration,.22)},
-      {dot:'var(--accent)', name:'Plyometric Priming × 3 sets',    time:pct(duration,.25)},
-      {dot:'var(--orange)', name:'Sport-Specific Movement Prep',   time:pct(duration,.28)},
-      {dot:'var(--green)',  name:'Mental Cue + Team Walk-through', time:pct(duration,.25)},
+      {dot:'var(--accent)', name:'Plyometric Priming × 3 sets',     time:pct(duration,.25)},
+      {dot:'var(--orange)', name:'Sport-Specific Movement Prep',    time:pct(duration,.28)},
+      {dot:'var(--green)',  name:'Mental Cue + Team Walk-through',  time:pct(duration,.25)},
     ],
   };
+
+  const blocks = (BLOCKS[type] || BLOCKS.practice).map(b => {
+    const exPools = getExercisesFor(sport, type);
+    if (Array.isArray(exPools) && exPools.length) {
+      const pick = exPools[Math.floor(Math.random() * exPools.length)];
+      b.exercises = Array.isArray(pick) ? pick : [];
+    }
+    return b;
+  });
+
   return {
     sport, type, duration, intensity,
     typeTag:`${SE[sport]||'🏀'} ${TL[type]||'Practice'} · ${IL[intensity]||'Moderate'}${inj}`,
@@ -924,12 +879,12 @@ function generateSession(sport, type, duration, intensity, injuries){
           type==='speed'?'SPEED & ACCELERATION':type==='competition'?'COMPETITION PREP':
           type==='conditioning'?'CONDITIONING CIRCUIT':'FULL PRACTICE SESSION',
     meta:[`⏱ ${duration} min`,`🔥 ${IL[intensity]}`,`${SE[sport]||'🏀'} ${cap(sport)}`].join(' · '),
-    blocks: BLOCKS[type] || BLOCKS.practice,
+    blocks
   };
 }
 
 function buildWorkoutCardHTML(session, showActions = true){
-  const blocks = session.blocks.map(b => {
+  const blocks = (Array.isArray(session?.blocks) ? session.blocks : []).map(b => {
     const ex = Array.isArray(b.exercises) && b.exercises.length
       ? `<div class="block-exercises">${b.exercises.map(x=>`<div class="ex-line">• ${x}</div>`).join('')}</div>`
       : ``;
@@ -939,63 +894,53 @@ function buildWorkoutCardHTML(session, showActions = true){
       <div class="block-time">${b.time} min</div>
     </div>`;
   }).join('');
+
   const actions = showActions ? `<div style="display:flex;gap:9px;margin-top:14px">
     <button class="btn btn-primary btn-full js-start" style="font-size:13px">▷ Start Session</button>
     <button class="btn btn-ghost js-save" style="font-size:13px">Save</button>
   </div>` : '';
+
   return `<div class="workout-card">
-    <div class="workout-type-tag">${session.typeTag}</div>
-    <div class="workout-name">${session.name}</div>
-    <div class="workout-meta">${session.meta}</div>
+    <div class="workout-type-tag">${session?.typeTag || ''}</div>
+    <div class="workout-name">${session?.name || 'Session'}</div>
+    <div class="workout-meta">${session?.meta || ''}</div>
     <div class="block-list">${blocks}</div>
     ${actions}
   </div>`;
 }
 
 function renderGeneratedSession(opts){
-  // opts can override builder selections (used by modal / buttons)
-  const sport = (opts && opts.sport) || el('buildSport')?.value || STATE.profile?.sport || 'basketball';
+  const sport = (opts && opts.sport) || el('buildSport')?.value || STATE.sport || 'basketball';
   const type  = (opts && opts.type)  || el('buildType')?.value  || 'practice';
-  const dur   = +( (opts && opts.duration) || el('buildDuration')?.value || 60 );
+  const dur   = +((opts && opts.duration) || el('buildDuration')?.value || 60);
   const inten = (opts && opts.intensity) || el('buildIntensity')?.value || 'moderate';
 
-  // gather injury filters (builder chips)
   const injuries = [];
   document.querySelectorAll('#injuryChips .inj-chip.active').forEach(b => injuries.push(b.dataset.injury));
 
-  const session = generateSession({ sport, type, duration: dur, intensity: inten, injuries });
+  // ✅ fixed signature
+  const session = generateSession(sport, type, dur, inten, injuries);
 
-  // Fallback guards so one bad session never breaks Train view
-  const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
-
-  // Render card
   const wrap = el('generatedSessionWrap');
-  const card = el('generatedSession');
-  if (wrap && card) {
-    wrap.innerHTML = buildWorkoutCardHTML(session, { showSave: true });
-  }
+  if (wrap) wrap.innerHTML = buildWorkoutCardHTML(session, true);
 
-  // Seed library if empty
-  if (!STATE.sessionLibrary || !Array.isArray(STATE.sessionLibrary)) STATE.sessionLibrary = [];
-  if (session && session.id) {
-    // keep most recent first, dedupe by id
-    STATE.sessionLibrary = [session, ...STATE.sessionLibrary.filter(s => s?.id !== session.id)].slice(0, 12);
-    persistState();
-  }
+  if (!Array.isArray(STATE.sessionLibrary)) STATE.sessionLibrary = [];
+  STATE.sessionLibrary = [session, ...STATE.sessionLibrary].slice(0, 12);
+  saveState();
 
-  renderSessionLibrary();
-  toast(`Generated: ${session?.title || 'Session'}`);
+  if (typeof renderSessionLibrary === 'function') renderSessionLibrary();
+
+  toast(`Generated: ${session?.name || 'Session'}`);
 }
-
 
 /* ══════════════════════════════════════════════
    ANALYTICS
 ══════════════════════════════════════════════ */
 function renderAnalytics(){
-  el('analyticsSub') && (el('analyticsSub').textContent = `${STATE.teamName} · ${STATE.season}`);
+  if (el('analyticsSub')) el('analyticsSub').textContent = `${STATE.teamName} · ${STATE.season}`;
   const logged = ATHLETES.filter(a => a.score > 0);
   const avg = logged.length ? Math.round(logged.reduce((s,a) => s+a.score,0)/logged.length) : 0;
-  const logRate = Math.round(logged.length / ATHLETES.length * 100);
+  const logRate = Math.round((logged.length / Math.max(1, ATHLETES.length)) * 100);
   const BASE = 65;
 
   const grid = el('analyticsStatGrid');
@@ -1030,18 +975,20 @@ function renderAnalytics(){
   }).join('');
 
   const ranges = [
-    {label:'80–100', count:ATHLETES.filter(a=>a.score>=80).length,              color:'var(--green)'  },
-    {label:'60–79',  count:ATHLETES.filter(a=>a.score>=60&&a.score<80).length,  color:'var(--accent)' },
-    {label:'40–59',  count:ATHLETES.filter(a=>a.score>=40&&a.score<60).length,  color:'var(--yellow)' },
-    {label:'1–39',   count:ATHLETES.filter(a=>a.score>0&&a.score<40).length,    color:'var(--red)'    },
-    {label:'N/A',    count:ATHLETES.filter(a=>a.score===0).length,              color:'var(--surface4)'},
+    {label:'80–100', count:ATHLETES.filter(a=>a.score>=80).length,             color:'var(--green)'  },
+    {label:'60–79',  count:ATHLETES.filter(a=>a.score>=60&&a.score<80).length, color:'var(--accent)' },
+    {label:'40–59',  count:ATHLETES.filter(a=>a.score>=40&&a.score<60).length, color:'var(--yellow)' },
+    {label:'1–39',   count:ATHLETES.filter(a=>a.score>0&&a.score<40).length,   color:'var(--red)'    },
+    {label:'N/A',    count:ATHLETES.filter(a=>a.score===0).length,             color:'var(--surface4)'},
   ];
   const maxC = Math.max(...ranges.map(r=>r.count), 1);
+
   if (el('scoreDistChart')) el('scoreDistChart').innerHTML = ranges.map(r =>
     `<div class="chart-bar-wrap" data-label="${r.count} athletes" title="${r.count} athletes">
       <div class="chart-bar" style="height:${Math.max(6,Math.round(r.count/maxC*100))}%;background:${r.color}"></div>
       <div class="chart-bar-lbl">${r.label}</div>
     </div>`).join('');
+
   if (el('scoreRanges')) el('scoreRanges').innerHTML = ranges.map(r => `
     <div style="display:flex;align-items:center;gap:9px;font-size:13px">
       <div style="width:10px;height:10px;border-radius:2px;background:${r.color};flex-shrink:0"></div>
@@ -1050,7 +997,7 @@ function renderAnalytics(){
     </div>`).join('');
 
   if (el('analyticsBody')) el('analyticsBody').innerHTML = ATHLETES.filter(a => a.score > 0).map(a => {
-    const h = a.weekHistory;
+    const h = a.weekHistory || [];
     const acrCls = getAcrClass(a.acr);
     return `<tr>
       <td><div class="athlete-cell">
@@ -1086,8 +1033,8 @@ function switchView(viewId){
   const prev = STATE.currentView;
 
   if (prev === 'athletes' && viewId !== 'athletes') {
-    el('athleteDetail') && (el('athleteDetail').style.display = 'none');
-    el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+    if (el('athleteDetail'))   el('athleteDetail').style.display = 'none';
+    if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
     STATE.selectedAthleteId = null;
   }
 
@@ -1096,8 +1043,8 @@ function switchView(viewId){
   updateTabIndicators(viewId);
 
   if (viewId === 'athletes') {
-    el('athleteDetail') && (el('athleteDetail').style.display = 'none');
-    el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+    if (el('athleteDetail'))   el('athleteDetail').style.display = 'none';
+    if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
     renderAthletesView();
   }
   if (viewId === 'analytics') renderAnalytics();
@@ -1109,31 +1056,26 @@ document.querySelectorAll('[data-view]').forEach(btn =>
   btn.addEventListener('click', () => switchView(btn.dataset.view))
 );
 
-/* ─── THEME UI ─── */
-el('btnTheme')?.addEventListener('click', toggleTheme);
-el('settingTheme')?.addEventListener('change', (e) => applyTheme(e.target.value));
-
-
 /* ─── SEARCH (keep both inputs in sync) ─── */
 function handleSearch(value){
   if (STATE.currentView !== 'athletes') {
     STATE.currentView = 'athletes';
     _applyViewDom('athletes');
     updateTabIndicators('athletes');
-    el('athleteDetail') && (el('athleteDetail').style.display = 'none');
-    el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+    if (el('athleteDetail'))   el('athleteDetail').style.display = 'none';
+    if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
   }
   renderAthletesView(value);
-  el('athleteSearch') && (el('athleteSearch').value = value);
-  el('athleteFilterInput') && (el('athleteFilterInput').value = value);
+  if (el('athleteSearch'))      el('athleteSearch').value = value;
+  if (el('athleteFilterInput')) el('athleteFilterInput').value = value;
 }
 el('athleteSearch')?.addEventListener('input', e => handleSearch(e.target.value));
 el('athleteFilterInput')?.addEventListener('input', e => handleSearch(e.target.value));
 
 /* ─── BACK / VIEW ALL ─── */
 el('backToList')?.addEventListener('click', () => {
-  el('athleteDetail') && (el('athleteDetail').style.display = 'none');
-  el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+  if (el('athleteDetail'))   el('athleteDetail').style.display = 'none';
+  if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
   STATE.selectedAthleteId = null;
   renderAthletesView();
 });
@@ -1141,8 +1083,8 @@ el('viewAllAthletes')?.addEventListener('click', () => switchView('athletes'));
 el('rosterMore')?.addEventListener('click', () => switchView('athletes'));
 
 /* ─── TRAIN ─── */
-el('btnGenerate')?.addEventListener('click', renderGeneratedSession);
-el('btnGenerateInline')?.addEventListener('click', renderGeneratedSession);
+el('btnGenerate')?.addEventListener('click', () => renderGeneratedSession());
+el('btnGenerateInline')?.addEventListener('click', () => renderGeneratedSession());
 el('btnPushToday')?.addEventListener('click', () => toast('Session pushed to Today ✓'));
 document.querySelectorAll('#injuryChips .inj-chip').forEach(chip =>
   chip.addEventListener('click', () => chip.classList.toggle('active'))
@@ -1164,7 +1106,7 @@ el('btnSaveSettings')?.addEventListener('click', () => {
 
   applySportTheme(STATE.sport);
 
-  el('userRole') && (el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`);
+  if (el('userRole')) el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`;
   saveState();
   renderDashboard();
   toast('Settings saved ✓');
@@ -1281,7 +1223,6 @@ const TodayTour = (() => {
     clearFocus();
     const s = steps[idx];
 
-    // Navigate view if needed
     if (s.view && STATE.currentView !== s.view) switchView(s.view);
 
     setTimeout(() => {
@@ -1356,7 +1297,7 @@ const TodayTour = (() => {
   return { start, close };
 })();
 
-/* ─── ONBOARDING WIZARD (existing) ─── */
+/* ─── ONBOARDING WIZARD (existing hooks) ─── */
 let obStep = 1, obRole = 'coach', obSport = 'basketball';
 
 document.querySelectorAll('#roleGrid .role-card').forEach(card => {
@@ -1382,13 +1323,14 @@ function goObStep(n){
   if (el('obProgress')) el('obProgress').style.width = Math.round(n / 3 * 100) + '%';
 }
 function closeModal(){
-  el('onboardingModal') && (el('onboardingModal').style.display = 'none');
+  if (el('onboardingModal')) el('onboardingModal').style.display = 'none';
   try { localStorage.setItem(STORAGE_KEY_ONBOARDED, '1'); } catch {}
 }
 
 el('obNext1')?.addEventListener('click', () => goObStep(2));
 el('obNext2')?.addEventListener('click', () => {
-  if (el('obFirstSession')) el('obFirstSession').innerHTML = buildWorkoutCardHTML(generateSession(obSport,'practice',60,'moderate',[]), false);
+  const first = el('obFirstSession');
+  if (first) first.innerHTML = buildWorkoutCardHTML(generateSession(obSport,'practice',60,'moderate',[]), false);
   goObStep(3);
 });
 el('obBack2')?.addEventListener('click', () => goObStep(1));
@@ -1399,8 +1341,8 @@ el('obFinish')?.addEventListener('click', () => {
   STATE.role  = obRole; STATE.sport = obSport;
   applySportTheme(STATE.sport);
   const LABELS = {coach:'Head Coach',athlete:'Athlete',admin:'Admin / AD',parent:'Parent',owner:'Owner',viewer:'Viewer'};
-  el('userName') && (el('userName').textContent = LABELS[obRole] || 'Coach Davis');
-  el('userRole') && (el('userRole').textContent = `${LABELS[obRole]||'Head Coach'} · ${cap(obSport)}`);
+  if (el('userName')) el('userName').textContent = LABELS[obRole] || 'Coach Davis';
+  if (el('userRole')) el('userRole').textContent = `${LABELS[obRole]||'Head Coach'} · ${cap(obSport)}`;
   saveState(); closeModal();
   applySportTheme(STATE.sport);
   renderDashboard();
@@ -1423,21 +1365,20 @@ document.addEventListener('keydown', e => {
    INIT
 ══════════════════════════════════════════════ */
 function init(){
-  // Theme
   applyTheme(getThemePref());
-  document.getElementById('btnTheme')?.addEventListener('click', toggleTheme);
-  document.getElementById('settingTheme')?.addEventListener('change', (e)=>applyTheme(e.target.value));
+  el('btnTheme')?.addEventListener('click', toggleTheme);
+  el('settingTheme')?.addEventListener('change', (e) => applyTheme(e.target.value));
 
   applySportTheme(STATE.sport);
   ensureTabIndicator();
 
   const seen = (() => { try { return localStorage.getItem(STORAGE_KEY_ONBOARDED); } catch { return null; } })();
   if (!seen && el('onboardingModal')) el('onboardingModal').style.display = 'flex';
-  el('userRole') && (el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`);
+
+  if (el('userRole')) el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`;
 
   renderDashboard();
 
-  // Show tour once (after onboarding)
   const seenTour = (() => { try { return localStorage.getItem(STORAGE_KEY_TOUR); } catch { return null; } })();
   if (!seenTour && seen) setTimeout(() => TodayTour.start(), 650);
 }
