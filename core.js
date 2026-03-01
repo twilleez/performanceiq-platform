@@ -131,6 +131,84 @@ const el = id => document.getElementById(id);
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 const pct = (t, f) => Math.round(t * f);
 
+/* ─── SPORT THEME (auto-adjust + sport palettes) ─── */
+function setCSS(name, value) {
+  try { document.documentElement.style.setProperty(name, value); } catch {}
+}
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function hexToRgb(hex) {
+  const h = String(hex || '').replace('#','').trim();
+  const v = h.length === 3 ? h.split('').map(c=>c+c).join('') : h;
+  const n = parseInt(v, 16);
+  if (!Number.isFinite(n) || v.length !== 6) return { r: 0, g: 0, b: 0 };
+  return { r: (n>>16)&255, g: (n>>8)&255, b: n&255 };
+}
+function hexToRgba(hex, a) {
+  const {r,g,b} = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${clamp01(a)})`;
+}
+function blendHex(fg, bg, amount) {
+  const a = clamp01(amount);
+  const A = hexToRgb(fg), B = hexToRgb(bg);
+  const r = Math.round(A.r*(1-a) + B.r*a);
+  const g = Math.round(A.g*(1-a) + B.g*a);
+  const b = Math.round(A.b*(1-a) + B.b*a);
+  return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+const SPORT_THEMES = {
+  basketball: { accent:'#2EC4B6', blue:'#4a9eff', orange:'#ff6b2b' },
+  football:   { accent:'#7CFF57', blue:'#3B82F6', orange:'#F59E0B' },
+  soccer:     { accent:'#22C55E', blue:'#60A5FA', orange:'#FB7185' },
+  baseball:   { accent:'#EF4444', blue:'#3B82F6', orange:'#F97316' },
+  volleyball: { accent:'#A855F7', blue:'#4a9eff', orange:'#F59E0B' },
+  track:      { accent:'#00d4aa', blue:'#4a9eff', orange:'#F59E0B' },
+};
+
+function _hexToRgb(hex) {
+  const h = String(hex || "").replace("#", "").trim();
+  if (h.length === 3) {
+    const r = parseInt(h[0] + h[0], 16);
+    const g = parseInt(h[1] + h[1], 16);
+    const b = parseInt(h[2] + h[2], 16);
+    return { r, g, b };
+  }
+  if (h.length === 6) {
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return { r, g, b };
+  }
+  return { r: 0, g: 212, b: 170 };
+}
+
+function applySportTheme(sport) {
+  const theme = SPORT_THEMES[String(sport || '').toLowerCase()] || SPORT_THEMES.basketball;
+
+  // Theme-aware accent tuning (keeps brand pop but reduces neon glare in dark mode)
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const bgHex  = isDark ? '#070b12' : '#ffffff';
+
+  const accent = blendHex(theme.accent, bgHex, isDark ? 0.08 : 0.00);
+  const blue   = theme.blue   || '#4a9eff';
+  const orange = theme.orange || '#ff6b2b';
+
+  setCSS('--accent', accent);
+  setCSS('--blue', blue);
+  setCSS('--orange', orange);
+
+  // Derive matching system tokens used throughout styles.css
+  setCSS('--accent-dim',    hexToRgba(accent, 0.11));
+  setCSS('--accent-2',      hexToRgba(accent, 0.16));
+  setCSS('--accent-glow',   hexToRgba(accent, 0.30));
+  setCSS('--accent-border', hexToRgba(accent, 0.22));
+
+  // Sync browser chrome on mobile
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#070b12' : '#f5f7fb');
+  } catch {}
+}
+
 function toast(msg, ms = 2800) {
   const c = el('toastContainer') || el('toastContainer'.toLowerCase()) || el('toastcontainer') || el('toastContainer'.replace('C','c'));
   const host = c || (() => {
@@ -152,14 +230,6 @@ function toast(msg, ms = 2800) {
 }
 
 /* ─── SPORT THEMES (smart auto-adjust) ─── */
-const SPORT_PALETTES = {
-  basketball: { accent:'#00d4aa', blue:'#4a9eff', orange:'#ff6b2b' },
-  football:   { accent:'#7CFF57', blue:'#3B82F6', orange:'#F59E0B' },
-  soccer:     { accent:'#22C55E', blue:'#60A5FA', orange:'#FB7185' },
-  baseball:   { accent:'#EF4444', blue:'#3B82F6', orange:'#F97316' },
-  volleyball: { accent:'#A855F7', blue:'#4a9eff', orange:'#F59E0B' },
-  track:      { accent:'#F59E0B', blue:'#22C55E', orange:'#EF4444' },
-};
 
 function _hexToRgb(hex){
   const h = (hex||'').replace('#','').trim();
@@ -174,19 +244,33 @@ function _rgba(hex, a){
 function setCSSVar(name, val){
   try { document.documentElement.style.setProperty(name, val); } catch {}
 }
-function applySportTheme(sport){
-  const key = (sport||'basketball').toLowerCase();
-  const pal = SPORT_PALETTES[key] || SPORT_PALETTES.basketball;
-  setCSSVar('--accent', pal.accent);
-  setCSSVar('--accent-2', _rgba(pal.accent, .16));
-  setCSSVar('--accent-dim', _rgba(pal.accent, .11));
-  setCSSVar('--accent-border', _rgba(pal.accent, .22));
-  setCSSVar('--accent-glow', _rgba(pal.accent, .30));
+function applySportTheme(sport) {
+  const theme = SPORT_THEMES[String(sport || '').toLowerCase()] || SPORT_THEMES.basketball;
 
-  if (pal.blue)   setCSSVar('--blue', pal.blue),   setCSSVar('--blue-dim', _rgba(pal.blue,.12)),   setCSSVar('--blue-border', _rgba(pal.blue,.25));
-  if (pal.orange) setCSSVar('--orange', pal.orange), setCSSVar('--orange-dim', _rgba(pal.orange,.12)), setCSSVar('--orange-border', _rgba(pal.orange,.28));
+  // Theme-aware accent tuning (keeps brand pop but reduces neon glare in dark mode)
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const bgHex  = isDark ? '#070b12' : '#ffffff';
+
+  const accent = blendHex(theme.accent, bgHex, isDark ? 0.08 : 0.00);
+  const blue   = theme.blue   || '#4a9eff';
+  const orange = theme.orange || '#ff6b2b';
+
+  setCSS('--accent', accent);
+  setCSS('--blue', blue);
+  setCSS('--orange', orange);
+
+  // Derive matching system tokens used throughout styles.css
+  setCSS('--accent-dim',    hexToRgba(accent, 0.11));
+  setCSS('--accent-2',      hexToRgba(accent, 0.16));
+  setCSS('--accent-glow',   hexToRgba(accent, 0.30));
+  setCSS('--accent-border', hexToRgba(accent, 0.22));
+
+  // Sync browser chrome on mobile
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#070b12' : '#f5f7fb');
+  } catch {}
 }
-
 /* ─── MICRO-INTERACTIONS (ripple + spring) ─── */
 function addRipple(ev, target){
   const r = document.createElement('span');
@@ -317,7 +401,8 @@ function renderDashboard(){
   const avg     = logged.length ? Math.round(logged.reduce((s,a) => s+a.score, 0) / logged.length) : 0;
   const BASE    = 65;
 
-  if (el('statAvg')) { el('statAvg').textContent = avg || '—'; if (avg) tweenNumber(el('statAvg'), avg, 520); }
+  if (el('statAvg')) { el('statAvg').textContent = avg || '—';
+  if (avg) animateNumber(el('statAvg'), 0, avg, 650); if (avg) tweenNumber(el('statAvg'), avg, 520); }
   el('statReady') && (el('statReady').textContent = ready);
   el('statMonitor') && (el('statMonitor').textContent = monitor);
   el('statRisk') && (el('statRisk').textContent = risk);
@@ -588,7 +673,9 @@ function openAthleteDetail(a){
   const rc = getRingClass(a.score);
   if (rf) rf.className = 'ring-fill' + (rc ? ' '+rc : '');
   if (el('detailRingNum')) {
-    el('detailRingNum').textContent = a.score || '—';
+    const ringNumEl = el('detailRingNum');
+  ringNumEl.textContent = a.score || '—';
+  if (a.score) animateNumber(ringNumEl, 0, a.score, 850);
     el('detailRingNum').className   = 'ring-number' + (rc ? ' '+rc : '');
     if (a.score) tweenNumber(el('detailRingNum'), a.score, 900);
   }
@@ -823,7 +910,7 @@ function renderAnalytics(){
     const h = Math.max(4, Math.round(d.au/maxAU*100));
     const color = d.au >= 900 ? 'var(--red)' : d.au >= 700 ? 'var(--yellow)' : 'var(--accent)';
     const alpha = (0.55 + 0.45*(d.au/maxAU)).toFixed(2);
-    return `<div class="chart-bar-wrap" title="${d.au} AU">
+    return `<div class="chart-bar-wrap" data-label="${d.au} AU" title="${d.au} AU">
       <div class="chart-bar" style="height:${h}%;background:${color};opacity:${alpha}"></div>
       <div class="chart-bar-lbl">${d.day}</div>
     </div>`;
@@ -838,7 +925,7 @@ function renderAnalytics(){
   ];
   const maxC = Math.max(...ranges.map(r=>r.count), 1);
   if (el('scoreDistChart')) el('scoreDistChart').innerHTML = ranges.map(r =>
-    `<div class="chart-bar-wrap" title="${r.count} athletes">
+    `<div class="chart-bar-wrap" data-label="${r.count} athletes" title="${r.count} athletes">
       <div class="chart-bar" style="height:${Math.max(6,Math.round(r.count/maxC*100))}%;background:${r.color}"></div>
       <div class="chart-bar-lbl">${r.label}</div>
     </div>`).join('');
@@ -893,8 +980,9 @@ function switchView(viewId){
 
   STATE.currentView = viewId;
   _applyViewDom(viewId);
+  updateTabIndicators(viewId);
 
-  if (viewId === 'athletes') {
+  $1 {
     el('athleteDetail') && (el('athleteDetail').style.display = 'none');
     el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
     renderAthletesView();
@@ -913,6 +1001,7 @@ function handleSearch(value){
   if (STATE.currentView !== 'athletes') {
     STATE.currentView = 'athletes';
     _applyViewDom('athletes');
+    updateTabIndicators('athletes');
     el('athleteDetail') && (el('athleteDetail').style.display = 'none');
     el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
   }
@@ -1189,7 +1278,8 @@ el('obBack3')?.addEventListener('click', () => goObStep(2));
 el('obClose')?.addEventListener('click', closeModal);
 el('obSkip')?.addEventListener('click',  () => { closeModal(); toast('Welcome to PerformanceIQ ⚡'); });
 el('obFinish')?.addEventListener('click', () => {
-  STATE.role = obRole; STATE.sport = obSport;
+  STATE.role  = obRole; STATE.sport = obSport;
+  applySportTheme(STATE.sport);
   const LABELS = {coach:'Head Coach',athlete:'Athlete',admin:'Admin / AD',parent:'Parent',owner:'Owner',viewer:'Viewer'};
   el('userName') && (el('userName').textContent = LABELS[obRole] || 'Coach Davis');
   el('userRole') && (el('userRole').textContent = `${LABELS[obRole]||'Head Coach'} · ${cap(obSport)}`);
