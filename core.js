@@ -1,3 +1,23 @@
+applyTheme(getTheme());
+/* ─── THEME (dark/light) ─── */
+function getTheme(){
+  return (localStorage.getItem('piq_theme') || document.documentElement.dataset.theme || 'dark').toLowerCase();
+}
+function applyTheme(theme){
+  const t = (theme === 'light') ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('piq_theme', t);
+
+  const btn = el('btnTheme');
+  if (btn) btn.textContent = (t === 'dark') ? '🌙' : '☀️';
+
+  const sel = el('settingTheme');
+  if (sel) sel.value = t;
+}
+function toggleTheme(){
+  applyTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+
 /* ================================================================
    PerformanceIQ — core.js  v5.2  Elite UI Pass
    Added:
@@ -932,31 +952,41 @@ function buildWorkoutCardHTML(session, showActions = true){
   </div>`;
 }
 
-function renderGeneratedSession(){
-  const sport = el('buildSport')?.value;
-  const type = el('buildType')?.value;
-  const duration = +el('buildDuration')?.value;
-  const intensity = el('buildIntensity')?.value;
-  const injuries = [...document.querySelectorAll('#injuryChips .inj-chip.active')].map(c => c.dataset.injury);
-  
-  // attach exercises per block so the user sees actual movements
-  const exSets = getExercisesFor(sport, type);
-  blocks.forEach((b, i) => {
-    const raw = exSets[i % (exSets.length || 1)] || exSets[0] || [];
-    b.exercises = raw.map(x => applyInjuryFiltersToExercise(x, injuries));
-  });
+function renderGeneratedSession(opts){
+  // opts can override builder selections (used by modal / buttons)
+  const sport = (opts && opts.sport) || el('buildSport')?.value || STATE.profile?.sport || 'basketball';
+  const type  = (opts && opts.type)  || el('buildType')?.value  || 'practice';
+  const dur   = +( (opts && opts.duration) || el('buildDuration')?.value || 60 );
+  const inten = (opts && opts.intensity) || el('buildIntensity')?.value || 'moderate';
 
-const session = generateSession(sport, type, duration, intensity, injuries);
-  const wrap = el('generatedSessionWrap'); if (!wrap) return;
-  wrap.innerHTML = buildWorkoutCardHTML(session, true);
-  el('sessionSaved') && (el('sessionSaved').style.display = 'none');
-  wrap.querySelector('.js-save')?.addEventListener('click', () => {
-    el('sessionSaved') && (el('sessionSaved').style.display = 'inline-flex');
-    toast('Session saved to library ✓');
-  });
-  wrap.querySelector('.js-start')?.addEventListener('click', () => toast('Session started ▷'));
-  toast('Session generated ⚡');
+  // gather injury filters (builder chips)
+  const injuries = [];
+  document.querySelectorAll('#injuryChips .inj-chip.active').forEach(b => injuries.push(b.dataset.injury));
+
+  const session = generateSession({ sport, type, duration: dur, intensity: inten, injuries });
+
+  // Fallback guards so one bad session never breaks Train view
+  const blocks = Array.isArray(session?.blocks) ? session.blocks : [];
+
+  // Render card
+  const wrap = el('generatedSessionWrap');
+  const card = el('generatedSession');
+  if (wrap && card) {
+    wrap.innerHTML = buildWorkoutCardHTML(session, { showSave: true });
+  }
+
+  // Seed library if empty
+  if (!STATE.sessionLibrary || !Array.isArray(STATE.sessionLibrary)) STATE.sessionLibrary = [];
+  if (session && session.id) {
+    // keep most recent first, dedupe by id
+    STATE.sessionLibrary = [session, ...STATE.sessionLibrary.filter(s => s?.id !== session.id)].slice(0, 12);
+    persistState();
+  }
+
+  renderSessionLibrary();
+  toast(`Generated: ${session?.title || 'Session'}`);
 }
+
 
 /* ══════════════════════════════════════════════
    ANALYTICS
@@ -1078,6 +1108,11 @@ function switchView(viewId){
 document.querySelectorAll('[data-view]').forEach(btn =>
   btn.addEventListener('click', () => switchView(btn.dataset.view))
 );
+
+/* ─── THEME UI ─── */
+el('btnTheme')?.addEventListener('click', toggleTheme);
+el('settingTheme')?.addEventListener('change', (e) => applyTheme(e.target.value));
+
 
 /* ─── SEARCH (keep both inputs in sync) ─── */
 function handleSearch(value){

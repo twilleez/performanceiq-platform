@@ -12,13 +12,12 @@
   --ok:#22C55E;--warn:#F59E0B;--danger:#EF4444;--info:#3B82F6;
 
   /* Accent (runtime set by core.js per sport) */
-  --accent:#00d4aa;
-  --accent-dim:rgba(0,212,170,.11);
-  --accent-glow:rgba(0,212,170,.30);
-  --accent-border:rgba(0,212,170,.22);
-  --accent-2:rgba(0,212,170,.16);
-
-  /* Extended palette */
+  --accent:        #4a9eff;
+  --accent-dim:    rgba(74, 158, 255, 0.11);
+--accent-glow:   rgba(74, 158, 255, 0.30);
+--accent-border: rgba(74, 158, 255, 0.22);
+--accent-2:      rgba(74, 158, 255, 0.16); /* v3.* compatibility */
+/* Extended palette */
   --green:#2ecc71;--green-dim:rgba(46,204,113,.12);--green-border:rgba(46,204,113,.28);
   --yellow:#f0c040;--yellow-dim:rgba(240,192,64,.12);--yellow-border:rgba(240,192,64,.28);
   --red:#ff4560;--red-dim:rgba(255,69,96,.12);--red-border:rgba(255,69,96,.28);
