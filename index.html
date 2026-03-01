@@ -1,3 +1,4 @@
+<!-- index.html — PerformanceIQ (Elite UI + Midnight theme + Loader + Onboarding + Role switch) -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -6,8 +7,127 @@
   <title>PerformanceIQ</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico">
+  <meta name="theme-color" content="#070b12">
 </head>
+
 <body>
+
+<!-- LOADING SCREEN (simple + reliable; hidden by core.js init) -->
+<div id="loadingScreen" style="
+  position:fixed;inset:0;z-index:9999;
+  display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(900px 600px at 50% -10%, rgba(255,255,255,0.06), transparent 55%), #070b12;
+  color:#eaf0ff;
+">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:24px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:50%;background:rgba(16,42,79,.95);box-shadow:0 0 0 6px rgba(16,42,79,.18)"></div>
+      <div style="font-weight:800;letter-spacing:.06em">PerformanceIQ</div>
+    </div>
+    <div style="font-size:12px;opacity:.78;letter-spacing:.03em">Loading dashboard…</div>
+  </div>
+</div>
+
+<!-- ONBOARDING MODAL (shown once unless piq_onboarded_v2 is set) -->
+<div id="onboardingModal" style="
+  position:fixed;inset:0;z-index:9998;
+  display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.65);
+">
+  <div style="
+    width:min(900px,92vw);max-height:90vh;overflow:auto;
+    background:rgba(10,14,22,.96);
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:18px;
+    box-shadow:0 22px 70px rgba(0,0,0,.55);
+    color:var(--text,#eaf0ff);
+  ">
+    <div style="padding:18px 18px 10px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:14px">
+      <div>
+        <div style="font-weight:900;letter-spacing:.06em">WELCOME TO PERFORMANCEIQ</div>
+        <div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:4px">Quick setup (role, sport, and a first session)</div>
+      </div>
+      <button class="icon-btn" id="obClose" aria-label="Close onboarding">✕</button>
+    </div>
+
+    <div style="padding:12px 18px 0">
+      <div style="height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden">
+        <div id="obProgress" style="height:8px;width:33%;background:rgba(16,42,79,.92)"></div>
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="modal-step active" id="obStep1" style="padding:18px">
+      <div style="font-weight:800;margin-bottom:10px">Step 1 — Choose your role</div>
+      <div id="roleGrid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+        <div class="role-card selected" data-role="coach" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
+          <div style="font-weight:800">Coach</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Run team dashboards</div>
+        </div>
+        <div class="role-card" data-role="athlete" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
+          <div style="font-weight:800">Athlete</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">View your readiness</div>
+        </div>
+        <div class="role-card" data-role="admin" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
+          <div style="font-weight:800">Admin / AD</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Program oversight</div>
+        </div>
+        <div class="role-card" data-role="parent" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
+          <div style="font-weight:800">Parent</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Monitor wellness</div>
+        </div>
+        <div class="role-card" data-role="owner" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
+          <div style="font-weight:800">Owner</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Business controls</div>
+        </div>
+        <div class="role-card" data-role="viewer" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
+          <div style="font-weight:800">Viewer</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Read-only</div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px">
+        <button class="btn btn-ghost" id="obSkip">Skip</button>
+        <button class="btn btn-primary" id="obNext1">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="modal-step" id="obStep2" style="padding:18px;display:none">
+      <div style="font-weight:800;margin-bottom:10px">Step 2 — Select sport + injury filters</div>
+
+      <div id="sportGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <button class="sport-chip selected btn btn-ghost" data-sport="basketball" type="button">🏀 Basketball</button>
+        <button class="sport-chip btn btn-ghost" data-sport="football" type="button">🏈 Football</button>
+        <button class="sport-chip btn btn-ghost" data-sport="soccer" type="button">⚽ Soccer</button>
+        <button class="sport-chip btn btn-ghost" data-sport="baseball" type="button">⚾ Baseball</button>
+        <button class="sport-chip btn btn-ghost" data-sport="volleyball" type="button">🏐 Volleyball</button>
+        <button class="sport-chip btn btn-ghost" data-sport="track" type="button">🏃 Track</button>
+      </div>
+
+      <div style="font-size:12px;color:rgba(234,240,255,.72);margin-bottom:8px">Optional — injury filters</div>
+      <div class="inj-chips" id="obInjuryChips" style="display:flex;flex-wrap:wrap;gap:8px">
+        <button class="inj-chip" data-injury="knee" type="button">Knee</button>
+        <button class="inj-chip" data-injury="ankle" type="button">Ankle</button>
+        <button class="inj-chip" data-injury="shoulder" type="button">Shoulder</button>
+        <button class="inj-chip" data-injury="back" type="button">Back</button>
+        <button class="inj-chip" data-injury="hip" type="button">Hip</button>
+        <button class="inj-chip" data-injury="hamstring" type="button">Hamstring</button>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px">
+        <button class="btn btn-ghost" id="obBack2">Back</button>
+        <button class="btn btn-primary" id="obNext2">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="modal-step" id="obStep3" style="padding:18px;display:none">
+      <div style="font-weight:800;margin-bottom:10px">Step 3 — Your first session</div>
+      <div id="obFirstSession"></div>
+
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px">
+        <button class="btn btn-ghost" id="obBack3">Back</button>
+        <button class="btn btn-primary" id="obFinish">Finish</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <header class="topbar">
   <div class="topbar-left">
     <div class="brand-mark"><div class="brand-dot"></div></div>
@@ -315,12 +435,12 @@
           <div style="margin-bottom:16px">
             <div class="form-label" style="margin-bottom:8px">Injury Filters</div>
             <div class="inj-chips" id="injuryChips">
-              <button class="inj-chip" data-injury="knee">Knee</button>
-              <button class="inj-chip" data-injury="ankle">Ankle</button>
-              <button class="inj-chip" data-injury="shoulder">Shoulder</button>
-              <button class="inj-chip" data-injury="back">Back</button>
-              <button class="inj-chip" data-injury="hip">Hip</button>
-              <button class="inj-chip" data-injury="hamstring">Hamstring</button>
+              <button class="inj-chip" data-injury="knee" type="button">Knee</button>
+              <button class="inj-chip" data-injury="ankle" type="button">Ankle</button>
+              <button class="inj-chip" data-injury="shoulder" type="button">Shoulder</button>
+              <button class="inj-chip" data-injury="back" type="button">Back</button>
+              <button class="inj-chip" data-injury="hip" type="button">Hip</button>
+              <button class="inj-chip" data-injury="hamstring" type="button">Hamstring</button>
             </div>
           </div>
 
@@ -407,7 +527,6 @@
       <div class="event-list" id="fullEventList" style="max-width:600px"></div>
     </section>
 
-    <!-- Wellness + Nutrition sections unchanged in this pack (they still work with core.js) -->
     <section class="view" id="view-wellness"><div class="page-header"><div><div class="page-title">Wellness</div><div class="page-sub" id="wellnessSub">Daily check-in</div></div><div class="page-actions"><button class="btn btn-primary" id="btnSaveWellness">Save Check-in</button></div></div><div id="wellnessMount"></div></section>
     <section class="view" id="view-nutrition"><div class="page-header"><div><div class="page-title">Nutrition</div><div class="page-sub" id="nutritionSub">Macro targets + hydration</div></div><div class="page-actions"><button class="btn btn-primary" id="btnSaveNutrition">Save Nutrition</button></div></div><div id="nutritionMount"></div></section>
 
@@ -419,15 +538,35 @@
       <div class="grid-2">
         <div class="card card-body">
           <div class="section-label">TEAM PROFILE</div>
+
+          <!-- ROLE SWITCHING (fix: now exists in HTML and is wired in core.js) -->
+          <div class="form-group" style="margin-bottom:13px">
+            <div class="form-label">Role</div>
+            <select class="form-select" id="settingRole">
+              <option value="coach" selected>Coach</option>
+              <option value="athlete">Athlete</option>
+              <option value="admin">Admin / AD</option>
+              <option value="parent">Parent</option>
+              <option value="owner">Owner</option>
+              <option value="viewer">Viewer</option>
+            </select>
+          </div>
+
           <div class="form-group" style="margin-bottom:13px">
             <div class="form-label">Team Name</div>
             <input class="form-input" type="text" value="Westview Varsity Basketball" id="settingTeamName" />
           </div>
+
           <div class="form-grid">
             <div class="form-group">
               <div class="form-label">Sport</div>
               <select class="form-select" id="settingSport">
-                <option selected>Basketball</option><option>Football</option><option>Soccer</option><option>Baseball</option><option>Volleyball</option><option>Track</option>
+                <option value="basketball" selected>Basketball</option>
+                <option value="football">Football</option>
+                <option value="soccer">Soccer</option>
+                <option value="baseball">Baseball</option>
+                <option value="volleyball">Volleyball</option>
+                <option value="track">Track</option>
               </select>
             </div>
             <div class="form-group">
@@ -454,6 +593,7 @@
             <button class="btn btn-ghost btn-sm" id="btnImportData">📥 Import JSON</button>
             <button class="btn btn-danger btn-sm" id="btnResetData">⚠ Reset to Demo Data</button>
           </div>
+          <input type="file" id="importFileInput" accept="application/json" style="display:none" />
         </div>
       </div>
     </section>
@@ -464,4 +604,4 @@
 <div class="toast-container" id="toastContainer"></div>
 <script src="core.js"></script>
 </body>
-</html>
+                  </html>
