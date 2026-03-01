@@ -55,6 +55,13 @@
     <button class="nav-btn" data-view="schedule">
       <i class="nav-icon">📅</i> Schedule
     </button>
+    <button class="nav-btn" data-view="wellness">
+      <i class="nav-icon">🌙</i> Wellness
+    </button>
+    <button class="nav-btn" data-view="nutrition">
+      <i class="nav-icon">🥗</i> Nutrition
+    </button>
+
     <button class="nav-btn" data-view="settings">
       <i class="nav-icon">⚙</i> Settings
     </button>
@@ -205,7 +212,15 @@
           <div class="insight-card">
             <div class="insight-tag">✦ Weekly Insight</div>
             <div class="insight-body" id="insightText">Loading insight…</div>
+          
+          <!-- Periodization Preview -->
+          <div class="insight-card" style="margin-top:14px">
+            <div class="insight-tag">📅 Periodization (4-week)</div>
+            <div class="insight-body" style="padding-top:6px">
+              <div id="periodPlan"></div>
+            </div>
           </div>
+</div>
 
         </div><!-- /right col -->
       </div><!-- /grid-main -->
@@ -487,7 +502,172 @@
       <div class="event-list" id="fullEventList" style="max-width:600px"></div>
     </section>
 
-    <!-- ══ VIEW: SETTINGS ══ -->
+    
+    <!-- ══ VIEW: WELLNESS ══ -->
+    <section class="view" id="view-wellness">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Wellness</div>
+          <div class="page-sub" id="wellnessSub">Daily check-in</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btnSaveWellness">Save Check-in</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Today's Check-in</div>
+            <a class="card-link" href="javascript:void(0)" id="btnAutoWellness">Auto-fill demo</a>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group">
+                <div class="form-label">Sleep hours</div>
+                <input class="form-input" id="wSleep" type="number" min="0" max="14" step="0.1" placeholder="e.g., 7.5">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Sleep quality (0–10)</div>
+                <input class="form-input" id="wSleepQ" type="number" min="0" max="10" step="1" placeholder="e.g., 8">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Soreness (0–10)</div>
+                <input class="form-input" id="wSoreness" type="number" min="0" max="10" step="1" placeholder="e.g., 3">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Energy (0–10)</div>
+                <input class="form-input" id="wEnergy" type="number" min="0" max="10" step="1" placeholder="e.g., 7">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Stress (0–10)</div>
+                <input class="form-input" id="wStress" type="number" min="0" max="10" step="1" placeholder="e.g., 4">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Mood (0–10)</div>
+                <input class="form-input" id="wMood" type="number" min="0" max="10" step="1" placeholder="e.g., 8">
+              </div>
+            </div>
+
+            <div style="margin-top:14px">
+              <div class="form-label">Injury / pain note</div>
+              <input class="form-input" id="wNote" type="text" placeholder="Optional note">
+            </div>
+
+            <div style="margin-top:14px" class="section-label">Injury flags</div>
+            <div class="inj-chips" id="wInjuryChips">
+              <button class="inj-chip" type="button" data-flag="none">None</button>
+              <button class="inj-chip" type="button" data-flag="soreness">Soreness</button>
+              <button class="inj-chip" type="button" data-flag="pain">Pain</button>
+              <button class="inj-chip" type="button" data-flag="injury">Injury</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">How this affects PIQ</div>
+          </div>
+          <div class="card-body">
+            <div class="insight-card">
+              <div class="insight-tag">Scoring</div>
+              <div class="insight-body" id="wellnessExplain">
+                Recovery and wellness metrics directly influence the <strong>Recovery pillar</strong> and injury risk flags.
+                Saving a check-in updates PIQ scores instantly.
+              </div>
+            </div>
+
+            <div style="margin-top:14px" class="section-label">Last 7 days</div>
+            <div id="wellness7" class="load-bar-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ VIEW: NUTRITION ══ -->
+    <section class="view" id="view-nutrition">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Nutrition</div>
+          <div class="page-sub" id="nutritionSub">Macro targets + hydration</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btnSaveNutrition">Save Nutrition</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Today's Intake</div>
+            <a class="card-link" href="javascript:void(0)" id="btnAutoNutrition">Auto-fill demo</a>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group">
+                <div class="form-label">Calories</div>
+                <input class="form-input" id="nCals" type="number" min="0" step="10" placeholder="e.g., 2800">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Water (oz)</div>
+                <input class="form-input" id="nWater" type="number" min="0" step="1" placeholder="e.g., 90">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Protein (g)</div>
+                <input class="form-input" id="nProtein" type="number" min="0" step="1" placeholder="e.g., 160">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Carbs (g)</div>
+                <input class="form-input" id="nCarbs" type="number" min="0" step="1" placeholder="e.g., 320">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Fat (g)</div>
+                <input class="form-input" id="nFat" type="number" min="0" step="1" placeholder="e.g., 80">
+              </div>
+              <div class="form-group">
+                <div class="form-label">Notes</div>
+                <input class="form-input" id="nNote" type="text" placeholder="Optional note">
+              </div>
+            </div>
+
+            <div style="margin-top:16px" class="section-label">Targets</div>
+            <div id="nutritionTargets" class="insight-card" style="background:linear-gradient(135deg,var(--accent-dim),var(--green-dim));border-color:var(--accent-border)">
+              <div class="insight-tag">Auto targets</div>
+              <div class="insight-body" id="nutritionTargetsText">Targets are generated from role, sport, and bodyweight (if entered).</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Nutrition Pillar</div>
+          </div>
+          <div class="card-body">
+            <div class="score-hero" style="padding:18px">
+              <div class="ring-wrap" style="width:120px;height:120px">
+                <svg class="ring-svg" viewBox="0 0 160 160" style="width:120px;height:120px">
+                  <circle class="ring-track" cx="80" cy="80" r="70"></circle>
+                  <circle class="ring-fill" id="nutRingFill" cx="80" cy="80" r="70"></circle>
+                </svg>
+                <div class="ring-center">
+                  <div class="ring-number" id="nutRingNum">—</div>
+                  <div class="ring-label">Nutrition</div>
+                </div>
+              </div>
+              <div class="score-details">
+                <div class="score-headline" id="nutritionHeadline">Log nutrition to unlock your score</div>
+                <div class="score-note" id="nutritionNote">Protein, carbs, fats, and hydration contribute to the PIQ Nutrition pillar.</div>
+              </div>
+            </div>
+
+            <div style="margin-top:14px" class="section-label">Last 7 days</div>
+            <div id="nutrition7" class="load-bar-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+<!-- ══ VIEW: SETTINGS ══ -->
     <section class="view" id="view-settings">
       <div class="page-header">
         <div>
@@ -577,9 +757,8 @@
 </div><!-- /app-shell -->
 
 <!-- ─── ONBOARDING MODAL ─── -->
-<div class="modal-backdrop" id="onboardingModal" style="display:none" role="dialog" aria-modal="true" aria-label="Setup wizard">
-  <div class="modal-box" style="position:relative">
-    <button class="modal-close-btn" id="obClose" aria-label="Close setup">✕</button>
+<div class="modal-backdrop" id="onboardingModal" style="display:none">
+  <div class="modal-box">
     <div class="modal-brand">
       <div class="modal-logo">⚡</div>
       <div>
@@ -674,9 +853,6 @@
     </div>
   </div>
 </div>
-
-<!-- Hidden file input for JSON import -->
-<input type="file" accept=".json" class="file-input-hidden" id="importFileInput" />
 
 <!-- ─── TOAST CONTAINER ─── -->
 <div class="toast-container" id="toastContainer"></div>
