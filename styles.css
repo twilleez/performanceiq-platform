@@ -1316,3 +1316,7 @@ html[data-theme="light"] .fab { background: var(--accent); color: #fff; border-c
 #activityFeed{display:flex;flex-direction:column;}
 
 #eventList,#fullEventList{display:flex;flex-direction:column;gap:8px;}
+
+
+/* Theme toggle button */
+.theme-toggle{ margin-left: 6px; }
