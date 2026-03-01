@@ -5,8 +5,9 @@
    - Fixed generateSession() call signature + buildWorkoutCardHTML() usage
    - Added missing animateNumber()
    - Added persistState() alias (maps to saveState)
-   - Hardened DOM guards so one missing node won’t break boot
+   - Hardened DOM guards so one missing node won’t break boot 
    ================================================================ */
+console.log("PIQ core.js loaded", new Date().toISOString());
 'use strict';
 
 /* ─── STORAGE KEYS ─── */
