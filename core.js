@@ -1,1782 +1,1327 @@
-
 /* ================================================================
-   PerformanceIQ — core.js  v6.0.0 (Elite Tier, Offline-first)
-   - District-wide ready (schools → teams → athletes)
-   - Role-based views (owner/admin/coach/athlete/parent/viewer)
-   - PIQ Score engine (workload + recovery + nutrition + consistency)
-   - Risk flags (ACWR + recovery + missed check-ins)
-   - Periodization (simple 4-week mesocycle generator)
+   PerformanceIQ — core.js  v5.2  Elite UI Pass
+   Added:
+   - Smart sport palettes + auto accent/contrast
+   - Animated tab transitions + indicator glide
+   - Ripple + spring micro-interactions
+   - Animated score number tween
+   - Interactive Today workflow tour (no audio; caption illusion)
    ================================================================ */
-
 'use strict';
 
-(function () {
-  // -----------------------------
-  // Storage + Time helpers
-  // -----------------------------
-  const LS_KEY = 'piq_state_v6';
-  const LS_SEEN = 'piq_seen_v6';
-  const DAY_MS = 86400000;
+/* ─── STORAGE KEYS ─── */
+const STORAGE_KEY_ONBOARDED = 'piq_onboarded_v2';
+const STORAGE_KEY_STATE     = 'piq_state_v2';
+const STORAGE_KEY_ATHLETES  = 'piq_athletes_v2';
+const STORAGE_KEY_TOUR      = 'piq_tour_today_v1';
 
-  function todayISO() { return new Date().toISOString().slice(0, 10); }
-  function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
-  function round(n) { return Math.round((Number(n) || 0) * 100) / 100; }
-  function el(id) { return document.getElementById(id); }
-  function q(sel, root=document) { return root.querySelector(sel); }
-  function qa(sel, root=document) { return Array.from(root.querySelectorAll(sel)); }
-
-  function safeParse(json, fallback) {
-    try { return JSON.parse(json); } catch { return fallback; }
+/* ─── STATE ─── */
+const STATE = (() => {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_STATE) || 'null');
+    return Object.assign({ role:'coach', sport:'basketball', injuries:[],
+      teamName:'Westview Varsity Basketball', season:'Pre-Season',
+      currentView:'dashboard', selectedAthleteId: null }, s || {});
+  } catch {
+    return { role:'coach', sport:'basketball', injuries:[],
+      teamName:'Westview Varsity Basketball', season:'Pre-Season',
+      currentView:'dashboard', selectedAthleteId: null };
   }
+})();
 
-  function saveState() {
-    try {
-      STATE.meta.updated_at = new Date().toISOString();
-      localStorage.setItem(LS_KEY, JSON.stringify(STATE));
-      setSavePill('Saved', true);
-    } catch (e) {
-      setSavePill('Save failed', false);
-      console.error(e);
-    }
+function saveState() {
+  try {
+    const { selectedAthleteId: _x, ...toSave } = STATE;
+    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(toSave));
+  } catch {}
+}
+
+/* ─── DEFAULT ATHLETES ─── */
+const DEFAULT_ATHLETES = [
+  { id:1, name:'Marcus Johnson', initials:'MJ', pos:'PG', jersey:3,
+    score:92, severity:'green', acr:1.04, recovery:94, trend:+7, riskLevel:'none',
+    sleep:8.2, soreness:2, energy:9,
+    weekHistory:[65,71,78,82,86,88,92],
+    color:'rgba(46,204,113,0.15)', colorText:'var(--green)',
+    prs:[{exercise:'Back Squat',current:'295 lbs',prev:'280 lbs',date:'Feb 20'},
+         {exercise:'Bench Press',current:'225 lbs',prev:'215 lbs',date:'Feb 14'},
+         {exercise:'40yd Dash',current:'4.52s',prev:'4.61s',date:'Feb 18'}],
+    insight:'Sleep averaging <strong>8.2 hours</strong> — your top recovery pillar. Maintain this heading into game week.' },
+  { id:2, name:'Keisha Davis', initials:'KD', pos:'SF', jersey:21,
+    score:85, severity:'green', acr:1.09, recovery:88, trend:+4, riskLevel:'none',
+    sleep:7.8, soreness:3, energy:8,
+    weekHistory:[62,68,72,76,80,82,85],
+    color:'rgba(0,212,170,0.15)', colorText:'var(--accent)',
+    prs:[{exercise:'Power Clean',current:'165 lbs',prev:'155 lbs',date:'Feb 22'},
+         {exercise:'Vertical Jump',current:'28"',prev:'26"',date:'Feb 10'}],
+    insight:'Variety pillar at 90 — most diverse training profile on the team. One more strength block this week would round out the score.' },
+  { id:3, name:'Darius Jones', initials:'DJ', pos:'PF', jersey:5,
+    score:78, severity:'green', acr:0.92, recovery:82, trend:+2, riskLevel:'none',
+    sleep:7.5, soreness:4, energy:7,
+    weekHistory:[60,64,68,70,73,76,78],
+    color:'rgba(74,158,255,0.15)', colorText:'var(--blue)',
+    prs:[{exercise:'Romanian DL',current:'315 lbs',prev:'295 lbs',date:'Feb 19'}],
+    insight:'ACWR at 0.92 — slightly undertrained vs chronic baseline. One additional volume session this week would be optimal.' },
+  { id:4, name:'Tyler Williams', initials:'TW', pos:'SG', jersey:12,
+    score:58, severity:'yellow', acr:1.38, recovery:67, trend:-8, riskLevel:'watch',
+    sleep:6.2, soreness:6, energy:6,
+    weekHistory:[74,72,70,68,65,62,58],
+    color:'rgba(240,192,64,0.15)', colorText:'var(--yellow)',
+    prs:[],
+    insight:'<strong>ACWR 1.38</strong> — approaching danger zone. Reduce today\'s intensity and monitor soreness. Prioritize sleep before Friday\'s game.' },
+  { id:5, name:'Marcus Lewis', initials:'ML', pos:'C', jersey:44,
+    score:41, severity:'red', acr:1.67, recovery:52, trend:-18, riskLevel:'rest',
+    sleep:5.1, soreness:8, energy:4,
+    weekHistory:[70,66,62,57,51,46,41],
+    color:'rgba(255,69,96,0.15)', colorText:'var(--red)',
+    prs:[],
+    insight:'<strong>REST RECOMMENDED.</strong> ACWR 1.67 with poor sleep (5.1h) and high soreness — 3rd consecutive high-load day. High injury risk ahead of Friday.' },
+  { id:6, name:'Ryan Kim', initials:'RK', pos:'SG', jersey:7,
+    score:0, severity:'none', acr:null, recovery:null, trend:0, riskLevel:'none',
+    sleep:null, soreness:null, energy:null,
+    weekHistory:[],
+    color:'rgba(255,255,255,0.06)', colorText:'var(--text-dim)',
+    prs:[],
+    insight:'No wellness data logged today. Send athlete a check-in prompt to unlock their score.' },
+];
+
+let ATHLETES = (() => {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_ATHLETES) || 'null');
+    return Array.isArray(s) && s.length ? s : DEFAULT_ATHLETES.map(a => ({...a}));
+  } catch { return DEFAULT_ATHLETES.map(a => ({...a})); }
+})();
+
+function saveAthletes() { try { localStorage.setItem(STORAGE_KEY_ATHLETES, JSON.stringify(ATHLETES)); } catch {} }
+
+/* ─── DEMO DATA ─── */
+const EVENTS = [
+  { name:'vs. Riverside Academy',    detail:'Fri Mar 3 · 7:00 PM · Home',     days:3, icon:'🏀' },
+  { name:'State Qualifier',          detail:'Tue Mar 7 · 2:00 PM · Away',      days:7, icon:'🏆' },
+  { name:'Film Session + Walk-thru', detail:'Mon Mar 2 · 3:00 PM · Gym',       days:2, icon:'📹' },
+  { name:'Team Recovery Day',        detail:'Sun Mar 1 · 10:00 AM · Facility', days:1, icon:'🌿' },
+];
+
+const FEED_ITEMS = [
+  { icon:'🏃', cls:'ok',     text:'<strong>Marcus J.</strong> logged Morning Sprint — 6.2 mi · sRPE 7',        time:'32 min ago'          },
+  { icon:'⚠️', cls:'danger', text:'<strong>System</strong> flagged Tyler W. for elevated ACWR (1.38)',          time:'1 hr ago'            },
+  { icon:'💪', cls:'accent', text:'<strong>Keisha D.</strong> hit a new PR — Power Clean 165 lbs (+10 lbs)',    time:'2 hrs ago'           },
+  { icon:'🏀', cls:'orange', text:'<strong>Team Practice</strong> logged by Coach Davis — 14/18 attended',       time:'Yesterday · 5:00 PM' },
+  { icon:'🥗', cls:'ok',     text:'<strong>Darius J.</strong> logged nutrition — 3,100 kcal · 175g protein',   time:'Yesterday · 7:45 PM' },
+  { icon:'⛔', cls:'danger', text:'<strong>Marcus L.</strong> flagged — ACWR 1.67, rest recommended today',     time:'Yesterday · 6:00 PM' },
+];
+
+const SESSION_LIBRARY = [
+  { type:'🔥 Strength', name:'TRAP BAR POWER',       meta:'50 min · High',     color:'orange' },
+  { type:'💨 Speed',    name:'ACCELERATION COMPLEX',  meta:'35 min · High',     color:'blue'   },
+  { type:'🌿 Recovery', name:'ACTIVE RECOVERY DAY',   meta:'25 min · Low',      color:'green'  },
+  { type:'🏀 Practice', name:'SKILL MICROBLOCKS',     meta:'60 min · Moderate', color:''       },
+  { type:'⚡ Power',    name:'PLYOMETRIC CIRCUIT',    meta:'40 min · High',     color:'orange' },
+  { type:'🧘 Mobility', name:'PRE-GAME ACTIVATION',  meta:'30 min · Low',      color:'green'  },
+];
+
+const WEEK_LOAD = [
+  { day:'S', au:320 }, { day:'M', au:580 }, { day:'T', au:740 },
+  { day:'W', au:460 }, { day:'T', au:890 }, { day:'F', au:980 },
+  { day:'S', au:620 },
+];
+
+/* ─── DOM UTILS ─── */
+const el = id => document.getElementById(id);
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+const pct = (t, f) => Math.round(t * f);
+
+/* ─── SPORT THEME (auto-adjust + sport palettes) ─── */
+function setCSS(name, value) {
+  try { document.documentElement.style.setProperty(name, value); } catch {}
+}
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+function hexToRgb(hex) {
+  const h = String(hex || '').replace('#','').trim();
+  const v = h.length === 3 ? h.split('').map(c=>c+c).join('') : h;
+  const n = parseInt(v, 16);
+  if (!Number.isFinite(n) || v.length !== 6) return { r: 0, g: 0, b: 0 };
+  return { r: (n>>16)&255, g: (n>>8)&255, b: n&255 };
+}
+function hexToRgba(hex, a) {
+  const {r,g,b} = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${clamp01(a)})`;
+}
+function blendHex(fg, bg, amount) {
+  const a = clamp01(amount);
+  const A = hexToRgb(fg), B = hexToRgb(bg);
+  const r = Math.round(A.r*(1-a) + B.r*a);
+  const g = Math.round(A.g*(1-a) + B.g*a);
+  const b = Math.round(A.b*(1-a) + B.b*a);
+  return '#' + [r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+const SPORT_THEMES = {
+  basketball: { accent:'#2EC4B6', blue:'#4a9eff', orange:'#ff6b2b' },
+  football:   { accent:'#7CFF57', blue:'#3B82F6', orange:'#F59E0B' },
+  soccer:     { accent:'#22C55E', blue:'#60A5FA', orange:'#FB7185' },
+  baseball:   { accent:'#EF4444', blue:'#3B82F6', orange:'#F97316' },
+  volleyball: { accent:'#A855F7', blue:'#4a9eff', orange:'#F59E0B' },
+  track:      { accent:'#00d4aa', blue:'#4a9eff', orange:'#F59E0B' },
+};
+
+function _hexToRgb(hex) {
+  const h = String(hex || "").replace("#", "").trim();
+  if (h.length === 3) {
+    const r = parseInt(h[0] + h[0], 16);
+    const g = parseInt(h[1] + h[1], 16);
+    const b = parseInt(h[2] + h[2], 16);
+    return { r, g, b };
   }
-
-  function loadState() {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    return safeParse(raw, null);
+  if (h.length === 6) {
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return { r, g, b };
   }
+  return { r: 0, g: 212, b: 170 };
+}
 
-  // -----------------------------
-  // Toast
-  // -----------------------------
-  function toast(msg, duration = 2600) {
-    const c = el('toastContainer');
-    if (!c) return;
-    const t = document.createElement('div');
-    t.className = 'toast';
-    t.textContent = msg;
-    c.appendChild(t);
-    setTimeout(() => {
-      t.style.opacity = '0';
-      t.style.transform = 'translateY(6px)';
-      t.style.transition = 'all 0.25s ease';
-      setTimeout(() => t.remove(), 280);
-    }, duration);
+function applySportTheme(sport) {
+  const theme = SPORT_THEMES[String(sport || '').toLowerCase()] || SPORT_THEMES.basketball;
+
+  // Theme-aware accent tuning (keeps brand pop but reduces neon glare in dark mode)
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const bgHex  = isDark ? '#070b12' : '#ffffff';
+
+  const accent = blendHex(theme.accent, bgHex, isDark ? 0.08 : 0.00);
+  const blue   = theme.blue   || '#4a9eff';
+  const orange = theme.orange || '#ff6b2b';
+
+  setCSS('--accent', accent);
+  setCSS('--blue', blue);
+  setCSS('--orange', orange);
+
+  // Derive matching system tokens used throughout styles.css
+  setCSS('--accent-dim',    hexToRgba(accent, 0.11));
+  setCSS('--accent-2',      hexToRgba(accent, 0.16));
+  setCSS('--accent-glow',   hexToRgba(accent, 0.30));
+  setCSS('--accent-border', hexToRgba(accent, 0.22));
+
+  // Sync browser chrome on mobile
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#070b12' : '#f5f7fb');
+  } catch {}
+}
+
+function toast(msg, ms = 2800) {
+  const c = el('toastContainer') || el('toastContainer'.toLowerCase()) || el('toastcontainer') || el('toastContainer'.replace('C','c'));
+  const host = c || (() => {
+    // fallback: create toast container if markup missing
+    const div = document.createElement('div');
+    div.id = 'toastContainer';
+    document.body.appendChild(div);
+    return div;
+  })();
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  host.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity .25s,transform .25s';
+    t.style.opacity = '0'; t.style.transform = 'translateY(6px)';
+    setTimeout(() => t.remove(), 280);
+  }, ms);
+}
+
+/* ─── SPORT THEMES (smart auto-adjust) ─── */
+
+function _hexToRgb(hex){
+  const h = (hex||'').replace('#','').trim();
+  if (h.length !== 6) return null;
+  const n = parseInt(h,16);
+  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+}
+function _rgba(hex, a){
+  const rgb = _hexToRgb(hex); if(!rgb) return `rgba(0,212,170,${a})`;
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+}
+function setCSSVar(name, val){
+  try { document.documentElement.style.setProperty(name, val); } catch {}
+}
+function applySportTheme(sport) {
+  const theme = SPORT_THEMES[String(sport || '').toLowerCase()] || SPORT_THEMES.basketball;
+
+  // Theme-aware accent tuning (keeps brand pop but reduces neon glare in dark mode)
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const bgHex  = isDark ? '#070b12' : '#ffffff';
+
+  const accent = blendHex(theme.accent, bgHex, isDark ? 0.08 : 0.00);
+  const blue   = theme.blue   || '#4a9eff';
+  const orange = theme.orange || '#ff6b2b';
+
+  setCSS('--accent', accent);
+  setCSS('--blue', blue);
+  setCSS('--orange', orange);
+
+  // Derive matching system tokens used throughout styles.css
+  setCSS('--accent-dim',    hexToRgba(accent, 0.11));
+  setCSS('--accent-2',      hexToRgba(accent, 0.16));
+  setCSS('--accent-glow',   hexToRgba(accent, 0.30));
+  setCSS('--accent-border', hexToRgba(accent, 0.22));
+
+  // Sync browser chrome on mobile
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#070b12' : '#f5f7fb');
+  } catch {}
+}
+/* ─── MICRO-INTERACTIONS (ripple + spring) ─── */
+function addRipple(ev, target){
+  const r = document.createElement('span');
+  r.className = 'ripple';
+  const rect = target.getBoundingClientRect();
+  r.style.left = (ev.clientX - rect.left) + 'px';
+  r.style.top  = (ev.clientY - rect.top) + 'px';
+  target.appendChild(r);
+  setTimeout(() => r.remove(), 700);
+}
+function springPress(target){
+  try{
+    target.animate(
+      [{ transform:'scale(1)' },{ transform:'scale(.985)' },{ transform:'scale(1)' }],
+      { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' }
+    );
+  } catch {}
+}
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target && e.target.closest && e.target.closest('.btn,.iconbtn,.icon-btn,.navbtn,.nav-btn,.tab,.tab-btn,.fab');
+  if (!t) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  springPress(t);
+  addRipple(e, t);
+}, { passive:true });
+
+/* ─── TAB INDICATOR GLIDE ─── */
+let _tabIndicator = null;
+function ensureTabIndicator(){
+  if (_tabIndicator && _tabIndicator.isConnected) return _tabIndicator;
+  const navHost = document.querySelector('.nav') || document.querySelector('.sidebar') || document.querySelector('.bottomnav');
+  if (!navHost) return null;
+  navHost.style.position = navHost.style.position || 'relative';
+  const ind = document.createElement('div');
+  ind.className = 'tab-indicator';
+  navHost.appendChild(ind);
+  _tabIndicator = ind;
+  return ind;
+}
+function moveIndicatorTo(btn){
+  const ind = ensureTabIndicator();
+  if (!ind || !btn) return;
+  const host = ind.parentElement;
+  const b = btn.getBoundingClientRect();
+  const h = host.getBoundingClientRect();
+  const left = b.left - h.left + (btn.offsetWidth ? 0 : 0);
+  const width = Math.max(26, b.width * 0.55);
+  const x = left + (b.width - width) / 2;
+  ind.style.width = width + 'px';
+  ind.style.transform = `translate3d(${Math.round(x)}px,0,0)`;
+  ind.classList.add('on');
+}
+
+function updateTabIndicators(viewId){
+  const btn = document.querySelector(`[data-view="${viewId}"]`);
+  if (btn) moveIndicatorTo(btn);
+}
+
+/* ─── SCORE ANIMATION (number tween) ─── */
+function tweenNumber(node, to, ms=700){
+  if (!node) return;
+  const from = parseInt((node.textContent||'0').replace(/[^\d]/g,''),10) || 0;
+  const end = Math.max(0, Math.min(100, to||0));
+  const start = performance.now();
+  function tick(now){
+    const t = Math.min(1, (now - start) / ms);
+    const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+    const val = Math.round(from + (end - from) * eased);
+    node.textContent = String(val);
+    if (t < 1) requestAnimationFrame(tick);
   }
+  requestAnimationFrame(tick);
+}
 
-  // -----------------------------
-  // Seed demo district/team/athletes
-  // -----------------------------
-  function uuid() {
-    // RFC4122-ish v4; good enough for local IDs
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = (crypto.getRandomValues(new Uint8Array(1))[0] & 15);
-      const v = c === 'x' ? r : (r & 3) | 8;
-      return v.toString(16);
-    });
+/* ─── HELPERS (risk colors) ─── */
+function getSevClass(sev){ return {green:'green',yellow:'yellow',red:'red'}[sev] || ''; }
+function getSevColor(sev){ return {green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)'}[sev] || 'var(--text-dim)'; }
+function getAcrClass(acr){
+  if (acr == null) return '';
+  return acr < 1.3 ? 'safe' : acr <= 1.5 ? 'watch' : 'danger';
+}
+function getAcrColor(acr){
+  const c = getAcrClass(acr);
+  return c === 'safe' ? 'var(--green)' : c === 'watch' ? 'var(--yellow)' : c === 'danger' ? 'var(--red)' : 'var(--text-dim)';
+}
+function getAcrFlag(acr){
+  if (acr == null) return '—';
+  return acr < 1.3 ? '✅' : acr <= 1.5 ? '⚠️' : '⛔';
+}
+function getRingClass(s){ return !s ? 'danger' : s >= 75 ? '' : s >= 50 ? 'warn' : 'danger'; }
+function getTier(score){
+  if (score >= 85) return { cls:'great',  label:'⚡ Elite — Peak Form'             };
+  if (score >= 70) return { cls:'good',   label:'✓ Strong — Trending Up'           };
+  if (score >= 50) return { cls:'warn',   label:'⚠ Moderate — Monitor Load'       };
+  if (score > 0)   return { cls:'danger', label:'⛔ High Risk — Rest Recommended' };
+  return { cls:'', label:'— Not Logged' };
+}
+function getScoreNote(a){
+  if (!a.score) return 'No sessions logged today. Encourage athlete to submit a wellness check-in.';
+  if (a.riskLevel === 'rest')  return `<strong>Rest today.</strong> ACWR ${a.acr} — 3+ consecutive high-load days. High injury risk before Friday. Full rest only.`;
+  if (a.riskLevel === 'watch') return `ACWR ${a.acr} approaching danger zone. Reduce intensity today and monitor soreness closely.`;
+  if (a.score >= 85) return `Outstanding form — all four pillars strong. Sleep ${a.sleep}h, soreness ${a.soreness}/10. Maintain momentum into game week.`;
+  return `Good baseline. Sleep at ${a.sleep}h — pushing to 8h+ could add 5–10 PIQ points before Friday's game.`;
+}
+function animateRing(fillEl, score, circ = 440){
+  if (!fillEl) return;
+  fillEl.style.strokeDashoffset = circ;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    fillEl.style.strokeDashoffset = circ - Math.max(0, Math.min(score, 100)) / 100 * circ;
+  }));
+}
+function buildSparkline(id, values, color){
+  const wrap = el(id); if (!wrap) return;
+  const max = Math.max(...values, 1);
+  wrap.innerHTML = values.map((v,i)=>
+    `<div class="spark-bar${i===values.length-1?' hi':''}" style="height:${Math.round(v/max*100)}%;background:${color}"></div>`
+  ).join('');
+}
+
+/* ══════════════════════════════════════════════
+   DASHBOARD
+══════════════════════════════════════════════ */
+function renderDashboard(){
+  const now = new Date();
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  el('dashSub') && (el('dashSub').textContent = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()} · ${STATE.teamName}`);
+
+  const logged  = ATHLETES.filter(a => a.score > 0);
+  const ready   = ATHLETES.filter(a => a.severity === 'green').length;
+  const monitor = ATHLETES.filter(a => a.severity === 'yellow').length;
+  const risk    = ATHLETES.filter(a => a.severity === 'red').length;
+  const avg     = logged.length ? Math.round(logged.reduce((s,a) => s+a.score, 0) / logged.length) : 0;
+  const BASE    = 65;
+
+  if (el('statAvg')) { el('statAvg').textContent = avg || '—';
+  if (avg) animateNumber(el('statAvg'), 0, avg, 650); if (avg) tweenNumber(el('statAvg'), avg, 520); }
+  el('statReady') && (el('statReady').textContent = ready);
+  el('statMonitor') && (el('statMonitor').textContent = monitor);
+  el('statRisk') && (el('statRisk').textContent = risk);
+
+  if (el('statAvgSub')) {
+    el('statAvgSub').className = 'stat-sub ' + (avg >= BASE ? 'up' : 'down');
+    el('statAvgSub').textContent = avg ? (avg >= BASE ? `↑ ${avg-BASE} pts vs last week` : `↓ ${BASE-avg} pts vs last week`) : '—';
   }
+  el('statReadySub') && (el('statReadySub').textContent = `${ready} of ${ATHLETES.length} athletes`);
+  el('statMonitorSub') && (el('statMonitorSub').textContent = monitor > 0 ? `↑ Check load today` : 'All clear');
 
-  function initialState() {
-    const schoolId = uuid();
-    const teamId = uuid();
+  const badge = el('riskBadge');
+  const flags = risk + monitor;
+  if (badge) { badge.textContent = flags; badge.style.display = flags > 0 ? 'flex' : 'none'; }
 
-    const athletes = [
-      { id: uuid(), name: 'Marcus Johnson', initials: 'MJ', pos: 'PG', jersey: 3,  weight_lbs: 165 },
-      { id: uuid(), name: 'Keisha Davis',   initials: 'KD', pos: 'SF', jersey: 21, weight_lbs: 150 },
-      { id: uuid(), name: 'Darius Jones',   initials: 'DJ', pos: 'PF', jersey: 5,  weight_lbs: 195 },
-      { id: uuid(), name: 'Tyler Williams', initials: 'TW', pos: 'SG', jersey: 12, weight_lbs: 175 },
-      { id: uuid(), name: 'Marcus Lewis',   initials: 'ML', pos: 'C',  jersey: 44, weight_lbs: 225 },
-      { id: uuid(), name: 'Ryan Kim',       initials: 'RK', pos: 'SG', jersey: 7,  weight_lbs: 155 },
-    ];
+  el('chipOnlineText') && (el('chipOnlineText').textContent = `${ATHLETES.length - 1} online`);
+  if (el('chipFlags')) el('chipFlags').style.display = risk > 0 ? 'inline-flex' : 'none';
+  el('chipFlagsText') && (el('chipFlagsText').textContent = `${risk} flag${risk !== 1 ? 's' : ''}`);
+  if (el('chipGame')) el('chipGame').style.display = 'inline-flex';
+  el('chipGameText2') && (el('chipGameText2').textContent = `Game in ${EVENTS[0].days}d`);
 
-    // Create a small last-14-days training + wellness + nutrition history (demo)
-    const start = new Date();
-    start.setUTCDate(start.getUTCDate() - 13);
-    const logs = { sessions: [], wellness: [], nutrition: [] };
+  el('pillOnlineText') && (el('pillOnlineText').textContent = `Team · ${ATHLETES.length - 1} online`);
+  el('pillSeason') && (el('pillSeason').textContent = STATE.season);
+  if (el('pillGame')) el('pillGame').style.display = 'inline-flex';
+  el('pillGameText') && (el('pillGameText').textContent = `Game in ${EVENTS[0].days} days`);
 
-    const rpeFor = (a) => {
-      const map = { MJ: 7, KD: 6, DJ: 6, TW: 8, ML: 9, RK: 0 };
-      return map[a.initials] || 6;
-    };
+  buildSparkline('sparkAvg', [55,58,63,66,68,70,avg], 'var(--accent)');
 
-    for (let d = 0; d < 14; d++) {
-      const date = new Date(start.getTime() + d * DAY_MS).toISOString().slice(0, 10);
-      athletes.forEach((a, idx) => {
-        const base = rpeFor(a);
-        // some athletes don't log often
-        const skipChance = a.initials === 'RK' ? 0.75 : 0.15;
-        if (Math.random() < skipChance) return;
+  renderHeatmap();
+  renderLoadBars();
+  renderAlerts();
+  renderRosterMini();
+  renderFeed();
+  renderEvents('eventList');
 
-        const minutes = Math.round(35 + Math.random() * 35);
-        const rpe = clamp(Math.round(base + (Math.random() * 2 - 1)), 1, 10);
-        const type = (idx % 3 === 0) ? 'practice' : (idx % 3 === 1) ? 'strength' : 'conditioning';
-        logs.sessions.push({
-          id: uuid(), athlete_id: a.id, team_id: teamId, date,
-          minutes, rpe, type,
-          created_at: new Date(date + 'T18:00:00.000Z').toISOString()
-        });
-
-        // wellness (more likely than sessions)
-        if (Math.random() < 0.9) {
-          const sleep = round(5.5 + Math.random() * 3.2);
-          const soreness = clamp(Math.round(2 + Math.random() * 7), 0, 10);
-          const energy = clamp(Math.round(4 + Math.random() * 6), 0, 10);
-          const stress = clamp(Math.round(2 + Math.random() * 7), 0, 10);
-          const mood = clamp(Math.round(3 + Math.random() * 7), 0, 10);
-          logs.wellness.push({
-            id: uuid(), athlete_id: a.id, team_id: teamId, date,
-            sleep_hours: sleep, sleep_quality: clamp(Math.round(6 + Math.random() * 4), 0, 10),
-            soreness, energy, stress, mood,
-            flags: soreness >= 7 ? ['soreness'] : [],
-            note: '',
-            created_at: new Date(date + 'T07:00:00.000Z').toISOString()
-          });
-        }
-
-        // nutrition (less consistent)
-        if (Math.random() < 0.65) {
-          const cals = Math.round(2000 + Math.random() * 1400);
-          const protein = Math.round(90 + Math.random() * 110);
-          const carbs = Math.round(180 + Math.random() * 240);
-          const fat = Math.round(45 + Math.random() * 65);
-          const water_oz = Math.round(50 + Math.random() * 70);
-          logs.nutrition.push({
-            id: uuid(), athlete_id: a.id, team_id: teamId, date,
-            calories: cals, protein_g: protein, carbs_g: carbs, fat_g: fat, water_oz,
-            note: '',
-            created_at: new Date(date + 'T20:00:00.000Z').toISOString()
-          });
-        }
-      });
-    }
-
-    return {
-      meta: { version: '6.0.0', updated_at: new Date().toISOString() },
-
-      profile: {
-        role: 'coach',     // owner|admin|coach|athlete|parent|viewer
-        sport: 'basketball',
-        user_name: 'Coach',
-        active_school_id: schoolId,
-        active_team_id: teamId,
-        active_athlete_id: athletes[0].id, // used for athlete role
-      },
-
-      district: {
-        id: uuid(),
-        name: 'Westview District',
-        schools: [
-          {
-            id: schoolId,
-            name: 'Westview High School',
-            teams: [
-              { id: teamId, name: 'Westview Varsity Basketball', sport: 'basketball', season: 'Pre-Season', join_code: makeJoinCode(), athlete_ids: athletes.map(a => a.id) }
-            ]
-          }
-        ]
-      },
-
-      athletes,
-      logs,
-      ui: { current_view: 'dashboard', selected_athlete_id: null }
-    };
+  if (el('insightText')) {
+    el('insightText').innerHTML = `When athletes sleep <strong>8+ hours</strong>, team PIQ averages <strong>+11 points higher</strong>. With Friday's game, sleep is this week's #1 performance lever. <div class="caption-illusion">Tip: tap an athlete row to open the detail view instantly.</div>`;
   }
-
-  function makeJoinCode() {
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let out = '';
-    for (let i = 0; i < 8; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
-    return out;
-  }
-
-  // -----------------------------
-  // Global mutable state
-  // -----------------------------
-  let STATE = loadState() || initialState();
-
-  // -----------------------------
-  // Simple "secure roles" (client-side)
-  // NOTE: True security requires server-side enforcement.
-  // -----------------------------
-  const ROLE = {
-    owner:  { can: ['district', 'settings', 'export'] },
-    admin:  { can: ['district', 'settings', 'export'] },
-    coach:  { can: ['team', 'analytics', 'train', 'schedule', 'settings', 'export'] },
-    athlete:{ can: ['me', 'train', 'wellness', 'nutrition', 'schedule'] },
-    parent: { can: ['team', 'schedule', 'wellness', 'nutrition'] },
-    viewer: { can: ['team', 'schedule'] },
-  };
-
-  function currentRole() { return (STATE.profile?.role || 'coach'); }
-  function hasCap(cap) {
-    const r = currentRole();
-    const allow = ROLE[r]?.can || [];
-    return allow.includes(cap);
-  }
-
-  // -----------------------------
-  // Domain helpers
-  // -----------------------------
-  function activeTeam() {
-    const sid = STATE.profile.active_school_id;
-    const tid = STATE.profile.active_team_id;
-    const school = STATE.district.schools.find(s => s.id === sid) || STATE.district.schools[0];
-    const team = (school?.teams || []).find(t => t.id === tid) || (school?.teams || [])[0];
-    return { school, team };
-  }
-
-  function athleteById(id) { return STATE.athletes.find(a => a.id === id) || null; }
-
-  function teamAthletes() {
-    const { team } = activeTeam();
-    if (!team) return [];
-    return team.athlete_ids.map(id => athleteById(id)).filter(Boolean);
-  }
-
-  function logsForAthlete(athlete_id) {
-    const s = STATE.logs.sessions.filter(x => x.athlete_id === athlete_id);
-    const w = STATE.logs.wellness.filter(x => x.athlete_id === athlete_id);
-    const n = STATE.logs.nutrition.filter(x => x.athlete_id === athlete_id);
-    return { sessions: s, wellness: w, nutrition: n };
-  }
-
-  function getLogByDate(arr, date) {
-    // returns the latest log for date if multiple
-    const rows = arr.filter(x => x.date === date);
-    if (!rows.length) return null;
-    rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-    return rows[0];
-  }
-
-  function dateRangeISO(daysBack, endDateISO=todayISO()) {
-    const end = new Date(endDateISO + 'T00:00:00.000Z');
-    const out = [];
-    for (let i = daysBack - 1; i >= 0; i--) {
-      const d = new Date(end.getTime() - i * DAY_MS);
-      out.push(d.toISOString().slice(0, 10));
-    }
-    return out;
-  }
-
-  // -----------------------------
-  // PIQ Score Engine (Elite)
-  // -----------------------------
-  function computeDailyLoad(session) {
-    // Simple load proxy: minutes * sRPE
-    return (Number(session.minutes) || 0) * (Number(session.rpe) || 0);
-  }
-
-  function sumLoadByDate(sessions, dateISO) {
-    return sessions.filter(s => s.date === dateISO).reduce((sum, s) => sum + computeDailyLoad(s), 0);
-  }
-
-  function avgDailyLoad(sessions, days, endDateISO=todayISO()) {
-    const dates = dateRangeISO(days, endDateISO);
-    const total = dates.reduce((sum, d) => sum + sumLoadByDate(sessions, d), 0);
-    return total / Math.max(1, days);
-  }
-
-  function computeACWR(sessions, endDateISO=todayISO()) {
-    // ACWR = acute (7-day avg) / chronic (28-day avg).
-    // If insufficient data, return null.
-    const chronic = avgDailyLoad(sessions, 28, endDateISO);
-    const acute = avgDailyLoad(sessions, 7, endDateISO);
-    if (!isFinite(chronic) || chronic <= 0) return null;
-    return round(acute / chronic);
-  }
-
-  function recoveryScoreFromWellness(w) {
-    if (!w) return 50; // neutral if no data
-    const sleep = Number(w.sleep_hours);
-    const soreness = Number(w.soreness);
-    const energy = Number(w.energy);
-    const stress = Number(w.stress);
-    const mood = Number(w.mood);
-
-    // Normalize each to 0..100
-    const sleepScore = isFinite(sleep) ? clamp((sleep / 8) * 100, 0, 120) : 50;
-    const sorenessScore = isFinite(soreness) ? clamp((1 - soreness / 10) * 100, 0, 100) : 50;
-    const energyScore = isFinite(energy) ? clamp((energy / 10) * 100, 0, 100) : 50;
-    const stressScore = isFinite(stress) ? clamp((1 - stress / 10) * 100, 0, 100) : 50;
-    const moodScore = isFinite(mood) ? clamp((mood / 10) * 100, 0, 100) : 50;
-
-    // Weighted
-    const score = (sleepScore * 0.30) + (sorenessScore * 0.25) + (energyScore * 0.20) + (stressScore * 0.15) + (moodScore * 0.10);
-    return Math.round(clamp(score, 0, 100));
-  }
-
-  function nutritionTargetsForAthlete(a) {
-    // Basic, transparent targets (no medical claims):
-    // Protein target: 0.8 g/lb (general sport nutrition heuristic), cap 220g for UI sanity.
-    // Water: 0.5 oz per lb, cap 160 oz.
-    // Calories: simple maintenance proxy 15 * weight_lbs; if missing, default 2600.
-    const wt = Number(a?.weight_lbs);
-    const calories = isFinite(wt) ? Math.round(wt * 15) : 2600;
-    const protein = isFinite(wt) ? Math.round(clamp(wt * 0.8, 90, 220)) : 150;
-    const water = isFinite(wt) ? Math.round(clamp(wt * 0.5, 60, 160)) : 90;
-
-    // Carbs/fat split for demo: carbs 4g per lb, fat 0.35g per lb (both clamped)
-    const carbs = isFinite(wt) ? Math.round(clamp(wt * 4.0, 180, 550)) : 320;
-    const fat = isFinite(wt) ? Math.round(clamp(wt * 0.35, 45, 120)) : 80;
-
-    return { calories, protein_g: protein, carbs_g: carbs, fat_g: fat, water_oz: water };
-  }
-
-  function nutritionScoreFromLog(n, targets) {
-    if (!n) return 50;
-    function ratio(actual, target) {
-      if (!isFinite(actual) || !isFinite(target) || target <= 0) return 0;
-      // score peaks at 1.0 and drops if under/over; 0.0 at 0 or 2x
-      const r = actual / target;
-      const dist = Math.abs(1 - r); // 0 ideal
-      return clamp(100 * (1 - dist), 0, 100);
-    }
-    const cals = ratio(Number(n.calories), targets.calories);
-    const p = ratio(Number(n.protein_g), targets.protein_g);
-    const c = ratio(Number(n.carbs_g), targets.carbs_g);
-    const f = ratio(Number(n.fat_g), targets.fat_g);
-    const w = ratio(Number(n.water_oz), targets.water_oz);
-
-    // Protein and hydration are weighted more
-    const score = (p * 0.35) + (w * 0.25) + (cals * 0.20) + (c * 0.10) + (f * 0.10);
-    return Math.round(clamp(score, 0, 100));
-  }
-
-  function consistencyScore(sessions, wellness, nutrition, endDateISO=todayISO()) {
-    // Count days in last 7 with ANY log (session OR wellness OR nutrition)
-    const dates = dateRangeISO(7, endDateISO);
-    let days = 0;
-    dates.forEach(d => {
-      const has = sessions.some(x => x.date === d) || wellness.some(x => x.date === d) || nutrition.some(x => x.date === d);
-      if (has) days++;
-    });
-    // 7/7 => 100, 0/7 => 0, with a small base to avoid harshness
-    return Math.round(clamp((days / 7) * 100, 0, 100));
-  }
-
-  function workloadScoreFromACWR(acwr) {
-    // Safe zone ~0.8..1.3 best, watch 1.3..1.5, danger >1.5, also undertraining <0.7.
-    if (acwr === null || !isFinite(acwr)) return 50;
-    if (acwr >= 0.8 && acwr <= 1.3) return 90;
-    if (acwr > 1.3 && acwr <= 1.5) return 65;
-    if (acwr > 1.5) return 35;
-    if (acwr >= 0.7 && acwr < 0.8) return 75;
-    return 55; // undertrained
-  }
-
-  function computePIQForAthlete(athlete_id, endDateISO=todayISO()) {
-    const a = athleteById(athlete_id);
-    if (!a) return null;
-
-    const { sessions, wellness, nutrition } = logsForAthlete(athlete_id);
-    const wToday = getLogByDate(wellness, endDateISO);
-    const nToday = getLogByDate(nutrition, endDateISO);
-    const acwr = computeACWR(sessions, endDateISO);
-
-    const workload = workloadScoreFromACWR(acwr);
-    const recovery = recoveryScoreFromWellness(wToday);
-    const targets = nutritionTargetsForAthlete(a);
-    const nut = nutritionScoreFromLog(nToday, targets);
-    const cons = consistencyScore(sessions, wellness, nutrition, endDateISO);
-
-    // Elite weighting
-    const score = Math.round(clamp((workload * 0.35) + (recovery * 0.25) + (nut * 0.20) + (cons * 0.20), 0, 100));
-
-    // Trend: compare last 7 days avg vs previous 7 days avg
-    const weekAvg = averagePIQOverRange(athlete_id, 7, endDateISO);
-    const prevEnd = new Date(endDateISO + 'T00:00:00.000Z'); prevEnd.setUTCDate(prevEnd.getUTCDate() - 7);
-    const prevEndISO = prevEnd.toISOString().slice(0, 10);
-    const prevAvg = averagePIQOverRange(athlete_id, 7, prevEndISO);
-    const trend = Math.round((weekAvg - prevAvg) || 0);
-
-    // Risk flags
-    const risk = computeRisk({ score, acwr, recovery, hasWellness: !!wToday, hasNutrition: !!nToday });
-
-    return {
-      athlete: a,
-      score,
-      pillars: { workload, recovery, nutrition: nut, consistency: cons },
-      acwr,
-      recovery_pct: recovery,
-      trend,
-      risk
-    };
-  }
-
-  function averagePIQOverRange(athlete_id, days, endDateISO) {
-    const dates = dateRangeISO(days, endDateISO);
-    const vals = dates.map(d => computePIQForAthleteShallow(athlete_id, d)?.score).filter(v => isFinite(v));
-    if (!vals.length) return 0;
-    return vals.reduce((s, v) => s + v, 0) / vals.length;
-  }
-
-  function computePIQForAthleteShallow(athlete_id, endDateISO) {
-    const a = athleteById(athlete_id);
-    if (!a) return null;
-    const { sessions, wellness, nutrition } = logsForAthlete(athlete_id);
-    const w = getLogByDate(wellness, endDateISO);
-    const n = getLogByDate(nutrition, endDateISO);
-    const acwr = computeACWR(sessions, endDateISO);
-    const workload = workloadScoreFromACWR(acwr);
-    const recovery = recoveryScoreFromWellness(w);
-    const targets = nutritionTargetsForAthlete(a);
-    const nut = nutritionScoreFromLog(n, targets);
-    const cons = consistencyScore(sessions, wellness, nutrition, endDateISO);
-    const score = Math.round(clamp((workload * 0.35) + (recovery * 0.25) + (nut * 0.20) + (cons * 0.20), 0, 100));
-    return { score, acwr, recovery, nut, cons };
-  }
-
-  function computeRisk({ score, acwr, recovery, hasWellness, hasNutrition }) {
-    const flags = [];
-    let level = 'none'; // none|watch|rest
-
-    if (!hasWellness) flags.push('No wellness');
-    if (!hasNutrition) flags.push('No nutrition');
-
-    if (acwr !== null && isFinite(acwr)) {
-      if (acwr > 1.5) { flags.push('Load spike'); level = 'rest'; }
-      else if (acwr > 1.3) { flags.push('Load elevated'); level = level === 'rest' ? 'rest' : 'watch'; }
-      else if (acwr < 0.7) { flags.push('Undertrained'); level = level === 'rest' ? 'rest' : 'watch'; }
-    }
-
-    if (recovery < 45) { flags.push('Low recovery'); level = 'rest'; }
-    else if (recovery < 60) { flags.push('Recovery watch'); level = level === 'rest' ? 'rest' : 'watch'; }
-
-    if (score === 0) flags.push('Not logged');
-
-    if (!flags.length) flags.push('None');
-
-    return { level, flags };
-  }
-
-  function severityFrom(score, riskLevel) {
-    if (score === 0) return 'none';
-    if (riskLevel === 'rest' || score < 45) return 'red';
-    if (riskLevel === 'watch' || score < 65) return 'yellow';
-    return 'green';
-  }
-
-  // -----------------------------
-  // Periodization (district-wide simple engine)
-  // -----------------------------
-  function mesocyclePlan(season) {
-    // Simple 4-week plan (3 build + 1 deload), with an optional taper if in-season.
-    const base = [
-      { week: 1, focus: 'Build', load_factor: 1.00, note: 'Baseline + technique quality' },
-      { week: 2, focus: 'Build', load_factor: 1.10, note: 'Progress volume or intensity 5–10%' },
-      { week: 3, focus: 'Peak',  load_factor: 1.15, note: 'Highest week; monitor recovery closely' },
-      { week: 4, focus: 'Deload',load_factor: 0.75, note: 'Reduce load; keep speed and skill' },
-    ];
-    if ((season || '').toLowerCase().includes('in')) {
-      base[2].note = 'Peak carefully; prioritize freshness for competition';
-      base[3].note = 'Taper + deload ahead of key games';
-    }
-    return base;
-  }
-
-  // -----------------------------
-  // UI: Status pills
-  // -----------------------------
-  function setSavePill(text, ok=true) {
-    // index.html v5 uses #pillOnline / #pillSeason / #pillGame; we add a small save indicator via #pillOnlineText if present
-    const saveText = el('saveText'); // might not exist
-    const saveDot = el('saveDot');
-    if (saveText && saveDot) {
-      saveText.textContent = text;
-      saveDot.style.background = ok ? 'var(--green)' : 'var(--red)';
-    }
-  }
-
-  function setTopbar() {
-    const { team } = activeTeam();
-    const teamName = team?.name || '—';
-    const season = team?.season || '—';
-
-    const pillSeason = el('pillSeason');
-    if (pillSeason) pillSeason.textContent = season;
-
-    const pillOnlineText = el('pillOnlineText');
-    if (pillOnlineText) {
-      const total = teamAthletes().length;
-      // demo online: everyone except last
-      const online = Math.max(0, total - 1);
-      pillOnlineText.textContent = `Team · ${online} online`;
-    }
-
-    const nameEl = el('teamName');
-    if (nameEl) nameEl.value = teamName;
-
-    // Settings season
-    const seasonEl = el('settingSeason');
-    if (seasonEl) seasonEl.value = season;
-
-    // Team selector in header subline
-    const dashSub = el('dashSub');
-    if (dashSub) {
-      const now = new Date();
-      const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      dashSub.textContent = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()} · ${teamName}`;
-    }
-
-    const sportSel = el('settingSport');
-    if (sportSel) sportSel.value = (team?.sport || STATE.profile.sport || 'basketball');
-  }
-
-  // -----------------------------
-  // Rendering: Derived athlete models for today
-  // -----------------------------
-  function athleteModelsForToday() {
-    const date = todayISO();
-    return teamAthletes().map(a => {
-      const piq = computePIQForAthlete(a.id, date);
-      const severity = severityFrom(piq.score, piq.risk.level);
-      const colorMap = {
-        green: { bg:'rgba(46,204,113,0.15)', text:'var(--green)' },
-        yellow:{ bg:'rgba(240,192,64,0.15)', text:'var(--yellow)' },
-        red:   { bg:'rgba(255,69,96,0.15)', text:'var(--red)' },
-        none:  { bg:'rgba(255,255,255,0.06)', text:'var(--text-dim)' }
-      };
-      const col = colorMap[severity] || colorMap.none;
-
-      // week history (last 6 scores)
-      const dates = dateRangeISO(6, date);
-      const hist = dates.map(d => computePIQForAthleteShallow(a.id, d)?.score || 0).filter(v => v !== null);
-
-      return {
-        id: a.id,
-        name: a.name,
-        initials: a.initials || (a.name.split(' ')[0][0] + (a.name.split(' ')[1]?.[0] || '')).toUpperCase(),
-        pos: a.pos || '—',
-        jersey: a.jersey || '—',
-        score: piq.score || 0,
-        severity,
-        acr: piq.acwr,
-        recovery: piq.recovery_pct,
-        trend: piq.trend,
-        flags: (piq.risk.flags || []).join(', '),
-        riskLevel: piq.risk.level,
-        sleep: getLogByDate(logsForAthlete(a.id).wellness, date)?.sleep_hours ?? null,
-        soreness: getLogByDate(logsForAthlete(a.id).wellness, date)?.soreness ?? null,
-        energy: getLogByDate(logsForAthlete(a.id).wellness, date)?.energy ?? null,
-        weekHistory: hist,
-        color: col.bg,
-        colorText: col.text,
-        insight: buildInsightForAthlete(a.id, date)
-      };
-    });
-  }
-
-  function buildInsightForAthlete(athlete_id, dateISO) {
-    const { sessions, wellness } = logsForAthlete(athlete_id);
-    const w = getLogByDate(wellness, dateISO);
-    const acwr = computeACWR(sessions, dateISO);
-    const rec = recoveryScoreFromWellness(w);
-
-    if (!w) return 'No wellness check-in yet. Log sleep, soreness, and energy to unlock better recommendations.';
-    if (acwr !== null && acwr > 1.5) return '<strong>High load spike</strong>. Reduce intensity today and prioritize recovery (sleep + hydration).';
-    if (rec < 55) return '<strong>Recovery is low</strong>. Consider a lighter session and focus on sleep quality tonight.';
-    if (rec >= 75) return 'Recovery is strong today. Maintain smart load and keep the streak rolling.';
-    return 'Solid baseline. One small win: add 30–60 minutes of extra sleep this week.';
-  }
-
-  // -----------------------------
-  // Rendering: Dashboard
-  // -----------------------------
-  function getSeverityClass(sev) {
-    return { green: 'green', yellow: 'yellow', red: 'red', none: '' }[sev] || '';
-  }
-  function getAcrClass(acr) {
-    if (acr === null || !isFinite(acr)) return '';
-    if (acr < 1.3)  return 'safe';
-    if (acr <= 1.5) return 'watch';
-    return 'danger';
-  }
-  function getAcrFlag(acr) {
-    if (acr === null || !isFinite(acr)) return '—';
-    if (acr < 1.3)  return '✅';
-    if (acr <= 1.5) return '⚠️';
-    return '⛔';
-  }
-  function getTierLabel(score) {
-    if (score >= 85) return { cls: 'great',  label: '⚡ Elite — Peak Form' };
-    if (score >= 70) return { cls: 'good',   label: '✓ Strong — Trending Up' };
-    if (score >= 50) return { cls: 'warn',   label: '⚠ Moderate — Monitor Load' };
-    if (score > 0)   return { cls: 'danger', label: '⛔ High Risk — Rest Recommended' };
-    return { cls: '', label: '— Not Logged' };
-  }
-
-  function renderDashboard() {
-    setTopbar();
-
-    const ATHLETES_TODAY = athleteModelsForToday();
-
-    const logged = ATHLETES_TODAY.filter(a => a.score > 0);
-    const ready  = ATHLETES_TODAY.filter(a => a.severity === 'green').length;
-    const monitor= ATHLETES_TODAY.filter(a => a.severity === 'yellow').length;
-    const risk   = ATHLETES_TODAY.filter(a => a.severity === 'red').length;
-    const avg    = logged.length ? Math.round(logged.reduce((s,a) => s+a.score, 0) / logged.length) : 0;
-
-    // Stat cards
-    if (el('statAvg')) el('statAvg').textContent = avg || '—';
-    if (el('statReady')) el('statReady').textContent = ready;
-    if (el('statMonitor')) el('statMonitor').textContent = monitor;
-    if (el('statRisk')) el('statRisk').textContent = risk;
-
-    // Sub lines
-    const avgSub = el('statAvgSub');
-    if (avgSub) {
-      // Compare avg today vs avg 7 days ago for a directional hint
-      const pastDate = new Date(todayISO() + 'T00:00:00.000Z'); pastDate.setUTCDate(pastDate.getUTCDate() - 7);
-      const pastISO = pastDate.toISOString().slice(0, 10);
-      const pastVals = teamAthletes().map(a => computePIQForAthleteShallow(a.id, pastISO)?.score).filter(v => isFinite(v) && v > 0);
-      const pastAvg = pastVals.length ? Math.round(pastVals.reduce((s,v)=>s+v,0)/pastVals.length) : avg;
-      const delta = avg - pastAvg;
-      avgSub.textContent = (delta >= 0) ? `↑ ${Math.abs(delta)} pts vs last week` : `↓ ${Math.abs(delta)} pts vs last week`;
-      avgSub.className = 'stat-sub ' + (delta >= 0 ? 'up' : 'down');
-    }
-    const readySub = el('statReadySub');
-    if (readySub) readySub.textContent = `${ready} of ${ATHLETES_TODAY.length} athletes`;
-    const monitorSub = el('statMonitorSub');
-    if (monitorSub) monitorSub.textContent = monitor > 0 ? `↑ Watch load today` : 'All clear';
-
-    // Risk badge
-    const riskBadge = el('riskBadge');
-    if (riskBadge) {
-      const num = risk + monitor;
-      riskBadge.textContent = num;
-      riskBadge.style.display = num > 0 ? 'flex' : 'none';
-    }
-
-    // Header chips
-    const chipFlags = el('chipFlags');
-    if (chipFlags) chipFlags.style.display = (risk > 0) ? 'inline-flex' : 'none';
-    const chipFlagsText = el('chipFlagsText');
-    if (chipFlagsText) chipFlagsText.textContent = `${risk} flag${risk !== 1 ? 's' : ''}`;
-
-    // Sparkline (avg trend)
-    const sparkEl = el('sparkAvg');
-    if (sparkEl) {
-      sparkEl.innerHTML = '';
-      const sparkData = [55, 58, 63, 66, 68, 70, avg || 0];
-      sparkData.forEach((v, i) => {
-        const bar = document.createElement('div');
-        bar.className = 'spark-bar' + (i === sparkData.length - 1 ? ' hi' : '');
-        bar.style.cssText = `height:${clamp(Math.round((v/100)*100), 4, 100)}%;background:var(--accent)`;
-        sparkEl.appendChild(bar);
-      });
-    }
-
-    // Heatmap
-    renderHeatmap(ATHLETES_TODAY);
-
-    // Load bars
-    renderLoadBars(ATHLETES_TODAY);
-
-    // Alerts
-    renderAlerts(ATHLETES_TODAY);
-
-    // Roster mini
-    renderRosterMini(ATHLETES_TODAY);
-
-    // Feed (derived)
-    renderFeed(ATHLETES_TODAY);
-
-    // Events (still demo)
-    renderEvents('eventList');
-
-    // Insight (transparent: derived from today's team)
-    const insightText = el('insightText');
-    if (insightText) {
-      const w = STATE.logs.wellness.filter(x => x.date === todayISO());
-      const sleepVals = w.map(x => Number(x.sleep_hours)).filter(v => isFinite(v));
-      const sleepAvg = sleepVals.length ? round(sleepVals.reduce((s,v)=>s+v,0)/sleepVals.length) : null;
-      insightText.innerHTML = sleepAvg !== null
-        ? `Team sleep average today is <strong>${sleepAvg} hours</strong>. Pushing toward <strong>8+ hours</strong> typically improves the Recovery pillar and reduces risk flags.`
-        : `No sleep data yet today. Log wellness check-ins to improve Recovery and risk detection.`;
-    }
-
-    // Periodization preview (dashboard small)
-    const plan = mesocyclePlan(activeTeam().team?.season || '');
-    const planEl = el('periodPlan');
-    if (planEl) {
-      planEl.innerHTML = plan.map(p => `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div style="font-weight:700">Week ${p.week} · ${p.focus}</div>
-        <div style="color:var(--text-dim)">Load × ${p.load_factor.toFixed(2)} · ${p.note}</div>
-      </div>`).join('');
-    }
-  }
-
-  function renderHeatmap(ATHLETES_TODAY) {
-    const tbody = el('heatmapBody');
-    if (!tbody) return;
-    tbody.innerHTML = ATHLETES_TODAY.map(a => {
-      const sevClass  = getSeverityClass(a.severity);
-      const acrClass  = getAcrClass(a.acr);
-      const trendSign = a.trend > 0 ? '↑' : a.trend < 0 ? '↓' : '—';
-      const trendCls  = a.trend > 0 ? 'up' : a.trend < 0 ? 'down' : '';
-      const readPct   = a.recovery || 0;
-
-      const riskHtml = a.riskLevel === 'watch'
-        ? `<span class="risk-badge watch">⚠ Watch</span>`
-        : a.riskLevel === 'rest'
-        ? `<span class="risk-badge rest">⛔ Rest</span>`
-        : a.score === 0
-        ? `<span class="risk-badge" style="color:var(--text-dim)">Not Logged</span>`
-        : `<span class="risk-badge none">—</span>`;
-
-      const scoreHtml = a.score > 0
-        ? `<span class="score-badge ${sevClass}">${a.score}</span>`
-        : `<span style="color:var(--text-dim);font-family:var(--font-mono)">—</span>`;
-
-      const readColor = a.severity === 'green' ? 'var(--green)' : a.severity === 'yellow' ? 'var(--yellow)' : a.severity === 'red' ? 'var(--red)' : 'var(--text-dim)';
-
-      return `
-        <tr data-id="${a.id}">
-          <td>
-            <div class="athlete-cell">
-              <div class="athlete-av" style="background:${a.color};color:${a.colorText}">${a.initials}</div>
-              <div>
-                <div class="athlete-name-text">${a.name}</div>
-                <div class="athlete-pos-text">${a.pos} · #${a.jersey}</div>
-              </div>
-            </div>
-          </td>
-          <td>${scoreHtml}</td>
-          <td>
-            <div class="readiness-wrap">
-              <div class="readiness-track">
-                <div class="readiness-fill" style="width:${readPct}%;background:${readColor}"></div>
-              </div>
-              <div class="readiness-num" style="color:${readColor}">${a.recovery ?? '—'}</div>
-            </div>
-          </td>
-          <td><span class="acr-val ${acrClass}">${a.acr ?? '—'}</span></td>
-          <td>${riskHtml}</td>
-          <td><span class="trend-val ${trendCls}">${trendSign}${Math.abs(a.trend)}</span></td>
-        </tr>`;
-    }).join('');
-
-    tbody.querySelectorAll('tr[data-id]').forEach(row => {
-      row.addEventListener('click', () => {
-        const a = ATHLETES_TODAY.find(x => x.id === row.dataset.id);
-        if (a) openAthleteDetail(a);
-      });
-    });
-  }
-
-  function renderLoadBars(ATHLETES_TODAY) {
-    const wrap = el('loadBarList');
-    if (!wrap) return;
-    const athletes = ATHLETES_TODAY.filter(a => a.acr !== null && isFinite(a.acr));
-    wrap.innerHTML = athletes.map(a => {
-      const pct   = Math.min(100, Math.round((a.acr / 2.0) * 100));
-      const cls   = getAcrClass(a.acr);
-      const color = cls === 'safe' ? 'var(--green)' : cls === 'watch' ? 'var(--yellow)' : 'var(--red)';
-      return `
-        <div class="load-bar-item">
-          <div class="load-bar-name">${a.name.split(' ')[0]} ${a.name.split(' ')[1]?.[0] || ''}.</div>
-          <div class="load-bar-track"><div class="load-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-          <div class="load-bar-val" style="color:${color}">${a.acr}</div>
-          <div class="load-bar-flag">${getAcrFlag(a.acr)}</div>
-        </div>`;
-    }).join('');
-
-    const legend = el('loadLegend');
-    if (legend) legend.innerHTML = `<span>✅ 0.8–1.3</span><span>⚠️ 1.3–1.5</span><span>⛔ 1.5+</span>`;
-  }
-
-  function renderAlerts(ATHLETES_TODAY) {
-    const wrap = el('alertsList');
-    if (!wrap) return;
-
-    const alerts = [];
-    ATHLETES_TODAY.filter(a => a.riskLevel === 'rest').forEach(a => {
-      alerts.push({ cls: 'danger', icon: '⛔', title: `${a.name} — Rest Recommended`, body: `High risk flags today (${a.flags}).` });
-    });
-    ATHLETES_TODAY.filter(a => a.riskLevel === 'watch').forEach(a => {
-      alerts.push({ cls: 'warn', icon: '⚠', title: `${a.name} — Monitor`, body: `Watch flags today (${a.flags}).` });
-    });
-    ATHLETES_TODAY.filter(a => a.score === 0).forEach(a => {
-      alerts.push({ cls: 'info', icon: '📊', title: `${a.name} — Not Logged`, body: 'No recent logs. Prompt wellness + session check-in.' });
-    });
-
-    if (!alerts.length) {
-      wrap.innerHTML = `<div class="alert ok"><div class="alert-icon">✅</div><div><div class="alert-title">All Clear</div><div>No risk flags today. Team load is well managed.</div></div></div>`;
-      return;
-    }
-    wrap.innerHTML = alerts.map(al => `
-      <div class="alert ${al.cls}">
+}
+
+function renderHeatmap(){
+  if (!el('heatmapBody')) return;
+  el('heatmapBody').innerHTML = ATHLETES.map(a => {
+    const sevCls = getSevClass(a.severity);
+    const sevColor = getSevColor(a.severity);
+    const acrCls = getAcrClass(a.acr);
+    const readPct = a.recovery || 0;
+    const riskHtml = a.riskLevel === 'watch'
+      ? `<span class="risk-badge watch">⚠ Watch</span>`
+      : a.riskLevel === 'rest'
+      ? `<span class="risk-badge rest">⛔ Rest</span>`
+      : a.score === 0
+      ? `<span class="risk-badge" style="color:var(--text-dim)">Not Logged</span>`
+      : `<span class="risk-badge none">—</span>`;
+    const scoreHtml = a.score
+      ? `<span class="score-badge ${sevCls}">${a.score}</span>`
+      : `<span style="color:var(--text-dim);font-family:var(--font-mono)">—</span>`;
+    return `<tr data-id="${a.id}" title="View ${a.name}">
+      <td><div class="athlete-cell">
+        <div class="athlete-av" style="background:${a.color};color:${a.colorText};width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${a.initials}</div>
+        <div><div class="athlete-name-text">${a.name}</div><div class="athlete-pos-text">${a.pos} · #${a.jersey}</div></div>
+      </div></td>
+      <td>${scoreHtml}</td>
+      <td><div class="readiness-wrap">
+        <div class="readiness-track"><div class="readiness-fill" style="width:${readPct}%;background:${sevColor}"></div></div>
+        <div class="readiness-num" style="color:${a.colorText}">${a.recovery ?? '—'}</div>
+      </div></td>
+      <td><span class="acr-val ${acrCls}">${a.acr ?? '—'}</span></td>
+      <td>${riskHtml}</td>
+      <td><span class="trend-val ${a.trend>0?'up':a.trend<0?'down':''}">${a.trend>0?'↑':a.trend<0?'↓':'—'}${Math.abs(a.trend)}</span></td>
+    </tr>`;
+  }).join('');
+  el('heatmapBody').querySelectorAll('tr[data-id]').forEach(row =>
+    row.addEventListener('click', () => {
+      const a = ATHLETES.find(x => x.id === +row.dataset.id);
+      if (a) openAthleteDetail(a);
+    })
+  );
+}
+
+function renderLoadBars(){
+  if (!el('loadBarList')) return;
+  el('loadBarList').innerHTML = ATHLETES.filter(a => a.acr != null).map(a => {
+    const pct_ = Math.min(100, Math.round(a.acr / 2.0 * 100));
+    const color = getAcrColor(a.acr);
+    const parts = a.name.split(' ');
+    const label = parts[0] + ' ' + (parts[1] ? parts[1][0] + '.' : '');
+    return `<div class="load-bar-item">
+      <div class="load-bar-name">${label}</div>
+      <div class="load-bar-track"><div class="load-bar-fill" style="width:${pct_}%;background:${color}"></div></div>
+      <div class="load-bar-val" style="color:${color}">${a.acr}</div>
+      <div class="load-bar-flag">${getAcrFlag(a.acr)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderAlerts(){
+  if (!el('alertsList')) return;
+  const alerts = [
+    ...ATHLETES.filter(a => a.riskLevel === 'rest').map(a => ({
+      cls:'danger', icon:'⛔',
+      title:`${a.name} — Rest Today`,
+      body:`ACWR ${a.acr} — 3rd consecutive high-load day. High injury risk. Full rest today.`
+    })),
+    ...ATHLETES.filter(a => a.riskLevel === 'watch').map(a => ({
+      cls:'warn', icon:'⚠',
+      title:`${a.name} — Monitor Load`,
+      body:`ACWR ${a.acr} approaching danger zone. Reduce intensity today.`
+    })),
+    ...ATHLETES.filter(a => a.score === 0).map(a => ({
+      cls:'info', icon:'📊',
+      title:`${a.name} — Not Logged`,
+      body:`No wellness data submitted today. Send a check-in prompt.`
+    })),
+  ];
+  el('alertsList').innerHTML = alerts.length
+    ? alerts.map(al => `<div class="alert ${al.cls}">
         <div class="alert-icon">${al.icon}</div>
         <div><div class="alert-title">${al.title}</div><div>${al.body}</div></div>
-      </div>`).join('');
-  }
+      </div>`).join('')
+    : `<div class="alert ok"><div class="alert-icon">✅</div>
+        <div><div class="alert-title">All Clear</div><div>No risk flags today. Team load is well managed.</div></div>
+      </div>`;
+}
 
-  function renderRosterMini(ATHLETES_TODAY) {
-    const wrap = el('rosterMini');
-    if (!wrap) return;
-    wrap.innerHTML = ATHLETES_TODAY.slice(0, 5).map(a => {
-      const readPct = a.recovery || 0;
-      const color   = a.severity === 'green' ? 'var(--green)' : a.severity === 'yellow' ? 'var(--yellow)' : a.severity === 'red' ? 'var(--red)' : 'var(--text-dim)';
-      return `
-        <div class="roster-row" data-id="${a.id}">
-          <div class="athlete-av" style="background:${a.color};color:${a.colorText};width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${a.initials}</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${a.name}</div>
-            <div style="font-size:11px;color:var(--text-dim)">${a.pos} · #${a.jersey}</div>
+function renderRosterMini(){
+  const wrap = el('rosterMini'); if (!wrap) return;
+  wrap.innerHTML = ATHLETES.slice(0, 5).map(a => {
+    const color = getSevColor(a.severity);
+    return `<div class="roster-row" data-id="${a.id}">
+      <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-size:11px;font-weight:700">${a.initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</div>
+        <div style="font-size:11px;color:var(--text-dim)">${a.pos} · #${a.jersey}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        <div class="readiness-track" style="width:56px"><div class="readiness-fill" style="width:${a.recovery||0}%;background:${color}"></div></div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${color}">${a.score||'—'}</div>
+      </div>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('.roster-row').forEach(r =>
+    r.addEventListener('click', () => {
+      const a = ATHLETES.find(x => x.id === +r.dataset.id);
+      if (a) openAthleteDetail(a);
+    })
+  );
+}
+
+function renderFeed(){
+  if (!el('activityFeed')) return;
+  el('activityFeed').innerHTML = FEED_ITEMS.map(f => `
+    <div class="feed-item">
+      <div class="feed-icon ${f.cls}">${f.icon}</div>
+      <div><div class="feed-text">${f.text}</div><div class="feed-time">${f.time}</div></div>
+    </div>`).join('');
+}
+
+function renderEvents(id){
+  const wrap = el(id); if (!wrap) return;
+  wrap.innerHTML = EVENTS.map(ev => `
+    <div class="event-item">
+      <div style="text-align:center;min-width:36px">
+        <div class="event-days-num ${ev.days<=3?'soon':''}">${ev.days}</div>
+        <div class="event-days-label">days</div>
+      </div>
+      <div><div class="event-name">${ev.name}</div><div class="event-detail">${ev.detail}</div></div>
+      <div style="font-size:17px;margin-left:auto">${ev.icon}</div>
+    </div>`).join('');
+}
+
+/* ══════════════════════════════════════════════
+   ATHLETES VIEW
+══════════════════════════════════════════════ */
+function renderAthletesView(filter = ''){
+  const filtered = filter
+    ? ATHLETES.filter(a => a.name.toLowerCase().includes(filter.toLowerCase()) || a.pos.toLowerCase().includes(filter.toLowerCase()))
+    : ATHLETES;
+  el('athleteCountSub') && (el('athleteCountSub').textContent = `${ATHLETES.length} athletes on roster`);
+  const grid = el('athleteCardGrid');
+  if (!grid) return;
+  if (!filtered.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-dim)">No athletes match "<em>${filter}</em>"</div>`;
+    return;
+  }
+  grid.innerHTML = filtered.map(a => {
+    const t = getTier(a.score);
+    const color = getSevColor(a.severity);
+    return `<div class="card" data-id="${a.id}" style="cursor:pointer" tabindex="0" role="button" aria-label="View ${a.name}">
+      <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-family:var(--font-display);font-size:14px;font-weight:700">${a.initials}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name}</div>
+            <div style="font-size:12px;color:var(--text-dim)">${a.pos} · #${a.jersey}</div>
           </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-            <div class="readiness-track" style="width:56px"><div class="readiness-fill" style="width:${readPct}%;background:${color}"></div></div>
-            <div class="readiness-num" style="color:${color};font-size:11px">${a.score || '—'}</div>
-          </div>
-        </div>`;
-    }).join('');
-
-    wrap.querySelectorAll('.roster-row').forEach(r => {
-      r.addEventListener('click', () => {
-        const a = ATHLETES_TODAY.find(x => x.id === r.dataset.id);
-        if (a) openAthleteDetail(a);
-      });
-    });
-  }
-
-  function renderFeed(ATHLETES_TODAY) {
-    const wrap = el('activityFeed');
-    if (!wrap) return;
-
-    // Build a small, honest feed from today's logs (no claims beyond data)
-    const date = todayISO();
-    const items = [];
-
-    ATHLETES_TODAY.forEach(a => {
-      const { sessions, wellness, nutrition } = logsForAthlete(a.id);
-      const s = getLogByDate(sessions, date);
-      const w = getLogByDate(wellness, date);
-      const n = getLogByDate(nutrition, date);
-
-      if (s) items.push({ icon: '🏃', cls: 'ok', text: `<strong>${a.name.split(' ')[0]} ${a.name.split(' ')[1]?.[0] || ''}.</strong> logged ${s.type} · ${s.minutes} min · sRPE ${s.rpe}`, time: 'Today' });
-      if (w) items.push({ icon: '🌙', cls: 'accent', text: `<strong>${a.name.split(' ')[0]} ${a.name.split(' ')[1]?.[0] || ''}.</strong> wellness: sleep ${w.sleep_hours}h · soreness ${w.soreness}/10`, time: 'Today' });
-      if (n) items.push({ icon: '🥗', cls: 'ok', text: `<strong>${a.name.split(' ')[0]} ${a.name.split(' ')[1]?.[0] || ''}.</strong> nutrition: ${n.calories} kcal · ${n.protein_g}g protein`, time: 'Today' });
-    });
-
-    if (!items.length) {
-      wrap.innerHTML = `<div class="feed-item"><div class="feed-icon accent">ℹ️</div><div><div class="feed-text">No logs yet today. Use Wellness/Nutrition to add check-ins.</div><div class="feed-time">Today</div></div></div>`;
-      return;
-    }
-
-    wrap.innerHTML = items.slice(0, 6).map(f => `
-      <div class="feed-item">
-        <div class="feed-icon ${f.cls}">${f.icon}</div>
-        <div>
-          <div class="feed-text">${f.text}</div>
-          <div class="feed-time">${f.time}</div>
-        </div>
-      </div>`).join('');
-  }
-
-  // -----------------------------
-  // Events (still demo)
-  // -----------------------------
-  const EVENTS = [
-    { name: 'vs. Riverside Academy', detail: 'Fri Mar 3 · 7:00 PM · Home', days: 3, icon: '🏀', type: 'game' },
-    { name: 'State Qualifier', detail: 'Tue Mar 7 · 2:00 PM · Away', days: 7, icon: '🏆', type: 'game' },
-    { name: 'Film Session + Walk-thru', detail: 'Mon Mar 2 · 3:00 PM · Gym', days: 2, icon: '📹', type: 'practice' },
-    { name: 'Team Recovery Day', detail: 'Sun Mar 1 · 10:00 AM · Facility', days: 1, icon: '🌿', type: 'recovery' },
-  ];
-
-  function renderEvents(containerId) {
-    const wrap = el(containerId);
-    if (!wrap) return;
-    wrap.innerHTML = EVENTS.map(ev => `
-      <div class="event-item">
-        <div style="text-align:center;min-width:36px">
-          <div class="event-days-num ${ev.days <= 3 ? 'soon' : ''}">${ev.days}</div>
-          <div class="event-days-label">days</div>
+          <div style="font-family:var(--font-display);font-size:28px;font-weight:800;color:${color};flex-shrink:0">${a.score||'—'}</div>
         </div>
         <div>
-          <div class="event-name">${ev.name}</div>
-          <div class="event-detail">${ev.detail}</div>
-        </div>
-        <div style="font-size:17px;margin-left:auto">${ev.icon}</div>
-      </div>`).join('');
-  }
-
-  // -----------------------------
-  // Athlete list + detail
-  // -----------------------------
-  function renderAthletesView(filter = '') {
-    const grid = el('athleteCardGrid');
-    if (!grid) return;
-    const ATHLETES_TODAY = athleteModelsForToday();
-
-    const filtered = ATHLETES_TODAY.filter(a =>
-      a.name.toLowerCase().includes(filter.toLowerCase()) ||
-      a.pos.toLowerCase().includes(filter.toLowerCase())
-    );
-
-    const countSub = el('athleteCountSub');
-    if (countSub) countSub.textContent = `${ATHLETES_TODAY.length} athletes on roster`;
-
-    if (filtered.length === 0) {
-      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-dim)">No athletes match "${filter}"</div>`;
-      return;
-    }
-
-    grid.innerHTML = filtered.map(a => {
-      const t = getTierLabel(a.score);
-      const color = a.severity === 'green' ? 'var(--green)' : a.severity === 'yellow' ? 'var(--yellow)' : a.severity === 'red' ? 'var(--red)' : 'var(--text-dim)';
-      return `
-        <div class="card" style="cursor:pointer;transition:transform 0.18s,border-color 0.18s" data-id="${a.id}">
-          <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
-            <div style="display:flex;align-items:center;gap:12px">
-              <div class="athlete-av" style="background:${a.color};color:${a.colorText};width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:14px;font-weight:700;flex-shrink:0">${a.initials}</div>
-              <div>
-                <div style="font-weight:700;font-size:14px">${a.name}</div>
-                <div style="font-size:12px;color:var(--text-dim)">${a.pos} · #${a.jersey}</div>
-              </div>
-              <div style="margin-left:auto;font-family:var(--font-display);font-size:28px;font-weight:800;color:${color}">${a.score || '—'}</div>
-            </div>
-            <div>
-              <div class="readiness-track" style="width:100%;height:6px;margin-bottom:8px"><div class="readiness-fill" style="width:${a.recovery||0}%;background:${color}"></div></div>
-              <div style="display:flex;justify-content:space-between;font-size:12px">
-                <div class="score-tier ${t.cls}" style="font-size:11px">${t.label}</div>
-                <div style="color:var(--text-dim)">ACWR: <span style="color:${color}">${a.acr ?? '—'}</span></div>
-              </div>
-            </div>
-          </div>
-        </div>`;
-    }).join('');
-
-    grid.querySelectorAll('[data-id]').forEach(card => {
-      card.addEventListener('click', () => {
-        const a = ATHLETES_TODAY.find(x => x.id === card.dataset.id);
-        if (a) openAthleteDetail(a);
-      });
-    });
-  }
-
-  function animateRing(fillEl, score, circumference = 444) {
-    const offset = circumference - (score / 100) * circumference;
-    requestAnimationFrame(() => requestAnimationFrame(() => { fillEl.style.strokeDashoffset = offset; }));
-  }
-
-  function openAthleteDetail(aModel) {
-    switchView('athletes');
-
-    STATE.ui.selected_athlete_id = aModel.id;
-    saveState();
-
-    const grid = el('athleteCardGrid');
-    const detail = el('athleteDetail');
-    if (grid) grid.style.display = 'none';
-    if (detail) detail.style.display = 'flex';
-
-    // Hero
-    const t = getTierLabel(aModel.score);
-    const color = aModel.severity === 'green' ? 'var(--green)' : aModel.severity === 'yellow' ? 'var(--yellow)' : aModel.severity === 'red' ? 'var(--red)' : 'var(--text-dim)';
-
-    el('detailHero').innerHTML = `
-      <div class="athlete-hero-av" style="background:${aModel.color};color:${aModel.colorText}">${aModel.initials}</div>
-      <div style="flex:1">
-        <div class="athlete-hero-name">${aModel.name}</div>
-        <div class="athlete-hero-meta">${aModel.pos} · Jersey #${aModel.jersey} · ${(activeTeam().team?.name || '')}</div>
-        <div class="athlete-chips">
-          <div class="athlete-chip sport">🏀 ${(activeTeam().team?.sport || STATE.profile.sport).charAt(0).toUpperCase() + (activeTeam().team?.sport || STATE.profile.sport).slice(1)}</div>
-          <div class="athlete-chip status" style="${aModel.riskLevel === 'rest' ? 'background:var(--red-dim);border-color:var(--red-border);color:var(--red)' : aModel.riskLevel === 'watch' ? 'background:var(--yellow-dim);border-color:var(--yellow-border);color:var(--yellow)' : 'background:var(--green-dim);border-color:var(--green-border);color:var(--green)'}">
-            ${aModel.riskLevel === 'rest' ? '⛔ Rest' : aModel.riskLevel === 'watch' ? '⚠ Monitor' : aModel.score > 0 ? '✓ Active' : '⚪ Not Logged'}
+          <div class="readiness-track" style="width:100%;height:6px;margin-bottom:8px"><div class="readiness-fill" style="width:${a.recovery||0}%;background:${color}"></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+            <div class="score-tier ${t.cls}" style="font-size:11px">${t.label}</div>
+            <div style="color:var(--text-dim)">ACWR: <span style="color:${color};font-weight:600">${a.acr??'—'}</span></div>
           </div>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-        <div style="font-family:var(--font-display);font-size:44px;font-weight:800;color:${color}">${aModel.score || '—'}</div>
-        <div class="score-tier ${t.cls}" style="font-size:11px">${t.label}</div>
-      </div>`;
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('[data-id]').forEach(card => {
+    const open = () => { const a = ATHLETES.find(x => x.id === +card.dataset.id); if (a) openAthleteDetail(a); };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  });
+}
 
-    // Ring
-    const ringFill = el('detailRingFill');
-    ringFill.className = 'ring-fill' + (aModel.score >= 75 ? '' : aModel.score >= 50 ? ' warn' : ' danger');
-    el('detailRingNum').textContent = aModel.score || '—';
-    el('detailRingNum').className   = 'ring-number' + (aModel.score >= 75 ? '' : aModel.score >= 50 ? ' warn' : ' danger');
-
-    const deltaEl = el('detailRingDelta');
-    if (aModel.trend !== 0) {
-      deltaEl.className   = 'ring-delta ' + (aModel.trend > 0 ? 'up' : 'down');
-      deltaEl.textContent = (aModel.trend > 0 ? '↑' : '↓') + ' ' + Math.abs(aModel.trend) + ' pts';
-    } else { deltaEl.textContent = ''; }
-
-    animateRing(ringFill, aModel.score || 0, 440);
-
-    // Tier + note
-    el('detailTier').className   = 'score-tier ' + t.cls;
-    el('detailTier').textContent  = t.label;
-    el('detailScoreNote').innerHTML = aModel.insight;
-
-    // Pillars (use computed)
-    const piq = computePIQForAthlete(aModel.id, todayISO());
-    const pillars = [
-      { icon:'💪', name:'Load', value: piq.pillars.workload, color: piq.pillars.workload >= 75 ? 'var(--green)' : piq.pillars.workload >= 50 ? 'var(--yellow)' : 'var(--red)' },
-      { icon:'🌙', name:'Recovery', value: piq.pillars.recovery, color: piq.pillars.recovery >= 75 ? 'var(--green)' : piq.pillars.recovery >= 50 ? 'var(--yellow)' : 'var(--red)' },
-      { icon:'🥗', name:'Nutrition', value: piq.pillars.nutrition, color: piq.pillars.nutrition >= 75 ? 'var(--green)' : piq.pillars.nutrition >= 50 ? 'var(--yellow)' : 'var(--red)' },
-      { icon:'⚡', name:'Consistency', value: piq.pillars.consistency, color: piq.pillars.consistency >= 75 ? 'var(--green)' : piq.pillars.consistency >= 50 ? 'var(--yellow)' : 'var(--red)' },
-    ];
-    el('detailPillars').innerHTML = pillars.map(p => `
-      <div class="pillar">
-        <div class="pillar-icon">${p.icon}</div>
-        <div class="pillar-value" style="color:${p.color}">${p.value}</div>
-        <div class="pillar-bar"><div class="pillar-fill" style="width:${p.value}%;background:${p.color}"></div></div>
-        <div class="pillar-name">${p.name}</div>
-      </div>`).join('');
-
-    // Wellness
-    const { wellness } = logsForAthlete(aModel.id);
-    const w = getLogByDate(wellness, todayISO());
-    const wellnessData = [
-      { emoji:'😴', label:'Sleep',    value: w ? `${w.sleep_hours}h` : '—', color: w && w.sleep_hours >= 7.5 ? 'var(--green)' : w && w.sleep_hours >= 6 ? 'var(--yellow)' : 'var(--red)' },
-      { emoji:'💢', label:'Soreness', value: w ? `${w.soreness}/10` : '—', color: w && w.soreness <= 3 ? 'var(--green)' : w && w.soreness <= 6 ? 'var(--yellow)' : 'var(--red)' },
-      { emoji:'⚡', label:'Energy',   value: w ? `${w.energy}/10` : '—', color: w && w.energy >= 7 ? 'var(--green)' : w && w.energy >= 4 ? 'var(--yellow)' : 'var(--red)' },
-    ];
-    el('detailWellness').innerHTML = wellnessData.map(wi => `
-      <div class="wellness-item">
-        <div class="wellness-emoji">${wi.emoji}</div>
-        <div class="wellness-label">${wi.label}</div>
-        <div class="wellness-value" style="color:${wi.color}">${wi.value}</div>
-      </div>`).join('');
-
-    // Load bar
-    const acr = piq.acwr;
-    if (acr !== null && isFinite(acr)) {
-      const acrCls = getAcrClass(acr);
-      const acrColor = acrCls === 'safe' ? 'var(--green)' : acrCls === 'watch' ? 'var(--yellow)' : 'var(--red)';
-      const pct = Math.min(100, Math.round((acr / 2.0) * 100));
-      el('detailLoad').innerHTML = `
-        <div class="load-bar-item">
-          <div class="load-bar-name">ACWR</div>
-          <div class="load-bar-track"><div class="load-bar-fill" style="width:${pct}%;background:${acrColor}"></div></div>
-          <div class="load-bar-val" style="color:${acrColor}">${acr}</div>
-          <div class="load-bar-flag">${getAcrFlag(acr)}</div>
-        </div>`;
-    } else {
-      el('detailLoad').innerHTML = `<div style="font-size:13px;color:var(--text-dim)">No load data available.</div>`;
-    }
-
-    // Workout prescription (simple)
-    el('detailWorkout').innerHTML = buildWorkoutPrescription(aModel.id);
-
-    // PRs: Not implemented in elite v6 demo; keep placeholder if table exists
-    const prTable = q('#detailPRs tbody');
-    if (prTable) {
-      prTable.innerHTML = `<tr><td colspan="4" style="color:var(--text-dim);text-align:center;padding:20px">PR tracking will be enabled in Phase 2 (cloud sync + coach approvals).</td></tr>`;
-    }
-
-    // Apply role-based visibility: athlete role shows "my athlete" only
-  }
-
-  function buildWorkoutPrescription(athlete_id) {
-    const piq = computePIQForAthlete(athlete_id, todayISO());
-    const risk = piq.risk.level;
-    if (risk === 'rest') {
-      return `
-        <div class="alert danger">
-          <div class="alert-icon">⛔</div>
-          <div>
-            <div class="alert-title">Rest Recommended</div>
-            <div>Risk flags are elevated today. Prescription: light walking, mobility, and prioritize sleep.</div>
-          </div>
-        </div>`;
-    }
-    const type = (risk === 'watch') ? 'recovery' : 'practice';
-    const session = generateSession(activeTeam().team?.sport || STATE.profile.sport, type, 60, risk === 'watch' ? 'low' : 'moderate', []);
-    return buildWorkoutCardHTML(session, { allowStart: false });
-  }
-
-  // -----------------------------
-  // Train view: Session generator
-  // -----------------------------
-  const SESSION_LIBRARY = [
-    { type: '🔥 Strength', name: 'TRAP BAR POWER', meta: '50 min · High', color: 'orange' },
-    { type: '💨 Speed', name: 'ACCELERATION COMPLEX', meta: '35 min · High', color: 'blue' },
-    { type: '🌿 Recovery', name: 'ACTIVE RECOVERY DAY', meta: '25 min · Low', color: 'green' },
-    { type: '🏀 Practice', name: 'SKILL MICROBLOCKS', meta: '60 min · Moderate', color: '' },
-    { type: '⚡ Power', name: 'PLYOMETRIC CIRCUIT', meta: '40 min · High', color: 'orange' },
-    { type: '🧘 Mobility', name: 'PRE-GAME ACTIVATION', meta: '30 min · Low', color: 'green' },
+function getPillars(a){
+  if (!a.score) return [
+    {icon:'💪',name:'Load',     value:0, color:'var(--text-dim)'},
+    {icon:'⚡',name:'Streak',   value:0, color:'var(--text-dim)'},
+    {icon:'🎯',name:'Variety',  value:0, color:'var(--text-dim)'},
+    {icon:'🌙',name:'Recovery', value:0, color:'var(--text-dim)'},
   ];
+  const cf = v => v >= 75 ? 'var(--green)' : v >= 50 ? 'var(--yellow)' : 'var(--red)';
+  const load     = Math.min(100, Math.round(a.score * 1.08 + 4));
+  const streak   = Math.min(100, Math.round(a.score * 0.95 + 5));
+  const variety  = Math.min(100, Math.round(a.score * 0.88 + 8));
+  const recovery = a.recovery != null ? a.recovery : Math.round(a.score * 0.72);
+  return [
+    {icon:'💪', name:'Load',     value:load,     color:cf(load)    },
+    {icon:'⚡', name:'Streak',   value:streak,   color:cf(streak)  },
+    {icon:'🎯', name:'Variety',  value:variety,  color:cf(variety) },
+    {icon:'🌙', name:'Recovery', value:recovery, color:cf(recovery)},
+  ];
+}
 
-  function renderTrainView() {
-    const lib = el('sessionLibrary');
-    if (lib) {
-      lib.innerHTML = SESSION_LIBRARY.map(s => `
-        <div class="workout-card ${s.color}" style="cursor:pointer">
-          <div class="workout-type-tag" style="${s.color === 'orange' ? 'color:var(--orange)' : s.color === 'blue' ? 'color:var(--blue)' : s.color === 'green' ? 'color:var(--green)' : ''}">${s.type}</div>
-          <div class="workout-name">${s.name}</div>
-          <div class="workout-meta"><span>${s.meta}</span></div>
-        </div>`).join('');
-    }
+function openAthleteDetail(a){
+  if (STATE.currentView !== 'athletes') {
+    _applyViewDom('athletes');
+    STATE.currentView = 'athletes';
+  }
+  STATE.selectedAthleteId = a.id;
+  el('athleteCardGrid') && (el('athleteCardGrid').style.display = 'none');
+  el('athleteDetail') && (el('athleteDetail').style.display  = 'flex');
+
+  const t = getTier(a.score);
+  const color = getSevColor(a.severity);
+
+  if (el('detailHero')) el('detailHero').innerHTML = `
+    <div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-family:var(--font-display);font-size:22px;font-weight:800;border:2px solid var(--accent-border)">${a.initials}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-family:var(--font-display);font-size:26px;font-weight:800">${a.name}</div>
+      <div style="font-size:13px;color:var(--text-dim);margin-top:3px">${a.pos} · Jersey #${a.jersey} · ${STATE.teamName}</div>
+      <div class="athlete-chips" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <div class="athlete-chip sport">🏀 ${cap(STATE.sport)}</div>
+        <div class="athlete-chip" ${a.riskLevel==='rest'?'style="background:var(--red-dim);border-color:var(--red-border);color:var(--red)"':a.riskLevel==='watch'?'style="background:var(--yellow-dim);border-color:var(--yellow-border);color:var(--yellow)"':''}>
+          ${a.riskLevel==='rest'?'⛔ Rest Day':a.riskLevel==='watch'?'⚠ Monitor':a.score?'✓ Active':'⚪ Not Logged'}
+        </div>
+        ${(a.riskLevel==='none'&&a.score)?`<div class="athlete-chip" style="background:var(--accent-dim);border-color:var(--accent-border);color:var(--accent)">🔥 ${3+a.id}-day streak</div>`:''}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0">
+      <div id="detailHeroScore" style="font-family:var(--font-display);font-size:44px;font-weight:800;line-height:1;color:${color}">${a.score||'—'}</div>
+      <div class="score-tier ${t.cls}" style="font-size:11px">${t.label}</div>
+    </div>`;
+
+  // Ring
+  const rf = el('detailRingFill');
+  const rc = getRingClass(a.score);
+  if (rf) rf.className = 'ring-fill' + (rc ? ' '+rc : '');
+  if (el('detailRingNum')) {
+    const ringNumEl = el('detailRingNum');
+  ringNumEl.textContent = a.score || '—';
+  if (a.score) animateNumber(ringNumEl, 0, a.score, 850);
+    el('detailRingNum').className   = 'ring-number' + (rc ? ' '+rc : '');
+    if (a.score) tweenNumber(el('detailRingNum'), a.score, 900);
+  }
+  const de = el('detailRingDelta');
+  if (de) {
+    if (a.trend) {
+      de.className = 'ring-delta ' + (a.trend > 0 ? 'up' : 'down');
+      de.textContent = (a.trend > 0 ? '↑' : '↓') + ' ' + Math.abs(a.trend) + ' pts';
+    } else de.textContent = '';
+  }
+  animateRing(rf, a.score, 440);
+
+  // Tier + note
+  if (el('detailTier')) { el('detailTier').className = 'score-tier ' + t.cls; el('detailTier').textContent = t.label; }
+  el('detailScoreNote') && (el('detailScoreNote').innerHTML = getScoreNote(a));
+
+  // Pillars
+  if (el('detailPillars')) el('detailPillars').innerHTML = getPillars(a).map(p => `
+    <div class="pillar">
+      <div class="pillar-icon">${p.icon}</div>
+      <div class="pillar-value" style="color:${p.color}">${p.value}</div>
+      <div class="pillar-bar"><div class="pillar-fill" style="width:${p.value}%;background:${p.color}"></div></div>
+      <div class="pillar-name">${p.name}</div>
+    </div>`).join('');
+
+  // Wellness
+  const wItems = [
+    { emoji:'😴', label:'Sleep',    v:a.sleep,
+      display: a.sleep    != null ? `${a.sleep}h`        : '—',
+      color:   a.sleep    == null ? 'var(--text-dim)' : a.sleep    >= 7.5 ? 'var(--green)' : a.sleep    >= 6 ? 'var(--yellow)' : 'var(--red)' },
+    { emoji:'💢', label:'Soreness', v:a.soreness,
+      display: a.soreness != null ? `${a.soreness}/10`   : '—',
+      color:   a.soreness == null ? 'var(--text-dim)' : a.soreness <=  3 ? 'var(--green)' : a.soreness <= 6 ? 'var(--yellow)' : 'var(--red)' },
+    { emoji:'⚡', label:'Energy',   v:a.energy,
+      display: a.energy   != null ? `${a.energy}/10`     : '—',
+      color:   a.energy   == null ? 'var(--text-dim)' : a.energy   >=  7 ? 'var(--green)' : a.energy   >= 4 ? 'var(--yellow)' : 'var(--red)' },
+  ];
+  if (el('detailWellness')) el('detailWellness').innerHTML = wItems.map(w => `
+    <div class="wellness-item">
+      <div class="wellness-emoji">${w.emoji}</div>
+      <div class="wellness-label">${w.label}</div>
+      <div class="wellness-value" style="color:${w.color}">${w.display}</div>
+    </div>`).join('');
+
+  // Load bar
+  if (el('detailLoad')) el('detailLoad').innerHTML = a.acr != null
+    ? `<div class="load-bar-item">
+        <div class="load-bar-name">ACWR</div>
+        <div class="load-bar-track"><div class="load-bar-fill" style="width:${Math.min(100,Math.round(a.acr/2*100))}%;background:${getAcrColor(a.acr)}"></div></div>
+        <div class="load-bar-val" style="color:${getAcrColor(a.acr)}">${a.acr}</div>
+        <div class="load-bar-flag">${getAcrFlag(a.acr)}</div>
+      </div>`
+    : `<div style="font-size:13px;color:var(--text-dim)">No load data available.</div>`;
+
+  el('detailInsight') && (el('detailInsight').innerHTML = a.insight);
+  renderDetailWorkout(a);
+
+  // PRs
+  const prTable = el('detailPRs');
+  const prTbody = prTable ? prTable.querySelector('tbody') : null;
+  if (prTbody) {
+    prTbody.innerHTML = a.prs.length
+      ? a.prs.map(pr => `<tr>
+          <td>${pr.exercise}</td><td class="pr-new">${pr.current}</td>
+          <td style="color:var(--text-dim)">${pr.prev}</td>
+          <td style="color:var(--text-dim)">${pr.date}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="4" style="color:var(--text-dim);text-align:center;padding:20px">No PRs logged yet</td></tr>`;
   }
 
-  function generateSession(sport, type, duration, intensity, injuries) {
-    const sportEmoji = { basketball:'🏀', football:'🏈', soccer:'⚽', baseball:'⚾', volleyball:'🏐', track:'🏃' };
-    const typeLabel  = { practice:'Practice', strength:'Strength', speed:'Speed', conditioning:'Conditioning', recovery:'Recovery', competition:'Competition Prep' };
-    const intLabel   = { low:'Low', moderate:'Moderate', high:'High' };
+  // Hero score tween
+  if (el('detailHeroScore') && a.score) tweenNumber(el('detailHeroScore'), a.score, 750);
+}
 
-    const injNote = injuries.length ? ` · ${injuries.map(i => i.charAt(0).toUpperCase()+i.slice(1)+'-friendly').join(', ')}` : '';
+function renderDetailWorkout(a){
+  const wrap = el('detailWorkout'); if (!wrap) return;
+  if (a.riskLevel === 'rest') {
+    wrap.innerHTML = `<div class="alert danger">
+      <div class="alert-icon">⛔</div>
+      <div><div class="alert-title">Rest Day — No Session Assigned</div>
+      <div>ACWR too high. Full rest prescription: light walking, foam rolling, and 9+ hours of sleep.</div></div>
+    </div>`;
+    return;
+  }
+  const session = generateSession(STATE.sport, a.riskLevel==='watch'?'recovery':'practice', 60, 'moderate', []);
+  wrap.innerHTML = buildWorkoutCardHTML(session, false);
+}
 
-    const blockSets = {
-      practice: [
-        { dot:'var(--blue)',   name:'Dynamic Warm-up',                   time: Math.round(duration * 0.16) },
-        { dot:'var(--accent)', name:'Skill Microblocks — Sport-specific', time: Math.round(duration * 0.25) },
-        { dot:'var(--orange)', name:'Strength Block' + (injuries.includes('knee') ? ' (knee-friendly)' : ''), time: Math.round(duration * 0.28) },
-        { dot:'var(--yellow)', name:'Power & Conditioning',              time: Math.round(duration * 0.18) },
-        { dot:'var(--green)',  name:'Cool-down + Mobility',              time: Math.round(duration * 0.13) },
-      ],
-      strength: [
-        { dot:'var(--blue)',   name:'Warm-up + Movement Prep',           time: Math.round(duration * 0.14) },
-        { dot:'var(--orange)', name:'Main Lift — Primary Pattern',       time: Math.round(duration * 0.32) },
-        { dot:'var(--accent)', name:'Accessory Work — Volume Build',     time: Math.round(duration * 0.28) },
-        { dot:'var(--yellow)', name:'Core & Stability',                  time: Math.round(duration * 0.16) },
-        { dot:'var(--green)',  name:'Stretch + Recovery Protocol',       time: Math.round(duration * 0.10) },
-      ],
-      speed: [
-        { dot:'var(--blue)',   name:'Neural Warm-up',                    time: Math.round(duration * 0.18) },
-        { dot:'var(--accent)', name:'Acceleration Mechanics × 6 sets',  time: Math.round(duration * 0.30) },
-        { dot:'var(--orange)', name:'Max Velocity Runs',                 time: Math.round(duration * 0.25) },
-        { dot:'var(--yellow)', name:'Change of Direction Drills',        time: Math.round(duration * 0.17) },
-        { dot:'var(--green)',  name:'Cool-down + PNF Stretch',           time: Math.round(duration * 0.10) },
-      ],
-      recovery: [
-        { dot:'var(--blue)',   name:'Light Cardio — Zone 1',             time: Math.round(duration * 0.30) },
-        { dot:'var(--green)',  name:'Mobility Flow',                     time: Math.round(duration * 0.30) },
-        { dot:'var(--accent)', name:'Foam Rolling + Soft Tissue',        time: Math.round(duration * 0.25) },
-        { dot:'var(--yellow)', name:'Breathing + Parasympathetic Reset', time: Math.round(duration * 0.15) },
-      ],
-      conditioning: [
-        { dot:'var(--blue)',   name:'Dynamic Warm-up',                   time: Math.round(duration * 0.15) },
-        { dot:'var(--orange)', name:'Aerobic Base Work — Steady State',  time: Math.round(duration * 0.30) },
-        { dot:'var(--accent)', name:'Interval Circuits × 4 rounds',     time: Math.round(duration * 0.30) },
-        { dot:'var(--yellow)', name:'Lactate Tolerance Drills',          time: Math.round(duration * 0.15) },
-        { dot:'var(--green)',  name:'Cool-down',                         time: Math.round(duration * 0.10) },
-      ],
-      competition: [
-        { dot:'var(--blue)',   name:'Pre-Game Activation',               time: Math.round(duration * 0.22) },
-        { dot:'var(--accent)', name:'Plyometric Priming × 3 sets',      time: Math.round(duration * 0.25) },
-        { dot:'var(--orange)', name:'Sport-Specific Movement Prep',      time: Math.round(duration * 0.28) },
-        { dot:'var(--green)',  name:'Mental Cue + Team Walk-through',    time: Math.round(duration * 0.25) },
-      ],
-    };
+/* ══════════════════════════════════════════════
+   TRAIN VIEW
+══════════════════════════════════════════════ */
+function renderTrainView(){
+  if (!el('sessionLibrary')) return;
+  el('sessionLibrary').innerHTML = SESSION_LIBRARY.map(s => {
+    const ac = s.color==='orange'?'var(--orange)':s.color==='blue'?'var(--blue)':s.color==='green'?'var(--green)':'var(--accent)';
+    return `<div class="workout-card ${s.color}" style="cursor:pointer">
+      <div class="workout-type-tag" style="color:${ac}">${s.type}</div>
+      <div class="workout-name">${s.name}</div>
+      <div class="workout-meta"><span>${s.meta}</span></div>
+    </div>`;
+  }).join('');
+}
 
-    const blocks = blockSets[type] || blockSets.practice;
+function generateSession(sport, type, duration, intensity, injuries){
+  const SE = {basketball:'🏀',football:'🏈',soccer:'⚽',baseball:'⚾',volleyball:'🏐',track:'🏃'};
+  const TL = {practice:'Practice',strength:'Strength',speed:'Speed',conditioning:'Conditioning',recovery:'Recovery',competition:'Competition Prep'};
+  const IL = {low:'Low',moderate:'Moderate',high:'High'};
+  const inj = injuries.length ? ' · ' + injuries.map(i=>cap(i)+'-friendly').join(', ') : '';
+  const BLOCKS = {
+    practice:[
+      {dot:'var(--blue)',   name:'Dynamic Warm-up',                                                              time:pct(duration,.16)},
+      {dot:'var(--accent)', name:'Skill Microblocks — Sport-specific',                                           time:pct(duration,.25)},
+      {dot:'var(--orange)', name:'Strength Block'+(injuries.includes('knee')?' (knee-friendly)':''),             time:pct(duration,.28)},
+      {dot:'var(--yellow)', name:'Power & Conditioning',                                                          time:pct(duration,.18)},
+      {dot:'var(--green)',  name:'Cool-down + Mobility',                                                          time:pct(duration,.13)},
+    ],
+    strength:[
+      {dot:'var(--blue)',   name:'Warm-up + Movement Prep',       time:pct(duration,.14)},
+      {dot:'var(--orange)', name:'Main Lift — Primary Pattern',   time:pct(duration,.32)},
+      {dot:'var(--accent)', name:'Accessory Work — Volume Build', time:pct(duration,.28)},
+      {dot:'var(--yellow)', name:'Core & Stability',              time:pct(duration,.16)},
+      {dot:'var(--green)',  name:'Stretch + Recovery Protocol',   time:pct(duration,.10)},
+    ],
+    speed:[
+      {dot:'var(--blue)',   name:'Neural Warm-up',                   time:pct(duration,.18)},
+      {dot:'var(--accent)', name:'Acceleration Mechanics × 6 sets',  time:pct(duration,.30)},
+      {dot:'var(--orange)', name:'Max Velocity Runs',                 time:pct(duration,.25)},
+      {dot:'var(--yellow)', name:'Change of Direction Drills',        time:pct(duration,.17)},
+      {dot:'var(--green)',  name:'Cool-down + PNF Stretch',           time:pct(duration,.10)},
+    ],
+    recovery:[
+      {dot:'var(--blue)',   name:'Light Cardio — Zone 1',             time:pct(duration,.30)},
+      {dot:'var(--green)',  name:'Mobility Flow',                     time:pct(duration,.30)},
+      {dot:'var(--accent)', name:'Foam Rolling + Soft Tissue',        time:pct(duration,.25)},
+      {dot:'var(--yellow)', name:'Breathing + Parasympathetic Reset', time:pct(duration,.15)},
+    ],
+    conditioning:[
+      {dot:'var(--blue)',   name:'Dynamic Warm-up',               time:pct(duration,.15)},
+      {dot:'var(--orange)', name:'Aerobic Base — Steady State',   time:pct(duration,.30)},
+      {dot:'var(--accent)', name:'Interval Circuits × 4 rounds', time:pct(duration,.30)},
+      {dot:'var(--yellow)', name:'Lactate Tolerance Drills',      time:pct(duration,.15)},
+      {dot:'var(--green)',  name:'Cool-down',                     time:pct(duration,.10)},
+    ],
+    competition:[
+      {dot:'var(--blue)',   name:'Pre-Game Activation',             time:pct(duration,.22)},
+      {dot:'var(--accent)', name:'Plyometric Priming × 3 sets',    time:pct(duration,.25)},
+      {dot:'var(--orange)', name:'Sport-Specific Movement Prep',   time:pct(duration,.28)},
+      {dot:'var(--green)',  name:'Mental Cue + Team Walk-through', time:pct(duration,.25)},
+    ],
+  };
+  return {
+    sport, type, duration, intensity,
+    typeTag:`${SE[sport]||'🏀'} ${TL[type]||'Practice'} · ${IL[intensity]||'Moderate'}${inj}`,
+    name: type==='recovery'?'ACTIVE RECOVERY SESSION':type==='strength'?'STRENGTH & POWER BLOCK':
+          type==='speed'?'SPEED & ACCELERATION':type==='competition'?'COMPETITION PREP':
+          type==='conditioning'?'CONDITIONING CIRCUIT':'FULL PRACTICE SESSION',
+    meta:[`⏱ ${duration} min`,`🔥 ${IL[intensity]}`,`${SE[sport]||'🏀'} ${cap(sport)}`].join(' · '),
+    blocks: BLOCKS[type] || BLOCKS.practice,
+  };
+}
 
-    return {
-      sport, type, duration, intensity,
-      typeTag: `${sportEmoji[sport] || '🏀'} ${typeLabel[type] || 'Practice'} · ${intLabel[intensity] || 'Moderate'}${injNote}`,
-      name: type === 'recovery' ? 'ACTIVE RECOVERY SESSION'
-          : type === 'strength' ? 'STRENGTH & POWER BLOCK'
-          : type === 'speed'    ? 'SPEED & ACCELERATION'
-          : type === 'competition' ? 'COMPETITION PREP'
-          : type === 'conditioning' ? 'CONDITIONING CIRCUIT'
-          : 'FULL PRACTICE SESSION',
-      meta: [`⏱ ${duration} min`, `🔥 ${intLabel[intensity]}`, `${sportEmoji[sport] || '🏀'} ${sport.charAt(0).toUpperCase()+sport.slice(1)}`].join(' · '),
-      blocks,
-    };
+function buildWorkoutCardHTML(session, showActions = true){
+  const blocks = session.blocks.map(b =>
+    `<div class="block-item">
+      <div class="block-dot" style="background:${b.dot}"></div>
+      <div class="block-name">${b.name}</div>
+      <div class="block-time">${b.time} min</div>
+    </div>`).join('');
+  const actions = showActions ? `<div style="display:flex;gap:9px;margin-top:14px">
+    <button class="btn btn-primary btn-full js-start" style="font-size:13px">▷ Start Session</button>
+    <button class="btn btn-ghost js-save" style="font-size:13px">Save</button>
+  </div>` : '';
+  return `<div class="workout-card">
+    <div class="workout-type-tag">${session.typeTag}</div>
+    <div class="workout-name">${session.name}</div>
+    <div class="workout-meta">${session.meta}</div>
+    <div class="block-list">${blocks}</div>
+    ${actions}
+  </div>`;
+}
+
+function renderGeneratedSession(){
+  const sport = el('buildSport')?.value;
+  const type = el('buildType')?.value;
+  const duration = +el('buildDuration')?.value;
+  const intensity = el('buildIntensity')?.value;
+  const injuries = [...document.querySelectorAll('#injuryChips .inj-chip.active')].map(c => c.dataset.injury);
+  const session = generateSession(sport, type, duration, intensity, injuries);
+  const wrap = el('generatedSessionWrap'); if (!wrap) return;
+  wrap.innerHTML = buildWorkoutCardHTML(session, true);
+  el('sessionSaved') && (el('sessionSaved').style.display = 'none');
+  wrap.querySelector('.js-save')?.addEventListener('click', () => {
+    el('sessionSaved') && (el('sessionSaved').style.display = 'inline-flex');
+    toast('Session saved to library ✓');
+  });
+  wrap.querySelector('.js-start')?.addEventListener('click', () => toast('Session started ▷'));
+  toast('Session generated ⚡');
+}
+
+/* ══════════════════════════════════════════════
+   ANALYTICS
+══════════════════════════════════════════════ */
+function renderAnalytics(){
+  el('analyticsSub') && (el('analyticsSub').textContent = `${STATE.teamName} · ${STATE.season}`);
+  const logged = ATHLETES.filter(a => a.score > 0);
+  const avg = logged.length ? Math.round(logged.reduce((s,a) => s+a.score,0)/logged.length) : 0;
+  const logRate = Math.round(logged.length / ATHLETES.length * 100);
+  const BASE = 65;
+
+  const grid = el('analyticsStatGrid');
+  if (grid) grid.innerHTML = `
+    <div class="stat-card accent">
+      <div class="stat-label">Team Avg PIQ</div><div class="stat-value">${avg}</div>
+      <div class="stat-sub up">↑ ${Math.max(0,avg-BASE)} pts this week</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Logging Rate</div><div class="stat-value">${logRate}%</div>
+      <div class="stat-sub up">${logged.length} / ${ATHLETES.length} athletes</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="stat-label">Avg Readiness</div><div class="stat-value">72%</div>
+      <div class="stat-sub down">↓ 5% vs last week</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Risk Flags</div>
+      <div class="stat-value">${ATHLETES.filter(a=>a.riskLevel==='rest'||a.riskLevel==='watch').length}</div>
+      <div class="stat-sub">This week</div>
+    </div>`;
+
+  const maxAU = Math.max(...WEEK_LOAD.map(d => d.au));
+  if (el('loadChart')) el('loadChart').innerHTML = WEEK_LOAD.map(d => {
+    const h = Math.max(4, Math.round(d.au/maxAU*100));
+    const color = d.au >= 900 ? 'var(--red)' : d.au >= 700 ? 'var(--yellow)' : 'var(--accent)';
+    const alpha = (0.55 + 0.45*(d.au/maxAU)).toFixed(2);
+    return `<div class="chart-bar-wrap" data-label="${d.au} AU" title="${d.au} AU">
+      <div class="chart-bar" style="height:${h}%;background:${color};opacity:${alpha}"></div>
+      <div class="chart-bar-lbl">${d.day}</div>
+    </div>`;
+  }).join('');
+
+  const ranges = [
+    {label:'80–100', count:ATHLETES.filter(a=>a.score>=80).length,              color:'var(--green)'  },
+    {label:'60–79',  count:ATHLETES.filter(a=>a.score>=60&&a.score<80).length,  color:'var(--accent)' },
+    {label:'40–59',  count:ATHLETES.filter(a=>a.score>=40&&a.score<60).length,  color:'var(--yellow)' },
+    {label:'1–39',   count:ATHLETES.filter(a=>a.score>0&&a.score<40).length,    color:'var(--red)'    },
+    {label:'N/A',    count:ATHLETES.filter(a=>a.score===0).length,              color:'var(--surface4)'},
+  ];
+  const maxC = Math.max(...ranges.map(r=>r.count), 1);
+  if (el('scoreDistChart')) el('scoreDistChart').innerHTML = ranges.map(r =>
+    `<div class="chart-bar-wrap" data-label="${r.count} athletes" title="${r.count} athletes">
+      <div class="chart-bar" style="height:${Math.max(6,Math.round(r.count/maxC*100))}%;background:${r.color}"></div>
+      <div class="chart-bar-lbl">${r.label}</div>
+    </div>`).join('');
+  if (el('scoreRanges')) el('scoreRanges').innerHTML = ranges.map(r => `
+    <div style="display:flex;align-items:center;gap:9px;font-size:13px">
+      <div style="width:10px;height:10px;border-radius:2px;background:${r.color};flex-shrink:0"></div>
+      <div style="flex:1">${r.label}</div>
+      <div style="font-family:var(--font-mono);font-weight:600">${r.count} athlete${r.count!==1?'s':''}</div>
+    </div>`).join('');
+
+  if (el('analyticsBody')) el('analyticsBody').innerHTML = ATHLETES.filter(a => a.score > 0).map(a => {
+    const h = a.weekHistory;
+    const acrCls = getAcrClass(a.acr);
+    return `<tr>
+      <td><div class="athlete-cell">
+        <div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-size:11px;font-weight:700">${a.initials}</div>
+        <div class="athlete-name-text">${a.name}</div>
+      </div></td>
+      <td style="font-family:var(--font-mono);color:var(--text-dim)">${h[0]??'—'}</td>
+      <td style="font-family:var(--font-mono);color:var(--text-dim)">${h[2]??'—'}</td>
+      <td style="font-family:var(--font-mono);color:var(--text-dim)">${h[4]??'—'}</td>
+      <td><span class="score-badge ${getSevClass(a.severity)}">${a.score}</span></td>
+      <td><span class="trend-val ${a.trend>=0?'up':'down'}">${a.trend>=0?'↑':'↓'}${Math.abs(a.trend)}</span></td>
+      <td><span class="acr-val ${acrCls}">${a.acr??'—'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSchedule(){ renderEvents('fullEventList'); }
+
+/* ══════════════════════════════════════════════
+   ROUTER (animated view transitions)
+══════════════════════════════════════════════ */
+function _applyViewDom(viewId){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active','enter'));
+  document.querySelectorAll('.nav-btn,.navbtn,[data-view]').forEach(b => b.classList.remove('active'));
+  const vEl = el('view-' + viewId);
+  const nEl = document.querySelector(`[data-view="${viewId}"]`);
+  if (vEl) { vEl.classList.add('active','enter'); setTimeout(()=>vEl.classList.remove('enter'), 380); }
+  if (nEl) nEl.classList.add('active');
+  moveIndicatorTo(nEl);
+}
+
+function switchView(viewId){
+  const prev = STATE.currentView;
+
+  if (prev === 'athletes' && viewId !== 'athletes') {
+    el('athleteDetail') && (el('athleteDetail').style.display = 'none');
+    el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+    STATE.selectedAthleteId = null;
   }
 
-  function buildWorkoutCardHTML(session, opts={}) {
-    const allowStart = opts.allowStart !== false;
-    const blocksHtml = session.blocks.map(b => `
-      <div class="block-item">
-        <div class="block-dot" style="background:${b.dot}"></div>
-        <div class="block-name">${b.name}</div>
-        <div class="block-time">${b.time} min</div>
-      </div>`).join('');
+  STATE.currentView = viewId;
+  _applyViewDom(viewId);
+  updateTabIndicators(viewId);
 
-    return `
-      <div class="workout-card">
-        <div class="workout-type-tag">${session.typeTag}</div>
-        <div class="workout-name">${session.name}</div>
-        <div class="workout-meta">${session.meta}</div>
-        <div class="block-list">${blocksHtml}</div>
-        <div style="display:flex;gap:9px;margin-top:14px">
-          <button class="btn btn-primary btn-full" style="font-size:13px" ${allowStart ? '' : 'disabled'}>${allowStart ? '▷ Start Session' : 'Session Preview'}</button>
-          <button class="btn btn-ghost" style="font-size:13px" id="btnSaveSession">Save</button>
+  if (viewId === 'athletes') {
+    el('athleteDetail') && (el('athleteDetail').style.display = 'none');
+    el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+    renderAthletesView();
+  }
+  if (viewId === 'analytics') renderAnalytics();
+  if (viewId === 'train')     renderTrainView();
+  if (viewId === 'schedule')  renderSchedule();
+}
+
+document.querySelectorAll('[data-view]').forEach(btn =>
+  btn.addEventListener('click', () => switchView(btn.dataset.view))
+);
+
+/* ─── SEARCH (keep both inputs in sync) ─── */
+function handleSearch(value){
+  if (STATE.currentView !== 'athletes') {
+    STATE.currentView = 'athletes';
+    _applyViewDom('athletes');
+    updateTabIndicators('athletes');
+    el('athleteDetail') && (el('athleteDetail').style.display = 'none');
+    el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+  }
+  renderAthletesView(value);
+  el('athleteSearch') && (el('athleteSearch').value = value);
+  el('athleteFilterInput') && (el('athleteFilterInput').value = value);
+}
+el('athleteSearch')?.addEventListener('input', e => handleSearch(e.target.value));
+el('athleteFilterInput')?.addEventListener('input', e => handleSearch(e.target.value));
+
+/* ─── BACK / VIEW ALL ─── */
+el('backToList')?.addEventListener('click', () => {
+  el('athleteDetail') && (el('athleteDetail').style.display = 'none');
+  el('athleteCardGrid') && (el('athleteCardGrid').style.display = '');
+  STATE.selectedAthleteId = null;
+  renderAthletesView();
+});
+el('viewAllAthletes')?.addEventListener('click', () => switchView('athletes'));
+el('rosterMore')?.addEventListener('click', () => switchView('athletes'));
+
+/* ─── TRAIN ─── */
+el('btnGenerate')?.addEventListener('click', renderGeneratedSession);
+el('btnGenerateInline')?.addEventListener('click', renderGeneratedSession);
+el('btnPushToday')?.addEventListener('click', () => toast('Session pushed to Today ✓'));
+document.querySelectorAll('#injuryChips .inj-chip').forEach(chip =>
+  chip.addEventListener('click', () => chip.classList.toggle('active'))
+);
+
+/* ─── REFRESH / EXPORT ─── */
+el('btnRefresh')?.addEventListener('click', () => { renderDashboard(); toast('Data refreshed ↺'); });
+el('btnExport')?.addEventListener('click', () => toast('Report export requires cloud sync — coming soon 📤'));
+el('btnExportAnalytics')?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
+
+/* ─── SETTINGS ─── */
+if (el('settingTeamName')) el('settingTeamName').value = STATE.teamName;
+if (el('settingSport')) Array.from(el('settingSport').options).forEach(o => { o.selected = o.value.toLowerCase() === STATE.sport; });
+
+el('btnSaveSettings')?.addEventListener('click', () => {
+  STATE.teamName = (el('settingTeamName')?.value || '').trim() || STATE.teamName;
+  STATE.season   = el('settingSeason')?.value || STATE.season;
+  STATE.sport    = (el('settingSport')?.value || STATE.sport).toLowerCase();
+
+  applySportTheme(STATE.sport);
+
+  el('userRole') && (el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`);
+  saveState();
+  renderDashboard();
+  toast('Settings saved ✓');
+});
+
+el('btnExportData')?.addEventListener('click', () => {
+  try {
+    const blob = new Blob([JSON.stringify({athletes:ATHLETES,state:STATE,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement('a'),{href:url,download:`piq-backup-${Date.now()}.json`});
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Backup downloaded ✓');
+  } catch(e) { toast('Export failed: ' + e.message); }
+});
+
+el('btnImportData')?.addEventListener('click', () => el('importFileInput')?.click());
+el('importFileInput')?.addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const p = JSON.parse(evt.target.result);
+      if (p.athletes && Array.isArray(p.athletes) && p.athletes.length) {
+        ATHLETES = p.athletes; saveAthletes();
+        if (p.state) Object.assign(STATE, p.state); saveState();
+        applySportTheme(STATE.sport);
+        renderDashboard(); toast(`Imported ${ATHLETES.length} athletes ✓`);
+      } else toast('Import failed — no athletes found');
+    } catch { toast('Import failed — invalid JSON'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+el('btnResetData')?.addEventListener('click', () => {
+  if (!confirm('Reset to demo data? Current data will be lost.')) return;
+  ATHLETES = DEFAULT_ATHLETES.map(a => ({...a}));
+  saveAthletes(); renderDashboard(); toast('Reset to demo data ↺');
+});
+
+/* ══════════════════════════════════════════════
+   INTERACTIVE TOUR — Today workflow
+══════════════════════════════════════════════ */
+const TodayTour = (() => {
+  let idx = 0;
+  let steps = [];
+  let backdrop, card, hl;
+
+  function $q(sel){ return document.querySelector(sel); }
+  function ensure(){
+    backdrop = backdrop || document.createElement('div');
+    backdrop.className = 'piq-tour-backdrop';
+    backdrop.style.display = 'none';
+
+    hl = hl || document.createElement('div');
+    hl.className = 'piq-tour-hl';
+
+    card = card || document.createElement('div');
+    card.className = 'piq-tour-card';
+    card.innerHTML = `
+      <div class="piq-tour-head">
+        <div class="piq-tour-title">Today — quick workflow</div>
+        <button class="iconbtn js-tour-close" aria-label="Close tour">✕</button>
+      </div>
+      <div class="piq-tour-body">
+        <div class="piq-tour-h js-tour-h"></div>
+        <div class="muted small js-tour-p" style="margin-top:6px;line-height:1.6"></div>
+        <div class="caption-illusion js-tour-cap" style="margin-top:10px"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+          <button class="btn btn-ghost js-tour-back">Back</button>
+          <button class="btn btn-primary js-tour-next">Next</button>
         </div>
       </div>`;
-  }
 
-  function renderGeneratedSession() {
-    const sport     = el('buildSport')?.value || (activeTeam().team?.sport || STATE.profile.sport);
-    const type      = el('buildType')?.value || 'practice';
-    const duration  = +((el('buildDuration')?.value) || 60);
-    const intensity = (el('buildIntensity')?.value) || 'moderate';
-    const injuries  = qa('#injuryChips .inj-chip.active').map(c => c.dataset.injury);
-
-    const session = generateSession(sport, type, duration, intensity, injuries);
-    const wrap = el('generatedSessionWrap');
-    if (wrap) wrap.innerHTML = buildWorkoutCardHTML(session);
-    const saved = el('sessionSaved');
-    if (saved) saved.style.display = 'none';
-
-    const saveBtn = el('btnSaveSession');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', () => {
-        if (saved) saved.style.display = 'inline-flex';
-        toast('Session saved to library ✓');
-      });
+    if (!backdrop.isConnected) {
+      document.body.appendChild(backdrop);
+      document.body.appendChild(hl);
+      document.body.appendChild(card);
     }
 
-    toast('Session generated ⚡');
+    backdrop.addEventListener('click', close);
+    card.querySelector('.js-tour-close')?.addEventListener('click', close);
+    card.querySelector('.js-tour-back')?.addEventListener('click', () => go(idx - 1));
+    card.querySelector('.js-tour-next')?.addEventListener('click', () => go(idx + 1));
   }
 
-  // -----------------------------
-  // Analytics (team)
-  // -----------------------------
-  function renderAnalytics() {
-    const sub = el('analyticsSub');
-    const { team } = activeTeam();
-    if (sub) sub.textContent = `${team?.name || 'Team'} · ${team?.season || 'Season'}`;
-
-    const ATHLETES_TODAY = athleteModelsForToday();
-    const logged = ATHLETES_TODAY.filter(a => a.score > 0);
-    const avg = logged.length ? Math.round(logged.reduce((s,a)=>s+a.score,0)/logged.length) : 0;
-    const logRate = Math.round((logged.length / Math.max(1, ATHLETES_TODAY.length)) * 100);
-
-    const grid = el('analyticsStatGrid');
-    if (grid) {
-      grid.innerHTML = `
-        <div class="stat-card accent">
-          <div class="stat-label">Team Avg PIQ</div>
-          <div class="stat-value">${avg}</div>
-          <div class="stat-sub up">Updated from logs</div>
-        </div>
-        <div class="stat-card green">
-          <div class="stat-label">Logging Rate</div>
-          <div class="stat-value">${logRate}%</div>
-          <div class="stat-sub up">${logged.length} / ${ATHLETES_TODAY.length} athletes</div>
-        </div>
-        <div class="stat-card yellow">
-          <div class="stat-label">Avg Recovery</div>
-          <div class="stat-value">${Math.round((logged.reduce((s,a)=>s+(a.recovery||0),0)/Math.max(1, logged.length))||0)}%</div>
-          <div class="stat-sub">Based on wellness</div>
-        </div>
-        <div class="stat-card red">
-          <div class="stat-label">Risk Flags</div>
-          <div class="stat-value">${ATHLETES_TODAY.filter(a => a.riskLevel === 'rest' || a.riskLevel === 'watch').length}</div>
-          <div class="stat-sub">Today</div>
-        </div>`;
-    }
-
-    // Table
-    const tbody = el('analyticsBody');
-    if (tbody) {
-      tbody.innerHTML = ATHLETES_TODAY.filter(a => a.score > 0).map(a => {
-        const hist = a.weekHistory || [];
-        const w4 = hist[1] ?? '—';
-        const w3 = hist[2] ?? '—';
-        const w2 = hist[4] ?? '—';
-        const now = a.score;
-        const delta = a.trend;
-        const cls = delta >= 0 ? 'up' : 'down';
-        const acrCls = getAcrClass(a.acr);
-        return `
-          <tr>
-            <td>
-              <div class="athlete-cell">
-                <div class="athlete-av" style="background:${a.color};color:${a.colorText};width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${a.initials}</div>
-                <div class="athlete-name-text">${a.name}</div>
-              </div>
-            </td>
-            <td style="font-family:var(--font-mono);color:var(--text-dim)">${w4}</td>
-            <td style="font-family:var(--font-mono);color:var(--text-dim)">${w3}</td>
-            <td style="font-family:var(--font-mono);color:var(--text-dim)">${w2}</td>
-            <td><span class="score-badge ${getSeverityClass(a.severity)}">${now}</span></td>
-            <td><span class="trend-val ${cls}">${delta >= 0 ? '↑' : '↓'}${Math.abs(delta)}</span></td>
-            <td><span class="acr-val ${acrCls}">${a.acr ?? '—'}</span></td>
-          </tr>`;
-      }).join('');
-    }
+  function rectFor(node){
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { x:r.left, y:r.top, w:r.width, h:r.height };
   }
 
-  // -----------------------------
-  // Wellness view
-  // -----------------------------
-  function setWellnessFormFromExisting(athlete_id) {
-    const { wellness } = logsForAthlete(athlete_id);
-    const w = getLogByDate(wellness, todayISO());
-    el('wSleep').value = w?.sleep_hours ?? '';
-    el('wSleepQ').value = w?.sleep_quality ?? '';
-    el('wSoreness').value = w?.soreness ?? '';
-    el('wEnergy').value = w?.energy ?? '';
-    el('wStress').value = w?.stress ?? '';
-    el('wMood').value = w?.mood ?? '';
-    el('wNote').value = w?.note ?? '';
+  function focus(node){
+    const r = rectFor(node);
+    if (!r) return;
+    const pad = 10;
+    hl.style.width = (r.w + pad*2) + 'px';
+    hl.style.height = (r.h + pad*2) + 'px';
+    hl.style.transform = `translate3d(${Math.round(r.x - pad)}px,${Math.round(r.y - pad)}px,0)`;
+    try { node.classList.add('tour-focus'); } catch {}
   }
 
-  function renderWellness7(athlete_id) {
-    const wrap = el('wellness7');
-    if (!wrap) return;
-    const { wellness } = logsForAthlete(athlete_id);
-    const dates = dateRangeISO(7, todayISO());
-    wrap.innerHTML = dates.map(d => {
-      const w = getLogByDate(wellness, d);
-      const score = recoveryScoreFromWellness(w);
-      const color = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
-      return `
-        <div class="load-bar-item">
-          <div class="load-bar-name">${d.slice(5)}</div>
-          <div class="load-bar-track"><div class="load-bar-fill" style="width:${score}%;background:${color}"></div></div>
-          <div class="load-bar-val" style="color:${color}">${score}</div>
-          <div class="load-bar-flag">🌙</div>
-        </div>`;
-    }).join('');
+  function clearFocus(){
+    document.querySelectorAll('.tour-focus').forEach(n => n.classList.remove('tour-focus'));
   }
 
-  function saveWellnessFromForm(athlete_id) {
-    const date = todayISO();
-    const { team } = activeTeam();
-    const flags = qa('#wInjuryChips .inj-chip.active').map(b => b.dataset.flag).filter(f => f && f !== 'none');
+  function go(n){
+    ensure();
+    if (n < 0) n = 0;
+    if (n >= steps.length) { close(); return; }
+    idx = n;
 
-    const row = {
-      id: uuid(),
-      athlete_id,
-      team_id: team?.id,
-      date,
-      sleep_hours: Number(el('wSleep').value) || null,
-      sleep_quality: Number(el('wSleepQ').value) || null,
-      soreness: Number(el('wSoreness').value) || null,
-      energy: Number(el('wEnergy').value) || null,
-      stress: Number(el('wStress').value) || null,
-      mood: Number(el('wMood').value) || null,
-      flags,
-      note: (el('wNote').value || '').slice(0, 200),
-      created_at: new Date().toISOString()
-    };
+    clearFocus();
+    const s = steps[idx];
 
-    // Replace existing for today
-    STATE.logs.wellness = STATE.logs.wellness.filter(x => !(x.athlete_id === athlete_id && x.date === date));
-    STATE.logs.wellness.push(row);
-    saveState();
-    toast('Wellness saved ✓');
+    // Navigate view if needed
+    if (s.view && STATE.currentView !== s.view) switchView(s.view);
+
+    setTimeout(() => {
+      const target = (typeof s.target === 'function') ? s.target() : (s.target ? $q(s.target) : null);
+      if (target && target.scrollIntoView) target.scrollIntoView({ behavior:'smooth', block:'center' });
+      focus(target);
+
+      card.querySelector('.js-tour-h').textContent = `${idx+1}/${steps.length} · ${s.h}`;
+      card.querySelector('.js-tour-p').textContent = s.p;
+      card.querySelector('.js-tour-cap').textContent = s.cap || '';
+      const nextBtn = card.querySelector('.js-tour-next');
+      if (nextBtn) nextBtn.textContent = (idx === steps.length-1) ? 'Done' : 'Next';
+      const backBtn = card.querySelector('.js-tour-back');
+      if (backBtn) backBtn.style.display = idx === 0 ? 'none' : 'inline-flex';
+
+      backdrop.style.display = 'block';
+      hl.style.display = 'block';
+      card.style.display = 'block';
+    }, 120);
   }
 
-  // -----------------------------
-  // Nutrition view
-  // -----------------------------
-  function setNutritionFormFromExisting(athlete_id) {
-    const { nutrition } = logsForAthlete(athlete_id);
-    const n = getLogByDate(nutrition, todayISO());
-    el('nCals').value = n?.calories ?? '';
-    el('nWater').value = n?.water_oz ?? '';
-    el('nProtein').value = n?.protein_g ?? '';
-    el('nCarbs').value = n?.carbs_g ?? '';
-    el('nFat').value = n?.fat_g ?? '';
-    el('nNote').value = n?.note ?? '';
-  }
-
-  function renderNutritionTargets(athlete_id) {
-    const a = athleteById(athlete_id);
-    const t = nutritionTargetsForAthlete(a);
-    const text = el('nutritionTargetsText');
-    if (text) {
-      text.textContent = `Targets (auto): ${t.calories} kcal · ${t.protein_g}g protein · ${t.carbs_g}g carbs · ${t.fat_g}g fat · ${t.water_oz} oz water.`;
-    }
-  }
-
-  function renderNutritionPillar(athlete_id) {
-    const a = athleteById(athlete_id);
-    const targets = nutritionTargetsForAthlete(a);
-    const { nutrition } = logsForAthlete(athlete_id);
-    const n = getLogByDate(nutrition, todayISO());
-    const score = nutritionScoreFromLog(n, targets);
-    const fill = el('nutRingFill');
-    const num = el('nutRingNum');
-    if (num) num.textContent = n ? score : '—';
-    if (fill) {
-      const cls = score >= 75 ? '' : score >= 50 ? 'warn' : 'danger';
-      fill.className = 'ring-fill' + (cls ? ` ${cls}` : '');
-      // circumference for r=70 ~ 439.8, using 444 token in css; keep same
-      const circumference = 444;
-      fill.style.strokeDasharray = circumference;
-      fill.style.strokeDashoffset = circumference;
-      animateRing(fill, n ? score : 0, circumference);
-    }
-    const head = el('nutritionHeadline');
-    const note = el('nutritionNote');
-    if (head) head.textContent = n ? 'Nutrition logged' : 'Log nutrition to unlock your score';
-    if (note) {
-      note.textContent = n
-        ? `Nutrition pillar score ${score}/100 based on today vs your targets.`
-        : 'Protein, carbs, fats, and hydration contribute to the PIQ Nutrition pillar.';
-    }
-  }
-
-  function renderNutrition7(athlete_id) {
-    const wrap = el('nutrition7');
-    if (!wrap) return;
-    const a = athleteById(athlete_id);
-    const t = nutritionTargetsForAthlete(a);
-    const { nutrition } = logsForAthlete(athlete_id);
-    const dates = dateRangeISO(7, todayISO());
-    wrap.innerHTML = dates.map(d => {
-      const n = getLogByDate(nutrition, d);
-      const score = nutritionScoreFromLog(n, t);
-      const color = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
-      return `
-        <div class="load-bar-item">
-          <div class="load-bar-name">${d.slice(5)}</div>
-          <div class="load-bar-track"><div class="load-bar-fill" style="width:${n ? score : 0}%;background:${color}"></div></div>
-          <div class="load-bar-val" style="color:${color}">${n ? score : '—'}</div>
-          <div class="load-bar-flag">🥗</div>
-        </div>`;
-    }).join('');
-  }
-
-  function saveNutritionFromForm(athlete_id) {
-    const date = todayISO();
-    const { team } = activeTeam();
-    const row = {
-      id: uuid(),
-      athlete_id,
-      team_id: team?.id,
-      date,
-      calories: Number(el('nCals').value) || null,
-      water_oz: Number(el('nWater').value) || null,
-      protein_g: Number(el('nProtein').value) || null,
-      carbs_g: Number(el('nCarbs').value) || null,
-      fat_g: Number(el('nFat').value) || null,
-      note: (el('nNote').value || '').slice(0, 200),
-      created_at: new Date().toISOString()
-    };
-    STATE.logs.nutrition = STATE.logs.nutrition.filter(x => !(x.athlete_id === athlete_id && x.date === date));
-    STATE.logs.nutrition.push(row);
-    saveState();
-    toast('Nutrition saved ✓');
-  }
-
-  // -----------------------------
-  // Settings (team/district)
-  // -----------------------------
-  function applySettingsFromForm() {
-    const { school, team } = activeTeam();
-    if (!school || !team) return;
-
-    const newName = (el('settingTeamName')?.value || team.name).trim();
-    const newSeason = (el('settingSeason')?.value || team.season).trim();
-    const newSport = (el('settingSport')?.value || team.sport).trim().toLowerCase();
-
-    team.name = newName || team.name;
-    team.season = newSeason || team.season;
-    team.sport = newSport || team.sport;
-
-    // Keep profile sport in sync for athlete prescriptions
-    STATE.profile.sport = team.sport;
-
-    saveState();
-    toast('Settings saved ✓');
-    renderDashboard();
-  }
-
-  function exportData() {
-    const data = JSON.stringify(STATE, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `performanceiq-backup-${todayISO()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast('Export downloaded ✓');
-  }
-
-  function resetData() {
-    if (!confirm('Reset to demo data? This cannot be undone.')) return;
-    STATE = initialState();
-    saveState();
-    toast('Reset complete ↺');
-    init();
-  }
-
-  // -----------------------------
-  // Navigation / Router
-  // -----------------------------
-  function switchView(viewId) {
-    if (STATE.ui.current_view === viewId) return;
-    STATE.ui.current_view = viewId;
-    saveState();
-
-    qa('.view').forEach(v => v.classList.remove('active'));
-    qa('.nav-btn').forEach(b => b.classList.remove('active'));
-
-    const viewEl = el('view-' + viewId);
-    const navEl = q(`[data-view="${viewId}"]`);
-    if (viewEl) viewEl.classList.add('active');
-    if (navEl) navEl.classList.add('active');
-
-    // Render per-view
-    if (viewId === 'dashboard') renderDashboard();
-    if (viewId === 'athletes') {
-      renderAthletesView();
-      if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
-      if (el('athleteDetail')) el('athleteDetail').style.display = 'none';
-    }
-    if (viewId === 'analytics') renderAnalytics();
-    if (viewId === 'train') renderTrainView();
-    if (viewId === 'schedule') renderEvents('fullEventList');
-
-    if (viewId === 'wellness') {
-      const athlete_id = resolveActiveAthleteForPersonalViews();
-      setWellnessFormFromExisting(athlete_id);
-      renderWellness7(athlete_id);
-      const sub = el('wellnessSub');
-      if (sub) sub.textContent = `${todayISO()} · ${(athleteById(athlete_id)?.name || 'Athlete')}`;
-    }
-
-    if (viewId === 'nutrition') {
-      const athlete_id = resolveActiveAthleteForPersonalViews();
-      setNutritionFormFromExisting(athlete_id);
-      renderNutritionTargets(athlete_id);
-      renderNutritionPillar(athlete_id);
-      renderNutrition7(athlete_id);
-      const sub = el('nutritionSub');
-      if (sub) sub.textContent = `${todayISO()} · ${(athleteById(athlete_id)?.name || 'Athlete')}`;
-    }
-
-    if (viewId === 'settings') {
-      setTopbar();
-    }
-  }
-
-  function resolveActiveAthleteForPersonalViews() {
-    const role = currentRole();
-    if (role === 'athlete') return STATE.profile.active_athlete_id;
-    // coach/admin: use selected athlete if any, else first athlete
-    return STATE.ui.selected_athlete_id || teamAthletes()[0]?.id || STATE.profile.active_athlete_id;
-  }
-
-  function applyRoleVisibility() {
-    const role = currentRole();
-
-    // Hide/show nav buttons based on caps
-    const map = {
-      dashboard: true,
-      athletes: hasCap('team') || hasCap('me') || hasCap('analytics'),
-      analytics: hasCap('analytics'),
-      train: hasCap('train'),
-      schedule: hasCap('schedule'),
-      wellness: hasCap('wellness'),
-      nutrition: hasCap('nutrition'),
-      settings: hasCap('settings') || hasCap('district') || hasCap('export')
-    };
-
-    qa('.nav-btn[data-view]').forEach(btn => {
-      const v = btn.dataset.view;
-      const show = map[v] !== false;
-      btn.style.display = show ? '' : 'none';
-    });
-
-    // Default view if current is not allowed
-    const current = STATE.ui.current_view || 'dashboard';
-    if (map[current] === false) {
-      switchView('dashboard');
-    }
-  }
-
-  // -----------------------------
-  // Onboarding (minimal, uses existing modal in HTML)
-  // -----------------------------
-  let obStep = 1;
-  let obSelectedRole = STATE.profile.role || 'coach';
-  let obSelectedSport = STATE.profile.sport || 'basketball';
-
-  function setObStep(step) {
-    obStep = step;
-    qa('.modal-step').forEach(s => s.classList.remove('active'));
-    const s = el(`obStep${step}`);
-    if (s) s.classList.add('active');
-    const prog = el('obProgress');
-    if (prog) prog.style.width = `${Math.round((step / 3) * 100)}%`;
-  }
-
-  function initOnboarding() {
-    const modal = el('onboardingModal');
-    if (!modal) return;
-
-    const seen = localStorage.getItem(LS_SEEN);
-    if (!seen) modal.style.display = 'flex';
-
-    qa('#roleGrid .role-card').forEach(card => {
-      card.addEventListener('click', () => {
-        qa('#roleGrid .role-card').forEach(c => c.classList.remove('selected'));
-        card.classList.add('selected');
-        obSelectedRole = card.dataset.role || 'coach';
-      });
-    });
-
-    qa('#sportGrid .sport-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        qa('#sportGrid .sport-chip').forEach(c => c.classList.remove('selected'));
-        chip.classList.add('selected');
-        obSelectedSport = chip.dataset.sport || 'basketball';
-      });
-    });
-
-    // Step buttons
-    el('obNext1')?.addEventListener('click', () => setObStep(2));
-    el('obBack2')?.addEventListener('click', () => setObStep(1));
-    el('obNext2')?.addEventListener('click', () => {
-      const session = generateSession(obSelectedSport, 'practice', 60, 'moderate', []);
-      const wrap = el('obFirstSession');
-      if (wrap) {
-        wrap.innerHTML = buildWorkoutCardHTML(session, { allowStart: false });
-        qa('button', wrap).forEach(b => b.style.display = 'none');
+  function start(){
+    ensure();
+    steps = [
+      {
+        view:'dashboard',
+        target: () => el('statAvg')?.closest('.stat-card') || el('statAvg'),
+        h:'Scan the team PIQ average',
+        p:'Start here to see whether the team is trending up or down before you assign load.',
+        cap:'If parents report eye strain, this headline is now WCAG-friendly and readable without browser zoom.'
+      },
+      {
+        view:'dashboard',
+        target: () => el('alertsList')?.closest('.card') || el('alertsList'),
+        h:'Handle risk flags first',
+        p:'Clear “Rest” and “Watch” athletes before planning practice. Tap any athlete row to open details.',
+        cap:'No audio — but the caption motion gives a “guided” feel without distractions.'
+      },
+      {
+        view:'dashboard',
+        target: () => el('heatmapBody')?.closest('table') || el('heatmapBody'),
+        h:'Use the heatmap for who/why',
+        p:'This is your fastest “who needs what” view: score, readiness, ACWR, and trend in one line.',
+        cap:'Tip: click a row → detail ring animates + pillars fill in.'
+      },
+      {
+        view:'train',
+        target: () => el('generatedSessionWrap') || el('sessionLibrary'),
+        h:'Generate today’s session',
+        p:'Pick sport, duration, intensity, injuries — then generate a session. Save or start.',
+        cap:'Micro-interactions (ripple + spring) reinforce “this is a finished product.”'
+      },
+      {
+        view:'athletes',
+        target: () => el('athleteSearch') || el('athleteFilterInput'),
+        h:'Quick filter + communicate',
+        p:'Search by name/position to check an athlete, then open detail to view readiness + notes.',
+        cap:'Parents asked for clarity — larger typography + stronger focus ring fix that.'
       }
-      setObStep(3);
-    });
-    el('obBack3')?.addEventListener('click', () => setObStep(2));
-
-    el('obSkip')?.addEventListener('click', () => {
-      modal.style.display = 'none';
-      localStorage.setItem(LS_SEEN, '1');
-      toast('Welcome to PerformanceIQ ⚡');
-    });
-
-    el('obFinish')?.addEventListener('click', () => {
-      // Apply to state
-      STATE.profile.role = obSelectedRole;
-      STATE.profile.sport = obSelectedSport;
-
-      // Sync team sport
-      const { team } = activeTeam();
-      if (team) team.sport = obSelectedSport;
-
-      saveState();
-      localStorage.setItem(LS_SEEN, '1');
-      modal.style.display = 'none';
-      applyRoleVisibility();
-      renderDashboard();
-      toast('Welcome to PerformanceIQ ⚡');
-    });
-
-    setObStep(1);
+    ];
+    try { localStorage.setItem(STORAGE_KEY_TOUR, '1'); } catch {}
+    go(0);
   }
 
-  // -----------------------------
-  // Wire events
-  // -----------------------------
-  function wireEvents() {
-    // Nav
-    qa('[data-view]').forEach(btn => {
-      btn.addEventListener('click', () => switchView(btn.dataset.view));
-    });
-
-    // Search athletes
-    el('athleteSearch')?.addEventListener('input', (e) => {
-      if (STATE.ui.current_view !== 'athletes') switchView('athletes');
-      renderAthletesView(e.target.value);
-    });
-    el('athleteFilterInput')?.addEventListener('input', (e) => {
-      renderAthletesView(e.target.value);
-    });
-
-    // Athlete detail back
-    el('backToList')?.addEventListener('click', () => {
-      el('athleteDetail').style.display = 'none';
-      el('athleteCardGrid').style.display = '';
-      renderAthletesView();
-    });
-    el('viewAllAthletes')?.addEventListener('click', () => switchView('athletes'));
-    el('rosterMore')?.addEventListener('click', () => switchView('athletes'));
-
-    // Train controls
-    el('btnGenerate')?.addEventListener('click', renderGeneratedSession);
-    el('btnGenerateInline')?.addEventListener('click', renderGeneratedSession);
-    el('btnPushToday')?.addEventListener('click', () => toast('Session pushed to Today ✓'));
-
-    qa('#injuryChips .inj-chip').forEach(chip => {
-      chip.addEventListener('click', () => chip.classList.toggle('active'));
-    });
-
-    // Wellness injury chips
-    qa('#wInjuryChips .inj-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        if (chip.dataset.flag === 'none') {
-          qa('#wInjuryChips .inj-chip').forEach(c => c.classList.remove('active'));
-          chip.classList.add('active');
-          return;
-        }
-        // toggling non-none removes "none"
-        q('#wInjuryChips .inj-chip[data-flag="none"]')?.classList.remove('active');
-        chip.classList.toggle('active');
-      });
-    });
-
-    el('btnSaveWellness')?.addEventListener('click', () => {
-      const athlete_id = resolveActiveAthleteForPersonalViews();
-      saveWellnessFromForm(athlete_id);
-      renderWellness7(athlete_id);
-      renderDashboard();
-    });
-
-    el('btnAutoWellness')?.addEventListener('click', () => {
-      el('wSleep').value = '7.8';
-      el('wSleepQ').value = '8';
-      el('wSoreness').value = '3';
-      el('wEnergy').value = '8';
-      el('wStress').value = '3';
-      el('wMood').value = '8';
-      toast('Demo values filled');
-    });
-
-    el('btnSaveNutrition')?.addEventListener('click', () => {
-      const athlete_id = resolveActiveAthleteForPersonalViews();
-      saveNutritionFromForm(athlete_id);
-      renderNutritionTargets(athlete_id);
-      renderNutritionPillar(athlete_id);
-      renderNutrition7(athlete_id);
-      renderDashboard();
-    });
-
-    el('btnAutoNutrition')?.addEventListener('click', () => {
-      el('nCals').value = '2800';
-      el('nWater').value = '96';
-      el('nProtein').value = '160';
-      el('nCarbs').value = '320';
-      el('nFat').value = '80';
-      toast('Demo values filled');
-    });
-
-    // Refresh
-    el('btnRefresh')?.addEventListener('click', () => {
-      renderDashboard();
-      toast('Data refreshed ↺');
-    });
-
-    // Exports
-    el('btnExportData')?.addEventListener('click', exportData);
-    el('btnResetData')?.addEventListener('click', resetData);
-
-    // Settings save
-    el('btnSaveSettings')?.addEventListener('click', applySettingsFromForm);
+  function close(){
+    if (backdrop) backdrop.style.display = 'none';
+    if (card) card.style.display = 'none';
+    if (hl) hl.style.display = 'none';
+    clearFocus();
   }
 
-  // -----------------------------
-  // Init
-  // -----------------------------
-  function init() {
-    applyRoleVisibility();
-    initOnboarding();
-    wireEvents();
-
-    // Default to last view
-    const view = STATE.ui.current_view || 'dashboard';
-    switchView(view);
-
-    // Ensure dashboard renders once at load
-    renderDashboard();
-  }
-
-  init();
-
-  // Expose minimal debug (no secrets)
-  window.__PIQ_DEBUG__ = {
-    getState: () => JSON.parse(JSON.stringify(STATE)),
-    computePIQForAthlete: (id, dateISO) => computePIQForAthlete(id, dateISO || todayISO())
-  };
+  return { start, close };
 })();
+
+/* ─── ONBOARDING WIZARD (existing) ─── */
+let obStep = 1, obRole = 'coach', obSport = 'basketball';
+
+document.querySelectorAll('#roleGrid .role-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('#roleGrid .role-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected'); obRole = card.dataset.role;
+  });
+});
+document.querySelectorAll('#sportGrid .sport-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#sportGrid .sport-chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected'); obSport = chip.dataset.sport;
+  });
+});
+document.querySelectorAll('#obInjuryChips .inj-chip').forEach(chip =>
+  chip.addEventListener('click', () => chip.classList.toggle('active'))
+);
+
+function goObStep(n){
+  obStep = n;
+  document.querySelectorAll('.modal-step').forEach(s => s.classList.remove('active'));
+  el('obStep' + n)?.classList.add('active');
+  if (el('obProgress')) el('obProgress').style.width = Math.round(n / 3 * 100) + '%';
+}
+function closeModal(){
+  el('onboardingModal') && (el('onboardingModal').style.display = 'none');
+  try { localStorage.setItem(STORAGE_KEY_ONBOARDED, '1'); } catch {}
+}
+
+el('obNext1')?.addEventListener('click', () => goObStep(2));
+el('obNext2')?.addEventListener('click', () => {
+  if (el('obFirstSession')) el('obFirstSession').innerHTML = buildWorkoutCardHTML(generateSession(obSport,'practice',60,'moderate',[]), false);
+  goObStep(3);
+});
+el('obBack2')?.addEventListener('click', () => goObStep(1));
+el('obBack3')?.addEventListener('click', () => goObStep(2));
+el('obClose')?.addEventListener('click', closeModal);
+el('obSkip')?.addEventListener('click',  () => { closeModal(); toast('Welcome to PerformanceIQ ⚡'); });
+el('obFinish')?.addEventListener('click', () => {
+  STATE.role  = obRole; STATE.sport = obSport;
+  applySportTheme(STATE.sport);
+  const LABELS = {coach:'Head Coach',athlete:'Athlete',admin:'Admin / AD',parent:'Parent',owner:'Owner',viewer:'Viewer'};
+  el('userName') && (el('userName').textContent = LABELS[obRole] || 'Coach Davis');
+  el('userRole') && (el('userRole').textContent = `${LABELS[obRole]||'Head Coach'} · ${cap(obSport)}`);
+  saveState(); closeModal();
+  applySportTheme(STATE.sport);
+  renderDashboard();
+  toast('Welcome to PerformanceIQ ⚡');
+});
+
+/* ─── KEYBOARD NAV ─── */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const m = el('onboardingModal');
+    if (m && m.style.display !== 'none') closeModal();
+    TodayTour.close();
+  }
+  if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+    TodayTour.start();
+  }
+});
+
+/* ══════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════ */
+function init(){
+  applySportTheme(STATE.sport);
+  ensureTabIndicator();
+
+  const seen = (() => { try { return localStorage.getItem(STORAGE_KEY_ONBOARDED); } catch { return null; } })();
+  if (!seen && el('onboardingModal')) el('onboardingModal').style.display = 'flex';
+  el('userRole') && (el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`);
+
+  renderDashboard();
+
+  // Show tour once (after onboarding)
+  const seenTour = (() => { try { return localStorage.getItem(STORAGE_KEY_TOUR); } catch { return null; } })();
+  if (!seenTour && seen) setTimeout(() => TodayTour.start(), 650);
+}
+
+init();
