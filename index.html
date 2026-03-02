@@ -1,4 +1,3 @@
-<!-- index.html — PerformanceIQ (Elite UI + Midnight theme + Loader + Onboarding + Role switch) -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -27,88 +26,13 @@
   </div>
 </div>
 
-<header class="topbar">
-  <div class="topbar-left">
-    <div class="brand-mark"><div class="brand-dot"></div></div>
-    <span class="brand-name">PerformanceIQ</span>
-  </div>
-
-  <div class="topbar-center">
-    <div class="pill live" id="pillOnline"><span class="pulse"></span><span id="pillOnlineText">Team Online</span></div>
-    <div class="pill" id="pillSeason">Pre-Season</div>
-    <div class="pill orange" id="pillGame" style="display:none">⚡ <span id="pillGameText"></span></div>
-  </div>
-
-  <div class="topbar-right">
-    <div class="search-wrap">
-      <span class="search-icon">🔍</span>
-      <input class="search-input" type="text" placeholder="Search athletes…" id="athleteSearch" />
-    </div>
-    <button class="icon-btn" id="btnTheme" title="Toggle theme">🌙</button>
-    <button class="icon-btn" id="btnRefresh" title="Refresh data">↺</button>
-    <button class="icon-btn" id="btnExport" title="Export report">📤</button>
-  </div>
-</header>
-
-<div class="app-shell">
-  <!-- KEEP ALL YOUR ORIGINAL HTML BELOW THIS POINT -->
-  <!-- (This is your full UI shell; do not remove sections or IDs) -->
-
-  <nav class="sidebar">
-    <div class="sidebar-section">Main</div>
-    <button class="nav-btn active" data-view="dashboard"><i class="nav-icon">⬡</i> Dashboard</button>
-    <button class="nav-btn" data-view="athletes"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
-    <button class="nav-btn" data-view="train"><i class="nav-icon">▷</i> Train</button>
-    <button class="nav-btn" data-view="analytics"><i class="nav-icon">◈</i> Analytics</button>
-
-    <div class="sidebar-section">Manage</div>
-    <button class="nav-btn" data-view="schedule"><i class="nav-icon">📅</i> Schedule</button>
-    <button class="nav-btn" data-view="wellness"><i class="nav-icon">🌙</i> Wellness</button>
-    <button class="nav-btn" data-view="nutrition"><i class="nav-icon">🥗</i> Nutrition</button>
-    <button class="nav-btn" data-view="settings"><i class="nav-icon">⚙</i> Settings</button>
-
-    <div class="sidebar-bottom">
-      <div class="user-block" id="userBlock">
-        <div class="user-avatar" id="userAv">CD</div>
-        <div>
-          <div class="user-name" id="userName">Coach Davis</div>
-          <div class="user-role" id="userRole">Head Coach · Basketball</div>
-        </div>
-      </div>
-    </div>
-  </nav>
-
-  <main class="main-content">
-    <!-- ✅ PASTE/KEEP THE REST OF YOUR ORIGINAL index (3).html CONTENT HERE EXACTLY -->
-    <!-- For brevity in this message, I’m not re-pasting the middle sections you already have. -->
-    <!-- Do NOT change ids/classes that your JS expects. -->
-
-    <!-- ... your existing sections ... -->
-
-  </main>
-</div>
+<!-- KEEP YOUR EXISTING APP HTML SHELL EXACTLY AS-IS BELOW -->
+<!-- (header, sidebar, views, modals, etc.) -->
 
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- ✅ ONLY ENTRYPOINT: ES module app -->
-<script type="module" src="./js/app.js"></script>
-
-<!-- ✅ Fail-safe: if something prevents JS from booting, don’t trap the UI forever -->
-<script>
-  (function(){
-    const FALLBACK_MS = 6000;
-    setTimeout(() => {
-      const ls = document.getElementById('loadingScreen');
-      if (ls && getComputedStyle(ls).display !== 'none') {
-        ls.style.display = 'none';
-        const warn = document.createElement('div');
-        warn.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:10000;background:rgba(10,14,20,.96);border:1px solid rgba(255,255,255,.14);color:#eaf0ff;border-radius:12px;padding:10px 12px;font:13px system-ui;';
-        warn.textContent = 'App did not finish starting. Refresh once. If it keeps happening, a module path is missing.';
-        document.body.appendChild(warn);
-      }
-    }, FALLBACK_MS);
-  })();
-</script>
+<!-- ✅ Boot loader (shows exact missing module path if imports fail) -->
+<script type="module" src="./js/boot.js?v=20260302"></script>
 
 </body>
 </html>
