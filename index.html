@@ -256,118 +256,89 @@
   <main class="main-content">
 
     <section class="view active" id="view-dashboard">
-      <div class="page-header stagger">
-        <div>
-          <div class="page-title" id="dashTitle">TEAM DASHBOARD</div>
-          <div class="page-sub" id="dashSub">Loading…</div>
+      <div class="dash-wrap">
+        <div class="page-header dash-header stagger">
+          <div class="page-title-wrap">
+            <div class="page-eyebrow">Team Dashboard</div>
+            <div class="page-title" id="dashTitle">Team Dashboard</div>
+            <div class="page-sub" id="dashSub">—</div>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn-ghost" data-action="export">📤 Export</button>
+            <button class="btn-primary" data-action="logSession">+ Log Session</button>
+          </div>
         </div>
-        <div class="page-actions">
-          <div class="chip green" id="chipOnline"><span class="pulse" style="background:var(--green)"></span><span id="chipOnlineText">— online</span></div>
-          <div class="chip red" id="chipFlags" style="display:none"><span id="chipFlagsText">— flags</span></div>
-          <div class="chip orange" id="chipGame" style="display:none"><span id="chipGameText2">Game —</span></div>
-        </div>
-      </div>
 
-      <div class="stat-grid stagger" id="statGrid">
-        <div class="stat-card accent">
-          <div class="stat-label">Avg PIQ Score</div>
-          <div class="stat-value" id="statAvg">—</div>
-          <div class="stat-sub up" id="statAvgSub">↑ loading…</div>
-          <div class="sparkline" id="sparkAvg"></div>
-        </div>
-        <div class="stat-card green">
-          <div class="stat-label">Ready to Train</div>
-          <div class="stat-value" id="statReady">—</div>
-          <div class="stat-sub" id="statReadySub">— athletes</div>
-        </div>
-        <div class="stat-card yellow">
-          <div class="stat-label">Monitor Load</div>
-          <div class="stat-value" id="statMonitor">—</div>
-          <div class="stat-sub down" id="statMonitorSub">— athletes</div>
-        </div>
-        <div class="stat-card red">
-          <div class="stat-label">High Risk / Rest</div>
-          <div class="stat-value" id="statRisk">—</div>
-          <div class="stat-sub" id="statRiskSub">Action required</div>
-        </div>
-      </div>
-
-      <div class="grid-main">
-        <div style="display:flex;flex-direction:column;gap:18px">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">Athlete Readiness Board</div>
-              <a class="card-link" id="viewAllAthletes">View all →</a>
+        <div class="stat-grid stagger">
+          <div class="stat-card good">
+            <div class="stat-header">
+              <div class="stat-label">Avg PIQ Score</div>
+              <div class="stat-icon good">📈</div>
             </div>
-            <table class="heatmap" id="heatmapTable">
-              <thead>
-                <tr>
-                  <th>Athlete</th>
-                  <th>PIQ</th>
-                  <th>Readiness</th>
-                  <th>ACWR</th>
-                  <th>Flags</th>
-                  <th>Trend</th>
-                </tr>
-              </thead>
-              <tbody id="heatmapBody"></tbody>
-            </table>
+            <div class="stat-value good" id="statAvg">—</div>
+            <div class="stat-sub" id="statAvgSub">—</div>
           </div>
 
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">Load Monitoring (ACWR)</div>
-              <span class="card-link" id="loadLegend"></span>
+          <div class="stat-card good">
+            <div class="stat-header">
+              <div class="stat-label">Ready to Train</div>
+              <div class="stat-icon good">✅</div>
             </div>
-            <div class="card-body">
-              <div class="load-bar-list" id="loadBarList"></div>
-              <div class="load-legend">
-                <span>✅ Safe &lt;1.3</span>
-                <span>⚠️ Watch 1.3–1.5</span>
-                <span>⛔ Risk &gt;1.5</span>
+            <div class="stat-value good" id="statReady">—</div>
+            <div class="stat-sub" id="statReadySub">—</div>
+          </div>
+
+          <div class="stat-card danger">
+            <div class="stat-header">
+              <div class="stat-label">Top Risk Flag</div>
+              <div class="stat-icon danger">🚨</div>
+            </div>
+            <div class="stat-value danger" id="statRisk">—</div>
+            <div class="stat-sub" id="statRiskSub">—</div>
+          </div>
+
+          <div class="stat-card info">
+            <div class="stat-header">
+              <div class="stat-label">Roster Size</div>
+              <div class="stat-icon info">👥</div>
+            </div>
+            <div class="stat-value info" id="statRoster">—</div>
+            <div class="stat-sub">athletes on roster</div>
+          </div>
+        </div>
+
+        <div class="grid-2 dash-grid stagger">
+          <div class="dash-left">
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Athlete Readiness Board</div>
+                <a class="panel-link" id="viewAllAthletes" href="#/athletes">View all →</a>
+              </div>
+              <div class="table-wrap">
+                <table class="readiness-table">
+                  <thead>
+                    <tr>
+                      <th>Athlete</th>
+                      <th>PIQ Score</th>
+                      <th>ACWR</th>
+                      <th>Flag</th>
+                    </tr>
+                  </thead>
+                  <tbody id="readinessTable"></tbody>
+                </table>
               </div>
             </div>
           </div>
 
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">Team Activity</div>
-              <a class="card-link">See all →</a>
-            </div>
-            <div class="card-body">
-              <div class="feed-list" id="activityFeed"></div>
-            </div>
-          </div>
-        </div>
-
-        <div style="display:flex;flex-direction:column;gap:16px">
-          <div>
-            <div class="section-label">RISK ALERTS</div>
-            <div style="display:flex;flex-direction:column;gap:8px" id="alertsList"></div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">Roster Readiness</div>
-              <a class="card-link" id="rosterMore">Full →</a>
-            </div>
-            <div id="rosterMini"></div>
-          </div>
-
-          <div>
-            <div class="section-label">UPCOMING</div>
-            <div class="event-list" id="eventList"></div>
-          </div>
-
-          <div class="insight-card">
-            <div class="insight-tag">✦ Weekly Insight</div>
-            <div class="insight-body" id="insightText">Loading insight…</div>
-          </div>
-
-          <div class="insight-card">
-            <div class="insight-tag">📅 Periodization (4-week)</div>
-            <div class="insight-body" style="padding-top:6px">
-              <div id="periodPlan"></div>
+          <div class="right-col">
+            <div class="panel">
+              <div class="panel-header">
+                <div class="panel-title">Roster Readiness</div>
+              </div>
+              <div class="roster-ring-wrap">
+                <div id="rosterRing"></div>
+                <div class="roster-legend" id="rosterMini"></div>
+              </div>
             </div>
           </div>
         </div>
