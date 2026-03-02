@@ -1,167 +1,207 @@
-/* app.css — PRODUCTION-READY REPLACEMENT (FULL FILE) v1.2.0
-   Phase 4 UI: grade-colored text, compact tables, tiny buttons, session panel.
-   NOTE: Update index.html cache-buster to app.css?v=1.2.0 (recommended).
-*/
+// /js/app.js
+import { cacheDOM, dom } from './ui/dom.js';
+import { installInteractions } from './ui/interactions.js';
+import { getThemePref, applyTheme, toggleTheme } from './ui/theme.js';
+import { applySportTheme } from './ui/sportTheme.js';
 
-:root{
-  --bg:#0b0f14;
-  --card:#101722;
-  --card2:#0f1620;
-  --text:#e8eef7;
-  --muted:#9fb0c6;
-  --border:#1c2a3a;
-  --btn:#1b2a3d;
-  --btn2:#0f1c2b;
+import { Storage } from './services/storage.js';
+import { toast } from './services/toast.js';
 
-  --A:#2ecc71;
-  --B:#f1c40f;
-  --C:#e67e22;
-  --D:#e74c3c;
-  --OUT:#bdc3c7;
-}
+import { STATE, ATHLETES, saveState, saveAthletes, setAthletes } from './state/state.js';
+import { STORAGE_KEY_TOUR } from './state/keys.js';
 
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-  background:var(--bg);
-  color:var(--text);
-}
+import { switchView } from './router.js';
 
-.small{font-size:12px;color:var(--muted)}
-.hr{height:1px;background:var(--border);margin:12px 0}
+import { renderDashboard } from './views/dashboard.js';
+import { renderAthletesView, bindAthletesViewEvents } from './views/athletes.js';
+import { renderTrainView, bindTrainViewEvents, renderGeneratedSession } from './views/train.js';
+import { renderAnalytics } from './views/analytics.js';
+import { renderSchedule } from './views/schedule.js';
 
-.topbar{
-  position:sticky;top:0;z-index:20;
-  background:rgba(11,15,20,.92);
-  backdrop-filter: blur(10px);
-  border-bottom:1px solid var(--border);
-}
-.brand{
-  display:flex;align-items:center;gap:10px;
-  padding:10px 12px;
-}
-.brand img{width:28px;height:28px;border-radius:8px}
-.brandTitle{font-weight:800;letter-spacing:.2px}
-.pill{
-  border:1px solid var(--border);
-  padding:4px 8px;border-radius:999px;
-  background:rgba(16,23,34,.8);
-  font-size:12px;color:var(--muted);
+import { initOnboarding, maybeShowOnboarding, closeOnboardingIfOpen } from './ui/onboarding.js';
+import { createTodayTour } from './ui/tour.js';
+
+/* ---------------------------
+   Simple helpers
+---------------------------- */
+function hideLoader() {
+  if (dom.loadingScreen) dom.loadingScreen.style.display = 'none';
 }
 
-.nav{
-  display:flex;gap:6px;flex-wrap:wrap;
-  padding:0 12px 12px 12px;
-}
-.nav button{
-  background:var(--btn2);
-  border:1px solid var(--border);
-  color:var(--text);
-  padding:8px 10px;
-  border-radius:10px;
-  cursor:pointer;
-  font-size:13px;
-}
-.nav button:hover{opacity:.95}
-
-.container{padding:14px}
-.grid{
-  display:grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap:12px;
-}
-@media (max-width: 920px){
-  .grid{grid-template-columns:1fr}
+function onEnter(viewId) {
+  if (viewId === 'dashboard') renderDashboard();
+  if (viewId === 'athletes') {
+    if (dom.athleteDetail) dom.athleteDetail.style.display = 'none';
+    if (dom.athleteCardGrid) dom.athleteCardGrid.style.display = '';
+    renderAthletesView(dom.athleteFilterInput?.value || dom.athleteSearch?.value || '');
+  }
+  if (viewId === 'train') renderTrainView();
+  if (viewId === 'analytics') renderAnalytics();
+  if (viewId === 'schedule') renderSchedule(dom.fullEventList);
 }
 
-.card{
-  background:linear-gradient(180deg,var(--card),var(--card2));
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:14px;
-  box-shadow: 0 8px 26px rgba(0,0,0,.25);
+// Tour needs a “navigate” that also triggers render (because router is separate in modular build).
+function navigate(viewId) {
+  switchView(viewId, { onEnter });
 }
 
-.row{display:flex;gap:10px;flex-wrap:wrap}
-.field{flex:1;min-width:160px}
-label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-input,select{
-  width:100%;
-  background:#0c1420;
-  border:1px solid var(--border);
-  color:var(--text);
-  padding:10px 10px;
-  border-radius:12px;
-  outline:none;
-}
-input::placeholder{color:#6f839c}
-
-.btnRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start}
-.btn{
-  background:var(--btn);
-  border:1px solid var(--border);
-  color:var(--text);
-  padding:10px 12px;
-  border-radius:12px;
-  cursor:pointer;
-  font-weight:600;
-}
-.btn.secondary{background:#0d1928}
-.btn.danger{background:#2a0f14;border-color:#3a1c24}
-.btn.tiny{padding:6px 10px;border-radius:10px;font-size:12px}
-.btn:hover{opacity:.96}
-
-.tableWrap{overflow:auto;border:1px solid var(--border);border-radius:14px}
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{
-  border-bottom:1px solid var(--border);
-  padding:10px;
-  text-align:left;
-}
-.table th{font-size:12px;color:var(--muted);font-weight:700}
-.table td{font-size:13px}
-.table tr:last-child td{border-bottom:none}
-
-/* Grade color helpers */
-.gradeText{font-weight:600}
-.grade-A{color:var(--A)}
-.grade-B{color:var(--B)}
-.grade-C{color:var(--C)}
-.grade-D{color:var(--D)}
-.grade-OUT{color:var(--OUT)}
-
-/* Modals */
-.modalBack{
-  position:fixed;inset:0;
-  background:rgba(0,0,0,.6);
-  display:flex;align-items:center;justify-content:center;
-  padding:18px;
-  z-index:50;
-}
-.modal{
-  width:min(760px, 100%);
-  background:linear-gradient(180deg,var(--card),var(--card2));
-  border:1px solid var(--border);
-  border-radius:18px;
-  padding:16px;
+function handleSearch(value) {
+  if (STATE.currentView !== 'athletes') navigate('athletes');
+  renderAthletesView(value);
+  if (dom.athleteSearch) dom.athleteSearch.value = value;
+  if (dom.athleteFilterInput) dom.athleteFilterInput.value = value;
 }
 
-/* Splash */
-#splash{
-  position:fixed;inset:0;
-  background:var(--bg);
-  display:flex;align-items:center;justify-content:center;
-  z-index:999;
+/* ---------------------------
+   Data mgmt (export/import/reset) — modularized baseline
+---------------------------- */
+function bindDataManagement() {
+  dom.btnExportData?.addEventListener('click', () => {
+    try {
+      const blob = new Blob(
+        [JSON.stringify({ athletes: ATHLETES, state: STATE, exportedAt: new Date().toISOString() }, null, 2)],
+        { type: 'application/json' }
+      );
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href: url, download: `piq-backup-${Date.now()}.json` });
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('Backup downloaded ✓');
+    } catch (e) {
+      toast('Export failed: ' + e.message);
+    }
+  });
+
+  dom.btnImportData?.addEventListener('click', () => dom.importFileInput?.click());
+
+  dom.importFileInput?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const p = JSON.parse(evt.target.result);
+        if (p.athletes && Array.isArray(p.athletes) && p.athletes.length) {
+          setAthletes(p.athletes);
+          if (p.state && typeof p.state === 'object') Object.assign(STATE, p.state);
+          saveState();
+          applySportTheme(STATE.sport);
+          renderDashboard();
+          toast(`Imported ${p.athletes.length} athletes ✓`);
+        } else {
+          toast('Import failed — no athletes found');
+        }
+      } catch {
+        toast('Import failed — invalid JSON');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  dom.btnResetData?.addEventListener('click', () => {
+    // You listed replacing confirm() with modal later; keeping parity right now.
+    if (!confirm('Reset to demo data? Current data will be lost.')) return;
+    // simplest: clear the athletes key and reload
+    Storage.remove('piq_athletes_v2');
+    location.reload();
+  });
 }
-#splashCard{
-  width:min(320px, 90%);
-  background:linear-gradient(180deg,var(--card),var(--card2));
-  border:1px solid var(--border);
-  border-radius:18px;
-  padding:16px;
-  text-align:center;
+
+/* ---------------------------
+   Settings (team/sport/theme)
+---------------------------- */
+function bindSettings() {
+  if (dom.settingTeamName) dom.settingTeamName.value = STATE.teamName;
+
+  if (dom.settingSport) {
+    Array.from(dom.settingSport.options).forEach(o => {
+      o.selected = o.value.toLowerCase() === String(STATE.sport).toLowerCase();
+    });
+  }
+
+  dom.btnSaveSettings?.addEventListener('click', () => {
+    STATE.teamName = (dom.settingTeamName?.value || '').trim() || STATE.teamName;
+    STATE.season = dom.settingSeason?.value || STATE.season;
+    STATE.sport = (dom.settingSport?.value || STATE.sport).toLowerCase();
+
+    applySportTheme(STATE.sport);
+
+    if (dom.userRole) dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
+    saveState();
+    renderDashboard();
+    toast('Settings saved ✓');
+  });
 }
-#splashCard img{width:56px;height:56px;border-radius:16px}
-#splash.hidden{display:none !important}
+
+/* ---------------------------
+   Navigation binding
+---------------------------- */
+function bindNav() {
+  document.querySelectorAll('[data-view]').forEach(btn =>
+    btn.addEventListener('click', () => navigate(btn.dataset.view))
+  );
+}
+
+/* ---------------------------
+   Main init
+---------------------------- */
+function init() {
+  cacheDOM();
+  installInteractions();
+
+  applyTheme(getThemePref());
+  dom.btnTheme?.addEventListener('click', toggleTheme);
+  dom.settingTheme?.addEventListener('change', (e) => applyTheme(e.target.value));
+
+  applySportTheme(STATE.sport);
+
+  bindNav();
+  bindSettings();
+  bindDataManagement();
+
+  // Search sync
+  dom.athleteSearch?.addEventListener('input', e => handleSearch(e.target.value));
+  dom.athleteFilterInput?.addEventListener('input', e => handleSearch(e.target.value));
+
+  // Top actions
+  dom.btnRefresh?.addEventListener('click', () => { renderDashboard(); toast('Data refreshed ↺'); });
+  dom.btnExport?.addEventListener('click', () => toast('Report export requires cloud sync — coming soon 📤'));
+  dom.btnExportAnalytics?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
+
+  // View-specific binds
+  bindTrainViewEvents();
+  bindAthletesViewEvents();
+
+  // ✅ Onboarding module (extracted from core.js) 19
+  initOnboarding({
+    onAfterFinish: () => {
+      // Make sure views reflect updated sport/theme/state
+      renderDashboard();
+    }
+  });
+
+  // ✅ TodayTour module (extracted from core.js) 20
+  const TodayTour = createTodayTour({ navigate });
+  TodayTour.bindKeyboardShortcuts();
+
+  // Keep “Escape closes onboarding too” parity with core.js behavior 21
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeOnboardingIfOpen();
+  });
+
+  // Initial user label
+  if (dom.userRole) dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
+
+  // First render
+  renderDashboard();
+  navigate(STATE.currentView || 'dashboard');
+
+  // Show onboarding once if not seen
+  maybeShowOnboarding();
+
+  hideLoader();
+}
+
+init();
