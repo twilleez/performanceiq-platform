@@ -4,36 +4,82 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PerformanceIQ</title>
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="favicon.ico">
-  <meta name="theme-color" content="#070b12">
+
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
 
 <!-- LOADING SCREEN -->
 <div id="loadingScreen" style="
-  position:fixed;inset:0;z-index:9999;
-  display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(900px 600px at 50% -10%, rgba(255,255,255,0.06), transparent 55%), #070b12;
-  color:#eaf0ff;
-  pointer-events:auto;
-">
-  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:24px;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:12px;height:12px;border-radius:50%;background:rgba(16,42,79,.95);box-shadow:0 0 0 6px rgba(16,42,79,.18)"></div>
-      <div style="font-weight:800;letter-spacing:.06em">PerformanceIQ</div>
-    </div>
-    <div style="font-size:12px;opacity:.78;letter-spacing:.03em">Loading dashboard…</div>
-  </div>
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#0b1118;
+  color:white;
+  z-index:9999;">
+  Loading PerformanceIQ...
 </div>
 
-<!-- KEEP YOUR EXISTING APP HTML SHELL EXACTLY AS-IS BELOW -->
-<!-- (header, sidebar, views, modals, etc.) -->
+<!-- APP SHELL -->
+<div class="app-shell">
 
-<div class="toast-container" id="toastContainer"></div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <h2 class="logo">PerformanceIQ</h2>
 
-<!-- ✅ Boot loader (shows exact missing module path if imports fail) -->
-<script type="module" src="./js/boot.js?v=20260302"></script>
+    <nav>
+      <button data-view="dashboard">Dashboard</button>
+      <button data-view="athletes">Athletes</button>
+      <button data-view="train">Train</button>
+      <button data-view="analytics">Analytics</button>
+      <button data-view="schedule">Schedule</button>
+    </nav>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+
+    <!-- DASHBOARD -->
+    <section id="dashboardView" class="view">
+      <h1>Dashboard</h1>
+      <div id="dashboardContent"></div>
+    </section>
+
+    <!-- ATHLETES -->
+    <section id="athletesView" class="view" style="display:none">
+      <h1>Athletes</h1>
+      <div id="athleteCardGrid"></div>
+    </section>
+
+    <!-- TRAIN -->
+    <section id="trainView" class="view" style="display:none">
+      <h1>Training</h1>
+      <div id="trainContent"></div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section id="analyticsView" class="view" style="display:none">
+      <h1>Analytics</h1>
+      <div id="analyticsContent"></div>
+    </section>
+
+    <!-- SCHEDULE -->
+    <section id="scheduleView" class="view" style="display:none">
+      <h1>Schedule</h1>
+      <div id="scheduleContent"></div>
+    </section>
+
+  </main>
+
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toastContainer"></div>
+
+<!-- BOOT LOADER -->
+<script type="module" src="./js/boot.js?v=3"></script>
 
 </body>
 </html>
