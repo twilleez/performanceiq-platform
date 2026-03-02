@@ -222,6 +222,12 @@ export async function initApp() {
   const TodayTour = createTodayTour({ navigate });
   TodayTour.bindKeyboardShortcuts();
 
+  // Allow onboarding (or other UI) to trigger the tour without importing tour.js again.
+  window.addEventListener("piq:tour", () => {
+    try { navigate("dashboard"); } catch {}
+    try { TodayTour.maybeShow(); } catch {}
+  });
+
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeOnboardingIfOpen();
   });
