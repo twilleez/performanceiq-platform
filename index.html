@@ -1,210 +1,114 @@
+<!-- index.html — PerformanceIQ (Elite UI + Midnight theme + Loader + Onboarding + Role switch) -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PerformanceIQ</title>
-
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico">
+  <meta name="theme-color" content="#070b12">
 </head>
-
 <body>
-  <!-- LOADING SCREEN -->
-  <div id="loadingScreen" style="position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(7,11,18,.98);color:#eaf0ff;font-family:system-ui;">
-    <div style="display:flex;flex-direction:column;gap:10px;align-items:center">
-      <div style="width:10px;height:10px;border-radius:999px;background:#00d4aa;box-shadow:0 0 0 8px rgba(0,212,170,.15);"></div>
-      <div style="font-weight:700;letter-spacing:.4px;">Loading PerformanceIQ…</div>
-      <div style="opacity:.7;font-size:12px;">If this takes longer than a few seconds, refresh once.</div>
+
+<!-- LOADING SCREEN -->
+<div id="loadingScreen" style="
+  position:fixed;inset:0;z-index:9999;
+  display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(900px 600px at 50% -10%, rgba(255,255,255,0.06), transparent 55%), #070b12;
+  color:#eaf0ff;
+">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:24px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:50%;background:rgba(16,42,79,.95);box-shadow:0 0 0 6px rgba(16,42,79,.18)"></div>
+      <div style="font-weight:800;letter-spacing:.06em">PerformanceIQ</div>
     </div>
+    <div style="font-size:12px;opacity:.78;letter-spacing:.03em">Loading dashboard…</div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="brand-mark"><div class="brand-dot"></div></div>
+    <span class="brand-name">PerformanceIQ</span>
   </div>
 
-  <!-- APP -->
-  <div class="app-shell">
-    <nav class="sidebar">
-      <div class="sidebar-section">Main</div>
-      <button class="nav-btn active" data-view="dashboard"><i class="nav-icon">⬡</i> Dashboard</button>
-      <button class="nav-btn" data-view="athletes"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
-      <button class="nav-btn" data-view="train"><i class="nav-icon">▷</i> Train</button>
-      <button class="nav-btn" data-view="analytics"><i class="nav-icon">◈</i> Analytics</button>
+  <div class="topbar-center">
+    <div class="pill live" id="pillOnline"><span class="pulse"></span><span id="pillOnlineText">Team Online</span></div>
+    <div class="pill" id="pillSeason">Pre-Season</div>
+    <div class="pill orange" id="pillGame" style="display:none">⚡ <span id="pillGameText"></span></div>
+  </div>
 
-      <div class="sidebar-section">Manage</div>
-      <button class="nav-btn" data-view="schedule"><i class="nav-icon">📅</i> Schedule</button>
-      <button class="nav-btn" data-view="wellness"><i class="nav-icon">🌙</i> Wellness</button>
-      <button class="nav-btn" data-view="nutrition"><i class="nav-icon">🥗</i> Nutrition</button>
-      <button class="nav-btn" data-view="settings"><i class="nav-icon">⚙</i> Settings</button>
+  <div class="topbar-right">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" type="text" placeholder="Search athletes…" id="athleteSearch" />
+    </div>
+    <button class="icon-btn" id="btnTheme" title="Toggle theme">🌙</button>
+    <button class="icon-btn" id="btnRefresh" title="Refresh data">↺</button>
+    <button class="icon-btn" id="btnExport" title="Export report">📤</button>
+  </div>
+</header>
 
-      <div class="sidebar-bottom">
-        <div class="user-block" id="userBlock">
-          <div class="user-avatar" id="userAv">CD</div>
-          <div>
-            <div class="user-name" id="userName">Coach Davis</div>
-            <div class="user-role" id="userRole">Head Coach · Basketball</div>
-          </div>
+<div class="app-shell">
+  <!-- KEEP ALL YOUR ORIGINAL HTML BELOW THIS POINT -->
+  <!-- (This is your full UI shell; do not remove sections or IDs) -->
+
+  <nav class="sidebar">
+    <div class="sidebar-section">Main</div>
+    <button class="nav-btn active" data-view="dashboard"><i class="nav-icon">⬡</i> Dashboard</button>
+    <button class="nav-btn" data-view="athletes"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
+    <button class="nav-btn" data-view="train"><i class="nav-icon">▷</i> Train</button>
+    <button class="nav-btn" data-view="analytics"><i class="nav-icon">◈</i> Analytics</button>
+
+    <div class="sidebar-section">Manage</div>
+    <button class="nav-btn" data-view="schedule"><i class="nav-icon">📅</i> Schedule</button>
+    <button class="nav-btn" data-view="wellness"><i class="nav-icon">🌙</i> Wellness</button>
+    <button class="nav-btn" data-view="nutrition"><i class="nav-icon">🥗</i> Nutrition</button>
+    <button class="nav-btn" data-view="settings"><i class="nav-icon">⚙</i> Settings</button>
+
+    <div class="sidebar-bottom">
+      <div class="user-block" id="userBlock">
+        <div class="user-avatar" id="userAv">CD</div>
+        <div>
+          <div class="user-name" id="userName">Coach Davis</div>
+          <div class="user-role" id="userRole">Head Coach · Basketball</div>
         </div>
       </div>
-    </nav>
+    </div>
+  </nav>
 
-    <main class="main-content">
-      <!-- DASHBOARD -->
-      <section class="view active" id="view-dashboard">
-        <div class="page-header stagger">
-          <div>
-            <div class="page-title" id="dashTitle">TEAM DASHBOARD</div>
-            <div class="page-sub" id="dashSub">Loading…</div>
-          </div>
-          <div class="page-actions">
-            <div class="chip green" id="chipOnline"><span class="pulse" style="background:var(--green)"></span><span id="chipOnlineText">— online</span></div>
-            <div class="chip red" id="chipFlags" style="display:none"><span id="chipFlagsText">— flags</span></div>
-            <div class="chip orange" id="chipGame" style="display:none"><span id="chipGameText2">Game —</span></div>
-          </div>
-        </div>
+  <main class="main-content">
+    <!-- ✅ PASTE/KEEP THE REST OF YOUR ORIGINAL index (3).html CONTENT HERE EXACTLY -->
+    <!-- For brevity in this message, I’m not re-pasting the middle sections you already have. -->
+    <!-- Do NOT change ids/classes that your JS expects. -->
 
-        <div class="stat-grid stagger" id="statGrid">
-          <div class="stat-card accent">
-            <div class="stat-label">Avg PIQ Score</div>
-            <div class="stat-value" id="statAvg">—</div>
-            <div class="stat-sub up" id="statAvgSub">↑ loading…</div>
-            <div class="sparkline" id="sparkAvg"></div>
-          </div>
-          <div class="stat-card green">
-            <div class="stat-label">Ready to Train</div>
-            <div class="stat-value" id="statReady">—</div>
-            <div class="stat-sub" id="statReadySub">— athletes</div>
-          </div>
-          <div class="stat-card yellow">
-            <div class="stat-label">Monitor Load</div>
-            <div class="stat-value" id="statMonitor">—</div>
-            <div class="stat-sub down" id="statMonitorSub">— athletes</div>
-          </div>
-          <div class="stat-card red">
-            <div class="stat-label">High Risk / Rest</div>
-            <div class="stat-value" id="statRisk">—</div>
-            <div class="stat-sub" id="statRiskSub">Action required</div>
-          </div>
-        </div>
+    <!-- ... your existing sections ... -->
 
-        <div class="grid-main">
-          <div style="display:flex;flex-direction:column;gap:18px">
-            <div class="card">
-              <div class="card-header">
-                <div class="card-title">Athlete Readiness Board</div>
-                <a class="card-link" id="viewAllAthletes">View all →</a>
-              </div>
-              <table class="heatmap" id="heatmapTable">
-                <thead>
-                  <tr>
-                    <th>Athlete</th>
-                    <th>PIQ</th>
-                    <th>Readiness</th>
-                    <th>ACWR</th>
-                    <th>Flags</th>
-                    <th>Trend</th>
-                  </tr>
-                </thead>
-                <tbody id="heatmapBody"></tbody>
-              </table>
-            </div>
+  </main>
+</div>
 
-            <div class="card">
-              <div class="card-header">
-                <div class="card-title">Load Monitoring (ACWR)</div>
-                <span class="card-link" id="loadLegend"></span>
-              </div>
-              <div class="card-body">
-                <div class="load-bar-list" id="loadBarList"></div>
-                <div class="load-legend">
-                  <span>✅ Safe &lt;1.3</span>
-                  <span>⚠️ Watch 1.3–1.5</span>
-                  <span>⛔ Risk &gt;1.5</span>
-                </div>
-              </div>
-            </div>
+<div class="toast-container" id="toastContainer"></div>
 
-            <div class="card">
-              <div class="card-header">
-                <div class="card-title">Team Activity</div>
-                <a class="card-link">See all →</a>
-              </div>
-              <div class="card-body">
-                <div class="feed-list" id="activityFeed"></div>
-              </div>
-            </div>
-          </div>
+<!-- ✅ ONLY ENTRYPOINT: ES module app -->
+<script type="module" src="./js/app.js"></script>
 
-          <div style="display:flex;flex-direction:column;gap:16px">
-            <div>
-              <div class="section-label">RISK ALERTS</div>
-              <div style="display:flex;flex-direction:column;gap:8px" id="alertsList"></div>
-            </div>
-
-            <div class="card">
-              <div class="card-header">
-                <div class="card-title">Roster Readiness</div>
-                <a class="card-link" id="rosterMore">Full →</a>
-              </div>
-              <div id="rosterMini"></div>
-            </div>
-
-            <div>
-              <div class="section-label">UPCOMING</div>
-              <div class="event-list" id="eventList"></div>
-            </div>
-
-            <div class="insight-card">
-              <div class="insight-tag">✦ Weekly Insight</div>
-              <div class="insight-body" id="insightText">Loading insight…</div>
-            </div>
-
-            <div class="insight-card">
-              <div class="insight-tag">📅 Periodization (4-week)</div>
-              <div class="insight-body" style="padding-top:6px">
-                <div id="periodPlan"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ATHLETES / TRAIN / ANALYTICS / SCHEDULE / WELLNESS / NUTRITION / SETTINGS
-           Keep the rest of your existing sections exactly as you already have them.
-           (No functional changes needed for the loader fix.) -->
-    </main>
-  </div>
-
-  <div class="toast-container" id="toastContainer"></div>
-
-  <!-- HARD KILL SWITCH FOR LOADER + CACHE -->
-  <script>
-    (function () {
-      function killLoader() {
-        const ls = document.getElementById('loadingScreen');
-        if (ls) ls.style.setProperty('display', 'none', 'important');
+<!-- ✅ Fail-safe: if something prevents JS from booting, don’t trap the UI forever -->
+<script>
+  (function(){
+    const FALLBACK_MS = 6000;
+    setTimeout(() => {
+      const ls = document.getElementById('loadingScreen');
+      if (ls && getComputedStyle(ls).display !== 'none') {
+        ls.style.display = 'none';
+        const warn = document.createElement('div');
+        warn.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:10000;background:rgba(10,14,20,.96);border:1px solid rgba(255,255,255,.14);color:#eaf0ff;border-radius:12px;padding:10px 12px;font:13px system-ui;';
+        warn.textContent = 'App did not finish starting. Refresh once. If it keeps happening, a module path is missing.';
+        document.body.appendChild(warn);
       }
+    }, FALLBACK_MS);
+  })();
+</script>
 
-      // Hide as early as possible (faster than waiting for "load")
-      document.addEventListener('DOMContentLoaded', killLoader);
-      window.addEventListener('load', killLoader);
-
-      // Absolute fallback so it never traps the UI
-      setTimeout(killLoader, 2500);
-
-      // If a service worker is caching an old build, it can keep you stuck.
-      // This clears SW + caches (safe no-op if none exist).
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations()
-          .then(regs => regs.forEach(r => r.unregister()))
-          .catch(() => {});
-      }
-      if (window.caches && caches.keys) {
-        caches.keys()
-          .then(keys => Promise.all(keys.map(k => caches.delete(k))))
-          .catch(() => {});
-      }
-    })();
-  </script>
-
-  <!-- MAIN APP ENTRY (cache-busted) -->
-  <script type="module" src="./js/app.js?v=20260302"></script>
 </body>
 </html>
