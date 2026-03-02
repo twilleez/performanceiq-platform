@@ -1,150 +1,251 @@
 // /js/ui/onboarding.js
+// Resilient onboarding: does NOT rely on dom.js caching.
+// Binds click + touch handlers for mobile, and safely persists state.
+
 import { Storage } from '../services/storage.js';
 import { toast } from '../services/toast.js';
-import { STORAGE_KEY_ONBOARDED } from '../state/keys.js';
-import { STATE, saveState } from '../state/state.js';
+import { STATE, ATHLETES, saveState, saveAthletes, setAthletes } from '../state/state.js';
 import { applySportTheme } from './sportTheme.js';
-import { cap } from '../features/scoring.js';
-import { generateSession, buildWorkoutCardHTML } from '../features/sessionGenerator.js';
 
-function el(id) { return document.getElementById(id); }
+export const STORAGE_KEY_ONBOARDED = 'piq_onboarded_v2';
 
-let obStep = 1;
-let obRole = 'coach';
-let obSport = 'basketball';
+let _bound = false;
+let _onAfterFinish = null;
 
-function goObStep(n) {
-  obStep = n;
+function $(id) {
+  return document.getElementById(id);
+}
 
-  // core.js uses class toggles on .modal-step and updates obProgress width 5
-  document.querySelectorAll('.modal-step').forEach(s => {
-    s.classList.remove('active');
-    // Your HTML also uses inline style display:none for inactive steps.
-    // Keep both mechanisms to ensure parity across versions.
-    if (s.id !== `obStep${n}`) s.style.display = 'none';
+function showModal() {
+  const modal = $('onboardingModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  modal.style.pointerEvents = 'auto';
+}
+
+function hideModal() {
+  const modal = $('onboardingModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.style.pointerEvents = 'none';
+}
+
+function isModalOpen() {
+  const modal = $('onboardingModal');
+  if (!modal) return false;
+  return getComputedStyle(modal).display !== 'none';
+}
+
+function safeUUID() {
+  try {
+    if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch {}
+  return `a_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeSport(val) {
+  return String(val || 'basketball').trim().toLowerCase();
+}
+
+function makeAthlete(name) {
+  const n = String(name || '').trim();
+  return {
+    id: safeUUID(),
+    name: n || 'Athlete',
+    position: '',
+    year: '',
+    tags: [],
+    // Keep these keys generic so views don’t crash if they expect them
+    metrics: {
+      piq: 0,
+      readiness: 0,
+      acwr: 1.0,
+      soreness: 0,
+      sleep: 0,
+      stress: 0
+    },
+    history: {
+      wellness: [],
+      sessions: []
+    },
+    created_at: new Date().toISOString()
+  };
+}
+
+function bindTap(el, handler) {
+  if (!el) return;
+  // click
+  el.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handler(e);
   });
 
-  const stepEl = el('obStep' + n);
-  if (stepEl) {
-    stepEl.classList.add('active');
-    stepEl.style.display = '';
-  }
-
-  const prog = el('obProgress');
-  if (prog) prog.style.width = Math.round(n / 3 * 100) + '%';
-}
-
-function closeModal() {
-  const m = el('onboardingModal');
-  if (m) m.style.display = 'none';
-  Storage.setRaw(STORAGE_KEY_ONBOARDED, '1'); // core.js uses localStorage setItem 6
-}
-
-function bindRoleGrid() {
-  document.querySelectorAll('#roleGrid .role-card').forEach(card => {
-    card.addEventListener('click', () => {
-      document.querySelectorAll('#roleGrid .role-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      obRole = card.dataset.role || 'coach';
-    });
-  });
-}
-
-function bindSportGrid() {
-  document.querySelectorAll('#sportGrid .sport-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('#sportGrid .sport-chip').forEach(c => c.classList.remove('selected'));
-      chip.classList.add('selected');
-      obSport = chip.dataset.sport || 'basketball';
-    });
-  });
-}
-
-function bindInjuryChips() {
-  document.querySelectorAll('#obInjuryChips .inj-chip').forEach(chip =>
-    chip.addEventListener('click', () => chip.classList.toggle('active'))
+  // touch (mobile reliability)
+  el.addEventListener(
+    'touchend',
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handler(e);
+    },
+    { passive: false }
   );
 }
 
-function renderFirstSessionPreview() {
-  const host = el('obFirstSession');
+function renderRosterChips(names) {
+  const host = $('onboardRosterChips');
   if (!host) return;
 
-  // Matches: buildWorkoutCardHTML(generateSession(obSport,'practice',60,'moderate',[]), false) 7
-  const sess = generateSession(obSport, 'practice', 60, 'moderate', []);
-  host.innerHTML = buildWorkoutCardHTML(sess, false);
+  host.innerHTML = '';
+  if (!names.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'opacity:.7;font-size:12px;padding:6px 0;';
+    empty.textContent = 'No athletes added yet.';
+    host.appendChild(empty);
+    return;
+  }
+
+  names.forEach((nm, idx) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.style.cssText = 'margin:4px 6px 0 0; cursor:pointer;';
+    chip.textContent = `✕ ${nm}`;
+
+    bindTap(chip, () => {
+      names.splice(idx, 1);
+      renderRosterChips(names);
+    });
+
+    host.appendChild(chip);
+  });
 }
 
-function applyFinish() {
-  // Matches core.js finish handler 8
-  STATE.role = obRole;
-  STATE.sport = obSport;
-  applySportTheme(STATE.sport);
-
-  const LABELS = {
-    coach:  'Head Coach',
-    athlete:'Athlete',
-    admin:  'Admin / AD',
-    parent: 'Parent',
-    owner:  'Owner',
-    viewer: 'Viewer'
-  };
-
-  const userName = el('userName');
-  const userRole = el('userRole');
-
-  if (userName) userName.textContent = LABELS[obRole] || 'Coach Davis';
-  if (userRole) userRole.textContent = `${LABELS[obRole] || 'Head Coach'} · ${cap(obSport)}`;
-
-  saveState();
-  closeModal();
-}
-
-export function initOnboarding({ onAfterFinish } = {}) {
-  // Bind selectable UI
-  bindRoleGrid();
-  bindSportGrid();
-  bindInjuryChips();
-
-  // Buttons — matches core.js wiring 9
-  el('obNext1')?.addEventListener('click', () => goObStep(2));
-
-  el('obNext2')?.addEventListener('click', () => {
-    renderFirstSessionPreview();
-    goObStep(3);
-  });
-
-  el('obBack2')?.addEventListener('click', () => goObStep(1));
-  el('obBack3')?.addEventListener('click', () => goObStep(2));
-
-  el('obClose')?.addEventListener('click', closeModal);
-
-  el('obSkip')?.addEventListener('click', () => {
-    closeModal();
-    toast('Welcome to PerformanceIQ ⚡');
-  });
-
-  el('obFinish')?.addEventListener('click', () => {
-    applyFinish();
-    if (typeof onAfterFinish === 'function') onAfterFinish();
-    toast('Welcome to PerformanceIQ ⚡'); // matches core.js 10
-  });
-
-  // Ensure step 1 is visible on init
-  goObStep(1);
-}
-
-export function maybeShowOnboarding() {
-  // Your HTML notes it should show once unless key set 11
-  const seen = Storage.getRaw(STORAGE_KEY_ONBOARDED);
-  const m = el('onboardingModal');
-  if (!seen && m) {
-    m.style.display = 'flex';
-    goObStep(1);
+function setOnboarded(flag) {
+  try {
+    Storage.set(STORAGE_KEY_ONBOARDED, flag ? '1' : '0');
+  } catch {
+    // If storage fails, still allow UI to proceed
   }
 }
 
 export function closeOnboardingIfOpen() {
-  const m = el('onboardingModal');
-  if (m && m.style.display !== 'none') closeModal();
+  if (isModalOpen()) hideModal();
+}
+
+export function maybeShowOnboarding() {
+  let seen = false;
+  try {
+    seen = !!Storage.get(STORAGE_KEY_ONBOARDED);
+  } catch {
+    seen = false;
+  }
+  if (!seen) showModal();
+}
+
+export function initOnboarding(opts = {}) {
+  if (_bound) return;
+  _bound = true;
+
+  _onAfterFinish = typeof opts.onAfterFinish === 'function' ? opts.onAfterFinish : null;
+
+  const modal = $('onboardingModal');
+  if (!modal) {
+    // Modal missing in HTML -> do nothing (don’t block app)
+    return;
+  }
+
+  const btnClose = $('btnCloseOnboarding');
+  const btnSkip = $('btnSkipOnboarding');
+  const btnFinish = $('btnFinishOnboarding');
+  const btnAdd = $('btnOnboardAddAthlete');
+
+  const inputTeam = $('onboardTeamName');
+  const inputSport = $('onboardSport');
+  const inputSeason = $('onboardSeason');
+
+  const inputAthlete = $('onboardAthleteName');
+
+  // local roster buffer for the wizard UI
+  const rosterNames = [];
+
+  // Pre-fill from STATE if present
+  if (inputTeam && STATE.teamName) inputTeam.value = STATE.teamName;
+  if (inputSport && STATE.sport) inputSport.value = String(STATE.sport).toLowerCase();
+  if (inputSeason && STATE.season) inputSeason.value = STATE.season;
+
+  // Render existing athletes as chips (optional)
+  if (Array.isArray(ATHLETES) && ATHLETES.length) {
+    ATHLETES.slice(0, 12).forEach(a => {
+      if (a && a.name) rosterNames.push(String(a.name));
+    });
+  }
+  renderRosterChips(rosterNames);
+
+  // Close / Skip simply hides modal and marks onboarded
+  const close = () => {
+    setOnboarded(true);
+    hideModal();
+    toast('Onboarding skipped ✓');
+  };
+
+  bindTap(btnClose, close);
+  bindTap(btnSkip, close);
+
+  // Add athlete
+  const addAthlete = () => {
+    const nm = String(inputAthlete?.value || '').trim();
+    if (!nm) return;
+    rosterNames.push(nm);
+    if (inputAthlete) inputAthlete.value = '';
+    renderRosterChips(rosterNames);
+  };
+
+  bindTap(btnAdd, addAthlete);
+
+  // Enter key adds athlete
+  if (inputAthlete) {
+    inputAthlete.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addAthlete();
+      }
+    });
+  }
+
+  // Finish setup
+  bindTap(btnFinish, () => {
+    // Update state from inputs
+    const teamName = String(inputTeam?.value || '').trim();
+    const sport = normalizeSport(inputSport?.value || STATE.sport);
+    const season = String(inputSeason?.value || STATE.season || 'Pre-Season');
+
+    if (teamName) STATE.teamName = teamName;
+    STATE.sport = sport;
+    STATE.season = season;
+
+    // Apply sport theme immediately
+    try { applySportTheme(sport); } catch {}
+
+    // Create roster if provided (only overwrite if user actually added names)
+    const cleaned = rosterNames.map(s => String(s).trim()).filter(Boolean);
+
+    if (cleaned.length) {
+      const athletes = cleaned.map(makeAthlete);
+      setAthletes(athletes);
+      try { saveAthletes(); } catch {}
     }
+
+    try { saveState(); } catch {}
+
+    setOnboarded(true);
+    hideModal();
+
+    toast('Setup complete ✓');
+
+    if (_onAfterFinish) {
+      try { _onAfterFinish(); } catch {}
+    }
+  });
+}
