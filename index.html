@@ -30,101 +30,177 @@
 </div>
 
 <!-- ONBOARDING MODAL (shown once unless piq_onboarded_v2 is set) -->
-<div id="onboardingModal" style="
-  position:fixed;inset:0;z-index:9998;
-  display:none;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.65);
-">
-  <div style="
-    width:min(900px,92vw);max-height:90vh;overflow:auto;
-    background:rgba(10,14,22,.96);
-    border:1px solid rgba(255,255,255,.10);
-    border-radius:18px;
-    box-shadow:0 22px 70px rgba(0,0,0,.55);
-    color:var(--text,#eaf0ff);
-  ">
-    <div style="padding:18px 18px 10px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:14px">
-      <div>
-        <div style="font-weight:900;letter-spacing:.06em">WELCOME TO PERFORMANCEIQ</div>
-        <div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:4px">Quick setup (role, sport, and a first session)</div>
+<div id="onboardingModal" class="ob-modal" aria-modal="true" role="dialog">
+  <div class="ob-shell" role="document">
+    <div class="ob-header">
+      <div class="ob-brand">
+        <div class="ob-logo">Performance<span>IQ</span></div>
+        <div class="ob-badge">⚡ Setup · 60 sec</div>
       </div>
-      <button class="icon-btn" id="obClose" aria-label="Close onboarding">✕</button>
+      <button class="icon-btn ob-close" id="btnCloseOnboarding" aria-label="Close onboarding">✕</button>
     </div>
 
-    <div style="padding:12px 18px 0">
-      <div style="height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden">
-        <div id="obProgress" style="height:8px;width:33%;background:rgba(16,42,79,.92)"></div>
-      </div>
+    <div class="ob-progress" aria-label="Setup progress">
+      <button type="button" class="ob-step done" data-ob-step="1" aria-label="Step 1 Team">
+        <div class="ob-step-circle" data-ob-circle="1">✓</div>
+        <div class="ob-step-label">Team</div>
+      </button>
+
+      <div class="ob-step-line line-done"><div class="ob-step-line-fill"></div></div>
+
+      <button type="button" class="ob-step active" data-ob-step="2" aria-label="Step 2 Roster">
+        <div class="ob-step-circle" data-ob-circle="2">2</div>
+        <div class="ob-step-label">Roster</div>
+      </button>
+
+      <div class="ob-step-line line-idle"><div class="ob-step-line-fill"></div></div>
+
+      <button type="button" class="ob-step idle" data-ob-step="3" aria-label="Step 3 Launch">
+        <div class="ob-step-circle" data-ob-circle="3">3</div>
+        <div class="ob-step-label">Launch</div>
+      </button>
     </div>
 
-    <!-- Step 1 -->
-    <div class="modal-step active" id="obStep1" style="padding:18px">
-      <div style="font-weight:800;margin-bottom:10px">Step 1 — Choose your role</div>
-      <div id="roleGrid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-        <div class="role-card selected" data-role="coach" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Coach</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Run team dashboards</div>
+    <!-- Hidden canonical inputs to keep state wiring stable -->
+    <input id="onboardTeamName" class="ob-hidden-input" type="text" autocomplete="off" />
+    <select id="onboardSport" class="ob-hidden-input">
+      <option value="basketball">basketball</option>
+      <option value="soccer">soccer</option>
+      <option value="football">football</option>
+      <option value="baseball">baseball</option>
+      <option value="volleyball">volleyball</option>
+      <option value="track">track</option>
+    </select>
+    <select id="onboardSeason" class="ob-hidden-input">
+      <option value="Pre-Season">Pre-Season</option>
+      <option value="In-Season">In-Season</option>
+      <option value="Post-Season">Post-Season</option>
+      <option value="Off-Season">Off-Season</option>
+    </select>
+
+    <!-- STEP 1 -->
+    <section class="ob-card" id="onboardStep1" style="display:none">
+      <div class="ob-card-header">
+        <div class="ob-step-tag">Step 1 — Team Identity</div>
+        <div class="ob-card-title">Name Your Squad</div>
+        <div class="ob-card-sub">This is how your team shows up everywhere</div>
+      </div>
+
+      <div class="ob-card-body">
+        <div class="ob-field">
+          <div class="ob-label">Team name</div>
+          <input id="onboardTeamNameVisible" class="ob-input" type="text" placeholder="e.g. Westview Varsity" autocomplete="off">
         </div>
-        <div class="role-card" data-role="athlete" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Athlete</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">View your readiness</div>
+
+        <div class="ob-field">
+          <div class="ob-label">Sport</div>
+          <div class="ob-chip-row" role="list">
+            <button type="button" class="ob-chip selected" data-onboard-sport="basketball">🏀 Basketball</button>
+            <button type="button" class="ob-chip" data-onboard-sport="soccer">⚽ Soccer</button>
+            <button type="button" class="ob-chip" data-onboard-sport="football">🏈 Football</button>
+            <button type="button" class="ob-chip" data-onboard-sport="baseball">⚾ Baseball</button>
+            <button type="button" class="ob-chip" data-onboard-sport="volleyball">🏐 Volleyball</button>
+          </div>
         </div>
-        <div class="role-card" data-role="admin" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Admin / AD</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Program oversight</div>
-        </div>
-        <div class="role-card" data-role="parent" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Parent</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Monitor wellness</div>
-        </div>
-        <div class="role-card" data-role="owner" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Owner</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Business controls</div>
-        </div>
-        <div class="role-card" data-role="viewer" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Viewer</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Read-only</div>
+
+        <div class="ob-field">
+          <div class="ob-label">Season phase</div>
+          <div class="ob-season-row">
+            <button type="button" class="ob-season selected" data-onboard-season="Pre-Season">
+              <div class="ob-season-ico">🌱</div><div class="ob-season-txt">Pre-Season</div>
+            </button>
+            <button type="button" class="ob-season" data-onboard-season="In-Season">
+              <div class="ob-season-ico">🔥</div><div class="ob-season-txt">In-Season</div>
+            </button>
+            <button type="button" class="ob-season" data-onboard-season="Post-Season">
+              <div class="ob-season-ico">🏆</div><div class="ob-season-txt">Post-Season</div>
+            </button>
+          </div>
         </div>
       </div>
 
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px">
-        <button class="btn btn-ghost" id="obSkip">Skip</button>
-        <button class="btn btn-primary" id="obNext1">Next</button>
+      <div class="ob-divider"></div>
+
+      <div class="ob-card-footer">
+        <div class="ob-timer"><span class="ob-timer-dot"></span><span id="obCountdownText">Game in 3 days</span></div>
+        <div class="ob-actions">
+          <button type="button" class="ob-skip" id="btnSkipOnboarding">Skip</button>
+          <button type="button" class="ob-next" id="btnOnboardNext1">Next <span class="ob-arrow">→</span></button>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Step 2 -->
-    <div class="modal-step" id="obStep2" style="padding:18px;display:none">
-      <div style="font-weight:800;margin-bottom:10px">Step 2 — Select sport + injury filters</div>
-
-      <div id="sportGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-        <button class="sport-chip selected btn btn-ghost" data-sport="basketball" type="button">🏀 Basketball</button>
-        <button class="sport-chip btn btn-ghost" data-sport="football" type="button">🏈 Football</button>
-        <button class="sport-chip btn btn-ghost" data-sport="soccer" type="button">⚽ Soccer</button>
-        <button class="sport-chip btn btn-ghost" data-sport="baseball" type="button">⚾ Baseball</button>
-        <button class="sport-chip btn btn-ghost" data-sport="volleyball" type="button">🏐 Volleyball</button>
-        <button class="sport-chip btn btn-ghost" data-sport="track" type="button">🏃 Track</button>
-      </div>
-
-      <div style="font-size:12px;color:rgba(234,240,255,.72);margin-bottom:8px">Optional — injury filters</div>
-      <div class="inj-chips" id="obInjuryChips" style="display:flex;flex-wrap:wrap;gap:8px">
-        <button class="inj-chip" data-injury="knee" type="button">Knee</button>
-        <button class="inj-chip" data-injury="ankle" type="button">Ankle</button>
-        <button class="inj-chip" data-injury="shoulder" type="button">Shoulder</button>
-        <button class="inj-chip" data-injury="back" type="button">Back</button>
-        <button class="inj-chip" data-injury="hip" type="button">Hip</button>
-        <button class="inj-chip" data-injury="hamstring" type="button">Hamstring</button>
+    <!-- STEP 2 -->
+    <section class="ob-card" id="onboardStep2">
+      <div class="ob-card-header">
+        <div class="ob-step-tag">Step 2 — Roster</div>
+        <div class="ob-card-title">Add Your Athletes</div>
+        <div class="ob-card-sub">Build your roster — you can always add more later</div>
       </div>
 
-      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px">
-        <button class="btn btn-ghost" id="obBack2">Back</button>
-        <button class="btn btn-primary" id="obNext2">Next</button>
-      </div>
-    </div>
+      <div class="ob-card-body">
+        <div class="ob-field">
+          <div class="ob-label">Athlete name</div>
+          <div class="ob-row">
+            <input id="onboardAthleteName" class="ob-input" type="text" placeholder="Full name or jersey #…" autocomplete="off">
+            <button type="button" class="ob-add" id="btnOnboardAddAthlete">+ Add</button>
+          </div>
+        </div>
 
-    <!-- Step 3 -->
-    <div class="modal-step" id="obStep3" style="padding:18px;display:none">
-      <div style="font-weight:800;margin-bottom:10px">Step 3 — Your first session</div>
-      <div id="obFirstSession"></div>
+        <div id="onboardRosterChips" class="ob-roster"></div>
 
-      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px">
-        <button class="btn btn-ghost" id="obBack3">Back</button>
-        <button class="btn btn-primary" id="obFinish">Finish</button>
+        <div class="ob-empty" id="onboardEmptyRoster">
+          <div class="ob-empty-ico">🏀</div>
+          <div class="ob-empty-title">No athletes yet</div>
+          <div class="ob-empty-sub">Add your first player above to get started</div>
+        </div>
+
+        <div class="ob-or"><span></span><em>OR</em><span></span></div>
+
+        <button type="button" class="ob-import" id="btnOnboardImport">
+          📋 Import from CSV or Spreadsheet
+        </button>
       </div>
+
+      <div class="ob-divider"></div>
+
+      <div class="ob-card-footer">
+        <div class="ob-timer"><span class="ob-timer-dot"></span><span id="obCountdownText2">Game in 3 days</span></div>
+        <div class="ob-actions">
+          <button type="button" class="ob-skip" id="btnOnboardBack2">Back</button>
+          <button type="button" class="ob-next" id="btnOnboardNext2">Next <span class="ob-arrow">→</span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section class="ob-card" id="onboardStep3" style="display:none">
+      <div class="ob-card-header">
+        <div class="ob-step-tag">Step 3 — Ready</div>
+        <div class="ob-card-title">You’re All Set 🎯</div>
+        <div class="ob-card-sub">Take a quick tour or dive straight in</div>
+      </div>
+
+      <div class="ob-card-body">
+        <div class="ob-grid">
+          <div class="ob-mini"><div class="ob-mini-ico">📊</div><div class="ob-mini-title">Dashboard</div><div class="ob-mini-sub">Live overview</div></div>
+          <div class="ob-mini"><div class="ob-mini-ico">🏃</div><div class="ob-mini-title">Training</div><div class="ob-mini-sub">Workouts & drills</div></div>
+          <div class="ob-mini"><div class="ob-mini-ico">🧠</div><div class="ob-mini-title">Wellness</div><div class="ob-mini-sub">Readiness tracking</div></div>
+          <div class="ob-mini"><div class="ob-mini-ico">📅</div><div class="ob-mini-title">Schedule</div><div class="ob-mini-sub">Games & events</div></div>
+        </div>
+      </div>
+
+      <div class="ob-divider"></div>
+
+      <div class="ob-card-footer">
+        <button type="button" class="ob-skip" id="btnOnboardTour">Take Tour</button>
+        <button type="button" class="ob-next" id="btnFinishOnboarding">Launch Dashboard <span class="ob-arrow">→</span></button>
+      </div>
+    </section>
+
+    <div class="ob-motivation">
+      <span>⚡</span>
+      <div><strong>Game in 3 days</strong> — Your setup keeps your team sharp when it counts.</div>
     </div>
   </div>
 </div>
