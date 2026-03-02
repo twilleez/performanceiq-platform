@@ -1,1 +1,78 @@
+export const DEFAULT_ATHLETES = [
+  { id:1, name:'Marcus Johnson', initials:'MJ', pos:'PG', jersey:3,
+    score:92, severity:'green', acr:1.04, recovery:94, trend:+7, riskLevel:'none',
+    sleep:8.2, soreness:2, energy:9,
+    weekHistory:[65,71,78,82,86,88,92],
+    color:'rgba(46,204,113,0.15)', colorText:'var(--green)',
+    prs:[{exercise:'Back Squat',current:'295 lbs',prev:'280 lbs',date:'Feb 20'},
+         {exercise:'Bench Press',current:'225 lbs',prev:'215 lbs',date:'Feb 14'},
+         {exercise:'40yd Dash',current:'4.52s',prev:'4.61s',date:'Feb 18'}],
+    insight:'Sleep averaging <strong>8.2 hours</strong> — your top recovery pillar. Maintain this heading into game week.' },
+  { id:2, name:'Keisha Davis', initials:'KD', pos:'SF', jersey:21,
+    score:85, severity:'green', acr:1.09, recovery:88, trend:+4, riskLevel:'none',
+    sleep:7.8, soreness:3, energy:8,
+    weekHistory:[62,68,72,76,80,82,85],
+    color:'rgba(0,212,170,0.15)', colorText:'var(--accent)',
+    prs:[{exercise:'Power Clean',current:'165 lbs',prev:'155 lbs',date:'Feb 22'},
+         {exercise:'Vertical Jump',current:'28"',prev:'26"',date:'Feb 10'}],
+    insight:'Variety pillar at 90 — most diverse training profile on the team. One more strength block this week would round out the score.' },
+  { id:3, name:'Darius Jones', initials:'DJ', pos:'PF', jersey:5,
+    score:78, severity:'green', acr:0.92, recovery:82, trend:+2, riskLevel:'none',
+    sleep:7.5, soreness:4, energy:7,
+    weekHistory:[60,64,68,70,73,76,78],
+    color:'rgba(74,158,255,0.15)', colorText:'var(--blue)',
+    prs:[{exercise:'Romanian DL',current:'315 lbs',prev:'295 lbs',date:'Feb 19'}],
+    insight:'ACWR at 0.92 — slightly undertrained vs chronic baseline. One additional volume session this week would be optimal.' },
+  { id:4, name:'Tyler Williams', initials:'TW', pos:'SG', jersey:12,
+    score:58, severity:'yellow', acr:1.38, recovery:67, trend:-8, riskLevel:'watch',
+    sleep:6.2, soreness:6, energy:6,
+    weekHistory:[74,72,70,68,65,62,58],
+    color:'rgba(240,192,64,0.15)', colorText:'var(--yellow)',
+    prs:[],
+    insight:'<strong>ACWR 1.38</strong> — approaching danger zone. Reduce today\'s intensity and monitor soreness. Prioritize sleep before Friday\'s game.' },
+  { id:5, name:'Marcus Lewis', initials:'ML', pos:'C', jersey:44,
+    score:41, severity:'red', acr:1.67, recovery:52, trend:-18, riskLevel:'rest',
+    sleep:5.1, soreness:8, energy:4,
+    weekHistory:[70,66,62,57,51,46,41],
+    color:'rgba(255,69,96,0.15)', colorText:'var(--red)',
+    prs:[],
+    insight:'<strong>REST RECOMMENDED.</strong> ACWR 1.67 with poor sleep (5.1h) and high soreness — 3rd consecutive high-load day. High injury risk ahead of Friday.' },
+  { id:6, name:'Ryan Kim', initials:'RK', pos:'SG', jersey:7,
+    score:0, severity:'none', acr:null, recovery:null, trend:0, riskLevel:'none',
+    sleep:null, soreness:null, energy:null,
+    weekHistory:[],
+    color:'rgba(255,255,255,0.06)', colorText:'var(--text-dim)',
+    prs:[],
+    insight:'No wellness data logged today. Send athlete a check-in prompt to unlock their score.' },
+];
 
+export const EVENTS = [
+  { name:'vs. Riverside Academy',    detail:'Fri Mar 3 · 7:00 PM · Home',     days:3, icon:'🏀' },
+  { name:'State Qualifier',          detail:'Tue Mar 7 · 2:00 PM · Away',      days:7, icon:'🏆' },
+  { name:'Film Session + Walk-thru', detail:'Mon Mar 2 · 3:00 PM · Gym',       days:2, icon:'📹' },
+  { name:'Team Recovery Day',        detail:'Sun Mar 1 · 10:00 AM · Facility', days:1, icon:'🌿' },
+];
+
+export const FEED_ITEMS = [
+  { icon:'🏃', cls:'ok',     text:'<strong>Marcus J.</strong> logged Morning Sprint — 6.2 mi · sRPE 7',        time:'32 min ago'          },
+  { icon:'⚠️', cls:'danger', text:'<strong>System</strong> flagged Tyler W. for elevated ACWR (1.38)',          time:'1 hr ago'            },
+  { icon:'💪', cls:'accent', text:'<strong>Keisha D.</strong> hit a new PR — Power Clean 165 lbs (+10 lbs)',    time:'2 hrs ago'           },
+  { icon:'🏀', cls:'orange', text:'<strong>Team Practice</strong> logged by Coach Davis — 14/18 attended',       time:'Yesterday · 5:00 PM' },
+  { icon:'🥗', cls:'ok',     text:'<strong>Darius J.</strong> logged nutrition — 3,100 kcal · 175g protein',   time:'Yesterday · 7:45 PM' },
+  { icon:'⛔', cls:'danger', text:'<strong>Marcus L.</strong> flagged — ACWR 1.67, rest recommended today',     time:'Yesterday · 6:00 PM' },
+];
+
+export const SESSION_LIBRARY = [
+  { type:'🔥 Strength', name:'TRAP BAR POWER',        meta:'50 min · High',     color:'orange' },
+  { type:'💨 Speed',    name:'ACCELERATION COMPLEX',  meta:'35 min · High',     color:'blue'   },
+  { type:'🌿 Recovery', name:'ACTIVE RECOVERY DAY',   meta:'25 min · Low',      color:'green'  },
+  { type:'🏀 Practice', name:'SKILL MICROBLOCKS',     meta:'60 min · Moderate', color:''       },
+  { type:'⚡ Power',    name:'PLYOMETRIC CIRCUIT',    meta:'40 min · High',     color:'orange' },
+  { type:'🧘 Mobility', name:'PRE-GAME ACTIVATION',   meta:'30 min · Low',      color:'green'  },
+];
+
+export const WEEK_LOAD = [
+  { day:'S', au:320 }, { day:'M', au:580 }, { day:'T', au:740 },
+  { day:'W', au:460 }, { day:'T', au:890 }, { day:'F', au:980 },
+  { day:'S', au:620 },
+];
