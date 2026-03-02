@@ -1319,3 +1319,124 @@ html[data-theme="light"] .fab { background: var(--accent); color: #fff; border-c
 .block-exercises { margin-top: 6px; display: grid; gap: 3px; }
 .ex-line { font-size: 12px; color: var(--text-mid); line-height: 1.35; }
 html[data-theme="light"] .ex-line { color: color-mix(in oklab, var(--text) 75%, transparent); }
+
+
+/* =========================================================
+   Modular additions (v3.0.0)
+   ========================================================= */
+
+.toast {
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .2s ease, transform .2s ease;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(16, 22, 32, .85);
+  border: 1px solid rgba(255,255,255,.08);
+  color: #eaf0ff;
+  backdrop-filter: blur(10px);
+  max-width: 520px;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+.select, .input, .textarea {
+  width: 100%;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.10);
+  color: inherit;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.textarea { min-height: 90px; resize: vertical; }
+
+.btn.danger, .icon-btn.danger {
+  border-color: rgba(239,68,68,.35);
+}
+.btn.danger { background: rgba(239,68,68,.10); }
+
+.table-wrap { overflow:auto; }
+.table { width:100%; border-collapse: collapse; }
+.table th, .table td { padding: 10px 10px; border-bottom: 1px solid rgba(255,255,255,.08); text-align:left; }
+.link-btn { background: none; border: none; color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+.empty-state {
+  padding: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  background: rgba(255,255,255,.03);
+}
+.empty-title { font-weight: 700; margin-bottom: 4px; }
+.empty-sub { opacity: .75; margin-bottom: 10px; }
+.empty-mini { opacity: .75; padding: 8px 0; }
+
+.athlete-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+  border-radius: 18px;
+  padding: 14px;
+  cursor: pointer;
+}
+.athlete-card:hover { border-color: rgba(255,255,255,.14); }
+.athlete-top { display:flex; align-items:center; justify-content: space-between; gap: 12px; }
+.athlete-name { font-weight: 800; letter-spacing: .2px; }
+.athlete-meta { opacity: .7; margin-top: 2px; }
+.athlete-score { margin-top: 10px; display:flex; align-items:baseline; gap: 10px; }
+.score-num { font-size: 28px; font-weight: 900; }
+.score-sub { opacity: .7; font-size: 12px; }
+
+.chip.ok { border-color: rgba(34,197,94,.35); color: rgba(34,197,94,1); }
+.chip.warn { border-color: rgba(245,158,11,.35); color: rgba(245,158,11,1); }
+.chip.danger { border-color: rgba(239,68,68,.35); color: rgba(239,68,68,1); }
+
+.form-card {
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 18px;
+  background: rgba(255,255,255,.03);
+}
+.form-row { margin-bottom: 12px; }
+.label { display:block; font-weight: 700; margin-bottom: 8px; }
+.label .val { opacity: .8; font-weight: 800; margin-left: 6px; }
+.small-muted { opacity: .75; font-size: 12px; margin-top: 8px; }
+
+.gen-top { display:flex; align-items:center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.gen-list { display:grid; grid-template-columns: 1fr; gap: 10px; }
+.gen-ex { padding: 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); }
+.gen-ex-name { font-weight: 800; }
+.gen-ex-sub { opacity: .75; margin-top: 4px; }
+
+.compare-bar { display:flex; flex-direction:column; gap: 10px; margin-bottom: 12px; }
+.compare-controls { display:grid; grid-template-columns: 1fr; gap: 10px; }
+.compare-title { font-weight: 800; }
+.compare-note { opacity:.7; font-size: 12px; }
+
+.schedule-bar { display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.schedule-form { display:grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
+.schedule-list { display:grid; grid-template-columns: 1fr; gap: 10px; }
+.schedule-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); }
+.schedule-row-title { font-weight: 800; }
+.schedule-row-sub { opacity:.7; font-size: 12px; margin-top: 2px; }
+
+/* Modal */
+.piq-modal-overlay{
+  position: fixed; inset: 0; z-index: 10000;
+  display:flex; align-items:center; justify-content:center;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(6px);
+  padding: 16px;
+}
+.piq-modal-card{
+  width:min(520px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(16,22,32,.92);
+  color:#eaf0ff;
+  padding: 16px;
+}
+.piq-modal-title{ font-weight: 900; margin-bottom: 8px; }
+.piq-modal-msg{ opacity:.8; margin-bottom: 12px; }
+.piq-modal-actions{ display:flex; justify-content:flex-end; gap: 10px; }
