@@ -2,7 +2,7 @@
 // Sets CSS variables per sport. Keep minimal + safe.
 
 const THEMES = {
-  basketball: { accent: "#00d4aa" },
+  basketball: { accent: "#2563eb" },
   football: { accent: "#f59e0b" },
   soccer: { accent: "#3b82f6" },
   baseball: { accent: "#ef4444" },
