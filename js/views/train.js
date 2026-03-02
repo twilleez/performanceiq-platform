@@ -1,54 +1,145 @@
-import { dom } from '../ui/dom.js';
-import { STATE } from '../state/state.js';
-import { SESSION_LIBRARY } from '../data/demo.js';
-import { toast } from '../services/toast.js';
-import { generateSession, buildWorkoutCardHTML } from '../features/sessionGenerator.js';
-import { Storage } from '../services/storage.js';
-import { STORAGE_KEY_STATE } from '../state/keys.js';
+// /js/views/train.js
+import { STATE, ATHLETES, saveAthletes } from "../state/state.js";
+import { toast } from "../services/toast.js";
+import { EXERCISE_BANK } from "../data/exerciseBank.js";
 
-export function renderTrainView(){
-  const lib = dom.sessionLibrary;
-  if (!lib) return;
+function $(id) { return document.getElementById(id); }
 
-  lib.innerHTML = SESSION_LIBRARY.map(s => {
-    const ac = s.color==='orange'?'var(--orange)':s.color==='blue'?'var(--blue)':s.color==='green'?'var(--green)':'var(--accent)';
-    return `<div class="workout-card ${s.color}" style="cursor:pointer">
-      <div class="workout-type-tag" style="color:${ac}">${s.type}</div>
-      <div class="workout-name">${s.name}</div>
-      <div class="workout-meta"><span>${s.meta}</span></div>
-    </div>`;
-  }).join('');
+function pickExercises(sport, count = 5) {
+  const bank = EXERCISE_BANK[String(sport||"basketball").toLowerCase()] || EXERCISE_BANK.basketball;
+  const out = [];
+  for (let i = 0; i < Math.min(count, bank.length); i++) out.push(bank[i]);
+  return out;
 }
 
-export function renderGeneratedSession(opts){
-  const sport = (opts && opts.sport) || dom.buildSport?.value || STATE.sport || 'basketball';
-  const type  = (opts && opts.type)  || dom.buildType?.value  || 'practice';
-  const dur   = +((opts && opts.duration) || dom.buildDuration?.value || 60);
-  const inten = (opts && opts.intensity) || dom.buildIntensity?.value || 'moderate';
-
-  const injuries = [];
-  document.querySelectorAll('#injuryChips .inj-chip.active').forEach(b => injuries.push(b.dataset.injury));
-
-  const session = generateSession(sport, type, dur, inten, injuries);
-
-  if (dom.generatedSessionWrap) dom.generatedSessionWrap.innerHTML = buildWorkoutCardHTML(session, true);
-
-  if (!Array.isArray(STATE.sessionLibrary)) STATE.sessionLibrary = [];
-  STATE.sessionLibrary = [session, ...STATE.sessionLibrary.filter(s => s?.id !== session.id)].slice(0, 12);
-
-  // Persist minimal state update (no bundler; keep it simple)
-  const { selectedAthleteId: _x, ...toSave } = STATE;
-  Storage.setJSON(STORAGE_KEY_STATE, toSave);
-
-  toast(`Generated: ${session.title || 'Session'}`);
+export function renderTrainView() {
+  const sportSel = $("buildSport");
+  if (sportSel) sportSel.value = STATE.sport || "basketball";
 }
 
-export function bindTrainViewEvents(){
-  dom.btnGenerate?.addEventListener('click', () => renderGeneratedSession());
-  dom.btnGenerateInline?.addEventListener('click', () => renderGeneratedSession());
-  dom.btnPushToday?.addEventListener('click', () => toast('Session pushed to Today ✓'));
+export function renderGeneratedSession(session) {
+  const wrap = $("generatedSessionWrap");
+  const host = $("generatedSession");
+  if (!wrap || !host) return;
 
-  document.querySelectorAll('#injuryChips .inj-chip').forEach(chip =>
-    chip.addEventListener('click', () => chip.classList.toggle('active'))
-  );
+  wrap.style.display = "";
+  host.innerHTML = "";
+
+  const top = document.createElement("div");
+  top.className = "gen-top";
+
+  const athleteSelect = document.createElement("select");
+  athleteSelect.id = "genAthleteSelect";
+  athleteSelect.className = "select";
+  athleteSelect.setAttribute("aria-label", "Select athlete to assign session");
+  if (!ATHLETES.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No athletes (add roster first)";
+    athleteSelect.appendChild(opt);
+    athleteSelect.disabled = true;
+  } else {
+    ATHLETES.forEach(a => {
+      const opt = document.createElement("option");
+      opt.value = a.id;
+      opt.textContent = a.name;
+      athleteSelect.appendChild(opt);
+    });
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "gen-meta";
+  meta.textContent = `${session.type} · ${session.duration} min · Intensity ${session.intensity}/10`;
+
+  top.appendChild(meta);
+  top.appendChild(athleteSelect);
+  host.appendChild(top);
+
+  const list = document.createElement("div");
+  list.className = "gen-list";
+
+  session.blocks.forEach((ex) => {
+    const card = document.createElement("div");
+    card.className = "gen-ex";
+    card.innerHTML = `
+      <div class="gen-ex-name">${ex.name}</div>
+      <div class="gen-ex-sub">${ex.sets} × ${ex.reps} · ${ex.load}</div>
+    `;
+    list.appendChild(card);
+  });
+
+  host.appendChild(list);
+
+  // PIQ transparency tooltip
+  const expl = document.createElement("div");
+  expl.className = "small-muted";
+  expl.textContent = "Loads are estimated. Push to Today logs a session load for ACWR.";
+  host.appendChild(expl);
+}
+
+function estimateLoad(intensity, duration) {
+  // simple: load = RPE * minutes (common internal metric)
+  const i = Math.max(1, Math.min(10, Number(intensity) || 5));
+  const d = Math.max(10, Math.min(180, Number(duration) || 60));
+  return Math.round(i * d);
+}
+
+export function bindTrainViewEvents() {
+  const btnGen = $("btnGenerate");
+  const btnGenInline = $("btnGenerateInline");
+  const btnPush = $("btnPushToday");
+
+  function generate() {
+    const sport = ($("buildSport")?.value || STATE.sport || "basketball").toLowerCase();
+    const type = $("buildType")?.value || "Practice";
+    const intensity = Number($("buildIntensity")?.value || 6);
+    const duration = Number($("buildDuration")?.value || 60);
+
+    const blocks = pickExercises(sport, 6);
+    const session = {
+      id: `s_${Date.now()}`,
+      date: new Date().toISOString().slice(0,10),
+      sport,
+      type,
+      intensity,
+      duration,
+      load: estimateLoad(intensity, duration),
+      blocks
+    };
+
+    // cache on window for push
+    window.__PIQ_LAST_SESSION__ = session;
+    renderGeneratedSession(session);
+    toast("Session generated ✓");
+  }
+
+  btnGen?.addEventListener("click", generate);
+  btnGenInline?.addEventListener("click", generate);
+
+  btnPush?.addEventListener("click", () => {
+    const session = window.__PIQ_LAST_SESSION__;
+    if (!session) { toast("Generate a session first"); return; }
+    if (!ATHLETES.length) { toast("Add athletes first"); return; }
+
+    const sel = document.getElementById("genAthleteSelect");
+    const athleteId = sel?.value || ATHLETES[0].id;
+    const a = ATHLETES.find(x => x.id === athleteId);
+    if (!a) { toast("Athlete not found"); return; }
+
+    a.history = a.history || {};
+    a.history.sessions = Array.isArray(a.history.sessions) ? a.history.sessions : [];
+    a.history.sessions.push({
+      id: session.id,
+      date: session.date,
+      type: session.type,
+      sport: session.sport,
+      intensity: session.intensity,
+      duration: session.duration,
+      load: session.load,
+      created_at: new Date().toISOString()
+    });
+
+    saveAthletes();
+    toast(`Logged session for ${a.name} ✓`);
+  });
 }
