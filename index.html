@@ -537,10 +537,10 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- ✅ IMPORTANT: Load the modular ES entrypoint (NOT core.js) -->
+<!-- MAIN APP ENTRY -->
 <script type="module" src="./js/app.js"></script>
 
-<!-- ✅ Failsafe: never let the loading overlay trap the UI -->
+<!-- Safety: ensure loader never traps UI -->
 <script>
   window.addEventListener('load', () => {
     const ls = document.getElementById('loadingScreen');
