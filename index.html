@@ -6,12 +6,10 @@
   <title>PerformanceIQ</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico">
-  <meta name="theme-color" content="#070b12">
 </head>
-
 <body>
 
-<!-- LOADING SCREEN (simple + reliable; hidden by app init) -->
+<!-- LOADING SCREEN -->
 <div id="loadingScreen" style="
   position:fixed;inset:0;z-index:9999;
   display:flex;align-items:center;justify-content:center;
@@ -24,106 +22,6 @@
       <div style="font-weight:800;letter-spacing:.06em">PerformanceIQ</div>
     </div>
     <div style="font-size:12px;opacity:.78;letter-spacing:.03em">Loading dashboard…</div>
-  </div>
-</div>
-
-<!-- ONBOARDING MODAL (unchanged markup) -->
-<div id="onboardingModal" style="
-  position:fixed;inset:0;z-index:9998;
-  display:none;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.65);
-">
-  <div style="
-    width:min(900px,92vw);max-height:90vh;overflow:auto;
-    background:rgba(10,14,22,.96);
-    border:1px solid rgba(255,255,255,.10);
-    border-radius:18px;
-    box-shadow:0 22px 70px rgba(0,0,0,.55);
-    color:var(--text,#eaf0ff);
-  ">
-    <div style="padding:18px 18px 10px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:14px">
-      <div>
-        <div style="font-weight:900;letter-spacing:.06em">WELCOME TO PERFORMANCEIQ</div>
-        <div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:4px">Quick setup (role, sport, and a first session)</div>
-      </div>
-      <button class="icon-btn" id="obClose" aria-label="Close onboarding">✕</button>
-    </div>
-
-    <div style="padding:12px 18px 0">
-      <div style="height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden">
-        <div id="obProgress" style="height:8px;width:33%;background:rgba(16,42,79,.92)"></div>
-      </div>
-    </div>
-
-    <!-- Step 1 -->
-    <div class="modal-step active" id="obStep1" style="padding:18px">
-      <div style="font-weight:800;margin-bottom:10px">Step 1 — Choose your role</div>
-      <div id="roleGrid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-        <div class="role-card selected" data-role="coach" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Coach</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Run team dashboards</div>
-        </div>
-        <div class="role-card" data-role="athlete" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Athlete</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">View your readiness</div>
-        </div>
-        <div class="role-card" data-role="admin" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Admin / AD</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Program oversight</div>
-        </div>
-        <div class="role-card" data-role="parent" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Parent</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Monitor wellness</div>
-        </div>
-        <div class="role-card" data-role="owner" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Owner</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Business controls</div>
-        </div>
-        <div class="role-card" data-role="viewer" style="padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04);cursor:pointer">
-          <div style="font-weight:800">Viewer</div><div style="font-size:12px;color:rgba(234,240,255,.72);margin-top:3px">Read-only</div>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px">
-        <button class="btn btn-ghost" id="obSkip">Skip</button>
-        <button class="btn btn-primary" id="obNext1">Next</button>
-      </div>
-    </div>
-
-    <!-- Step 2 -->
-    <div class="modal-step" id="obStep2" style="padding:18px;display:none">
-      <div style="font-weight:800;margin-bottom:10px">Step 2 — Select sport + injury filters</div>
-
-      <div id="sportGrid" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-        <button class="sport-chip selected btn btn-ghost" data-sport="basketball" type="button">🏀 Basketball</button>
-        <button class="sport-chip btn btn-ghost" data-sport="football" type="button">🏈 Football</button>
-        <button class="sport-chip btn btn-ghost" data-sport="soccer" type="button">⚽ Soccer</button>
-        <button class="sport-chip btn btn-ghost" data-sport="baseball" type="button">⚾ Baseball</button>
-        <button class="sport-chip btn btn-ghost" data-sport="volleyball" type="button">🏐 Volleyball</button>
-        <button class="sport-chip btn btn-ghost" data-sport="track" type="button">🏃 Track</button>
-      </div>
-
-      <div style="font-size:12px;color:rgba(234,240,255,.72);margin-bottom:8px">Optional — injury filters</div>
-      <div class="inj-chips" id="obInjuryChips" style="display:flex;flex-wrap:wrap;gap:8px">
-        <button class="inj-chip" data-injury="knee" type="button">Knee</button>
-        <button class="inj-chip" data-injury="ankle" type="button">Ankle</button>
-        <button class="inj-chip" data-injury="shoulder" type="button">Shoulder</button>
-        <button class="inj-chip" data-injury="back" type="button">Back</button>
-        <button class="inj-chip" data-injury="hip" type="button">Hip</button>
-        <button class="inj-chip" data-injury="hamstring" type="button">Hamstring</button>
-      </div>
-
-      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px">
-        <button class="btn btn-ghost" id="obBack2">Back</button>
-        <button class="btn btn-primary" id="obNext2">Next</button>
-      </div>
-    </div>
-
-    <!-- Step 3 -->
-    <div class="modal-step" id="obStep3" style="padding:18px;display:none">
-      <div style="font-weight:800;margin-bottom:10px">Step 3 — Your first session</div>
-      <div id="obFirstSession"></div>
-
-      <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px">
-        <button class="btn btn-ghost" id="obBack3">Back</button>
-        <button class="btn btn-primary" id="obFinish">Finish</button>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -176,15 +74,479 @@
   </nav>
 
   <main class="main-content">
-    <!-- (all your existing sections stay exactly the same) -->
-    <!-- KEEP YOUR CURRENT VIEW MARKUP AS-IS -->
-    <!-- ... -->
+
+    <!-- DASHBOARD VIEW -->
+    <section class="view active" id="view-dashboard">
+      <div class="section-head">
+        <div>
+          <h1 class="page-title">Command Center</h1>
+          <div class="page-sub" id="dashSub">Today · Team Overview</div>
+        </div>
+        <div class="chips">
+          <div class="chip live"><span class="pulse"></span><span id="chipOnlineText">0 online</span></div>
+          <div class="chip warn" id="chipFlags" style="display:none"><span>⚠</span><span id="chipFlagsText">0 flags</span></div>
+          <div class="chip orange" id="chipGame" style="display:none"><span>⚡</span><span id="chipGameText2"></span></div>
+        </div>
+      </div>
+
+      <div class="grid stats-grid">
+        <div class="stat-card accent">
+          <div class="stat-label">Team Avg PIQ</div>
+          <div class="stat-value" id="statAvg">—</div>
+          <div class="stat-sub" id="statAvgSub">—</div>
+          <div class="sparkline" id="sparkAvg"></div>
+        </div>
+
+        <div class="stat-card green">
+          <div class="stat-label">Ready</div>
+          <div class="stat-value" id="statReady">0</div>
+          <div class="stat-sub" id="statReadySub">—</div>
+        </div>
+
+        <div class="stat-card yellow">
+          <div class="stat-label">Monitor</div>
+          <div class="stat-value" id="statMonitor">0</div>
+          <div class="stat-sub" id="statMonitorSub">—</div>
+        </div>
+
+        <div class="stat-card red">
+          <div class="stat-label">High Risk</div>
+          <div class="stat-value" id="statRisk">0</div>
+          <div class="stat-sub">Today</div>
+        </div>
+      </div>
+
+      <div class="grid two-col">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Team Heatmap</div>
+            <div class="card-actions">
+              <button class="btn btn-ghost btn-sm">View all →</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+              <tr>
+                <th>Athlete</th>
+                <th>PIQ</th>
+                <th>Readiness</th>
+                <th>ACWR</th>
+                <th>Risk</th>
+                <th>Trend</th>
+              </tr>
+              </thead>
+              <tbody id="heatmapBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Risk Alerts</div>
+          </div>
+          <div class="card-body" id="alertsList"></div>
+        </div>
+      </div>
+
+      <div class="grid three-col">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Load Distribution</div>
+          </div>
+          <div class="card-body" id="loadBarList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Roster Snapshot</div>
+          </div>
+          <div class="card-body" id="rosterMini"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Activity Feed</div>
+          </div>
+          <div class="card-body" id="activityFeed"></div>
+        </div>
+      </div>
+
+      <div class="grid two-col">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Upcoming Events</div>
+          </div>
+          <div class="card-body" id="eventList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Coach Insight</div>
+          </div>
+          <div class="card-body">
+            <div id="insightText"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ATHLETES VIEW -->
+    <section class="view" id="view-athletes">
+      <div class="section-head">
+        <div>
+          <h1 class="page-title">Athletes</h1>
+          <div class="page-sub" id="athleteCountSub">—</div>
+        </div>
+        <div class="actions">
+          <input id="athleteFilterInput" class="input" placeholder="Filter roster…" />
+          <button class="btn btn-primary">+ Add Athlete</button>
+        </div>
+      </div>
+
+      <div class="grid cards-grid" id="athleteCardGrid"></div>
+
+      <div class="athlete-detail" id="athleteDetail" style="display:none">
+        <button class="btn btn-ghost btn-sm" id="backToList">← Back</button>
+
+        <div class="card">
+          <div class="card-body">
+            <div class="detail-hero" id="detailHero"></div>
+          </div>
+        </div>
+
+        <div class="grid two-col">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">PIQ Score</div>
+            </div>
+            <div class="card-body">
+              <div class="ring-wrap">
+                <svg class="ring" viewBox="0 0 160 160">
+                  <circle class="ring-track" cx="80" cy="80" r="70"></circle>
+                  <circle class="ring-fill" id="detailRingFill" cx="80" cy="80" r="70"></circle>
+                </svg>
+                <div class="ring-center">
+                  <div class="ring-number" id="detailRingNum">—</div>
+                  <div class="ring-delta" id="detailRingDelta"></div>
+                </div>
+              </div>
+              <div class="score-tier" id="detailTier"></div>
+              <div class="note" id="detailScoreNote"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Pillars</div>
+            </div>
+            <div class="card-body pillars" id="detailPillars"></div>
+          </div>
+        </div>
+
+        <div class="grid three-col">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Wellness</div>
+            </div>
+            <div class="card-body" id="detailWellness"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Load (ACWR)</div>
+            </div>
+            <div class="card-body" id="detailLoad"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Coach Insight</div>
+            </div>
+            <div class="card-body" id="detailInsight"></div>
+          </div>
+        </div>
+
+        <div class="grid two-col">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Recommended Session</div>
+            </div>
+            <div class="card-body" id="detailWorkout"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">Personal Records</div>
+            </div>
+            <div class="table-wrap">
+              <table class="table" id="detailPRs">
+                <thead>
+                <tr>
+                  <th>Exercise</th>
+                  <th>New</th>
+                  <th>Prev</th>
+                  <th>Date</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TRAIN VIEW -->
+    <section class="view" id="view-train">
+      <div class="section-head">
+        <div>
+          <h1 class="page-title">Train</h1>
+          <div class="page-sub">Generate sessions and assign load.</div>
+        </div>
+      </div>
+
+      <div class="grid two-col">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Session Builder</div>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div>
+                <label>Sport</label>
+                <select id="buildSport" class="input">
+                  <option value="basketball">Basketball</option>
+                  <option value="football">Football</option>
+                  <option value="soccer">Soccer</option>
+                  <option value="baseball">Baseball</option>
+                  <option value="volleyball">Volleyball</option>
+                  <option value="track">Track</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Type</label>
+                <select id="buildType" class="input">
+                  <option value="practice">Practice</option>
+                  <option value="strength">Strength</option>
+                  <option value="speed">Speed</option>
+                  <option value="conditioning">Conditioning</option>
+                  <option value="recovery">Recovery</option>
+                  <option value="competition">Competition</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Duration (min)</label>
+                <select id="buildDuration" class="input">
+                  <option value="30">30</option>
+                  <option value="45">45</option>
+                  <option value="60" selected>60</option>
+                  <option value="75">75</option>
+                  <option value="90">90</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Intensity</label>
+                <select id="buildIntensity" class="input">
+                  <option value="low">Low</option>
+                  <option value="moderate" selected>Moderate</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="chips-wrap" id="injuryChips">
+              <button class="inj-chip" data-injury="knee" type="button">Knee</button>
+              <button class="inj-chip" data-injury="ankle" type="button">Ankle</button>
+              <button class="inj-chip" data-injury="shoulder" type="button">Shoulder</button>
+              <button class="inj-chip" data-injury="back" type="button">Back</button>
+              <button class="inj-chip" data-injury="hip" type="button">Hip</button>
+              <button class="inj-chip" data-injury="hamstring" type="button">Hamstring</button>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:12px">
+              <button class="btn btn-primary" id="btnGenerate">Generate</button>
+              <button class="btn btn-ghost" id="btnPushToday">Push to Today</button>
+            </div>
+
+            <div id="generatedSessionWrap" style="margin-top:14px"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Session Library</div>
+            <div class="card-actions">
+              <button class="btn btn-ghost btn-sm">View all →</button>
+            </div>
+          </div>
+          <div class="card-body" id="sessionLibrary"></div>
+          <div class="card-foot">
+            <button class="btn btn-primary btn-full" id="btnGenerateInline">+ Generate Session</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANALYTICS VIEW -->
+    <section class="view" id="view-analytics">
+      <div class="section-head">
+        <div>
+          <h1 class="page-title">Analytics</h1>
+          <div class="page-sub" id="analyticsSub">—</div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-ghost" id="btnExportAnalytics">Export PDF</button>
+        </div>
+      </div>
+
+      <div class="grid stats-grid" id="analyticsStatGrid"></div>
+
+      <div class="grid two-col">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Weekly Training Load</div>
+          </div>
+          <div class="card-body chart" id="loadChart"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">PIQ Distribution</div>
+          </div>
+          <div class="card-body chart" id="scoreDistChart"></div>
+          <div class="card-foot" id="scoreRanges"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Athlete Trends</div>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+            <tr>
+              <th>Athlete</th>
+              <th>Week Start</th>
+              <th>Mid</th>
+              <th>Week End</th>
+              <th>Current</th>
+              <th>Trend</th>
+              <th>ACWR</th>
+            </tr>
+            </thead>
+            <tbody id="analyticsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCHEDULE VIEW -->
+    <section class="view" id="view-schedule">
+      <div class="section-head">
+        <div>
+          <h1 class="page-title">Schedule</h1>
+          <div class="page-sub">Upcoming events and practices.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">All Events</div>
+        </div>
+        <div class="card-body" id="fullEventList"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS VIEW -->
+    <section class="view" id="view-settings">
+      <div class="section-head">
+        <div>
+          <h1 class="page-title">Settings</h1>
+          <div class="page-sub">Team, season, theme, and data tools.</div>
+        </div>
+      </div>
+
+      <div class="grid two-col">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Program Settings</div>
+          </div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div>
+                <label>Team Name</label>
+                <input class="input" id="settingTeamName" placeholder="Team name…" />
+              </div>
+              <div>
+                <label>Season</label>
+                <select class="input" id="settingSeason">
+                  <option>Pre-Season</option>
+                  <option>In-Season</option>
+                  <option>Post-Season</option>
+                  <option>Off-Season</option>
+                </select>
+              </div>
+              <div>
+                <label>Sport</label>
+                <select class="input" id="settingSport">
+                  <option value="basketball">Basketball</option>
+                  <option value="football">Football</option>
+                  <option value="soccer">Soccer</option>
+                  <option value="baseball">Baseball</option>
+                  <option value="volleyball">Volleyball</option>
+                  <option value="track">Track</option>
+                </select>
+              </div>
+              <div>
+                <label>Theme</label>
+                <select class="input" id="settingTheme">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;margin-top:12px">
+              <button class="btn btn-primary" id="btnSaveSettings">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Data Tools</div>
+          </div>
+          <div class="card-body">
+            <button class="btn btn-ghost btn-sm" id="btnExportData">📦 Export JSON Backup</button>
+            <button class="btn btn-ghost btn-sm" id="btnImportData">📥 Import JSON</button>
+            <button class="btn btn-danger btn-sm" id="btnResetData">⚠ Reset to Demo Data</button>
+            <input type="file" id="importFileInput" accept="application/json" style="display:none" />
+          </div>
+        </div>
+      </div>
+    </section>
+
   </main>
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- ✅ ES module entry -->
+<!-- ✅ IMPORTANT: Load the modular ES entrypoint (NOT core.js) -->
 <script type="module" src="./js/app.js"></script>
+
+<!-- ✅ Failsafe: never let the loading overlay trap the UI -->
+<script>
+  window.addEventListener('load', () => {
+    const ls = document.getElementById('loadingScreen');
+    if (ls) ls.style.display = 'none';
+  });
+</script>
+
 </body>
-</html>
+            </html>
