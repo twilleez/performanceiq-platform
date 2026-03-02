@@ -1,24 +1,23 @@
-import { THEME_KEY } from '../state/keys.js';
-import { Storage } from '../services/storage.js';
-import { dom } from './dom.js';
+// /js/ui/theme.js
+import { Storage } from "../services/storage.js";
+
+const KEY = "piq_theme_pref_v1";
 
 export function getThemePref() {
-  const saved = (Storage.getRaw(THEME_KEY) || '').toLowerCase();
-  if (saved === 'light' || saved === 'dark') return saved;
-
-  const domTheme = (document.documentElement.getAttribute('data-theme') || '').toLowerCase();
-  return (domTheme === 'light' || domTheme === 'dark') ? domTheme : 'dark';
+  try {
+    return Storage.get(KEY) || "dark";
+  } catch {
+    return "dark";
+  }
 }
 
 export function applyTheme(theme) {
-  const t = (theme === 'light') ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', t);
-  Storage.setRaw(THEME_KEY, t);
-
-  if (dom.btnTheme) dom.btnTheme.textContent = (t === 'dark') ? '🌙' : '☀️';
-  if (dom.settingTheme) dom.settingTheme.value = t;
+  const t = (theme === "light") ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t);
+  try { Storage.set(KEY, t); } catch {}
 }
 
 export function toggleTheme() {
-  applyTheme(getThemePref() === 'dark' ? 'light' : 'dark');
+  const cur = document.documentElement.getAttribute("data-theme") || "dark";
+  applyTheme(cur === "dark" ? "light" : "dark");
 }

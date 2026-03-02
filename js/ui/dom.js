@@ -1,105 +1,60 @@
+// /js/ui/dom.js
 export const dom = {};
 
 export function cacheDOM() {
-  // Topbar
-  dom.btnTheme   = document.getElementById('btnTheme');
-  dom.btnRefresh = document.getElementById('btnRefresh');
-  dom.btnExport  = document.getElementById('btnExport');
+  const byId = (id) => document.getElementById(id);
 
-  // Search
-  dom.athleteSearch      = document.getElementById('athleteSearch');
-  dom.athleteFilterInput = document.getElementById('athleteFilterInput');
+  // global
+  dom.loadingScreen = byId("loadingScreen");
+  dom.toastContainer = byId("toastContainer");
 
-  // Dashboard
-  dom.dashSub     = document.getElementById('dashSub');
-  dom.statAvg     = document.getElementById('statAvg');
-  dom.statAvgSub  = document.getElementById('statAvgSub');
-  dom.statReady   = document.getElementById('statReady');
-  dom.statReadySub= document.getElementById('statReadySub');
-  dom.statMonitor = document.getElementById('statMonitor');
-  dom.statMonitorSub = document.getElementById('statMonitorSub');
-  dom.statRisk    = document.getElementById('statRisk');
-  dom.sparkAvg    = document.getElementById('sparkAvg');
-  dom.heatmapBody = document.getElementById('heatmapBody');
-  dom.loadBarList = document.getElementById('loadBarList');
-  dom.alertsList  = document.getElementById('alertsList');
-  dom.rosterMini  = document.getElementById('rosterMini');
-  dom.activityFeed= document.getElementById('activityFeed');
-  dom.eventList   = document.getElementById('eventList');
-  dom.riskBadge   = document.getElementById('riskBadge');
+  // topbar
+  dom.btnTheme = byId("btnTheme");
+  dom.btnRefresh = byId("btnRefresh");
+  dom.btnExport = byId("btnExport");
+  dom.athleteSearch = byId("athleteSearch");
 
-  dom.pillOnlineText = document.getElementById('pillOnlineText');
-  dom.pillSeason     = document.getElementById('pillSeason');
-  dom.pillGame       = document.getElementById('pillGame');
-  dom.pillGameText   = document.getElementById('pillGameText');
+  // pills
+  dom.pillOnlineText = byId("pillOnlineText");
+  dom.pillSeason = byId("pillSeason");
+  dom.pillGame = byId("pillGame");
+  dom.pillGameText = byId("pillGameText");
 
-  dom.chipOnlineText = document.getElementById('chipOnlineText');
-  dom.chipFlags      = document.getElementById('chipFlags');
-  dom.chipFlagsText  = document.getElementById('chipFlagsText');
-  dom.chipGame       = document.getElementById('chipGame');
-  dom.chipGameText2  = document.getElementById('chipGameText2');
+  // data mgmt
+  dom.btnExportData = byId("btnExportData");
+  dom.btnImportData = byId("btnImportData");
+  dom.btnResetData = byId("btnResetData");
+  dom.importFileInput = byId("importFileInput");
 
-  dom.insightText = document.getElementById('insightText');
+  // settings
+  dom.settingRole = byId("settingRole");
+  dom.settingTeamName = byId("settingTeamName");
+  dom.settingSport = byId("settingSport");
+  dom.settingSeason = byId("settingSeason");
+  dom.settingTheme = byId("settingTheme");
+  dom.btnSaveSettings = byId("btnSaveSettings");
 
-  // Athletes view
-  dom.athleteCountSub = document.getElementById('athleteCountSub');
-  dom.athleteCardGrid = document.getElementById('athleteCardGrid');
-  dom.athleteDetail   = document.getElementById('athleteDetail');
-  dom.backToList      = document.getElementById('backToList');
+  // train
+  dom.btnGenerate = byId("btnGenerate");
+  dom.btnGenerateInline = byId("btnGenerateInline");
+  dom.btnPushToday = byId("btnPushToday");
 
-  dom.detailHero      = document.getElementById('detailHero');
-  dom.detailRingFill  = document.getElementById('detailRingFill');
-  dom.detailRingNum   = document.getElementById('detailRingNum');
-  dom.detailRingDelta = document.getElementById('detailRingDelta');
-  dom.detailTier      = document.getElementById('detailTier');
-  dom.detailScoreNote = document.getElementById('detailScoreNote');
-  dom.detailPillars   = document.getElementById('detailPillars');
-  dom.detailWellness  = document.getElementById('detailWellness');
-  dom.detailLoad      = document.getElementById('detailLoad');
-  dom.detailInsight   = document.getElementById('detailInsight');
-  dom.detailWorkout   = document.getElementById('detailWorkout');
-  dom.detailPRs       = document.getElementById('detailPRs');
+  // analytics export
+  dom.btnExportAnalytics = byId("btnExportAnalytics");
 
-  // Train
-  dom.btnGenerate       = document.getElementById('btnGenerate');
-  dom.btnGenerateInline = document.getElementById('btnGenerateInline');
-  dom.btnPushToday      = document.getElementById('btnPushToday');
-  dom.buildSport        = document.getElementById('buildSport');
-  dom.buildType         = document.getElementById('buildType');
-  dom.buildDuration     = document.getElementById('buildDuration');
-  dom.buildIntensity    = document.getElementById('buildIntensity');
-  dom.generatedSessionWrap = document.getElementById('generatedSessionWrap');
-  dom.sessionLibrary    = document.getElementById('sessionLibrary');
+  // wellness/nutrition
+  dom.btnSaveWellness = byId("btnSaveWellness");
+  dom.btnSaveNutrition = byId("btnSaveNutrition");
 
-  // Analytics
-  dom.analyticsSub      = document.getElementById('analyticsSub');
-  dom.analyticsStatGrid = document.getElementById('analyticsStatGrid');
-  dom.loadChart         = document.getElementById('loadChart');
-  dom.scoreDistChart    = document.getElementById('scoreDistChart');
-  dom.scoreRanges       = document.getElementById('scoreRanges');
-  dom.analyticsBody     = document.getElementById('analyticsBody');
-  dom.btnExportAnalytics= document.getElementById('btnExportAnalytics');
-
-  // Schedule
-  dom.fullEventList     = document.getElementById('fullEventList');
-
-  // Settings
-  dom.settingTeamName = document.getElementById('settingTeamName');
-  dom.settingSeason   = document.getElementById('settingSeason');
-  dom.settingSport    = document.getElementById('settingSport');
-  dom.settingTheme    = document.getElementById('settingTheme');
-  dom.btnSaveSettings = document.getElementById('btnSaveSettings');
-
-  dom.btnExportData   = document.getElementById('btnExportData');
-  dom.btnImportData   = document.getElementById('btnImportData');
-  dom.btnResetData    = document.getElementById('btnResetData');
-  dom.importFileInput = document.getElementById('importFileInput');
-
-  // Misc
-  dom.userName = document.getElementById('userName');
-  dom.userRole = document.getElementById('userRole');
-
-  dom.loadingScreen   = document.getElementById('loadingScreen');
-  dom.onboardingModal = document.getElementById('onboardingModal');
-  dom.toastContainer  = document.getElementById('toastContainer');
-    }
+  // views
+  dom.views = {
+    dashboard: byId("view-dashboard"),
+    athletes: byId("view-athletes"),
+    train: byId("view-train"),
+    analytics: byId("view-analytics"),
+    schedule: byId("view-schedule"),
+    wellness: byId("view-wellness"),
+    nutrition: byId("view-nutrition"),
+    settings: byId("view-settings"),
+  };
+}
