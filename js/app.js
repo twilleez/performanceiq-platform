@@ -7,8 +7,9 @@ import { confirmModal } from "./ui/modal.js";
 
 import { Storage } from "./services/storage.js";
 import { toast } from "./services/toast.js";
+import { exportPrintableReport } from "./services/report.js";
 
-import { STATE, ATHLETES, loadState, saveState, saveAthletes, setAthletes } from "./state/state.js";
+import { STATE, ATHLETES, loadState, saveState, saveAthletes, setAthletes, validateBackupPayload } from "./state/state.js";
 import { STORAGE_KEY_TOUR, STORAGE_KEY_ATHLETES } from "./state/keys.js";
 
 import { switchView, initRouter } from "./router.js";
@@ -126,18 +127,12 @@ function bindDataManagement() {
     reader.onload = (evt) => {
       try {
         const p = JSON.parse(evt.target.result);
-        const athletes = Array.isArray(p?.athletes) ? p.athletes : null;
-        if (!athletes) {
-          toast("Import failed — missing athletes array");
+        const v = validateBackupPayload(p);
+        if (!v.ok) {
+          toast("Import failed — " + (v.reason || "Invalid backup"));
           return;
         }
-        // schema validate
-        const ok = athletes.every(a => a && typeof a.id === "string" && typeof a.name === "string");
-        if (!ok) {
-          toast("Import failed — invalid athlete schema");
-          return;
-        }
-        setAthletes(athletes);
+        setAthletes(p.athletes);
         if (p?.state && typeof p.state === "object") Object.assign(STATE, p.state);
         saveState();
         saveAthletes();
@@ -174,8 +169,51 @@ function bindDataManagement() {
 ---------------------------- */
 function bindTopActions() {
   dom.btnRefresh?.addEventListener("click", () => { renderDashboard(); toast("Refreshed ↺"); });
-  dom.btnExport?.addEventListener("click", () => toast("Report export requires PDF wiring — coming soon 📤"));
-  dom.btnExportAnalytics?.addEventListener("click", () => toast("PDF export coming in next phase 📄"));
+  const doExport = () => {
+    try {
+      exportPrintableReport({ state: STATE, athletes: ATHLETES });
+      toast("Opening print dialog…");
+    } catch (e) {
+      toast(e?.message || "Export failed");
+    }
+  };
+  dom.btnExport?.addEventListener("click", doExport);
+  dom.btnExportAnalytics?.addEventListener("click", doExport);
+}
+
+/* ---------------------------
+   Delegated actions (works for view templates)
+---------------------------- */
+function bindDelegatedActions() {
+  document.addEventListener("click", (e) => {
+    const el = e.target?.closest?.("[data-action]");
+    if (!el) return;
+    const act = el.getAttribute("data-action");
+    if (act === "export") {
+      // Shortcut: trigger the real export button if present.
+      dom.btnExport?.click?.();
+      return;
+    }
+    if (act === "logSession") {
+      navigate("train");
+      return;
+    }
+
+    if (act === "open-athlete") {
+      const athleteId = el.getAttribute("data-athlete-id");
+      if (!athleteId) return;
+      navigate("athletes");
+      setTimeout(() => {
+        try {
+          const card = document.querySelector(
+            `[data-athlete-card-id="${CSS.escape(athleteId)}"]`
+          );
+          if (card) card.click();
+        } catch {}
+      }, 0);
+      return;
+    }
+  });
 }
 
 /* ---------------------------
@@ -201,6 +239,7 @@ export async function initApp() {
 
   // Bind UI
   bindNav();
+  bindDelegatedActions();
   bindSearch();
   bindSettings();
   bindDataManagement();

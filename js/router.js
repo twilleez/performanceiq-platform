@@ -21,7 +21,7 @@ export function switchView(viewId, { onEnter } = {}) {
     if (el) el.classList.toggle("active", id === targetId);
   });
 
-  document.querySelectorAll(".nav-btn[data-view]").forEach((b) => {
+  document.querySelectorAll(".nav-btn[data-view], .mnav-btn[data-view]").forEach((b) => {
     b.classList.toggle("active", b.dataset.view === key);
   });
 
