@@ -1,4 +1,5 @@
 // /js/app.js
+
 import { cacheDOM, dom } from './ui/dom.js';
 import { installInteractions } from './ui/interactions.js';
 import { getThemePref, applyTheme, toggleTheme } from './ui/theme.js';
@@ -21,20 +22,29 @@ import { initOnboarding, maybeShowOnboarding, closeOnboardingIfOpen } from './ui
 import { createTodayTour } from './ui/tour.js';
 
 /* ---------------------------
-   Loader hard-kill (prevents trap)
+   Loader control
 ---------------------------- */
-function killLoader() {
+function showLoader() {
   const ls = document.getElementById('loadingScreen');
-  if (ls) ls.style.setProperty('display', 'none', 'important');
+  if (ls) ls.style.display = 'flex';
 }
-// Run immediately, and also on typical lifecycle points.
-killLoader();
-document.addEventListener('DOMContentLoaded', killLoader);
-window.addEventListener('load', killLoader);
-setTimeout(killLoader, 2500);
+function hideLoader() {
+  const ls = document.getElementById('loadingScreen');
+  if (ls) ls.style.display = 'none';
+}
+
+function showBootError(msg) {
+  const box = document.createElement('div');
+  box.style.cssText =
+    'position:fixed;left:12px;right:12px;bottom:12px;z-index:10000;' +
+    'background:rgba(10,14,20,.96);border:1px solid rgba(255,255,255,.14);' +
+    'color:#eaf0ff;border-radius:12px;padding:10px 12px;font:13px system-ui;';
+  box.textContent = 'Startup error: ' + msg;
+  document.body.appendChild(box);
+}
 
 /* ---------------------------
-   Simple helpers
+   View routing
 ---------------------------- */
 function onEnter(viewId) {
   if (viewId === 'dashboard') renderDashboard();
@@ -50,7 +60,6 @@ function onEnter(viewId) {
   if (viewId === 'schedule') renderSchedule(dom.fullEventList);
 }
 
-// Tour needs a “navigate” that also triggers render.
 function navigate(viewId) {
   switchView(viewId, { onEnter });
 }
@@ -63,7 +72,7 @@ function handleSearch(value) {
 }
 
 /* ---------------------------
-   Data mgmt (export/import/reset)
+   Data mgmt
 ---------------------------- */
 function bindDataManagement() {
   dom.btnExportData?.addEventListener('click', () => {
@@ -74,9 +83,7 @@ function bindDataManagement() {
       );
       const url = URL.createObjectURL(blob);
       const a = Object.assign(document.createElement('a'), { href: url, download: `piq-backup-${Date.now()}.json` });
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast('Backup downloaded ✓');
     } catch (e) {
@@ -94,11 +101,9 @@ function bindDataManagement() {
     reader.onload = (evt) => {
       try {
         const p = JSON.parse(evt.target.result);
-
-        if (p.athletes && Array.isArray(p.athletes) && p.athletes.length) {
+        if (p.athletes && Array.isArray(p.athletes)) {
           setAthletes(p.athletes);
           if (p.state && typeof p.state === 'object') Object.assign(STATE, p.state);
-
           saveState();
           applySportTheme(STATE.sport);
           renderDashboard();
@@ -122,7 +127,7 @@ function bindDataManagement() {
 }
 
 /* ---------------------------
-   Settings (team/sport/theme)
+   Settings
 ---------------------------- */
 function bindSettings() {
   if (dom.settingTeamName) dom.settingTeamName.value = STATE.teamName;
@@ -150,9 +155,6 @@ function bindSettings() {
   });
 }
 
-/* ---------------------------
-   Navigation binding
----------------------------- */
 function bindNav() {
   document.querySelectorAll('[data-view]').forEach(btn =>
     btn.addEventListener('click', () => navigate(btn.dataset.view))
@@ -160,78 +162,73 @@ function bindNav() {
 }
 
 /* ---------------------------
-   Main init
+   Boot
 ---------------------------- */
-function init() {
-  cacheDOM();
-  installInteractions();
+function boot() {
+  showLoader();
 
-  applyTheme(getThemePref());
-  dom.btnTheme?.addEventListener('click', toggleTheme);
-  dom.settingTheme?.addEventListener('change', (e) => applyTheme(e.target.value));
+  // Surface runtime errors (so you don’t get “nothing works” silently)
+  window.addEventListener('error', (e) => {
+    hideLoader();
+    showBootError(e?.message || 'Unknown error');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    hideLoader();
+    showBootError(e?.reason?.message || String(e?.reason || 'Unhandled rejection'));
+  });
 
-  applySportTheme(STATE.sport);
+  try {
+    cacheDOM();
+    installInteractions();
 
-  bindNav();
-  bindSettings();
-  bindDataManagement();
+    applyTheme(getThemePref());
+    dom.btnTheme?.addEventListener('click', toggleTheme);
+    dom.settingTheme?.addEventListener('change', (e) => applyTheme(e.target.value));
 
-  // Search sync
-  dom.athleteSearch?.addEventListener('input', e => handleSearch(e.target.value));
-  dom.athleteFilterInput?.addEventListener('input', e => handleSearch(e.target.value));
+    applySportTheme(STATE.sport);
 
-  // Top actions
-  dom.btnRefresh?.addEventListener('click', () => { renderDashboard(); toast('Data refreshed ↺'); });
-  dom.btnExport?.addEventListener('click', () => toast('Report export requires cloud sync — coming soon 📤'));
-  dom.btnExportAnalytics?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
+    bindNav();
+    bindSettings();
+    bindDataManagement();
 
-  // View-specific binds
-  bindTrainViewEvents();
-  bindAthletesViewEvents();
+    dom.athleteSearch?.addEventListener('input', e => handleSearch(e.target.value));
+    dom.athleteFilterInput?.addEventListener('input', e => handleSearch(e.target.value));
 
-  // Onboarding module
-  initOnboarding({
-    onAfterFinish: () => {
-      renderDashboard();
+    dom.btnRefresh?.addEventListener('click', () => { renderDashboard(); toast('Data refreshed ↺'); });
+    dom.btnExport?.addEventListener('click', () => toast('Report export requires cloud sync — coming soon 📤'));
+    dom.btnExportAnalytics?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
+
+    bindTrainViewEvents();
+    bindAthletesViewEvents();
+
+    initOnboarding({ onAfterFinish: () => renderDashboard() });
+
+    const TodayTour = createTodayTour({ navigate });
+    TodayTour.bindKeyboardShortcuts();
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeOnboardingIfOpen();
+    });
+
+    if (dom.userRole) {
+      dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
     }
-  });
 
-  // TodayTour module
-  const TodayTour = createTodayTour({ navigate });
-  TodayTour.bindKeyboardShortcuts();
+    renderDashboard();
+    navigate(STATE.currentView || 'dashboard');
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeOnboardingIfOpen();
-  });
+    maybeShowOnboarding();
 
-  if (dom.userRole) {
-    dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
+    hideLoader();
+  } catch (err) {
+    hideLoader();
+    showBootError(err?.message || String(err));
+    try { toast('Startup error — see banner'); } catch {}
   }
-
-  // First render
-  renderDashboard();
-  navigate(STATE.currentView || 'dashboard');
-
-  // Show onboarding once if not seen
-  maybeShowOnboarding();
-
-  // Ensure loader is gone
-  killLoader();
 }
 
-try {
-  init();
-} catch (err) {
-  // Never allow a silent crash to keep the loader visible
-  killLoader();
-
-  const msg = (err && err.message) ? err.message : String(err);
-  // Try toast if available; otherwise show an alert-like overlay.
-  try { toast('Startup error: ' + msg); } catch {}
-
-  // Visible fallback (no dependency on your toast module)
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;inset:auto 12px 12px 12px;z-index:100000;background:rgba(12,17,24,.95);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px;color:#eaf0ff;font-family:system-ui;font-size:13px;';
-  box.textContent = 'Startup error: ' + msg;
-  document.body.appendChild(box);
-                            }
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
