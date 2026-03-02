@@ -1,22 +1,21 @@
-import { dom } from '../ui/dom.js';
+// /js/services/toast.js
+export function toast(message, { timeout = 2600 } = {}) {
+  const host = document.getElementById("toastContainer");
+  if (!host) return;
 
-export function toast(msg, ms = 2800) {
-  const host = dom.toastContainer || (() => {
-    const div = document.createElement('div');
-    div.id = 'toastContainer';
-    document.body.appendChild(div);
-    return div;
-  })();
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  el.textContent = message;
 
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  host.appendChild(t);
+  host.appendChild(el);
+
+  // allow CSS animations if present
+  requestAnimationFrame(() => el.classList.add("show"));
 
   setTimeout(() => {
-    t.style.transition = 'opacity .25s,transform .25s';
-    t.style.opacity = '0';
-    t.style.transform = 'translateY(6px)';
-    setTimeout(() => t.remove(), 280);
-  }, ms);
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 300);
+  }, timeout);
 }
