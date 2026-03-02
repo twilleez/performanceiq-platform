@@ -7,14 +7,13 @@ import { applySportTheme } from './ui/sportTheme.js';
 import { Storage } from './services/storage.js';
 import { toast } from './services/toast.js';
 
-import { STATE, ATHLETES, saveState, saveAthletes, setAthletes } from './state/state.js';
-import { STORAGE_KEY_TOUR } from './state/keys.js';
+import { STATE, ATHLETES, saveState, setAthletes } from './state/state.js';
 
 import { switchView } from './router.js';
 
 import { renderDashboard } from './views/dashboard.js';
 import { renderAthletesView, bindAthletesViewEvents } from './views/athletes.js';
-import { renderTrainView, bindTrainViewEvents, renderGeneratedSession } from './views/train.js';
+import { renderTrainView, bindTrainViewEvents } from './views/train.js';
 import { renderAnalytics } from './views/analytics.js';
 import { renderSchedule } from './views/schedule.js';
 
@@ -22,25 +21,28 @@ import { initOnboarding, maybeShowOnboarding, closeOnboardingIfOpen } from './ui
 import { createTodayTour } from './ui/tour.js';
 
 /* ---------------------------
-   Simple helpers
+   Loader (do NOT depend on dom cache)
 ---------------------------- */
 function hideLoader() {
-  if (dom.loadingScreen) dom.loadingScreen.style.display = 'none';
+  const ls = document.getElementById('loadingScreen');
+  if (ls) ls.style.display = 'none';
 }
 
 function onEnter(viewId) {
   if (viewId === 'dashboard') renderDashboard();
+
   if (viewId === 'athletes') {
     if (dom.athleteDetail) dom.athleteDetail.style.display = 'none';
     if (dom.athleteCardGrid) dom.athleteCardGrid.style.display = '';
     renderAthletesView(dom.athleteFilterInput?.value || dom.athleteSearch?.value || '');
   }
+
   if (viewId === 'train') renderTrainView();
   if (viewId === 'analytics') renderAnalytics();
   if (viewId === 'schedule') renderSchedule(dom.fullEventList);
 }
 
-// Tour needs a “navigate” that also triggers render (because router is separate in modular build).
+// Router adapter (tour needs this)
 function navigate(viewId) {
   switchView(viewId, { onEnter });
 }
@@ -53,7 +55,7 @@ function handleSearch(value) {
 }
 
 /* ---------------------------
-   Data mgmt (export/import/reset) — modularized baseline
+   Data mgmt (export/import/reset)
 ---------------------------- */
 function bindDataManagement() {
   dom.btnExportData?.addEventListener('click', () => {
@@ -64,7 +66,9 @@ function bindDataManagement() {
       );
       const url = URL.createObjectURL(blob);
       const a = Object.assign(document.createElement('a'), { href: url, download: `piq-backup-${Date.now()}.json` });
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast('Backup downloaded ✓');
     } catch (e) {
@@ -101,9 +105,7 @@ function bindDataManagement() {
   });
 
   dom.btnResetData?.addEventListener('click', () => {
-    // You listed replacing confirm() with modal later; keeping parity right now.
     if (!confirm('Reset to demo data? Current data will be lost.')) return;
-    // simplest: clear the athletes key and reload
     Storage.remove('piq_athletes_v2');
     location.reload();
   });
@@ -116,7 +118,7 @@ function bindSettings() {
   if (dom.settingTeamName) dom.settingTeamName.value = STATE.teamName;
 
   if (dom.settingSport) {
-    Array.from(dom.settingSport.options).forEach(o => {
+    Array.from(dom.settingSport.options).forEach((o) => {
       o.selected = o.value.toLowerCase() === String(STATE.sport).toLowerCase();
     });
   }
@@ -128,7 +130,10 @@ function bindSettings() {
 
     applySportTheme(STATE.sport);
 
-    if (dom.userRole) dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
+    if (dom.userRole) {
+      dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
+    }
+
     saveState();
     renderDashboard();
     toast('Settings saved ✓');
@@ -136,10 +141,10 @@ function bindSettings() {
 }
 
 /* ---------------------------
-   Navigation binding
+   Nav binding
 ---------------------------- */
 function bindNav() {
-  document.querySelectorAll('[data-view]').forEach(btn =>
+  document.querySelectorAll('[data-view]').forEach((btn) =>
     btn.addEventListener('click', () => navigate(btn.dataset.view))
   );
 }
@@ -148,60 +153,63 @@ function bindNav() {
    Main init
 ---------------------------- */
 function init() {
-  cacheDOM();
-  installInteractions();
+  // Always hide loader even if something throws during init
+  try {
+    cacheDOM();
+    installInteractions();
 
-  applyTheme(getThemePref());
-  dom.btnTheme?.addEventListener('click', toggleTheme);
-  dom.settingTheme?.addEventListener('change', (e) => applyTheme(e.target.value));
+    applyTheme(getThemePref());
+    dom.btnTheme?.addEventListener('click', toggleTheme);
+    dom.settingTheme?.addEventListener('change', (e) => applyTheme(e.target.value));
 
-  applySportTheme(STATE.sport);
+    applySportTheme(STATE.sport);
 
-  bindNav();
-  bindSettings();
-  bindDataManagement();
+    bindNav();
+    bindSettings();
+    bindDataManagement();
 
-  // Search sync
-  dom.athleteSearch?.addEventListener('input', e => handleSearch(e.target.value));
-  dom.athleteFilterInput?.addEventListener('input', e => handleSearch(e.target.value));
+    // Search
+    dom.athleteSearch?.addEventListener('input', (e) => handleSearch(e.target.value));
+    dom.athleteFilterInput?.addEventListener('input', (e) => handleSearch(e.target.value));
 
-  // Top actions
-  dom.btnRefresh?.addEventListener('click', () => { renderDashboard(); toast('Data refreshed ↺'); });
-  dom.btnExport?.addEventListener('click', () => toast('Report export requires cloud sync — coming soon 📤'));
-  dom.btnExportAnalytics?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
-
-  // View-specific binds
-  bindTrainViewEvents();
-  bindAthletesViewEvents();
-
-  // ✅ Onboarding module (extracted from core.js) 19
-  initOnboarding({
-    onAfterFinish: () => {
-      // Make sure views reflect updated sport/theme/state
+    // Top actions
+    dom.btnRefresh?.addEventListener('click', () => {
       renderDashboard();
+      toast('Data refreshed ↺');
+    });
+
+    dom.btnExport?.addEventListener('click', () => toast('Report export requires cloud sync — coming soon 📤'));
+    dom.btnExportAnalytics?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
+
+    // View binds
+    bindTrainViewEvents();
+    bindAthletesViewEvents();
+
+    // Onboarding + Tour
+    initOnboarding({
+      onAfterFinish: () => renderDashboard(),
+    });
+
+    const TodayTour = createTodayTour({ navigate });
+    TodayTour.bindKeyboardShortcuts();
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeOnboardingIfOpen();
+    });
+
+    if (dom.userRole) {
+      dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
     }
-  });
 
-  // ✅ TodayTour module (extracted from core.js) 20
-  const TodayTour = createTodayTour({ navigate });
-  TodayTour.bindKeyboardShortcuts();
+    // First render
+    renderDashboard();
+    navigate(STATE.currentView || 'dashboard');
 
-  // Keep “Escape closes onboarding too” parity with core.js behavior 21
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeOnboardingIfOpen();
-  });
-
-  // Initial user label
-  if (dom.userRole) dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
-
-  // First render
-  renderDashboard();
-  navigate(STATE.currentView || 'dashboard');
-
-  // Show onboarding once if not seen
-  maybeShowOnboarding();
-
-  hideLoader();
+    // Onboarding once
+    maybeShowOnboarding();
+  } finally {
+    hideLoader();
+  }
 }
 
 init();
