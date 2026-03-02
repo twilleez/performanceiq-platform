@@ -1,5 +1,4 @@
 // /js/boot.js
-
 const LOADER_ID = 'loadingScreen';
 
 function loaderEl() {
@@ -11,16 +10,6 @@ function setLoaderVisible(on) {
   if (!ls) return;
   ls.style.display = on ? 'flex' : 'none';
   ls.style.pointerEvents = on ? 'auto' : 'none';
-}
-
-function forceUnlockUI() {
-  const ls = loaderEl();
-  if (!ls) return;
-  // If loader is still there, stop it from blocking taps
-  ls.style.pointerEvents = 'none';
-  ls.style.opacity = '0';
-  ls.style.transition = 'opacity .25s ease';
-  // Keep it in DOM but invisible / non-blocking
 }
 
 function badge(text) {
@@ -75,16 +64,16 @@ window.addEventListener('unhandledrejection', (e) => {
   showBootError('Unhandled Promise rejection', msg);
 });
 
-// Ensure loader is visible at first
 setLoaderVisible(true);
 
-// Visual proof boot.js ran
 const b = badge('BOOT OK\nImporting app.js…');
 
 import('./app.js')
   .then(() => {
     b.textContent = 'BOOT OK\nAPP OK';
-    // app.js should hide loader, but we’ll ensure it
+    // give the UI a moment to paint, then hide badge
+    setTimeout(() => b.remove(), 2000);
+    // ensure loader goes away
     setTimeout(() => setLoaderVisible(false), 250);
   })
   .catch((err) => {
@@ -95,8 +84,5 @@ import('./app.js')
     showBootError('Module import failed', detail);
   });
 
-// Absolute failsafe: never allow loader to block UI forever
-setTimeout(() => {
-  // If loader still exists, disable its tap-blocking
-  forceUnlockUI();
-}, 6000);
+// absolute failsafe
+setTimeout(() => setLoaderVisible(false), 8000);
