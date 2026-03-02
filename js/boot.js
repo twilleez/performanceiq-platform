@@ -1,88 +1,40 @@
 // /js/boot.js
-const LOADER_ID = 'loadingScreen';
+import { toast } from "./services/toast.js";
 
-function loaderEl() {
-  return document.getElementById(LOADER_ID);
-}
-
-function setLoaderVisible(on) {
-  const ls = loaderEl();
-  if (!ls) return;
-  ls.style.display = on ? 'flex' : 'none';
-  ls.style.pointerEvents = on ? 'auto' : 'none';
-}
-
-function badge(text) {
-  const b = document.createElement('div');
-  b.style.cssText = [
-    'position:fixed',
-    'top:10px',
-    'left:10px',
-    'z-index:100000',
-    'background:rgba(10,14,20,.92)',
-    'border:1px solid rgba(255,255,255,.14)',
-    'color:#eaf0ff',
-    'border-radius:12px',
-    'padding:8px 10px',
-    'font:12px system-ui',
-    'white-space:pre-wrap'
-  ].join(';');
-  b.textContent = text;
+function showBootBadge(okText) {
+  // optional badge for debugging; remove later
+  const b = document.createElement("div");
+  b.style.cssText = "position:fixed;top:10px;left:10px;z-index:9999;font:12px/1.2 system-ui;background:rgba(0,0,0,.55);color:#fff;padding:8px 10px;border-radius:10px;backdrop-filter:blur(8px)";
+  b.textContent = okText;
   document.body.appendChild(b);
-  return b;
+  setTimeout(() => b.remove(), 1600);
 }
 
-function showBootError(title, detail) {
-  setLoaderVisible(false);
-
-  const box = document.createElement('div');
-  box.style.cssText = [
-    'position:fixed',
-    'left:12px',
-    'right:12px',
-    'bottom:12px',
-    'z-index:100000',
-    'background:rgba(10,14,20,.96)',
-    'border:1px solid rgba(255,255,255,.14)',
-    'color:#eaf0ff',
-    'border-radius:12px',
-    'padding:12px',
-    'font:13px system-ui',
-    'white-space:pre-wrap',
-    'line-height:1.35'
-  ].join(';');
-  box.textContent = `${title}\n\n${detail}`;
-  document.body.appendChild(box);
+function fatal(msg) {
+  console.error("[BOOT]", msg);
+  try { toast(String(msg), { timeout: 6000 }); } catch {}
+  const ls = document.getElementById("loadingScreen");
+  if (ls) ls.style.display = "none";
 }
 
-window.addEventListener('error', (e) => {
-  showBootError('Runtime error (window.error)', e?.message || 'Unknown runtime error');
+window.addEventListener("error", (e) => {
+  // Module import errors sometimes surface here on mobile.
+  if (String(e?.message || "").includes("Failed to fetch dynamically imported module")) {
+    fatal("Module import failed (wrong path / caching). Hard refresh and try again.");
+  }
+});
+window.addEventListener("unhandledrejection", (e) => {
+  fatal(e?.reason?.message || e?.reason || "Unhandled error");
 });
 
-window.addEventListener('unhandledrejection', (e) => {
-  const msg = e?.reason?.message || String(e?.reason || 'Unhandled rejection');
-  showBootError('Unhandled Promise rejection', msg);
-});
-
-setLoaderVisible(true);
-
-const b = badge('BOOT OK\nImporting app.js…');
-
-import('./app.js')
-  .then(() => {
-    b.textContent = 'BOOT OK\nAPP OK';
-    // give the UI a moment to paint, then hide badge
-    setTimeout(() => b.remove(), 2000);
-    // ensure loader goes away
-    setTimeout(() => setLoaderVisible(false), 250);
-  })
-  .catch((err) => {
-    const detail =
-      `Import failed: ./app.js\n` +
-      `Message: ${err?.message || String(err)}\n` +
-      (err?.stack ? `\nStack:\n${err.stack}` : '');
-    showBootError('Module import failed', detail);
-  });
-
-// absolute failsafe
-setTimeout(() => setLoaderVisible(false), 8000);
+(async function boot() {
+  try {
+    showBootBadge("BOOT OK");
+    const { initApp } = await import("./app.js");
+    await initApp();
+    document.documentElement.classList.add("piq-booted");
+    showBootBadge("APP OK");
+  } catch (err) {
+    fatal(err?.message || err);
+  }
+})();

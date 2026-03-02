@@ -1,32 +1,46 @@
-import { STATE } from './state/state.js';
+// /js/router.js
+import { STATE, saveState } from "./state/state.js";
 
-export function applyViewDom(viewId) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active','enter'));
-  document.querySelectorAll('.nav-btn,.navbtn,[data-view]').forEach(b => b.classList.remove('active'));
-
-  const vEl = document.getElementById('view-' + viewId);
-  const nEl = document.querySelector(`[data-view="${viewId}"]`);
-
-  if (vEl) {
-    vEl.classList.add('active','enter');
-    setTimeout(()=>vEl.classList.remove('enter'), 380);
-  }
-  if (nEl) nEl.classList.add('active');
-}
+const VIEW_MAP = {
+  dashboard: "view-dashboard",
+  athletes: "view-athletes",
+  train: "view-train",
+  analytics: "view-analytics",
+  schedule: "view-schedule",
+  wellness: "view-wellness",
+  nutrition: "view-nutrition",
+  settings: "view-settings",
+};
 
 export function switchView(viewId, { onEnter } = {}) {
-  const prev = STATE.currentView;
+  const key = VIEW_MAP[viewId] ? viewId : "dashboard";
+  const targetId = VIEW_MAP[key];
 
-  // Leaving athlete detail cleanup
-  if (prev === 'athletes' && viewId !== 'athletes') {
-    const detail = document.getElementById('athleteDetail');
-    const grid   = document.getElementById('athleteCardGrid');
-    if (detail) detail.style.display = 'none';
-    if (grid)   grid.style.display = '';
-    STATE.selectedAthleteId = null;
-  }
+  Object.values(VIEW_MAP).forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("active", id === targetId);
+  });
 
-  STATE.currentView = viewId;
-  applyViewDom(viewId);
-  if (typeof onEnter === 'function') onEnter(viewId);
+  document.querySelectorAll(".nav-btn[data-view]").forEach((b) => {
+    b.classList.toggle("active", b.dataset.view === key);
+  });
+
+  STATE.currentView = key;
+  try { saveState(); } catch {}
+
+  // set hash for deep link
+  try { location.hash = `#${key}`; } catch {}
+
+  if (typeof onEnter === "function") onEnter(key);
+}
+
+export function initRouter({ onEnter } = {}) {
+  // initial hash
+  const hash = (location.hash || "").replace("#", "").trim();
+  if (hash) switchView(hash, { onEnter });
+
+  window.addEventListener("hashchange", () => {
+    const h = (location.hash || "").replace("#", "").trim();
+    if (h) switchView(h, { onEnter });
+  });
 }
