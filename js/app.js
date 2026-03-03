@@ -52,7 +52,7 @@ function renderDashboardForRole() {
     const coachContent = document.getElementById("dashCoachContent");
     if (host)         host.style.display = "none";
     if (coachContent) coachContent.style.display = "";
-    renderDashboardForRole();
+    renderDashboard();
   }
 }
 
