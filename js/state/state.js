@@ -12,18 +12,32 @@ export const STATE = {
   season: "Pre-Season",
   theme: "dark",
   role: "coach", // coach|athlete|admin
-  events: []
+  events: [],
+
+  // Elite add-ons (optional)
+  periodization: { active: null }, // generated 4-week block
+  nutrition: { targets: null, logs: [] }
 };
 
 export let ATHLETES = [];
 
 function isObj(x) { return !!x && typeof x === "object" && !Array.isArray(x); }
 
-function validateAthlete(a) {
+export function validateAthlete(a) {
   if (!isObj(a)) return false;
   if (typeof a.id !== "string" || !a.id) return false;
   if (typeof a.name !== "string" || !a.name.trim()) return false;
   return true;
+}
+
+// Loose schema validation for imported backups (robustness)
+export function validateBackupPayload(p) {
+  if (!isObj(p)) return { ok: false, reason: "Backup is not an object" };
+  if (!Array.isArray(p.athletes)) return { ok: false, reason: "Missing athletes[] array" };
+  const bad = p.athletes.find(a => !validateAthlete(a));
+  if (bad) return { ok: false, reason: "One or more athlete records are invalid (missing id/name)" };
+  if (p.state && !isObj(p.state)) return { ok: false, reason: "state must be an object if present" };
+  return { ok: true };
 }
 
 export function setAthletes(list) {
