@@ -2,6 +2,8 @@
 import { STATE, ATHLETES } from "../state/state.js";
 import { computePIQ } from "../features/piqScore.js";
 import { computeACWR } from "../features/acwr.js";
+import { computeRisk } from "../features/riskDetection.js";
+import { renderHeatmapHTML } from "../features/heatmap.js";
 
 function $(id) { return document.getElementById(id); }
 
@@ -59,9 +61,10 @@ export function renderDashboard() {
     }).score;
 
     const acwr = computeACWR(a?.history?.sessions || []);
-    const flag = flagFrom(piq, acwr);
+    const risk = computeRisk(a);
+    const flag = risk.colorClass === "risk" ? "risk" : (risk.colorClass === "watch" ? "watch" : (risk.colorClass === "nodata" ? "unknown" : "ready"));
 
-    return { athlete: a, piq, acwr: safeNum(acwr), flag };
+    return { athlete: a, piq, acwr: safeNum(acwr), flag, risk };
   });
 
   // Stats
@@ -91,6 +94,10 @@ export function renderDashboard() {
 
   if (statRoster) statRoster.textContent = String(ATHLETES.length);
 
+  // Team heatmap
+  const heat = $("teamHeatmap");
+  if (heat) heat.innerHTML = renderHeatmapHTML(ATHLETES);
+
   // Readiness table
   const tbody = $("readinessTable");
   if (tbody) {
@@ -112,6 +119,9 @@ export function renderDashboard() {
           const acwrTxt = r.acwr == null ? "—" : r.acwr.toFixed(1);
 
           const tr = document.createElement("tr");
+          tr.setAttribute("data-action", "open-athlete");
+          tr.setAttribute("data-athlete-id", r.athlete.id);
+          tr.style.cursor = "pointer";
           tr.innerHTML = `
             <td>
               <div class="athlete-name">

@@ -3,6 +3,7 @@ import { ATHLETES, saveAthletes } from "../state/state.js";
 import { toast } from "../services/toast.js";
 import { computePIQ } from "../features/piqScore.js";
 import { computeACWR } from "../features/acwr.js";
+import { computeRisk } from "../features/riskDetection.js";
 
 function $(id) { return document.getElementById(id); }
 
@@ -17,12 +18,10 @@ function latestSessions(a) {
   return Array.isArray(s) ? s : [];
 }
 
-function riskLabel(acwr) {
-  if (acwr == null) return { label: "No data", cls: "chip" };
-  if (acwr < 0.8) return { label: "Low", cls: "chip" };
-  if (acwr <= 1.3) return { label: "OK", cls: "chip ok" };
-  if (acwr <= 1.6) return { label: "Elevated", cls: "chip warn" };
-  return { label: "High", cls: "chip danger" };
+function riskChipForAthlete(a) {
+  const r = computeRisk(a);
+  const cls = (r.colorClass === "risk") ? "chip danger" : (r.colorClass === "watch" ? "chip warn" : (r.colorClass === "nodata" ? "chip" : "chip ok"));
+  return { label: r.label, cls };
 }
 
 export function renderAthletesView(filterText = "") {
@@ -67,13 +66,15 @@ export function renderAthletesView(filterText = "") {
     const piq = computePIQ({
       sleep: w?.sleep, soreness: w?.soreness, stress: w?.stress, mood: w?.mood, readiness: w?.readiness
     });
-    const acwr = computeACWR(latestSessions(a));
-    const r = riskLabel(acwr);
+    // keep ACWR computed for detail panels; chip uses combined risk
+    computeACWR(latestSessions(a));
+    const r = riskChipForAthlete(a);
 
     const card = document.createElement("button");
     card.type = "button";
     card.className = "athlete-card";
     card.setAttribute("aria-label", `Open athlete ${a.name}`);
+    card.setAttribute("data-athlete-card-id", a.id);
 
     card.innerHTML = `
       <div class="athlete-top">
