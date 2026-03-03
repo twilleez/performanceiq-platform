@@ -1,12 +1,9 @@
 // /js/views/athletes.js
-import { STATE, ATHLETES } from "../state/state.js";
+import { ATHLETES } from "../state/state.js";
 import { toast } from "../services/toast.js";
-
+import { computePIQ } from "../features/piqScore.js";
 import { computeACWR } from "../features/acwr.js";
 import { computeRisk } from "../features/riskDetection.js";
-
-// NEW: Score Engine v1
-import { computeAthleteScoreV1, explainScore } from "../features/scoring.js";
 
 function $(id) { return document.getElementById(id); }
 
@@ -26,13 +23,9 @@ function riskChipForAthlete(a) {
   const cls =
     (r.colorClass === "risk") ? "chip danger" :
     (r.colorClass === "watch") ? "chip warn" :
-    (r.colorClass === "nodata") ? "chip" :
-    "chip ok";
-
-  return { label: r.label, cls, raw: r };
+    (r.colorClass === "nodata") ? "chip" : "chip ok";
+  return { label: r.label, cls, risk: r };
 }
-
-let __backBound = false;
 
 export function renderAthletesView(filterText = "") {
   const grid = $("athleteCardGrid");
@@ -42,53 +35,37 @@ export function renderAthletesView(filterText = "") {
 
   if (!grid) return;
 
-  // ensure list visible
   if (detail) detail.style.display = "none";
   grid.style.display = "";
-
-  // Bind back button once (prevents listener stacking)
-  if (back && !__backBound) {
-    __backBound = true;
-    back.addEventListener("click", () => {
-      if (detail) detail.style.display = "none";
-      grid.style.display = "";
-    });
-  }
 
   const q = String(filterText || "").trim().toLowerCase();
   const list = ATHLETES.filter(a => !q || String(a.name).toLowerCase().includes(q));
 
   if (countSub) countSub.textContent = `${list.length} athlete${list.length === 1 ? "" : "s"}`;
-
   grid.innerHTML = "";
 
-  // Empty state
   if (!ATHLETES.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.innerHTML = `
       <div class="empty-title">No athletes yet</div>
-      <div class="empty-sub">Use onboarding or add athletes by importing a backup.</div>
+      <div class="empty-sub">Use onboarding or import a backup.</div>
       <div class="empty-actions">
         <button class="btn" id="emptyImportBtn" type="button">Import roster</button>
       </div>
     `;
     grid.appendChild(empty);
-    const b = empty.querySelector("#emptyImportBtn");
-    b?.addEventListener("click", () => document.getElementById("importFileInput")?.click());
+    empty.querySelector("#emptyImportBtn")
+      ?.addEventListener("click", () => document.getElementById("importFileInput")?.click());
     return;
   }
 
-  // Cards
   list.forEach((a) => {
-    // Keep your ACWR computed (used in riskDetection in many designs)
-    computeACWR(latestSessions(a));
-
-    const risk = riskChipForAthlete(a);
-
-    // Score Engine v1
-    const scoreBreakdown = computeAthleteScoreV1(a, { state: STATE });
-    const score = scoreBreakdown.total;
+    const w = latestWellness(a);
+    const piq = computePIQ({
+      sleep: w?.sleep, soreness: w?.soreness, stress: w?.stress, mood: w?.mood, readiness: w?.readiness
+    });
+    const r = riskChipForAthlete(a);
 
     const card = document.createElement("button");
     card.type = "button";
@@ -99,17 +76,22 @@ export function renderAthletesView(filterText = "") {
     card.innerHTML = `
       <div class="athlete-top">
         <div class="athlete-name">${a.name}</div>
-        <div class="${risk.cls}" aria-label="Risk ${risk.label}">${risk.label}</div>
+        <div class="${r.cls}" aria-label="Risk ${r.label}">${r.label}</div>
       </div>
       <div class="athlete-meta">${a.position || "—"} · ${a.year || "—"}</div>
       <div class="athlete-score">
-        <div class="score-num">${score}</div>
-        <div class="score-sub">PerformanceIQ</div>
+        <div class="score-num">${piq.score}</div>
+        <div class="score-sub">PIQ score</div>
       </div>
     `;
 
     card.addEventListener("click", () => openAthleteDetail(a.id));
     grid.appendChild(card);
+  });
+
+  back?.addEventListener("click", () => {
+    if (detail) detail.style.display = "none";
+    grid.style.display = "";
   });
 }
 
@@ -127,44 +109,52 @@ export function openAthleteDetail(athleteId) {
   const hero = $("detailHero");
   const tier = $("detailTier");
   const note = $("detailScoreNote");
-  const load = $("detailLoad");
-  const wellness = $("detailWellness");
-  const workout = $("detailWorkout");
+  const loadEl = $("detailLoad");
+  const wellnessEl = $("detailWellness");
+  const workoutEl = $("detailWorkout");
+  const insightEl = $("detailInsight");
 
   const w = latestWellness(a);
+  const piq = computePIQ({
+    sleep: w?.sleep, soreness: w?.soreness, stress: w?.stress, mood: w?.mood, readiness: w?.readiness
+  });
+
   const sessions = latestSessions(a);
-
   const acwr = computeACWR(sessions);
-
-  // FIX: no riskLabel() — use your risk engine consistently
   const risk = computeRisk(a);
-
-  // Score Engine v1 breakdown + “why”
-  const breakdown = computeAthleteScoreV1(a, { state: STATE });
-  const why = explainScore(breakdown);
 
   if (hero) hero.textContent = a.name;
   if (tier) tier.textContent = `Risk: ${risk.label}`;
-  if (note) note.textContent = `PerformanceIQ = ${breakdown.total}/100 • ${why[0] || ""}`;
-  if (load) load.textContent = acwr == null ? "ACWR: —" : `ACWR: ${acwr.toFixed(2)}`;
+  if (note) note.textContent = `PIQ = ${piq.score} (see Analytics for breakdown)`;
 
-  if (wellness) {
-    wellness.innerHTML = w
+  if (loadEl) loadEl.textContent = acwr == null ? "ACWR: —" : `ACWR: ${acwr.toFixed(2)}`;
+
+  if (wellnessEl) {
+    wellnessEl.innerHTML = w
       ? `<div>Sleep: ${w.sleep}/10 · Soreness: ${w.soreness}/10 · Stress: ${w.stress}/10 · Mood: ${w.mood}/10 · Ready: ${w.readiness}/10</div>`
       : `<div>No wellness log yet.</div>`;
   }
 
-  if (workout) {
-    if (!sessions.length) workout.textContent = "No sessions logged yet.";
+  if (workoutEl) {
+    if (!sessions.length) workoutEl.textContent = "No sessions logged yet.";
     else {
       const last = sessions[sessions.length - 1];
-      workout.textContent = `Last session: ${last.type || "Session"} (load ${last.load || 0})`;
+      workoutEl.textContent = `Last session: ${last.type || "Session"} (load ${last.load || 0})`;
     }
+  }
+
+  if (insightEl) {
+    const msg =
+      risk.colorClass === "risk" ? "Reduce training load and prioritize recovery today." :
+      risk.colorClass === "watch" ? "Monitor soreness/stress and keep volume controlled." :
+      risk.colorClass === "ready" ? "Cleared to train — keep progressing." :
+      "Log wellness + sessions to unlock insights.";
+    insightEl.textContent = msg;
   }
 }
 
 export function bindAthletesViewEvents() {
-  // Guard pattern if you add listeners later:
-  // if (window.__PIQ_BOUND_ATHLETES__) return;
-  // window.__PIQ_BOUND_ATHLETES__ = true;
+  // Optional: wire athleteFilterInput to reuse renderAthletesView
+  const filter = document.getElementById("athleteFilterInput");
+  filter?.addEventListener("input", (e) => renderAthletesView(e.target.value || ""));
 }
