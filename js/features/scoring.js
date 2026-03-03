@@ -1,46 +1,23 @@
 // /js/features/scoring.js
-// PerformanceIQ Score Engine v1 (offline-first, explainable, tolerant of missing data)
-// Adapted to your actual model: athlete.history.sessions / athlete.history.wellness
+// PerformanceIQ Score Engine v1 (Unified)
+// - Uses athlete.history.sessions / athlete.history.wellness / athlete.history.nutrition
+// - Uses computePIQ() (0-10 inputs) as the wellness subscore (0-100)
+// - Uses session.load if present else minutes*intensity
 
-// Weights sum to 100 (injury is a penalty bucket subtracted after weighting).
+import { computePIQ } from "./piqScore.js";
+
 export const SCORE_WEIGHTS_V1 = Object.freeze({
-  trainingConsistency: 30, // last 7 days
-  wellnessReadiness: 25,   // last 3 days average
-  loadBalance: 20,         // acute vs chronic (7 vs 28)
-  nutritionAdherence: 15,  // last 7 days adherence %
-  injuryModifier: 10       // penalty bucket (0..10)
+  trainingConsistency: 30, // last 7 days (sessions count vs target)
+  wellnessPIQ: 25,         // PIQ wellness score (0..100)
+  loadBalance: 20,         // acute vs chronic load
+  nutritionAdherence: 15,  // last 7 days
+  injuryModifier: 10       // penalty bucket (0..10) subtracted
 });
 
 // -----------------------------
 // Utilities
 // -----------------------------
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
-
-function toDayKey(d) {
-  const dt = (d instanceof Date) ? d : new Date(d);
-  if (Number.isNaN(dt.getTime())) return null;
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const day = String(dt.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function daysAgoDate(n) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - n);
-  return d;
-}
-
-function inLastNDays(dateLike, nDays) {
-  const dk = toDayKey(dateLike);
-  if (!dk) return false;
-  const start = daysAgoDate(nDays - 1);
-  const dd = new Date(dateLike);
-  dd.setHours(0, 0, 0, 0);
-  return dd.getTime() >= start.getTime();
-}
-
 function safeArray(x) { return Array.isArray(x) ? x : []; }
 function safeNumber(x, fallback = NaN) {
   const n = Number(x);
@@ -48,23 +25,22 @@ function safeNumber(x, fallback = NaN) {
 }
 function isObj(x) { return !!x && typeof x === "object" && !Array.isArray(x); }
 
-// Normalize a wellness metric that might be on a 1–5 scale or 1–10 scale
-// Returns number in [0..100] or NaN if invalid.
-function normalizeScaleToPct(v) {
-  const n = safeNumber(v, NaN);
-  if (!Number.isFinite(n)) return NaN;
-
-  // Heuristic: if > 5, treat as 1..10; else treat as 1..5
-  if (n > 5) {
-    // 1 -> 0, 10 -> 100
-    return clamp(((n - 1) / 9) * 100, 0, 100);
-  }
-  // 1 -> 0, 5 -> 100
-  return clamp(((n - 1) / 4) * 100, 0, 100);
+function daysAgoDate(n) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - n);
+  return d;
+}
+function inLastNDays(dateLike, nDays) {
+  const dt = new Date(dateLike);
+  if (Number.isNaN(dt.getTime())) return false;
+  dt.setHours(0, 0, 0, 0);
+  const start = daysAgoDate(nDays - 1);
+  return dt.getTime() >= start.getTime();
 }
 
 // -----------------------------
-// Data adapters (tolerant)
+// Data adapters
 // -----------------------------
 function getAthleteLogsFromState(state, athleteId) {
   const events = safeArray(state?.events);
@@ -80,24 +56,19 @@ function getLogs(athlete, state) {
   const a = athlete || {};
   const fromState = getAthleteLogsFromState(state, a.id);
 
-  // ✅ Your real model is athlete.history.sessions / athlete.history.wellness
-  const historySessions = safeArray(a?.history?.sessions);
-  const historyWellness = safeArray(a?.history?.wellness);
-  const historyNutrition = safeArray(a?.history?.nutrition);
-
   const sessions =
-    historySessions.length ? historySessions :
+    safeArray(a?.history?.sessions).length ? safeArray(a.history.sessions) :
     safeArray(a.sessions).length ? safeArray(a.sessions) :
     safeArray(a.trainingLogs).length ? safeArray(a.trainingLogs) :
     fromState.sessions;
 
   const wellness =
-    historyWellness.length ? historyWellness :
+    safeArray(a?.history?.wellness).length ? safeArray(a.history.wellness) :
     safeArray(a.wellnessLogs).length ? safeArray(a.wellnessLogs) :
     fromState.wellness;
 
   const nutrition =
-    historyNutrition.length ? historyNutrition :
+    safeArray(a?.history?.nutrition).length ? safeArray(a.history.nutrition) :
     safeArray(a.nutritionLogs).length ? safeArray(a.nutritionLogs) :
     fromState.nutrition;
 
@@ -107,94 +78,59 @@ function getLogs(athlete, state) {
 }
 
 // -----------------------------
-// Subscores (0..100 each)
+// Subscores (0..100)
 // -----------------------------
-
 function scoreTrainingConsistency(sessions, targetPerWeek = 4) {
   const last7 = safeArray(sessions).filter(s => inLastNDays(s?.date, 7));
   const count = last7.length;
   const ratio = targetPerWeek > 0 ? (count / targetPerWeek) : 0;
-
   return {
     score: Math.round(clamp(ratio * 100, 0, 100)),
     detail: { last7Count: count, targetPerWeek }
   };
 }
 
-// Wellness readiness: last 3 days average as 0..100
-// Supports:
-// - readiness (1..5 or 1..10)
-// - or composite sleep/soreness/stress (same scale logic)
-function scoreWellnessReadiness(wellness) {
-  const last3 = safeArray(wellness).filter(w => inLastNDays(w?.date, 3));
-  if (!last3.length) {
-    return { score: 50, detail: { note: "No wellness logs (default 50)" } };
-  }
+// Wellness: use your existing PIQ formula (0-10 scaled inputs -> 0-100)
+function scoreWellnessPIQ(wellness) {
+  const last = safeArray(wellness).slice(-1)[0] || null;
+  if (!last) return { score: 50, detail: { note: "No wellness logs (default 50)" } };
 
-  const valsPct = last3.map(w => {
-    // Prefer readiness if present
-    const r = normalizeScaleToPct(w?.readiness);
-    if (Number.isFinite(r)) return r;
-
-    // Composite fallback
-    const sleep = normalizeScaleToPct(w?.sleep);
-    const soreness = normalizeScaleToPct(w?.soreness);
-    const stress = normalizeScaleToPct(w?.stress);
-    const mood = normalizeScaleToPct(w?.mood);
-
-    const parts = [sleep, soreness, stress, mood].filter(Number.isFinite);
-    if (!parts.length) return NaN;
-    return parts.reduce((a, b) => a + b, 0) / parts.length;
-  }).filter(Number.isFinite);
-
-  if (!valsPct.length) {
-    return { score: 50, detail: { note: "Wellness logs missing readiness fields (default 50)" } };
-  }
-
-  const avgPct = valsPct.reduce((a, b) => a + b, 0) / valsPct.length;
+  const piq = computePIQ({
+    sleep: last.sleep,
+    soreness: last.soreness,
+    stress: last.stress,
+    mood: last.mood,
+    readiness: last.readiness
+  });
 
   return {
-    score: Math.round(clamp(avgPct, 0, 100)),
-    detail: { last3AvgReadinessPct: Number(avgPct.toFixed(1)), samples: valsPct.length }
+    score: clamp(Number(piq?.score ?? 50), 0, 100),
+    detail: { latestDate: last.date || null, breakdown: piq?.breakdown || [] }
   };
 }
 
-// Load balance: acute (7d) vs chronic (28d).
-// Uses session.load if present, else minutes*intensity.
+// Load balance: acute 7d vs chronic 28d
 function scoreLoadBalance(sessions) {
   const sess = safeArray(sessions);
 
   function loadOf(s) {
-    // ✅ Your sessions already use .load in athlete detail UI
     const direct = safeNumber(s?.load, NaN);
     if (Number.isFinite(direct)) return Math.max(0, direct);
 
-    // Fallback if you have minutes/intensity fields
     const minutes = safeNumber(s?.minutes, 0);
     const intensity = clamp(safeNumber(s?.intensity, 3), 1, 5);
     return Math.max(0, minutes * intensity);
   }
 
-  const acute = sess
-    .filter(s => inLastNDays(s?.date, 7))
-    .reduce((sum, s) => sum + loadOf(s), 0);
-
-  const chronic = sess
-    .filter(s => inLastNDays(s?.date, 28))
-    .reduce((sum, s) => sum + loadOf(s), 0);
+  const acute = sess.filter(s => inLastNDays(s?.date, 7)).reduce((sum, s) => sum + loadOf(s), 0);
+  const chronic = sess.filter(s => inLastNDays(s?.date, 28)).reduce((sum, s) => sum + loadOf(s), 0);
 
   if (chronic <= 0) {
     const score = acute <= 0 ? 70 : 40;
-    return {
-      score,
-      detail: { acuteLoad: Math.round(acute), chronicLoad: Math.round(chronic), ratio: null, note: "No 28-day history" }
-    };
+    return { score, detail: { acuteLoad: Math.round(acute), chronicLoad: 0, ratio: null } };
   }
 
-  // Compare acute week to weekly avg over 28 days (chronic/4)
-  const ratio = acute / (chronic / 4);
-
-  // Ideal band 0.8–1.2
+  const ratio = acute / (chronic / 4); // acute week vs 28d weekly avg
   let score;
   if (ratio >= 0.8 && ratio <= 1.2) score = 100;
   else if (ratio < 0.8) score = Math.round(clamp(100 - ((0.8 - ratio) / 0.8) * 50, 50, 100));
@@ -202,23 +138,13 @@ function scoreLoadBalance(sessions) {
 
   return {
     score,
-    detail: {
-      acuteLoad: Math.round(acute),
-      chronicLoad: Math.round(chronic),
-      ratio: Number(ratio.toFixed(2))
-    }
+    detail: { acuteLoad: Math.round(acute), chronicLoad: Math.round(chronic), ratio: Number(ratio.toFixed(2)) }
   };
 }
 
-// Nutrition adherence: last 7 days average adherence.
-// Supported:
-// - entry.adherence in [0..1]
-// - entry.hit boolean
 function scoreNutritionAdherence(nutrition) {
   const last7 = safeArray(nutrition).filter(n => inLastNDays(n?.date, 7));
-  if (!last7.length) {
-    return { score: 60, detail: { note: "No nutrition logs (default 60)" } };
-  }
+  if (!last7.length) return { score: 60, detail: { note: "No nutrition logs (default 60)" } };
 
   const vals = last7.map(n => {
     const a = safeNumber(n?.adherence, NaN);
@@ -227,15 +153,10 @@ function scoreNutritionAdherence(nutrition) {
     return NaN;
   }).filter(Number.isFinite);
 
-  if (!vals.length) {
-    return { score: 60, detail: { note: "Nutrition logs missing adherence fields (default 60)" } };
-  }
+  if (!vals.length) return { score: 60, detail: { note: "Nutrition logs missing adherence fields (default 60)" } };
 
   const avg = vals.reduce((x, y) => x + y, 0) / vals.length;
-  return {
-    score: Math.round(clamp(avg * 100, 0, 100)),
-    detail: { last7AvgAdherence: Number(avg.toFixed(2)), samples: vals.length }
-  };
+  return { score: Math.round(clamp(avg * 100, 0, 100)), detail: { last7AvgAdherence: Number(avg.toFixed(2)), samples: vals.length } };
 }
 
 function injuryPenalty(injury) {
@@ -252,7 +173,7 @@ export function computeAthleteScoreV1(athlete, { state } = {}) {
   const logs = getLogs(athlete, state);
 
   const training = scoreTrainingConsistency(logs.sessions, 4);
-  const wellness = scoreWellnessReadiness(logs.wellness);
+  const wellness = scoreWellnessPIQ(logs.wellness);
   const load = scoreLoadBalance(logs.sessions);
   const nutrition = scoreNutritionAdherence(logs.nutrition);
   const injury = injuryPenalty(logs.injury);
@@ -261,7 +182,7 @@ export function computeAthleteScoreV1(athlete, { state } = {}) {
 
   const weighted =
     (w.trainingConsistency * (training.score / 100)) +
-    (w.wellnessReadiness * (wellness.score / 100)) +
+    (w.wellnessPIQ * (wellness.score / 100)) +
     (w.loadBalance * (load.score / 100)) +
     (w.nutritionAdherence * (nutrition.score / 100));
 
@@ -271,7 +192,7 @@ export function computeAthleteScoreV1(athlete, { state } = {}) {
     total,
     subscores: {
       trainingConsistency: training.score,
-      wellnessReadiness: wellness.score,
+      wellnessPIQ: wellness.score,
       loadBalance: load.score,
       nutritionAdherence: nutrition.score
     },
@@ -287,39 +208,27 @@ export function computeAthleteScoreV1(athlete, { state } = {}) {
   };
 }
 
-export function explainScore(breakdown) {
-  const d = breakdown?.details || {};
-  const subs = breakdown?.subscores || {};
+export function explainScore(b) {
+  const d = b?.details || {};
+  const s = b?.subscores || {};
   const bullets = [];
 
   if (d.training?.last7Count != null) {
-    bullets.push(`Training: ${d.training.last7Count} sessions in last 7 days (score ${subs.trainingConsistency}).`);
+    bullets.push(`Training: ${d.training.last7Count} sessions/7d (score ${s.trainingConsistency}).`);
   } else {
-    bullets.push(`Training: score ${subs.trainingConsistency}.`);
+    bullets.push(`Training: score ${s.trainingConsistency}.`);
   }
 
-  if (d.wellness?.last3AvgReadinessPct != null) {
-    bullets.push(`Wellness: avg readiness ${d.wellness.last3AvgReadinessPct}% over last 3 days (score ${subs.wellnessReadiness}).`);
-  } else {
-    bullets.push(`Wellness: score ${subs.wellnessReadiness}.`);
-  }
+  bullets.push(`Wellness (PIQ): ${s.wellnessPIQ}.`);
 
-  if (d.load?.ratio != null) {
-    bullets.push(`Load: acute/chronic ratio ${d.load.ratio} (score ${subs.loadBalance}).`);
-  } else {
-    bullets.push(`Load: score ${subs.loadBalance}.`);
-  }
+  if (d.load?.ratio != null) bullets.push(`Load balance: ratio ${d.load.ratio} (score ${s.loadBalance}).`);
+  else bullets.push(`Load balance: score ${s.loadBalance}.`);
 
-  if (d.nutrition?.last7AvgAdherence != null) {
-    bullets.push(`Nutrition: avg adherence ${d.nutrition.last7AvgAdherence} over last 7 days (score ${subs.nutritionAdherence}).`);
-  } else {
-    bullets.push(`Nutrition: score ${subs.nutritionAdherence}.`);
-  }
+  if (d.nutrition?.last7AvgAdherence != null) bullets.push(`Nutrition: ${d.nutrition.last7AvgAdherence} avg (score ${s.nutritionAdherence}).`);
+  else bullets.push(`Nutrition: score ${s.nutritionAdherence}.`);
 
-  if (breakdown?.injuryPenalty) {
-    bullets.push(`Injury penalty: -${breakdown.injuryPenalty} (status: ${d.injury?.status || "unknown"}).`);
-  }
+  if (b?.injuryPenalty) bullets.push(`Injury penalty: -${b.injuryPenalty}.`);
 
-  bullets.push(`Total: ${breakdown.total}/100.`);
+  bullets.push(`Total: ${b.total}/100.`);
   return bullets;
-      }
+}
