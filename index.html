@@ -1,10 +1,10 @@
-<!-- /index.html — PerformanceIQ (Elite UI + Midnight theme + Loader + Onboarding + Role switch) -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PerformanceIQ</title>
+
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico">
   <meta name="theme-color" content="#070b12">
@@ -12,56 +12,59 @@
 
 <body>
 
-<!-- LOADING SCREEN -->
+<!-- LOADING -->
 <div id="loadingScreen" style="
   position:fixed;inset:0;z-index:9999;
   display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(900px 600px at 50% -10%, rgba(255,255,255,0.06), transparent 55%), #070b12;
+  background:radial-gradient(900px 600px at 50% -10%, rgba(37,99,235,0.08), transparent 55%), #070b12;
   color:#eaf0ff;
   pointer-events:auto;
 ">
-  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:24px;">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding:24px;">
     <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:12px;height:12px;border-radius:50%;background:rgba(16,42,79,.95);box-shadow:0 0 0 6px rgba(16,42,79,.18)"></div>
-      <div style="font-weight:800;letter-spacing:.06em">PerformanceIQ</div>
+      <div style="width:12px;height:12px;border-radius:50%;background:#2563eb;box-shadow:0 0 0 6px rgba(37,99,235,0.18)"></div>
+      <div style="font-weight:900;letter-spacing:-.3px;font-size:18px">Performance<span style="color:#2563eb">IQ</span></div>
+    </div>
+    <div style="width:140px;height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
+      <div style="height:100%;width:100%;background:#2563eb;border-radius:2px"></div>
     </div>
     <div style="font-size:12px;opacity:.78;letter-spacing:.03em">Loading dashboard…</div>
   </div>
 </div>
 
-<!-- ONBOARDING MODAL -->
-<div id="onboardingModal" class="ob-modal" aria-modal="true" role="dialog">
+<!-- ONBOARDING (Aesthetic overlay + IDs your JS expects) -->
+<div class="ob-overlay hidden" id="onboardingModal" aria-modal="true" role="dialog">
   <div class="ob-shell" role="document">
     <div class="ob-header">
       <div class="ob-brand">
         <div class="ob-logo">Performance<span>IQ</span></div>
         <div class="ob-badge">⚡ Setup · 60 sec</div>
       </div>
-      <button class="icon-btn ob-close" id="btnCloseOnboarding" aria-label="Close onboarding" type="button">✕</button>
+      <button class="ob-close" id="btnCloseOnboarding" aria-label="Close onboarding">✕</button>
     </div>
 
     <div class="ob-progress" aria-label="Setup progress">
-      <button type="button" class="ob-step done" data-ob-step="1" aria-label="Step 1 Team">
-        <div class="ob-step-circle" data-ob-circle="1">✓</div>
+      <button type="button" class="ob-step" data-ob-step="1" aria-label="Step 1 Team">
+        <div class="ob-step-circle" data-ob-circle="1">1</div>
         <div class="ob-step-label">Team</div>
       </button>
 
-      <div class="ob-step-line line-done"><div class="ob-step-line-fill"></div></div>
+      <div class="ob-step-line line-idle"><div class="ob-step-line-fill"></div></div>
 
-      <button type="button" class="ob-step active" data-ob-step="2" aria-label="Step 2 Roster">
+      <button type="button" class="ob-step" data-ob-step="2" aria-label="Step 2 Roster">
         <div class="ob-step-circle" data-ob-circle="2">2</div>
         <div class="ob-step-label">Roster</div>
       </button>
 
       <div class="ob-step-line line-idle"><div class="ob-step-line-fill"></div></div>
 
-      <button type="button" class="ob-step idle" data-ob-step="3" aria-label="Step 3 Launch">
+      <button type="button" class="ob-step" data-ob-step="3" aria-label="Step 3 Launch">
         <div class="ob-step-circle" data-ob-circle="3">3</div>
         <div class="ob-step-label">Launch</div>
       </button>
     </div>
 
-    <!-- Hidden canonical inputs -->
+    <!-- Hidden canonical inputs (required by onboarding.js wiring) -->
     <input id="onboardTeamName" class="ob-hidden-input" type="text" autocomplete="off" />
     <select id="onboardSport" class="ob-hidden-input">
       <option value="basketball">basketball</option>
@@ -203,6 +206,7 @@
   </div>
 </div>
 
+<!-- TOPBAR -->
 <header class="topbar">
   <div class="topbar-left">
     <div class="brand-mark"><div class="brand-dot"></div></div>
@@ -220,381 +224,63 @@
       <span class="search-icon">🔍</span>
       <input class="search-input" type="text" placeholder="Search athletes…" id="athleteSearch" />
     </div>
-    <button class="icon-btn" id="btnTheme" title="Toggle theme" type="button">🌙</button>
-    <button class="icon-btn" id="btnRefresh" title="Refresh data" type="button">↺</button>
-    <button class="icon-btn" id="btnExport" title="Export report" type="button">📤</button>
+    <button class="icon-btn" id="btnTheme" title="Toggle theme">🌙</button>
+    <button class="icon-btn" id="btnRefresh" title="Refresh data">↺</button>
+    <button class="icon-btn" id="btnExport" title="Export report">📤</button>
   </div>
 </header>
 
 <div class="app-shell">
   <nav class="sidebar">
     <div class="sidebar-section">Main</div>
-    <button class="nav-btn active" data-view="dashboard" data-roles="coach,athlete,admin" type="button"><i class="nav-icon">⬡</i> Dashboard</button>
-    <button class="nav-btn" data-view="athletes" data-roles="coach,admin" type="button"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
-    <button class="nav-btn" data-view="train" data-roles="coach,athlete,admin" type="button"><i class="nav-icon">▷</i> Train</button>
-    <button class="nav-btn" data-view="analytics" data-roles="coach,athlete,admin" type="button"><i class="nav-icon">◈</i> Analytics</button>
+
+    <button class="nav-btn" data-view="dashboard" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">⬡</i> Dashboard</button>
+    <button class="nav-btn" data-view="athletes" data-roles="coach,admin,owner"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
+    <button class="nav-btn" data-view="train" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">▷</i> Train</button>
+    <button class="nav-btn" data-view="analytics" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">◈</i> Analytics</button>
 
     <div class="sidebar-section">Manage</div>
-    <button class="nav-btn" data-view="schedule" data-roles="coach,athlete,admin" type="button"><i class="nav-icon">📅</i> Schedule</button>
-    <button class="nav-btn" data-view="wellness" data-roles="coach,athlete,admin" type="button"><i class="nav-icon">🌙</i> Wellness</button>
-    <button class="nav-btn" data-view="nutrition" data-roles="coach,athlete,admin" type="button"><i class="nav-icon">🥗</i> Nutrition</button>
-    <button class="nav-btn" data-view="settings" data-roles="coach,athlete,admin" type="button"><i class="nav-icon">⚙</i> Settings</button>
+
+    <button class="nav-btn" data-view="schedule" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">📅</i> Schedule</button>
+    <button class="nav-btn" data-view="wellness" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">🌙</i> Wellness</button>
+    <button class="nav-btn" data-view="nutrition" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">🥗</i> Nutrition</button>
+    <button class="nav-btn" data-view="settings" data-roles="coach,athlete,admin,owner"><i class="nav-icon">⚙</i> Settings</button>
 
     <div class="sidebar-bottom">
       <div class="user-block" id="userBlock">
         <div class="user-avatar" id="userAv">CD</div>
         <div>
-          <div class="user-name" id="userName">Coach Davis</div>
-          <div class="user-role" id="userRole">Head Coach · Basketball</div>
+          <div class="user-name" id="userName">Coach</div>
+          <div class="user-role" id="userRole">PerformanceIQ</div>
         </div>
       </div>
     </div>
   </nav>
 
-  <!-- IMPORTANT: All views below are SIBLINGS (not nested). -->
   <main class="main-content">
 
     <!-- DASHBOARD -->
-    <section class="view active" id="view-dashboard">
-      <div class="dash-wrap">
-        <div class="page-header dash-header stagger">
-          <div class="page-title-wrap">
-            <div class="page-eyebrow">Team Dashboard</div>
-            <div class="page-title" id="dashTitle">Team Dashboard</div>
-            <div class="page-sub" id="dashSub">—</div>
-          </div>
-          <div class="page-header-actions">
-            <button class="btn-ghost" data-action="export" type="button">📤 Export</button>
-            <button class="btn-primary" data-action="logSession" type="button">+ Log Session</button>
-          </div>
-        </div>
-
-        <div class="stat-grid stagger">
-          <div class="stat-card good">
-            <div class="stat-header">
-              <div class="stat-label">Avg PIQ Score</div>
-              <div class="stat-icon good">📈</div>
-            </div>
-            <div class="stat-value good" id="statAvg">—</div>
-            <div class="stat-sub" id="statAvgSub">—</div>
-          </div>
-
-          <div class="stat-card good">
-            <div class="stat-header">
-              <div class="stat-label">Ready to Train</div>
-              <div class="stat-icon good">✅</div>
-            </div>
-            <div class="stat-value good" id="statReady">—</div>
-            <div class="stat-sub" id="statReadySub">—</div>
-          </div>
-
-          <div class="stat-card danger">
-            <div class="stat-header">
-              <div class="stat-label">Top Risk Flag</div>
-              <div class="stat-icon danger">🚨</div>
-            </div>
-            <div class="stat-value danger" id="statRisk">—</div>
-            <div class="stat-sub" id="statRiskSub">—</div>
-          </div>
-
-          <div class="stat-card info">
-            <div class="stat-header">
-              <div class="stat-label">Roster Size</div>
-              <div class="stat-icon info">👥</div>
-            </div>
-            <div class="stat-value info" id="statRoster">—</div>
-            <div class="stat-sub">athletes on roster</div>
-          </div>
-        </div>
-
-        <div class="grid-2 dash-grid stagger">
-          <div class="dash-left">
-            <div class="panel" style="margin-top:16px">
-              <div class="panel-header">
-                <div class="panel-title">Team Heatmap (Last 14 Days)</div>
-                <a class="panel-link" href="#/analytics">Open analytics →</a>
-              </div>
-              <div class="panel-body" id="teamHeatmap" style="padding:16px 20px"></div>
-            </div>
-
-            <div class="panel">
-              <div class="panel-header">
-                <div class="panel-title">Athlete Readiness Board</div>
-                <a class="panel-link" href="#/athletes" id="viewAllAthletes">View all →</a>
-              </div>
-              <div class="table-wrap">
-                <table class="readiness-table">
-                  <thead>
-                    <tr>
-                      <th>Athlete</th>
-                      <th>PIQ Score</th>
-                      <th>ACWR</th>
-                      <th>Flag</th>
-                    </tr>
-                  </thead>
-                  <tbody id="readinessTable"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div class="right-col">
-            <div class="panel">
-              <div class="panel-header"><div class="panel-title">Roster Readiness</div></div>
-              <div class="roster-ring-wrap">
-                <div id="rosterRing"></div>
-                <div class="roster-legend" id="rosterMini"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </section>
+    <section class="view active" id="view-dashboard"></section>
 
     <!-- ATHLETES -->
-    <section class="view" id="view-athletes">
-      <div class="page-header">
-        <div>
-          <div class="page-title">ATHLETES</div>
-          <div class="page-sub" id="athleteCountSub">— athletes on roster</div>
-        </div>
-        <div class="page-actions">
-          <div class="search-wrap">
-            <span class="search-icon">🔍</span>
-            <input class="search-input" id="athleteFilterInput" placeholder="Filter athletes…" style="width:200px" type="text"/>
-          </div>
-          <button class="btn btn-ghost btn-sm" type="button">+ Add Athlete</button>
-        </div>
-      </div>
-
-      <div class="grid-3" id="athleteCardGrid"></div>
-
-      <div id="athleteDetail" style="display:none;flex-direction:column;gap:18px">
-        <button class="btn btn-ghost btn-sm" id="backToList" style="align-self:flex-start;" type="button">← Back to athletes</button>
-        <div class="athlete-hero" id="detailHero"></div>
-
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-header"><div class="card-title">PIQ Score Breakdown</div></div>
-            <div class="card-body">
-              <div style="display:flex;gap:20px;align-items:center;margin-bottom:18px">
-                <div class="ring-wrap" id="detailRingWrap">
-                  <svg class="ring-svg" viewBox="0 0 158 158">
-                    <circle class="ring-track" cx="79" cy="79" r="70"></circle>
-                    <circle class="ring-fill" cx="79" cy="79" id="detailRingFill" r="70"></circle>
-                  </svg>
-                  <div class="ring-center">
-                    <div class="ring-number" id="detailRingNum">—</div>
-                    <div class="ring-label">PIQ Score</div>
-                    <div class="ring-delta" id="detailRingDelta"></div>
-                  </div>
-                </div>
-                <div style="flex:1">
-                  <div class="score-tier" id="detailTier" style="margin-bottom:10px">—</div>
-                  <div id="detailScoreNote" style="font-size:13px;color:var(--text-mid);line-height:1.7">—</div>
-                </div>
-              </div>
-              <div class="pillar-grid" id="detailPillars"></div>
-            </div>
-          </div>
-
-          <div>
-            <div class="section-label">WELLNESS CHECK-IN</div>
-            <div class="wellness-grid" id="detailWellness"></div>
-
-            <div style="margin-top:16px">
-              <div class="section-label">LOAD MONITORING</div>
-              <div class="load-bar-list" id="detailLoad"></div>
-            </div>
-
-            <div style="margin-top:16px">
-              <div class="insight-card">
-                <div class="insight-tag">✦ Insight</div>
-                <div class="insight-body" id="detailInsight">—</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div class="section-label">TODAY'S ASSIGNED SESSION</div>
-          <div id="detailWorkout"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><div class="card-title">Personal Records</div></div>
-          <div class="card-body">
-            <table class="pr-table" id="detailPRs">
-              <thead><tr><th>Exercise</th><th>Current PR</th><th>Previous</th><th>Date</th></tr></thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
+    <section class="view" id="view-athletes"></section>
 
     <!-- TRAIN -->
-    <section class="view" id="view-train">
-      <div class="page-header">
-        <div>
-          <div class="page-title">TRAIN</div>
-          <div class="page-sub">Generate sport-specific sessions instantly</div>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-primary" id="btnGenerate" type="button">⚡ Generate Session</button>
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <div class="card card-body">
-          <div class="section-label">SESSION BUILDER</div>
-
-          <div class="form-grid" style="margin-bottom:14px">
-            <div class="form-group">
-              <div class="form-label">Sport</div>
-              <select class="form-select" id="buildSport">
-                <option value="basketball">🏀 Basketball</option>
-                <option value="football">🏈 Football</option>
-                <option value="soccer">⚽ Soccer</option>
-                <option value="baseball">⚾ Baseball</option>
-                <option value="volleyball">🏐 Volleyball</option>
-                <option value="track">🏃 Track</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Session Type</div>
-              <select class="form-select" id="buildType">
-                <option value="practice">Practice</option>
-                <option value="strength">Strength</option>
-                <option value="speed">Speed</option>
-                <option value="conditioning">Conditioning</option>
-                <option value="recovery">Recovery</option>
-                <option value="competition">Competition Prep</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <div class="form-label">Duration</div>
-              <select class="form-select" id="buildDuration">
-                <option value="30">30 min</option>
-                <option value="45">45 min</option>
-                <option value="60" selected>60 min</option>
-                <option value="90">90 min</option>
-              </select>
-            </div>
-
-            <!-- IMPORTANT: intensity is numeric now -->
-            <div class="form-group">
-              <div class="form-label">Intensity (RPE)</div>
-              <select class="form-select" id="buildIntensity">
-                <option value="3">Low (Recovery)</option>
-                <option value="6" selected>Moderate</option>
-                <option value="9">High</option>
-              </select>
-            </div>
-          </div>
-
-          <div style="margin-bottom:16px">
-            <div class="form-label" style="margin-bottom:8px">Injury Filters</div>
-            <div class="inj-chips" id="injuryChips">
-              <button class="inj-chip" data-injury="knee" type="button">Knee</button>
-              <button class="inj-chip" data-injury="ankle" type="button">Ankle</button>
-              <button class="inj-chip" data-injury="shoulder" type="button">Shoulder</button>
-              <button class="inj-chip" data-injury="back" type="button">Back</button>
-              <button class="inj-chip" data-injury="hip" type="button">Hip</button>
-              <button class="inj-chip" data-injury="hamstring" type="button">Hamstring</button>
-            </div>
-          </div>
-
-          <div style="display:flex;gap:9px">
-            <button class="btn btn-primary btn-full" id="btnGenerateInline" type="button">▷ Generate</button>
-            <button class="btn btn-ghost" id="btnPushToday" type="button">Push to Today</button>
-          </div>
-        </div>
-
-        <div>
-          <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
-            GENERATED SESSION
-            <span class="pill accent" id="sessionSaved" style="display:none">✓ Saved</span>
-          </div>
-          <div id="generatedSessionWrap">
-            <div class="workout-card" id="generatedSession" style="opacity:0.5">
-              <div class="workout-type-tag">Configure and generate a session →</div>
-              <div class="workout-name" style="font-size:16px;color:var(--text-dim)">Awaiting generation</div>
-              <div class="workout-meta" style="margin-top:6px">Adjust filters on the left, then hit Generate</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
-          SESSION LIBRARY
-          <a class="card-link">View all →</a>
-        </div>
-        <div class="grid-3" id="sessionLibrary"></div>
-      </div>
-    </section>
+    <section class="view" id="view-train"></section>
 
     <!-- ANALYTICS -->
-    <section class="view" id="view-analytics">
-      <div class="page-header">
-        <div>
-          <div class="page-title">ANALYTICS</div>
-          <div class="page-sub" id="analyticsSub">Team performance trends</div>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-ghost btn-sm" id="btnExportAnalytics" type="button">Export PDF 📄</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><div class="card-title">Compare + Breakdown</div></div>
-        <div class="card-body">
-          <div id="analyticsBody"></div>
-        </div>
-      </div>
-    </section>
+    <section class="view" id="view-analytics"></section>
 
     <!-- SCHEDULE -->
-    <section class="view" id="view-schedule">
-      <div class="page-header">
-        <div>
-          <div class="page-title">SCHEDULE</div>
-          <div class="page-sub">Upcoming games, practices, and events</div>
-        </div>
-        <div class="page-actions"><button class="btn btn-primary btn-sm" type="button">+ Add Event</button></div>
-      </div>
-      <div class="event-list" id="fullEventList" style="max-width:600px"></div>
-    </section>
+    <section class="view" id="view-schedule"></section>
 
     <!-- WELLNESS -->
-    <section class="view" id="view-wellness">
-      <div class="page-header">
-        <div>
-          <div class="page-title">Wellness</div>
-          <div class="page-sub" id="wellnessSub">Daily check-in</div>
-        </div>
-        <div class="page-actions"><button class="btn btn-primary" id="btnSaveWellness" type="button">Save Check-in</button></div>
-      </div>
-      <div id="wellnessMount"></div>
-    </section>
+    <section class="view" id="view-wellness"></section>
 
     <!-- NUTRITION -->
-    <section class="view" id="view-nutrition">
-      <div class="page-header">
-        <div>
-          <div class="page-title">Nutrition</div>
-          <div class="page-sub" id="nutritionSub">Macro targets + hydration</div>
-        </div>
-        <div class="page-actions"><button class="btn btn-primary" id="btnSaveNutrition" type="button">Save Nutrition</button></div>
-      </div>
-      <div id="nutritionMount"></div>
-    </section>
+    <section class="view" id="view-nutrition"></section>
 
-    <!-- SETTINGS -->
+    <!-- SETTINGS (native HTML) -->
     <section class="view" id="view-settings">
       <div class="page-header">
         <div>
@@ -610,7 +296,7 @@
           <div class="form-group" style="margin-bottom:13px">
             <div class="form-label">Role</div>
             <select class="form-select" id="settingRole">
-              <option value="coach" selected>Coach</option>
+              <option selected value="coach">Coach</option>
               <option value="athlete">Athlete</option>
               <option value="admin">Admin / AD</option>
               <option value="parent">Parent</option>
@@ -628,7 +314,7 @@
             <div class="form-group">
               <div class="form-label">Sport</div>
               <select class="form-select" id="settingSport">
-                <option value="basketball" selected>Basketball</option>
+                <option selected value="basketball">Basketball</option>
                 <option value="football">Football</option>
                 <option value="soccer">Soccer</option>
                 <option value="baseball">Baseball</option>
@@ -636,7 +322,6 @@
                 <option value="track">Track</option>
               </select>
             </div>
-
             <div class="form-group">
               <div class="form-label">Season Phase</div>
               <select class="form-select" id="settingSeason">
@@ -646,25 +331,25 @@
                 <option>Off-Season</option>
               </select>
             </div>
-
             <div class="form-group">
               <div class="form-label">Theme</div>
               <select class="form-select" id="settingTheme">
-                <option value="dark" selected>Dark</option>
+                <option selected value="dark">Dark</option>
                 <option value="light">Light</option>
               </select>
             </div>
           </div>
 
-          <button class="btn btn-primary" id="btnSaveSettings" style="margin-top:16px" type="button">Save Changes</button>
+          <button class="btn-primary" id="btnSaveSettings" style="margin-top:16px">Save Changes</button>
         </div>
 
         <div class="card card-body">
           <div class="section-label">DATA MANAGEMENT</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn btn-ghost btn-sm" id="btnExportData" type="button">📤 Export JSON Backup</button>
-            <button class="btn btn-ghost btn-sm" id="btnImportData" type="button">📥 Import JSON</button>
-            <button class="btn btn-danger btn-sm" id="btnResetData" type="button">⚠ Reset</button>
+            <button class="btn-ghost btn-sm" id="btnExportData">📤 Export JSON Backup</button>
+            <button class="btn-ghost btn-sm" id="btnImportData">📥 Import JSON</button>
+            <button class="btn-ghost btn-sm" id="btnShowOnboarding">🔁 Re-run Onboarding</button>
+            <button class="btn-danger btn-sm" id="btnResetData">⚠ Reset to Demo Data</button>
           </div>
           <input accept="application/json" id="importFileInput" style="display:none" type="file"/>
         </div>
@@ -676,17 +361,18 @@
 
 <!-- Mobile Bottom Nav -->
 <nav aria-label="Primary" class="mobile-nav">
-  <button aria-label="Dashboard" class="mnav-btn" data-roles="coach,athlete,admin" data-view="dashboard" type="button">🏠<span>Home</span></button>
-  <button aria-label="Athletes" class="mnav-btn" data-roles="coach,admin" data-view="athletes" type="button">🏃<span>Athletes</span></button>
-  <button aria-label="Train" class="mnav-btn" data-roles="coach,athlete,admin" data-view="train" type="button">⚡<span>Train</span></button>
-  <button aria-label="Analytics" class="mnav-btn" data-roles="coach,athlete,admin" data-view="analytics" type="button">📊<span>Analytics</span></button>
-  <button aria-label="Schedule" class="mnav-btn" data-roles="coach,athlete,admin" data-view="schedule" type="button">📅<span>Schedule</span></button>
+  <button aria-label="Dashboard" class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="dashboard">🏠<span>Home</span></button>
+  <button aria-label="Athletes" class="mnav-btn" data-roles="coach,admin,owner" data-view="athletes">🏃<span>Athletes</span></button>
+  <button aria-label="Train" class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="train">⚡<span>Train</span></button>
+  <button aria-label="Analytics" class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="analytics">📊<span>Analytics</span></button>
+  <button aria-label="Schedule" class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="schedule">📅<span>Schedule</span></button>
 </nav>
 
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- IMPORTANT: Only ONE entrypoint -->
-<script type="module" src="./js/boot.js?v=20260303"></script>
+<!-- MAIN APP ENTRY -->
+<script src="./js/app.js?v=20260303a" type="module"></script>
+<script type="module" src="./js/boot.js?v=20260303a"></script>
 
 </body>
 </html>
