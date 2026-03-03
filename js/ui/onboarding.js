@@ -364,8 +364,18 @@ export function initOnboarding(opts = {}) {
 
 export function maybeShowOnboarding() {
   let seen = false;
-  try { seen = !!Storage.get(STORAGE_KEY_ONBOARDED); } catch { seen = false; }
-  if (!seen) show();
+  try {
+    seen = !!Storage.get(STORAGE_KEY_ONBOARDED);
+  } catch {
+    seen = false;
+  }
+
+  const hasAthletes = Array.isArray(ATHLETES) && ATHLETES.length > 0;
+
+  // Always guide users if roster is empty, even if they previously dismissed onboarding.
+  if (!seen || !hasAthletes) {
+    show();
+  }
 }
 
 export function closeOnboardingIfOpen() {
