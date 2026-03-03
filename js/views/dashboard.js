@@ -1,44 +1,17 @@
 // /js/views/dashboard.js
 import { STATE, ATHLETES } from "../state/state.js";
-import { computePIQ } from "../features/piqScore.js";
 import { computeACWR } from "../features/acwr.js";
 import { computeRisk } from "../features/riskDetection.js";
 import { renderHeatmapHTML } from "../features/heatmap.js";
 
-function $(id) { return document.getElementById(id); }
+// NEW: Score Engine v1
+import { computeAthleteScoreV1 } from "../features/scoring.js";
 
-function latestWellness(a) {
-  const w = a?.history?.wellness;
-  if (!Array.isArray(w) || !w.length) return null;
-  return w[w.length - 1];
-}
+function $(id) { return document.getElementById(id); }
 
 function safeNum(x) {
   const n = Number(x);
   return Number.isFinite(n) ? n : null;
-}
-
-function flagFrom(piq, acwr) {
-  // ACWR ranges: <1.3 safe, 1.3–1.6 watch, >1.6 risk (simple heuristic)
-  // PIQ bands: >=70 good, 55–69 watch, <55 risk (simple heuristic)
-  const p = safeNum(piq);
-  const a = safeNum(acwr);
-
-  const acwrFlag =
-    a == null ? "unknown" :
-    a <= 1.3 ? "ready" :
-    a <= 1.6 ? "watch" : "risk";
-
-  const piqFlag =
-    p == null ? "unknown" :
-    p >= 70 ? "ready" :
-    p >= 55 ? "watch" : "risk";
-
-  // Combine: worst wins
-  const order = { unknown: 0, ready: 1, watch: 2, risk: 3 };
-  const combined = order[acwrFlag] > order[piqFlag] ? acwrFlag : piqFlag;
-
-  return combined;
 }
 
 function pct(n, d) {
@@ -53,23 +26,29 @@ export function renderDashboard() {
   if (title) title.textContent = STATE.teamName || "PerformanceIQ";
   if (sub) sub.textContent = `${(STATE.sport || "sport").charAt(0).toUpperCase() + (STATE.sport || "sport").slice(1)} · ${STATE.season || "Season"}`;
 
-  // Per-athlete metrics
+  // Per-athlete metrics (Score Engine v1 + ACWR + Risk)
   const rows = ATHLETES.map(a => {
-    const w = latestWellness(a);
-    const piq = computePIQ({
-      sleep: w?.sleep, soreness: w?.soreness, stress: w?.stress, mood: w?.mood, readiness: w?.readiness
-    }).score;
+    const breakdown = computeAthleteScoreV1(a, { state: STATE });
+    const score = breakdown.total; // 0..100
 
     const acwr = computeACWR(a?.history?.sessions || []);
     const risk = computeRisk(a);
-    const flag = risk.colorClass === "risk" ? "risk" : (risk.colorClass === "watch" ? "watch" : (risk.colorClass === "nodata" ? "unknown" : "ready"));
 
-    return { athlete: a, piq, acwr: safeNum(acwr), flag, risk };
+    // Keep your existing flag mapping from risk engine
+    const flag =
+      risk.colorClass === "risk" ? "risk" :
+      risk.colorClass === "watch" ? "watch" :
+      risk.colorClass === "nodata" ? "unknown" :
+      "ready";
+
+    return { athlete: a, score, acwr: safeNum(acwr), flag, risk };
   });
 
   // Stats
-  const piqVals = rows.map(r => r.piq).filter(v => Number.isFinite(v));
-  const avg = piqVals.length ? Math.round(piqVals.reduce((s, x) => s + x, 0) / piqVals.length) : null;
+  const scoreVals = rows.map(r => r.score).filter(v => Number.isFinite(v));
+  const avg = scoreVals.length
+    ? Math.round(scoreVals.reduce((s, x) => s + x, 0) / scoreVals.length)
+    : null;
 
   const readyCount = rows.filter(r => r.flag === "ready").length;
   const watchCount = rows.filter(r => r.flag === "watch").length;
@@ -84,7 +63,7 @@ export function renderDashboard() {
   const statRoster = $("statRoster");
 
   if (statAvg) statAvg.textContent = avg == null ? "—" : String(avg);
-  if (statAvgSub) statAvgSub.textContent = ATHLETES.length ? "Team avg PIQ" : "No athletes yet";
+  if (statAvgSub) statAvgSub.textContent = ATHLETES.length ? "Team avg PerformanceIQ" : "No athletes yet";
 
   if (statReady) statReady.textContent = ATHLETES.length ? String(readyCount) : "—";
   if (statReadySub) statReadySub.textContent = ATHLETES.length ? `of ${ATHLETES.length} athletes cleared` : "Add athletes to begin";
@@ -109,11 +88,11 @@ export function renderDashboard() {
     } else {
       rows
         .slice()
-        .sort((a, b) => (b.piq || 0) - (a.piq || 0))
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
         .slice(0, 8)
         .forEach(r => {
           const initials = (r.athlete.name || "A").split(" ").map(s => s[0]).slice(0, 2).join("").toUpperCase();
-          const fill = Math.max(0, Math.min(100, Math.round(r.piq)));
+          const fill = Math.max(0, Math.min(100, Math.round(r.score)));
           const flagLabel = r.flag === "ready" ? "● Ready" : r.flag === "watch" ? "▲ Watch" : r.flag === "risk" ? "⛔ Risk" : "—";
           const flagClass = r.flag === "ready" ? "flag-ready" : r.flag === "watch" ? "flag-watch" : r.flag === "risk" ? "flag-risk" : "";
           const acwrTxt = r.acwr == null ? "—" : r.acwr.toFixed(1);
@@ -132,7 +111,7 @@ export function renderDashboard() {
             <td>
               <div class="piq-bar-wrap">
                 <div class="piq-bar"><div class="piq-fill" style="width:${fill}%;background:var(--accent)"></div></div>
-                <div class="piq-num">${r.piq ?? "—"}</div>
+                <div class="piq-num">${r.score ?? "—"}</div>
               </div>
             </td>
             <td><span class="acwr-val">${acwrTxt}</span></td>
@@ -148,7 +127,7 @@ export function renderDashboard() {
   const rosterMini = $("rosterMini");
   if (rosterRing) {
     const readyPct = pct(readyCount, ATHLETES.length);
-    const CIRC = 163; // ~ 2πr with r=26 (matches design)
+    const CIRC = 163;
     const offset = Math.round(CIRC * (1 - readyPct / 100));
     rosterRing.innerHTML = `
       <div class="ring-chart">
@@ -179,10 +158,10 @@ export function renderDashboard() {
     ].join("");
   }
 
-  // View all link
+  // View all link (FIX: router expects #athletes)
   const viewAll = $("viewAllAthletes");
   if (viewAll) {
-    viewAll.setAttribute("href", "#/athletes");
+    viewAll.setAttribute("href", "#athletes");
     viewAll.setAttribute("role", "link");
   }
 }
