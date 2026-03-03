@@ -3,13 +3,38 @@ import { STATE, ATHLETES, saveAthletes } from "../state/state.js";
 import { toast } from "../services/toast.js";
 import { EXERCISE_BANK } from "../data/exerciseBank.js";
 
+// NEW: Score Engine v1
+import { computeAthleteScoreV1 } from "../features/scoring.js";
+
 function $(id) { return document.getElementById(id); }
 
 function pickExercises(sport, count = 5) {
-  const bank = EXERCISE_BANK[String(sport||"basketball").toLowerCase()] || EXERCISE_BANK.basketball;
+  const bank = EXERCISE_BANK[String(sport || "basketball").toLowerCase()] || EXERCISE_BANK.basketball;
   const out = [];
   for (let i = 0; i < Math.min(count, bank.length); i++) out.push(bank[i]);
   return out;
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function ensureScoreSnapshotForToday(athlete) {
+  athlete.history = athlete.history || {};
+  athlete.history.score = Array.isArray(athlete.history.score) ? athlete.history.score : [];
+
+  const dk = todayKey();
+  const exists = athlete.history.score.some(s => s && s.date === dk);
+  if (exists) return;
+
+  const breakdown = computeAthleteScoreV1(athlete, { state: STATE });
+  athlete.history.score.push({
+    date: dk,
+    total: breakdown.total,
+    subscores: breakdown.subscores,
+    injuryPenalty: breakdown.injuryPenalty,
+    created_at: new Date().toISOString()
+  });
 }
 
 export function renderTrainView() {
@@ -32,6 +57,7 @@ export function renderGeneratedSession(session) {
   athleteSelect.id = "genAthleteSelect";
   athleteSelect.className = "select";
   athleteSelect.setAttribute("aria-label", "Select athlete to assign session");
+
   if (!ATHLETES.length) {
     const opt = document.createElement("option");
     opt.value = "";
@@ -70,21 +96,24 @@ export function renderGeneratedSession(session) {
 
   host.appendChild(list);
 
-  // PIQ transparency tooltip
   const expl = document.createElement("div");
   expl.className = "small-muted";
-  expl.textContent = "Loads are estimated. Push to Today logs a session load for ACWR.";
+  expl.textContent = "Loads are estimated. Push to Today logs a session load for ACWR + PerformanceIQ.";
   host.appendChild(expl);
 }
 
 function estimateLoad(intensity, duration) {
-  // simple: load = RPE * minutes (common internal metric)
   const i = Math.max(1, Math.min(10, Number(intensity) || 5));
   const d = Math.max(10, Math.min(180, Number(duration) || 60));
   return Math.round(i * d);
 }
 
+let __trainBound = false;
+
 export function bindTrainViewEvents() {
+  if (__trainBound) return;
+  __trainBound = true;
+
   const btnGen = $("btnGenerate");
   const btnGenInline = $("btnGenerateInline");
   const btnPush = $("btnPushToday");
@@ -98,7 +127,7 @@ export function bindTrainViewEvents() {
     const blocks = pickExercises(sport, 6);
     const session = {
       id: `s_${Date.now()}`,
-      date: new Date().toISOString().slice(0,10),
+      date: todayKey(),
       sport,
       type,
       intensity,
@@ -107,7 +136,6 @@ export function bindTrainViewEvents() {
       blocks
     };
 
-    // cache on window for push
     window.__PIQ_LAST_SESSION__ = session;
     renderGeneratedSession(session);
     toast("Session generated ✓");
@@ -138,6 +166,9 @@ export function bindTrainViewEvents() {
       load: session.load,
       created_at: new Date().toISOString()
     });
+
+    // Elite: ensure one score snapshot per day for trend analytics
+    ensureScoreSnapshotForToday(a);
 
     saveAthletes();
     toast(`Logged session for ${a.name} ✓`);
