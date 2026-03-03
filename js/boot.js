@@ -1,12 +1,17 @@
 // /js/boot.js
 import { initApp } from "./app.js";
 
-if (!window.__PIQ_BOOTED__) {
-  window.__PIQ_BOOTED__ = true;
+function safeHideLoader() {
+  const el = document.getElementById("loadingScreen");
+  if (!el) return;
+  el.style.display = "none";
+  el.style.pointerEvents = "none";
+}
 
-  document.addEventListener("DOMContentLoaded", () => {
-    initApp()
-      .then(() => console.log("[BOOT] App initialized successfully"))
-      .catch((err) => console.error("[BOOT] Initialization failed:", err));
-  });
+try {
+  await initApp();
+} catch (err) {
+  console.error("[PIQ] boot failed", err);
+  // Ensure UI is not trapped behind loader even if init fails
+  safeHideLoader();
 }
