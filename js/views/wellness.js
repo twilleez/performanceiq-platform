@@ -6,7 +6,6 @@
 // IMPROVEMENT: Added date display for most-recent entry.
 
 import { STATE, ATHLETES, saveAthletes } from '../state/state.js';
-import { toast } from '../services/toast.js';
 import { computePIQ } from '../features/piqScore.js';
 import { computeAthleteScoreV1 } from '../features/scoring.js';
 
@@ -58,13 +57,44 @@ export function renderWellness() {
   const host = document.getElementById('wellnessMount');
   const sub  = document.getElementById('wellnessSub');
 
-  if (sub) sub.textContent = 'Log daily wellness to drive PIQ and risk insights.';
-  if (!host) return;
+  const isAthlete = STATE.role === 'athlete';
+  const linkedAthlete = isAthlete && STATE.athleteId
+    ? ATHLETES.find(x => x.id === STATE.athleteId)
+    : null;
 
+  if (sub) sub.textContent = isAthlete
+    ? `${linkedAthlete ? linkedAthlete.name + ' · ' : ''}Daily wellness check-in`
+    : 'Log daily wellness to drive PIQ and risk insights.';
+
+  if (!host) return;
   host.innerHTML = '';
 
+  // ── Athlete readiness banner (role=athlete only) ───────────────────────
+  if (isAthlete && linkedAthlete) {
+    const w = linkedAthlete.history?.wellness;
+    const last = Array.isArray(w) && w.length ? w[w.length - 1] : null;
+    const piq  = last ? computePIQ(last).score : null;
+    const readClass = piq == null ? 'watch' : piq >= 80 ? 'ready' : piq >= 55 ? 'watch' : 'risk';
+    const readMsg   = piq == null
+      ? 'No check-in yet today.'
+      : piq >= 80 ? 'You\'re primed. Great day to push intensity.' 
+      : piq >= 55 ? 'Monitor how you feel during warm-up.'
+      : 'Take it easy today — recovery is training too.';
+
+    const banner = document.createElement('div');
+    banner.className = `athlete-readiness-banner ${readClass}`;
+    banner.innerHTML = `
+      <div class="athlete-readiness-score" style="color:${piq >= 80 ? '#10b981' : piq >= 55 ? '#f59e0b' : '#ef4444'}">${piq ?? '—'}</div>
+      <div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:3px">Today's Readiness Score</div>
+        <div style="font-size:13px;color:var(--muted)">${readMsg}</div>
+        ${last ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">Last: ${last.date || 'today'}</div>` : ''}
+      </div>`;
+    host.appendChild(banner);
+  }
+
   if (!ATHLETES.length) {
-    host.innerHTML = `
+    host.innerHTML += `
       <div class="empty-state">
         <div class="empty-title">No athletes</div>
         <div class="empty-sub">Add athletes first (Onboarding or Import).</div>
@@ -76,6 +106,7 @@ export function renderWellness() {
   wrap.className = 'form-card';
   wrap.innerHTML = `
     <div class="form-row">
+    <div class="form-row" ${STATE.role === 'athlete' && STATE.athleteId ? 'style="display:none"' : ''}>
       <label class="label" for="wellAthlete">Athlete</label>
       <select class="select" id="wellAthlete" aria-label="Select athlete"></select>
     </div>
@@ -107,6 +138,8 @@ export function renderWellness() {
     const opt = document.createElement('option');
     opt.value = a.id;
     opt.textContent = a.name;
+    // Pre-select linked athlete profile when role=athlete
+    if (STATE.role === 'athlete' && STATE.athleteId && a.id === STATE.athleteId) opt.selected = true;
     sel.appendChild(opt);
   });
 
