@@ -27,6 +27,7 @@ import { STORAGE_KEY_STATE, STORAGE_KEY_ATHLETES } from "./state/keys.js";
 import { switchView, initRouter } from "./router.js";
 
 import { renderDashboard } from "./views/dashboard.js";
+import { renderAthleteDashboard } from "./views/athleteDashboard.js";
 import { renderAthletesView, bindAthletesViewEvents } from "./views/athletes.js";
 import { renderTrainView, bindTrainViewEvents } from "./views/train.js";
 import { renderAnalytics } from "./views/analytics.js";
@@ -36,6 +37,24 @@ import { renderNutrition, bindNutritionEvents } from "./views/nutrition.js";
 
 import { initOnboarding, maybeShowOnboarding, closeOnboardingIfOpen } from "./ui/onboarding.js";
 import { createTodayTour } from "./ui/tour.js";
+
+/* ---------------------------
+   Role-aware dashboard render
+---------------------------- */
+function renderDashboardForRole() {
+  if (STATE.role === "athlete") {
+    const host = document.getElementById("dashAthleteMount");
+    const coachContent = document.getElementById("dashCoachContent");
+    if (host)        { host.style.display = ""; renderAthleteDashboard(host); }
+    if (coachContent)  coachContent.style.display = "none";
+  } else {
+    const host = document.getElementById("dashAthleteMount");
+    const coachContent = document.getElementById("dashCoachContent");
+    if (host)         host.style.display = "none";
+    if (coachContent) coachContent.style.display = "";
+    renderDashboardForRole();
+  }
+}
 
 /* ---------------------------
    Loader
@@ -66,7 +85,7 @@ function setActiveNav(viewId) {
    Navigation
 ---------------------------- */
 function onEnter(viewId) {
-  if (viewId === "dashboard") renderDashboard();
+  if (viewId === "dashboard") renderDashboardForRole();
   if (viewId === "athletes") renderAthletesView(dom.athleteSearch?.value || "");
   if (viewId === "train") renderTrainView();
   if (viewId === "analytics") renderAnalytics();
@@ -78,6 +97,11 @@ function onEnter(viewId) {
 
 function applyRoleVisibility() {
   const role = String(STATE.role || "coach");
+
+  // ── 1. Body attribute drives CSS show/hide of .coach-only / .athlete-only
+  document.body.setAttribute("data-role", role);
+
+  // ── 2. Hide nav buttons not allowed for this role
   document.querySelectorAll("[data-roles][data-view]").forEach((el) => {
     const roles = String(el.getAttribute("data-roles") || "")
       .split(",")
@@ -85,13 +109,47 @@ function applyRoleVisibility() {
     el.style.display = roles.includes(role) ? "" : "none";
   });
 
-  // If current view is now hidden for this role, fall back to dashboard
+  // ── 3. If current view is now hidden for this role, fall back to dashboard
   const activeBtn = document.querySelector(
     `[data-view="${STATE.currentView}"][data-roles]`
   );
   if (activeBtn && activeBtn.style.display === "none") {
     STATE.currentView = "dashboard";
     try { saveState(); } catch {}
+  }
+
+  // ── 4. Update sidebar identity block
+  const roleLabel = { coach: "Coach", athlete: "Athlete", admin: "Admin · AD", parent: "Parent", owner: "Owner", viewer: "Viewer" };
+  const userRoleEl = document.getElementById("userRole");
+  if (userRoleEl) userRoleEl.textContent = roleLabel[role] || role;
+
+  const userNameEl = document.getElementById("userName");
+  if (userNameEl) {
+    if (role === "athlete" && STATE.athleteId) {
+      const a = ATHLETES.find(x => x.id === STATE.athleteId);
+      if (a) userNameEl.textContent = a.name;
+    } else {
+      userNameEl.textContent = STATE.teamName || "Coach";
+    }
+  }
+
+  // ── 5. Show/hide the athlete profile selector in settings
+  const group = document.getElementById("athleteProfileGroup");
+  if (group) group.style.display = role === "athlete" ? "" : "none";
+
+  // ── 6. Populate athlete selector in settings
+  if (role === "athlete") {
+    const sel = document.getElementById("settingAthleteId");
+    if (sel) {
+      sel.innerHTML = `<option value="">— Select your name —</option>`;
+      ATHLETES.forEach(a => {
+        const opt = document.createElement("option");
+        opt.value = a.id;
+        opt.textContent = a.name;
+        if (a.id === STATE.athleteId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
   }
 }
 
@@ -147,6 +205,15 @@ function bindSettings() {
     toast("Role updated ✓");
   });
 
+  // Persist chosen athlete profile when role = athlete
+  document.getElementById("settingAthleteId")?.addEventListener("change", (e) => {
+    STATE.athleteId = e.target.value || null;
+    try { saveState(); } catch {}
+    applyRoleVisibility();
+    if (STATE.currentView === "dashboard") renderDashboardForRole();
+    toast("Profile set ✓");
+  });
+
   dom.btnSaveSettings?.addEventListener("click", () => {
     STATE.teamName = (dom.settingTeamName?.value || "").trim() || STATE.teamName;
     STATE.season = (dom.settingSeason?.value || "").trim() || STATE.season;
@@ -154,7 +221,7 @@ function bindSettings() {
 
     applySportTheme(STATE.sport);
     saveState();
-    renderDashboard();
+    renderDashboardForRole();
     toast("Settings saved ✓");
   });
 }
@@ -166,7 +233,7 @@ function applyImportedState(raw) {
   if (!raw || typeof raw !== "object") return;
   const allowed = [
     "currentView", "teamName", "sport", "season", "theme", "role",
-    "events", "periodization", "nutrition", "profile",
+    "athleteId", "events", "periodization", "nutrition", "profile",
   ];
   allowed.forEach((k) => {
     if (k in raw) STATE[k] = raw[k];
@@ -215,7 +282,7 @@ function bindDataManagement() {
         saveState();
         saveAthletes();
         applySportTheme(STATE.sport);
-        renderDashboard();
+        renderDashboardForRole();
         applyRoleVisibility();
         navigate(STATE.currentView || "dashboard");
         toast(`Imported ${ATHLETES.length} athletes ✓`);
@@ -248,7 +315,7 @@ function bindDataManagement() {
 ---------------------------- */
 function bindTopActions() {
   dom.btnRefresh?.addEventListener("click", () => {
-    renderDashboard();
+    renderDashboardForRole();
     toast("Refreshed ↺");
   });
 
@@ -351,7 +418,7 @@ export async function initApp() {
 
   initOnboarding({
     onAfterFinish: () => {
-      renderDashboard();
+      renderDashboardForRole();
       applyRoleVisibility();
       navigate("dashboard");
     },
@@ -377,7 +444,7 @@ export async function initApp() {
   initRouter({ onEnter });
 
   // First render
-  renderDashboard();
+  renderDashboardForRole();
   applyRoleVisibility();
 
   const startView = STATE.currentView || "dashboard";
