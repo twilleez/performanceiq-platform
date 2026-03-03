@@ -3,38 +3,11 @@ import { STATE, ATHLETES, saveAthletes } from "../state/state.js";
 import { toast } from "../services/toast.js";
 import { EXERCISE_BANK } from "../data/exerciseBank.js";
 
-// NEW: Score Engine v1
-import { computeAthleteScoreV1 } from "../features/scoring.js";
-
 function $(id) { return document.getElementById(id); }
 
-function pickExercises(sport, count = 5) {
-  const bank = EXERCISE_BANK[String(sport || "basketball").toLowerCase()] || EXERCISE_BANK.basketball;
-  const out = [];
-  for (let i = 0; i < Math.min(count, bank.length); i++) out.push(bank[i]);
-  return out;
-}
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function ensureScoreSnapshotForToday(athlete) {
-  athlete.history = athlete.history || {};
-  athlete.history.score = Array.isArray(athlete.history.score) ? athlete.history.score : [];
-
-  const dk = todayKey();
-  const exists = athlete.history.score.some(s => s && s.date === dk);
-  if (exists) return;
-
-  const breakdown = computeAthleteScoreV1(athlete, { state: STATE });
-  athlete.history.score.push({
-    date: dk,
-    total: breakdown.total,
-    subscores: breakdown.subscores,
-    injuryPenalty: breakdown.injuryPenalty,
-    created_at: new Date().toISOString()
-  });
+function pickExercises(sport, count = 6) {
+  const bank = EXERCISE_BANK[String(sport || "basketball").toLowerCase()] || EXERCISE_BANK.basketball || [];
+  return bank.slice(0, Math.min(count, bank.length));
 }
 
 export function renderTrainView() {
@@ -75,7 +48,7 @@ export function renderGeneratedSession(session) {
 
   const meta = document.createElement("div");
   meta.className = "gen-meta";
-  meta.textContent = `${session.type} · ${session.duration} min · Intensity ${session.intensity}/10`;
+  meta.textContent = `${session.type} · ${session.duration} min · RPE ${session.intensity}/10`;
 
   top.appendChild(meta);
   top.appendChild(athleteSelect);
@@ -98,36 +71,32 @@ export function renderGeneratedSession(session) {
 
   const expl = document.createElement("div");
   expl.className = "small-muted";
-  expl.textContent = "Loads are estimated. Push to Today logs a session load for ACWR + PerformanceIQ.";
+  expl.textContent = "Loads are estimated. Push to Today logs a session load for ACWR.";
   host.appendChild(expl);
 }
 
 function estimateLoad(intensity, duration) {
-  const i = Math.max(1, Math.min(10, Number(intensity) || 5));
+  const i = Math.max(1, Math.min(10, Number(intensity) || 6));
   const d = Math.max(10, Math.min(180, Number(duration) || 60));
   return Math.round(i * d);
 }
 
-let __trainBound = false;
-
 export function bindTrainViewEvents() {
-  if (__trainBound) return;
-  __trainBound = true;
-
   const btnGen = $("btnGenerate");
   const btnGenInline = $("btnGenerateInline");
   const btnPush = $("btnPushToday");
 
   function generate() {
     const sport = ($("buildSport")?.value || STATE.sport || "basketball").toLowerCase();
-    const type = $("buildType")?.value || "Practice";
-    const intensity = Number($("buildIntensity")?.value || 6);
+    const type = $("buildType")?.value || "practice";
+    const intensity = Number($("buildIntensity")?.value || 6); // numeric now
     const duration = Number($("buildDuration")?.value || 60);
 
     const blocks = pickExercises(sport, 6);
+
     const session = {
       id: `s_${Date.now()}`,
-      date: todayKey(),
+      date: new Date().toISOString().slice(0, 10),
       sport,
       type,
       intensity,
@@ -166,9 +135,6 @@ export function bindTrainViewEvents() {
       load: session.load,
       created_at: new Date().toISOString()
     });
-
-    // Elite: ensure one score snapshot per day for trend analytics
-    ensureScoreSnapshotForToday(a);
 
     saveAthletes();
     toast(`Logged session for ${a.name} ✓`);
