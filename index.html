@@ -8,6 +8,121 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="icon" href="favicon.ico">
   <meta name="theme-color" content="#070b12">
+  <!-- Barlow Condensed: tight, athletic numerals for score/stat displays -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    /* ── Number display font ─────────────────────────────────── */
+    :root { --font-display: 'Barlow Condensed', system-ui, sans-serif; }
+    .stat-value,
+    .piq-score-big,
+    [class*="score-num"],
+    .num-display {
+      font-family: var(--font-display) !important;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    /* ── Athlete-mode UI overrides ───────────────────────────── */
+    body[data-role="athlete"] .coach-only   { display: none !important; }
+    body[data-role="athlete"] .athlete-only { display: block !important; }
+    body:not([data-role="athlete"]) .athlete-only { display: none !important; }
+
+    /* Athlete dashboard hero card */
+    .athlete-hero {
+      background: linear-gradient(135deg, rgba(37,99,235,.18) 0%, rgba(37,99,235,.04) 100%);
+      border: 1px solid rgba(37,99,235,.3);
+      border-radius: 20px;
+      padding: 28px 28px 22px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+    .athlete-hero-ring {
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent) 0% var(--pct, 0%), rgba(255,255,255,.08) var(--pct, 0%) 100%);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .athlete-hero-ring::after {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: var(--surface, #0d1117);
+    }
+    .athlete-hero-score {
+      font-family: var(--font-display);
+      font-size: 36px;
+      font-weight: 900;
+      position: relative;
+      z-index: 1;
+      line-height: 1;
+    }
+    .athlete-hero-meta { flex: 1; min-width: 0; }
+    .athlete-hero-name { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
+    .athlete-hero-sub  { font-size: 13px; color: var(--muted, #64748b); margin-bottom: 10px; }
+    .athlete-stat-row  { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
+    .athlete-stat-pill {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+    .athlete-stat-pill strong {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 900;
+      display: block;
+      line-height: 1.1;
+    }
+
+    /* Athlete training card */
+    .athlete-train-card {
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .athlete-train-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--accent, #2563eb);
+      flex-shrink: 0;
+    }
+    .athlete-train-dot.low  { background: #10b981; }
+    .athlete-train-dot.med  { background: #f59e0b; }
+    .athlete-train-dot.high { background: #ef4444; }
+
+    /* Wellness athlete mode */
+    .athlete-readiness-banner {
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border: 1px solid;
+    }
+    .athlete-readiness-banner.ready  { background:rgba(16,185,129,.1); border-color:rgba(16,185,129,.3); }
+    .athlete-readiness-banner.watch  { background:rgba(245,158,11,.1);  border-color:rgba(245,158,11,.3); }
+    .athlete-readiness-banner.risk   { background:rgba(239,68,68,.1);   border-color:rgba(239,68,68,.3); }
+    .athlete-readiness-score {
+      font-family: var(--font-display);
+      font-size: 48px;
+      font-weight: 900;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+  </style>
 </head>
 
 <body>
@@ -242,15 +357,21 @@
     <section class="view active" id="view-dashboard">
       <div class="page-header">
         <div>
-          <div class="page-eyebrow">Team Overview</div>
+          <div class="page-eyebrow" id="dashEyebrow">Team Overview</div>
           <div class="page-title" id="dashTitle">PerformanceIQ</div>
           <div class="page-sub" id="dashSub">Basketball · Pre-Season</div>
         </div>
         <div class="page-actions">
-          <button class="btn ghost btn-sm" id="btnRefreshDash" aria-label="Refresh dashboard">↺ Refresh</button>
-          <button class="btn btn-sm" id="btnExportDash" aria-label="Export report">📤 Export</button>
+          <button class="btn ghost btn-sm coach-only" id="btnRefreshDash" aria-label="Refresh dashboard">↺ Refresh</button>
+          <button class="btn btn-sm coach-only" id="btnExportDash" aria-label="Export report">📤 Export</button>
         </div>
       </div>
+
+      <!-- Athlete personal dashboard (role=athlete) -->
+      <div id="dashAthleteMount" style="display:none"></div>
+
+      <!-- Coach / admin team dashboard -->
+      <div id="dashCoachContent">
 
       <!-- Stat cards -->
       <div class="stat-grid">
@@ -328,6 +449,7 @@
           </table>
         </div>
       </div>
+      </div><!-- /dashCoachContent -->
     </section>
 
     <!-- ATHLETES -->
@@ -378,10 +500,15 @@
         <div>
           <div class="page-eyebrow">Session Builder</div>
           <div class="page-title">Train</div>
-          <div class="page-sub">Generate & log training sessions</div>
+          <div class="page-sub">Generate &amp; log training sessions</div>
         </div>
       </div>
 
+      <!-- Athlete personal session log (role=athlete) -->
+      <div id="trainAthleteMount" style="display:none"></div>
+
+      <!-- Coach session builder -->
+      <div id="trainCoachBuilder">
       <div class="grid-2">
         <div class="panel">
           <div class="panel-header"><div class="panel-title">Build Session</div></div>
@@ -430,6 +557,7 @@
           </div>
         </div>
       </div>
+      </div><!-- /trainCoachBuilder -->
     </section>
 
     <!-- ANALYTICS -->
@@ -519,6 +647,15 @@
               <option value="owner">Owner</option>
               <option value="viewer">Viewer</option>
             </select>
+          </div>
+
+          <!-- Shown only when role = athlete -->
+          <div class="form-group athlete-only" id="athleteProfileGroup" style="margin-bottom:13px;display:none">
+            <div class="form-label">Your Athlete Profile</div>
+            <select class="form-select" id="settingAthleteId" aria-label="Select your athlete profile">
+              <option value="">— Select your name —</option>
+            </select>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">The athlete dashboard will show your personal stats.</div>
           </div>
 
           <div class="form-group" style="margin-bottom:13px">
