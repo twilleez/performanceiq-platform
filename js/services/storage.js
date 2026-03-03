@@ -49,11 +49,13 @@ export const Storage = {
       return false;
     }
   }
-  export function exportPrintableReport({ state, athletes }) {
+};
+
+export function exportPrintableReport({ state, athletes }) {
   const printable = `
     <html>
       <head>
-        <title>${state.teamName || "PerformanceIQ Report"}</title>
+        <title>${state?.teamName || "PerformanceIQ Report"}</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; }
           h1 { margin-bottom: 0; }
@@ -63,8 +65,8 @@ export const Storage = {
         </style>
       </head>
       <body>
-        <h1>${state.teamName || "PerformanceIQ"}</h1>
-        <p>Season: ${state.season || "-"}</p>
+        <h1>${state?.teamName || "PerformanceIQ"}</h1>
+        <p>Season: ${state?.season || "-"}</p>
 
         <h2>Athletes</h2>
         <table>
@@ -77,13 +79,15 @@ export const Storage = {
           </thead>
           <tbody>
             ${(athletes || [])
-              .map(a => `
+              .map(
+                (a) => `
                 <tr>
-                  <td>${a.name || "-"}</td>
-                  <td>${a.position || "-"}</td>
-                  <td>${a.status || "-"}</td>
+                  <td>${a?.name || "-"}</td>
+                  <td>${a?.position || "-"}</td>
+                  <td>${a?.status || "-"}</td>
                 </tr>
-              `)
+              `
+              )
               .join("")}
           </tbody>
         </table>
@@ -92,8 +96,9 @@ export const Storage = {
   `;
 
   const win = window.open("", "_blank");
+  if (!win) throw new Error("Popup blocked — allow popups to print/export.");
   win.document.write(printable);
   win.document.close();
+  win.focus();
   win.print();
 }
-};
