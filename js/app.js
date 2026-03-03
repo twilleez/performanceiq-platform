@@ -308,3 +308,11 @@ export async function initApp() {
   await new Promise(r => setTimeout(r, 250));
   hideLoader();
 }
+export function initApp() {
+  showLoader();
+  loadState();
+  applyTheme(getThemePref());
+  initRouter();
+  maybeShowOnboarding();
+  hideLoader();
+}
