@@ -231,16 +231,16 @@
 <div class="app-shell">
   <nav class="sidebar">
     <div class="sidebar-section">Main</div>
-    <button class="nav-btn active" data-view="dashboard"><i class="nav-icon">⬡</i> Dashboard</button>
-    <button class="nav-btn" data-view="athletes"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
-    <button class="nav-btn" data-view="train"><i class="nav-icon">▷</i> Train</button>
-    <button class="nav-btn" data-view="analytics"><i class="nav-icon">◈</i> Analytics</button>
+    <button class="nav-btn active" data-view="dashboard" data-roles="coach,athlete,admin"><i class="nav-icon">⬡</i> Dashboard</button>
+    <button class="nav-btn" data-view="athletes" data-roles="coach,admin"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
+    <button class="nav-btn" data-view="train" data-roles="coach,athlete,admin"><i class="nav-icon">▷</i> Train</button>
+    <button class="nav-btn" data-view="analytics" data-roles="coach,athlete,admin"><i class="nav-icon">◈</i> Analytics</button>
 
     <div class="sidebar-section">Manage</div>
-    <button class="nav-btn" data-view="schedule"><i class="nav-icon">📅</i> Schedule</button>
-    <button class="nav-btn" data-view="wellness"><i class="nav-icon">🌙</i> Wellness</button>
-    <button class="nav-btn" data-view="nutrition"><i class="nav-icon">🥗</i> Nutrition</button>
-    <button class="nav-btn" data-view="settings"><i class="nav-icon">⚙</i> Settings</button>
+    <button class="nav-btn" data-view="schedule" data-roles="coach,athlete,admin"><i class="nav-icon">📅</i> Schedule</button>
+    <button class="nav-btn" data-view="wellness" data-roles="coach,athlete,admin"><i class="nav-icon">🌙</i> Wellness</button>
+    <button class="nav-btn" data-view="nutrition" data-roles="coach,athlete,admin"><i class="nav-icon">🥗</i> Nutrition</button>
+    <button class="nav-btn" data-view="settings" data-roles="coach,athlete,admin"><i class="nav-icon">⚙</i> Settings</button>
 
     <div class="sidebar-bottom">
       <div class="user-block" id="userBlock">
@@ -327,6 +327,14 @@
                   <tbody id="readinessTable"></tbody>
                 </table>
               </div>
+            </div>
+
+            <div class="panel" style="margin-top:16px">
+              <div class="panel-header">
+                <div class="panel-title">Team Heatmap (Last 14 Days)</div>
+                <a class="panel-link" href="#/analytics">Open analytics →</a>
+              </div>
+              <div class="panel-body" style="padding:16px 20px" id="teamHeatmap"></div>
             </div>
           </div>
 
@@ -651,11 +659,11 @@
 
 <!-- Mobile Bottom Nav (small screens) -->
 <nav class="mobile-nav" aria-label="Primary">
-  <button class="mnav-btn" data-view="dashboard" aria-label="Dashboard">🏠<span>Home</span></button>
-  <button class="mnav-btn" data-view="athletes" aria-label="Athletes">🏃<span>Athletes</span></button>
-  <button class="mnav-btn" data-view="train" aria-label="Train">⚡<span>Train</span></button>
-  <button class="mnav-btn" data-view="analytics" aria-label="Analytics">📊<span>Analytics</span></button>
-  <button class="mnav-btn" data-view="schedule" aria-label="Schedule">📅<span>Schedule</span></button>
+  <button class="mnav-btn" data-view="dashboard" data-roles="coach,athlete,admin" aria-label="Dashboard">🏠<span>Home</span></button>
+  <button class="mnav-btn" data-view="athletes" data-roles="coach,admin" aria-label="Athletes">🏃<span>Athletes</span></button>
+  <button class="mnav-btn" data-view="train" data-roles="coach,athlete,admin" aria-label="Train">⚡<span>Train</span></button>
+  <button class="mnav-btn" data-view="analytics" data-roles="coach,athlete,admin" aria-label="Analytics">📊<span>Analytics</span></button>
+  <button class="mnav-btn" data-view="schedule" data-roles="coach,athlete,admin" aria-label="Schedule">📅<span>Schedule</span></button>
 </nav>
 
 <div class="toast-container" id="toastContainer"></div>
