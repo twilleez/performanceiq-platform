@@ -5,9 +5,8 @@ import { getThemePref, applyTheme, toggleTheme } from "./ui/theme.js";
 import { applySportTheme } from "./ui/sportTheme.js";
 import { confirmModal } from "./ui/modal.js";
 
-import { Storage } from "./services/storage.js";
+import { Storage, exportPrintableReport } from "./services/storage.js";
 import { toast } from "./services/toast.js";
-import { exportPrintableReport } from "./services/storage.js";
 
 import {
   STATE,
@@ -18,7 +17,7 @@ import {
   setAthletes,
   validateBackupPayload
 } from "./state/state.js";
-import { STORAGE_KEY_ATHLETES } from "./state/keys.js";
+import { STORAGE_KEY_STATE, STORAGE_KEY_ATHLETES } from "./state/keys.js";
 
 import { switchView, initRouter } from "./router.js";
 
@@ -57,16 +56,12 @@ function onEnter(viewId) {
   if (viewId === "athletes") renderAthletesView(dom.athleteSearch?.value || "");
   if (viewId === "train") renderTrainView();
   if (viewId === "analytics") renderAnalytics();
-  if (viewId === "schedule") renderSchedule(dom.fullEventList);
+  if (viewId === "schedule") renderSchedule(dom.fullEventList || null);
   if (viewId === "wellness") renderWellness();
   if (viewId === "nutrition") renderNutrition();
   if (viewId === "settings") {
     /* settings are native HTML */
   }
-}
-
-function navigate(viewId) {
-  switchView(viewId, { onEnter });
 }
 
 function applyRoleVisibility() {
@@ -89,8 +84,14 @@ function applyRoleVisibility() {
   const activeBtn = document.querySelector(`[data-view="${activeView}"][data-roles]`);
   if (activeBtn && activeBtn.style.display === "none") {
     STATE.currentView = "dashboard";
-    saveState();
+    try { saveState(); } catch {}
   }
+}
+
+function navigate(viewId) {
+  switchView(viewId, { onEnter });
+  // Elite: keep nav correct even after role changes / deep links
+  applyRoleVisibility();
 }
 
 function bindNav() {
@@ -128,6 +129,29 @@ function bindSettings() {
     saveState();
     renderDashboard();
     toast("Settings saved ✓");
+  });
+}
+
+/* ---------------------------
+   Safe state import (whitelist only)
+---------------------------- */
+function applyImportedState(raw) {
+  if (!raw || typeof raw !== "object") return;
+
+  const allowed = [
+    "currentView",
+    "teamName",
+    "sport",
+    "season",
+    "theme",
+    "role",
+    "events",
+    "periodization",
+    "nutrition"
+  ];
+
+  allowed.forEach((k) => {
+    if (k in raw) STATE[k] = raw[k];
   });
 }
 
@@ -173,13 +197,15 @@ function bindDataManagement() {
         }
 
         setAthletes(p.athletes);
-
-        if (p?.state && typeof p.state === "object") Object.assign(STATE, p.state);
+        applyImportedState(p.state);
 
         saveState();
         saveAthletes();
         applySportTheme(STATE.sport);
         renderDashboard();
+        applyRoleVisibility();
+        navigate(STATE.currentView || "dashboard");
+
         toast(`Imported ${ATHLETES.length} athletes ✓`);
       } catch {
         toast("Import failed — invalid JSON");
@@ -200,7 +226,7 @@ function bindDataManagement() {
 
     try {
       Storage.remove(STORAGE_KEY_ATHLETES);
-      Storage.remove("piq_state_v3");
+      Storage.remove(STORAGE_KEY_STATE);
     } catch {
       // ignore
     }
@@ -256,18 +282,31 @@ function bindDelegatedActions() {
 
       navigate("athletes");
 
-      // Wait for the athletes view to render, then click the card.
       setTimeout(() => {
         try {
           const card = document.querySelector(`[data-athlete-card-id="${CSS.escape(athleteId)}"]`);
           card?.click?.();
-        } catch {
-          // ignore
-        }
+        } catch {}
       }, 0);
 
       return;
     }
+  });
+}
+
+/* ---------------------------
+   Elite: global error hooks (debug + stability)
+---------------------------- */
+function installGlobalErrorHooks() {
+  if (window.__PIQ_ERR_HOOKS__) return;
+  window.__PIQ_ERR_HOOKS__ = true;
+
+  window.addEventListener("error", (e) => {
+    try { console.error("[PIQ] error", e.error || e.message || e); } catch {}
+  });
+
+  window.addEventListener("unhandledrejection", (e) => {
+    try { console.error("[PIQ] unhandledrejection", e.reason || e); } catch {}
   });
 }
 
@@ -279,21 +318,19 @@ export async function initApp() {
 
   cacheDOM();
   installInteractions();
+  installGlobalErrorHooks();
 
-  // Load state safely
   try {
     loadState();
   } catch {
     toast("Storage error — running in recovery mode", { timeout: 6000 });
   }
 
-  // Theme + sport
   applyTheme(getThemePref());
   dom.btnTheme?.addEventListener("click", toggleTheme);
   dom.settingTheme?.addEventListener("change", (e) => applyTheme(e.target.value));
   applySportTheme(STATE.sport);
 
-  // Bind UI
   bindNav();
   bindDelegatedActions();
   bindSearch();
@@ -301,7 +338,6 @@ export async function initApp() {
   bindDataManagement();
   bindTopActions();
 
-  // Bind view-level events
   bindTrainViewEvents();
   bindAthletesViewEvents();
   bindWellnessEvents();
@@ -309,7 +345,6 @@ export async function initApp() {
 
   applyRoleVisibility();
 
-  // Onboarding + tour
   initOnboarding({
     onAfterFinish: () => {
       renderDashboard();
@@ -321,7 +356,6 @@ export async function initApp() {
   const TodayTour = createTodayTour({ navigate });
   TodayTour.bindKeyboardShortcuts();
 
-  // Allow onboarding (or other UI) to trigger the tour without importing tour.js again.
   window.addEventListener("piq:tour", () => {
     try { navigate("dashboard"); } catch {}
     try { TodayTour.maybeShow(); } catch {}
@@ -331,19 +365,15 @@ export async function initApp() {
     if (e.key === "Escape") closeOnboardingIfOpen();
   });
 
-  // Router
   initRouter({ onEnter });
 
-  // First render
   renderDashboard();
   applyRoleVisibility();
   navigate(STATE.currentView || "dashboard");
 
-  // Show onboarding once if not seen
   maybeShowOnboarding();
   TodayTour.maybeShow?.();
 
-  // Let loader be visible briefly (prevents "no loader" complaint)
   await new Promise((r) => setTimeout(r, 250));
   hideLoader();
-}
+            }
