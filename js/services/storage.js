@@ -49,4 +49,51 @@ export const Storage = {
       return false;
     }
   }
+  export function exportPrintableReport({ state, athletes }) {
+  const printable = `
+    <html>
+      <head>
+        <title>${state.teamName || "PerformanceIQ Report"}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { margin-bottom: 0; }
+          h2 { margin-top: 30px; }
+          table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+          th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+        </style>
+      </head>
+      <body>
+        <h1>${state.teamName || "PerformanceIQ"}</h1>
+        <p>Season: ${state.season || "-"}</p>
+
+        <h2>Athletes</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Position</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(athletes || [])
+              .map(a => `
+                <tr>
+                  <td>${a.name || "-"}</td>
+                  <td>${a.position || "-"}</td>
+                  <td>${a.status || "-"}</td>
+                </tr>
+              `)
+              .join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const win = window.open("", "_blank");
+  win.document.write(printable);
+  win.document.close();
+  win.print();
+}
 };
