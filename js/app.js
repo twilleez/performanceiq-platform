@@ -7,7 +7,7 @@ import { confirmModal } from "./ui/modal.js";
 
 import { Storage } from "./services/storage.js";
 import { toast } from "./services/toast.js";
-import { exportPrintableReport } from "./services/report.js";
+import { exportPrintableReport } from "./services/storage.js";
 
 import { STATE, ATHLETES, loadState, saveState, saveAthletes, setAthletes, validateBackupPayload } from "./state/state.js";
 import { STORAGE_KEY_TOUR, STORAGE_KEY_ATHLETES } from "./state/keys.js";
