@@ -2084,3 +2084,96 @@ html[data-theme="light"] .ex-line { color: color-mix(in oklab, var(--text) 75%, 
   .hm-head,.hm-row{grid-template-columns:110px 1fr}
   .hm-cell{height:10px}
 }
+/* ============================================================
+   PATCH (safe add-on) — Onboarding + Nav Active + Roster Chips
+   Paste at END of styles.css so it overrides earlier rules.
+   ============================================================ */
+
+/* 1) Onboarding overlay compatibility
+   - Your JS shows/hides #onboardingModal using .hidden + display.
+   - Your CSS currently defines .ob-modal (not .ob-overlay), so map both.
+*/
+#onboardingModal.ob-overlay,
+#onboardingModal.ob-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;                 /* JS can still set display, this is safe */
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.65);
+  padding: 18px;
+}
+
+#onboardingModal.hidden {
+  display: none !important;      /* guarantees hidden really hides */
+  pointer-events: none !important;
+}
+
+/* If you ever rely on opacity transitions, keep it non-blocking */
+#onboardingModal.hidden * {
+  pointer-events: none;
+}
+
+/* 2) Roster chip styling compatibility
+   - JS renders <div class="ob-roster-chip"><span>Name</span><button>✕</button></div>
+   - Your CSS styles ".ob-roster .chip" (older markup).
+   Add styles for the new chip class without breaking old ones.
+*/
+.ob-roster-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.03);
+  color: rgba(240,242,245,.92);
+}
+
+.ob-roster-chip span {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ob-roster-chip button {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(240,242,245,.92);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ob-roster-chip button:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.18);
+}
+
+.ob-roster-chip button:active {
+  transform: translateY(1px);
+}
+
+/* 3) Nav active fallback (in case later legacy blocks override it)
+   You already have these rules earlier; this just ensures consistency.
+*/
+.navbtn.active,
+.nav-btn.active,
+.mnav-btn.active,
+.tab.active {
+  /* don't change layout, only ensure visible "selected" state */
+  outline: none;
+}
+
+/* 4) Ensure "hidden" always works globally (you already define .hidden once,
+   but later legacy blocks sometimes override display rules).
+*/
+.hidden {
+  display: none !important;
+}
