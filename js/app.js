@@ -1,4 +1,9 @@
 // /js/app.js
+// FIX BUG-14: initRouter now called BEFORE navigate() so hash in URL overrides default view.
+// FIX BUG-5:  Added hard loader failsafe timeout in case module loading fails.
+// IMP-9:      Debounced search input (150ms) to avoid hammering DOM on every keystroke.
+// IMP-12:     Loader hides after render, not after artificial delay.
+
 import { cacheDOM, dom } from "./ui/dom.js";
 import { installInteractions } from "./ui/interactions.js";
 import { getThemePref, applyTheme, toggleTheme } from "./ui/theme.js";
@@ -15,7 +20,7 @@ import {
   saveState,
   saveAthletes,
   setAthletes,
-  validateBackupPayload
+  validateBackupPayload,
 } from "./state/state.js";
 import { STORAGE_KEY_STATE, STORAGE_KEY_ATHLETES } from "./state/keys.js";
 
@@ -49,12 +54,12 @@ function hideLoader() {
 }
 
 /* ---------------------------
-   Active nav highlight (FIX)
+   Active nav highlight
 ---------------------------- */
 function setActiveNav(viewId) {
-  const all = Array.from(document.querySelectorAll("[data-view]"));
-  all.forEach((el) => el.classList.remove("active"));
-  document.querySelectorAll(`[data-view="${CSS.escape(viewId)}"]`).forEach((el) => el.classList.add("active"));
+  document.querySelectorAll("[data-view]").forEach((el) =>
+    el.classList.toggle("active", el.dataset.view === viewId)
+  );
 }
 
 /* ---------------------------
@@ -68,32 +73,22 @@ function onEnter(viewId) {
   if (viewId === "schedule") renderSchedule(dom.fullEventList || null);
   if (viewId === "wellness") renderWellness();
   if (viewId === "nutrition") renderNutrition();
-  if (viewId === "settings") {
-    /* settings are native HTML */
-  }
-
-  // Always sync nav visuals on enter
   setActiveNav(viewId);
 }
 
 function applyRoleVisibility() {
   const role = String(STATE.role || "coach");
-  const items = Array.from(document.querySelectorAll("[data-roles][data-view]"));
-
-  items.forEach((el) => {
-    const roles = String(el.getAttribute("data-roles") || "");
-    const ok = roles
+  document.querySelectorAll("[data-roles][data-view]").forEach((el) => {
+    const roles = String(el.getAttribute("data-roles") || "")
       .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .includes(role);
-
-    el.style.display = ok ? "" : "none";
+      .map((s) => s.trim());
+    el.style.display = roles.includes(role) ? "" : "none";
   });
 
-  // If current view is hidden, fall back to dashboard.
-  const activeView = String(STATE.currentView || "dashboard");
-  const activeBtn = document.querySelector(`[data-view="${activeView}"][data-roles]`);
+  // If current view is now hidden for this role, fall back to dashboard
+  const activeBtn = document.querySelector(
+    `[data-view="${STATE.currentView}"][data-roles]`
+  );
   if (activeBtn && activeBtn.style.display === "none") {
     STATE.currentView = "dashboard";
     try { saveState(); } catch {}
@@ -116,14 +111,23 @@ function bindNav() {
 }
 
 /* ---------------------------
-   Search
+   Search with debounce (IMP-9)
 ---------------------------- */
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
 function bindSearch() {
-  dom.athleteSearch?.addEventListener("input", (e) => {
-    const val = e.target.value;
+  const handleSearch = debounce((val) => {
     if (STATE.currentView !== "athletes") navigate("athletes");
     renderAthletesView(val);
-  });
+  }, 150);
+
+  dom.athleteSearch?.addEventListener("input", (e) => handleSearch(e.target.value));
 }
 
 /* ---------------------------
@@ -135,7 +139,6 @@ function bindSettings() {
   if (dom.settingSport) dom.settingSport.value = STATE.sport;
   if (dom.settingTheme) dom.settingTheme.value = getThemePref();
 
-  // Role: persist + re-apply visibility + keep user on allowed view
   dom.settingRole?.addEventListener("change", (e) => {
     STATE.role = String(e.target.value || "coach");
     try { saveState(); } catch {}
@@ -157,30 +160,21 @@ function bindSettings() {
 }
 
 /* ---------------------------
-   Safe state import (whitelist only)
+   Safe state import (whitelist)
 ---------------------------- */
 function applyImportedState(raw) {
   if (!raw || typeof raw !== "object") return;
-
   const allowed = [
-    "currentView",
-    "teamName",
-    "sport",
-    "season",
-    "theme",
-    "role",
-    "events",
-    "periodization",
-    "nutrition"
+    "currentView", "teamName", "sport", "season", "theme", "role",
+    "events", "periodization", "nutrition", "profile",
   ];
-
   allowed.forEach((k) => {
     if (k in raw) STATE[k] = raw[k];
   });
 }
 
 /* ---------------------------
-   Export / Import / Reset with schema validation
+   Export / Import / Reset
 ---------------------------- */
 function bindDataManagement() {
   dom.btnExportData?.addEventListener("click", () => {
@@ -192,7 +186,7 @@ function bindDataManagement() {
       const url = URL.createObjectURL(blob);
       const a = Object.assign(document.createElement("a"), {
         href: url,
-        download: `piq-backup-${Date.now()}.json`
+        download: `piq-backup-${Date.now()}.json`,
       });
       document.body.appendChild(a);
       a.click();
@@ -209,27 +203,21 @@ function bindDataManagement() {
   dom.importFileInput?.addEventListener("change", (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const p = JSON.parse(evt.target.result);
         const v = validateBackupPayload(p);
-        if (!v.ok) {
-          toast("Import failed — " + (v.reason || "Invalid backup"));
-          return;
-        }
+        if (!v.ok) { toast("Import failed — " + (v.reason || "Invalid backup")); return; }
 
         setAthletes(p.athletes);
         applyImportedState(p.state);
-
         saveState();
         saveAthletes();
         applySportTheme(STATE.sport);
         renderDashboard();
         applyRoleVisibility();
         navigate(STATE.currentView || "dashboard");
-
         toast(`Imported ${ATHLETES.length} athletes ✓`);
       } catch {
         toast("Import failed — invalid JSON");
@@ -244,16 +232,13 @@ function bindDataManagement() {
       title: "Reset data?",
       message: "This will remove your local athletes and settings on this device.",
       confirmText: "Reset",
-      cancelText: "Cancel"
+      cancelText: "Cancel",
     });
     if (!ok) return;
-
     try {
       Storage.remove(STORAGE_KEY_ATHLETES);
       Storage.remove(STORAGE_KEY_STATE);
-    } catch {
-      // ignore
-    }
+    } catch {}
     location.reload();
   });
 }
@@ -281,56 +266,48 @@ function bindTopActions() {
 }
 
 /* ---------------------------
-   Delegated actions (works for view templates)
+   Delegated actions
 ---------------------------- */
 function bindDelegatedActions() {
   document.addEventListener("click", (e) => {
     const el = e.target?.closest?.("[data-action]");
     if (!el) return;
-
     const act = el.getAttribute("data-action");
 
-    if (act === "export") {
-      dom.btnExport?.click?.();
-      return;
-    }
+    if (act === "export") { dom.btnExport?.click?.(); return; }
 
-    if (act === "logSession") {
-      navigate("train");
-      return;
-    }
+    if (act === "logSession") { navigate("train"); return; }
 
     if (act === "open-athlete") {
       const athleteId = el.getAttribute("data-athlete-id");
       if (!athleteId) return;
-
       navigate("athletes");
-
       setTimeout(() => {
         try {
-          const card = document.querySelector(`[data-athlete-card-id="${CSS.escape(athleteId)}"]`);
-          card?.click?.();
+          document.querySelector(`[data-athlete-card-id="${CSS.escape(athleteId)}"]`)?.click?.();
         } catch {}
       }, 0);
-
       return;
     }
   });
 }
 
 /* ---------------------------
-   Elite: global error hooks
+   Global error hooks
 ---------------------------- */
 function installGlobalErrorHooks() {
   if (window.__PIQ_ERR_HOOKS__) return;
   window.__PIQ_ERR_HOOKS__ = true;
 
   window.addEventListener("error", (e) => {
-    try { console.error("[PIQ] error", e.error || e.message || e); } catch {}
+    try { console.error("[PIQ] error", e.error || e.message); } catch {}
+    // FIX BUG-5: Ensure loader is hidden even on hard JS errors
+    hideLoader();
   });
 
   window.addEventListener("unhandledrejection", (e) => {
-    try { console.error("[PIQ] unhandledrejection", e.reason || e); } catch {}
+    try { console.error("[PIQ] unhandledrejection", e.reason); } catch {}
+    hideLoader();
   });
 }
 
@@ -338,6 +315,9 @@ function installGlobalErrorHooks() {
    Main init
 ---------------------------- */
 export async function initApp() {
+  // FIX BUG-5: Hard failsafe — loader MUST hide within 4s regardless
+  const loaderFailsafe = setTimeout(hideLoader, 4000);
+
   showLoader();
 
   cacheDOM();
@@ -374,12 +354,10 @@ export async function initApp() {
       renderDashboard();
       applyRoleVisibility();
       navigate("dashboard");
-    }
+    },
   });
 
-  // Settings "Re-run onboarding" button (if present)
-  const btnShowOnboarding = document.getElementById("btnShowOnboarding");
-  btnShowOnboarding?.addEventListener("click", () => {
+  document.getElementById("btnShowOnboarding")?.addEventListener("click", () => {
     try { window.dispatchEvent(new Event("piq:showOnboarding")); } catch {}
   });
 
@@ -395,8 +373,10 @@ export async function initApp() {
     if (e.key === "Escape") closeOnboardingIfOpen();
   });
 
+  // FIX BUG-14: initRouter BEFORE navigate() so URL hash overrides default
   initRouter({ onEnter });
 
+  // First render
   renderDashboard();
   applyRoleVisibility();
 
@@ -407,6 +387,10 @@ export async function initApp() {
   maybeShowOnboarding();
   TodayTour.maybeShow?.();
 
-  await new Promise((r) => setTimeout(r, 250));
-  hideLoader();
+  // IMP-12: Hide loader after render, not artificial delay
+  clearTimeout(loaderFailsafe);
+  // One rAF to ensure paint before hiding
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => hideLoader());
+  });
 }

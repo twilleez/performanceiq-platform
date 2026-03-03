@@ -1,17 +1,23 @@
 // /js/boot.js
-import { initApp } from "./app.js";
+// FIX: top-level await requires "type=module" AND a supporting environment.
+// Wrapped in async IIFE for maximum compatibility and added proper error boundary.
+
+import { initApp } from './app.js';
 
 function safeHideLoader() {
-  const el = document.getElementById("loadingScreen");
-  if (!el) return;
-  el.style.display = "none";
-  el.style.pointerEvents = "none";
+  try {
+    const el = document.getElementById('loadingScreen');
+    if (!el) return;
+    el.style.display = 'none';
+    el.style.pointerEvents = 'none';
+  } catch {}
 }
 
-try {
-  await initApp();
-} catch (err) {
-  console.error("[PIQ] boot failed", err);
-  // Ensure UI is not trapped behind loader even if init fails
-  safeHideLoader();
-}
+(async () => {
+  try {
+    await initApp();
+  } catch (err) {
+    console.error('[PIQ] boot failed', err);
+    safeHideLoader();
+  }
+})();
