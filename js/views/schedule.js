@@ -1,4 +1,8 @@
 // /js/views/schedule.js
+// FIX BUG-2 + BUG-9: Event deletion used sorted-array index but spliced
+//   from original array → deleted wrong event. Fixed to delete by reference.
+// IMPROVEMENT IMP-1: Add event type tags for game/practice/other distinction.
+
 import { STATE, saveState } from "../state/state.js";
 import { toast } from "../services/toast.js";
 import { generatePeriodization } from "../features/periodization.js";
@@ -9,6 +13,13 @@ function ensureEvents() {
   if (!Array.isArray(STATE.events)) STATE.events = [];
 }
 
+// Safe HTML escape
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
 export function renderSchedule(hostEl = null) {
   ensureEvents();
   const host = hostEl || $("fullEventList");
@@ -16,6 +27,7 @@ export function renderSchedule(hostEl = null) {
 
   host.innerHTML = "";
 
+  // ── Top bar ──────────────────────────────────────────────────────────────
   const bar = document.createElement("div");
   bar.className = "schedule-bar";
   bar.innerHTML = `
@@ -24,7 +36,7 @@ export function renderSchedule(hostEl = null) {
   `;
   host.appendChild(bar);
 
-  // Periodization block (Elite)
+  // ── Periodization block (Elite) ──────────────────────────────────────────
   const per = document.createElement("div");
   per.className = "panel";
   per.style.margin = "14px 0";
@@ -48,11 +60,18 @@ export function renderSchedule(hostEl = null) {
   `;
   host.appendChild(per);
 
+  // ── Add-event form ────────────────────────────────────────────────────────
   const form = document.createElement("div");
   form.className = "schedule-form";
   form.style.display = "none";
   form.innerHTML = `
     <input class="input" id="evtTitle" placeholder="Event title" aria-label="Event title" />
+    <select class="input" id="evtType" aria-label="Event type" style="max-width:200px">
+      <option value="game">🏆 Game</option>
+      <option value="practice">⚡ Practice</option>
+      <option value="travel">✈️ Travel</option>
+      <option value="other">📌 Other</option>
+    </select>
     <input class="input" id="evtDate" type="date" aria-label="Event date" />
     <button class="btn" type="button" id="evtSave">Save</button>
     <button class="btn ghost" type="button" id="evtCancel">Cancel</button>
@@ -63,6 +82,7 @@ export function renderSchedule(hostEl = null) {
   list.className = "schedule-list";
   host.appendChild(list);
 
+  // ── Periodization render ─────────────────────────────────────────────────
   function drawPeriodization() {
     const out = per.querySelector("#perOut");
     if (!out) return;
@@ -71,74 +91,104 @@ export function renderSchedule(hostEl = null) {
       out.innerHTML = `<div class="empty-mini">No plan generated yet.</div>`;
       return;
     }
-    out.innerHTML = plan.weeks.map(w => {
-      const sessions = w.sessions.map(s => `<div class="schedule-row" style="margin:8px 0">
-          <div class="schedule-row-main">
-            <div class="schedule-row-title">${s.day}: ${s.type}</div>
-            <div class="schedule-row-sub">${s.minutes} min • target load ${s.loadTarget}</div>
+    out.innerHTML = plan.weeks
+      .map((w) => {
+        const sessions = w.sessions
+          .map(
+            (s) => `<div class="schedule-row" style="margin:8px 0">
+              <div class="schedule-row-main">
+                <div class="schedule-row-title">${esc(s.day)}: ${esc(s.type)}</div>
+                <div class="schedule-row-sub">${s.minutes} min • target load ${s.loadTarget}</div>
+              </div>
+            </div>`
+          )
+          .join("");
+        return `
+          <div class="panel" style="margin:10px 0">
+            <div class="panel-header">
+              <div class="panel-title">Week ${w.week} — ${esc(w.start)}</div>
+              <div class="pill">${esc(w.focus)}</div>
+            </div>
+            <div class="panel-body" style="padding:10px 14px">${sessions}</div>
           </div>
-        </div>`).join("");
-      return `
-        <div class="panel" style="margin:10px 0">
-          <div class="panel-header">
-            <div class="panel-title">Week ${w.week} — ${w.start}</div>
-            <div class="pill">${w.focus}</div>
-          </div>
-          <div class="panel-body" style="padding:10px 14px">
-            ${sessions}
-          </div>
-        </div>
-      `;
-    }).join("");
+        `;
+      })
+      .join("");
   }
 
+  // ── Event list render ─────────────────────────────────────────────────────
+  // FIX BUG-2: Store reference to event object in closure, delete by reference
   function drawList() {
     list.innerHTML = "";
     if (!STATE.events.length) {
       const empty = document.createElement("div");
       empty.className = "empty-mini";
-      empty.textContent = "No events yet.";
+      empty.textContent = "No events yet. Click + Add Event to schedule games and practices.";
       list.appendChild(empty);
       return;
     }
-    STATE.events
+
+    const TYPE_ICONS = { game: "🏆", practice: "⚡", travel: "✈️", other: "📌" };
+
+    // Sort by date ascending, but keep reference to original event objects
+    const sorted = STATE.events
       .slice()
-      .sort((a,b)=>String(a.date).localeCompare(String(b.date)))
-      .forEach((e, idx) => {
-        const row = document.createElement("div");
-        row.className = "schedule-row";
-        row.innerHTML = `
-          <div class="schedule-row-main">
-            <div class="schedule-row-title">${e.title}</div>
-            <div class="schedule-row-sub">${e.date}</div>
-          </div>
-          <button class="icon-btn danger" type="button" aria-label="Delete event">✕</button>
-        `;
-        row.querySelector("button")?.addEventListener("click", () => {
-          STATE.events.splice(idx, 1);
-          saveState();
-          drawList();
-          toast("Event deleted");
-        });
-        list.appendChild(row);
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+    sorted.forEach((eventObj) => {
+      const icon = TYPE_ICONS[eventObj.type] || "📌";
+      const isPast = eventObj.date < new Date().toISOString().slice(0, 10);
+
+      const row = document.createElement("div");
+      row.className = "schedule-row";
+      if (isPast) row.style.opacity = "0.6";
+
+      row.innerHTML = `
+        <div class="schedule-row-main">
+          <div class="schedule-row-title">${icon} ${esc(eventObj.title)}</div>
+          <div class="schedule-row-sub">${esc(eventObj.date)}${isPast ? " · Past" : ""}</div>
+        </div>
+        <button class="icon-btn danger" type="button" aria-label="Delete ${esc(eventObj.title)}">✕</button>
+      `;
+
+      // FIX BUG-2: Delete by reference, not index
+      row.querySelector("button")?.addEventListener("click", () => {
+        STATE.events = STATE.events.filter((e) => e !== eventObj);
+        saveState();
+        drawList();
+        toast("Event deleted");
       });
+
+      list.appendChild(row);
+    });
   }
 
+  // ── Event bindings ────────────────────────────────────────────────────────
   const btnAdd = bar.querySelector("#btnAddEvent");
   const btnSave = form.querySelector("#evtSave");
   const btnCancel = form.querySelector("#evtCancel");
 
   btnAdd?.addEventListener("click", () => {
     form.style.display = form.style.display === "none" ? "" : "none";
+    form.querySelector("#evtTitle")?.focus();
   });
 
-  btnCancel?.addEventListener("click", () => { form.style.display = "none"; });
+  btnCancel?.addEventListener("click", () => {
+    form.style.display = "none";
+  });
 
   btnSave?.addEventListener("click", () => {
     const title = String(form.querySelector("#evtTitle")?.value || "").trim();
     const date = String(form.querySelector("#evtDate")?.value || "").trim();
+    const type = String(form.querySelector("#evtType")?.value || "other");
     if (!title || !date) { toast("Enter title + date"); return; }
-    STATE.events.push({ title, date, created_at: new Date().toISOString() });
+
+    STATE.events.push({
+      title,
+      date,
+      type,
+      created_at: new Date().toISOString(),
+    });
     saveState();
     form.querySelector("#evtTitle").value = "";
     form.querySelector("#evtDate").value = "";
