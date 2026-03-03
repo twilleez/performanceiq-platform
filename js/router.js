@@ -12,16 +12,14 @@ const VIEW_MAP = {
   settings: "view-settings",
 };
 
-function normalizeViewId(raw) {
-  const v = String(raw || "").trim();
-  if (!v) return "";
-  // supports "#analytics" and "#/analytics"
-  return v.startsWith("/") ? v.slice(1) : v;
+function normalizeHash(raw) {
+  const h = String(raw || "").replace("#", "").trim();
+  // support "#/athletes" and "#athletes"
+  return h.startsWith("/") ? h.slice(1) : h;
 }
 
 export function switchView(viewId, { onEnter } = {}) {
-  const keyRaw = normalizeViewId(viewId);
-  const key = VIEW_MAP[keyRaw] ? keyRaw : "dashboard";
+  const key = VIEW_MAP[viewId] ? viewId : "dashboard";
   const targetId = VIEW_MAP[key];
 
   Object.values(VIEW_MAP).forEach((id) => {
@@ -36,18 +34,17 @@ export function switchView(viewId, { onEnter } = {}) {
   STATE.currentView = key;
   try { saveState(); } catch {}
 
-  // set hash for deep link (use #/key so your existing links stay consistent)
   try { location.hash = `#/${key}`; } catch {}
 
   if (typeof onEnter === "function") onEnter(key);
 }
 
 export function initRouter({ onEnter } = {}) {
-  const hash = normalizeViewId((location.hash || "").replace("#", ""));
+  const hash = normalizeHash(location.hash);
   if (hash) switchView(hash, { onEnter });
 
   window.addEventListener("hashchange", () => {
-    const h = normalizeViewId((location.hash || "").replace("#", ""));
+    const h = normalizeHash(location.hash);
     if (h) switchView(h, { onEnter });
   });
 }
