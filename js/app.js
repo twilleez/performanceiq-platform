@@ -59,9 +59,7 @@ function onEnter(viewId) {
   if (viewId === "schedule") renderSchedule(dom.fullEventList || null);
   if (viewId === "wellness") renderWellness();
   if (viewId === "nutrition") renderNutrition();
-  if (viewId === "settings") {
-    /* settings are native HTML */
-  }
+  if (viewId === "settings") { /* native HTML */ }
 }
 
 function applyRoleVisibility() {
@@ -79,7 +77,6 @@ function applyRoleVisibility() {
     el.style.display = ok ? "" : "none";
   });
 
-  // If current view is hidden, fall back to dashboard.
   const activeView = String(STATE.currentView || "dashboard");
   const activeBtn = document.querySelector(`[data-view="${activeView}"][data-roles]`);
   if (activeBtn && activeBtn.style.display === "none") {
@@ -90,7 +87,6 @@ function applyRoleVisibility() {
 
 function navigate(viewId) {
   switchView(viewId, { onEnter });
-  // Elite: keep nav correct even after role changes / deep links
   applyRoleVisibility();
 }
 
@@ -156,7 +152,7 @@ function applyImportedState(raw) {
 }
 
 /* ---------------------------
-   Export / Import / Reset with schema validation
+   Export / Import / Reset
 ---------------------------- */
 function bindDataManagement() {
   dom.btnExportData?.addEventListener("click", () => {
@@ -202,6 +198,7 @@ function bindDataManagement() {
         saveState();
         saveAthletes();
         applySportTheme(STATE.sport);
+
         renderDashboard();
         applyRoleVisibility();
         navigate(STATE.currentView || "dashboard");
@@ -227,9 +224,7 @@ function bindDataManagement() {
     try {
       Storage.remove(STORAGE_KEY_ATHLETES);
       Storage.remove(STORAGE_KEY_STATE);
-    } catch {
-      // ignore
-    }
+    } catch {}
     location.reload();
   });
 }
@@ -257,7 +252,7 @@ function bindTopActions() {
 }
 
 /* ---------------------------
-   Delegated actions (works for view templates)
+   Delegated actions
 ---------------------------- */
 function bindDelegatedActions() {
   document.addEventListener("click", (e) => {
@@ -288,14 +283,12 @@ function bindDelegatedActions() {
           card?.click?.();
         } catch {}
       }, 0);
-
-      return;
     }
   });
 }
 
 /* ---------------------------
-   Elite: global error hooks (debug + stability)
+   Elite: global error hooks
 ---------------------------- */
 function installGlobalErrorHooks() {
   if (window.__PIQ_ERR_HOOKS__) return;
@@ -311,69 +304,72 @@ function installGlobalErrorHooks() {
 }
 
 /* ---------------------------
-   Main init (single source of truth)
+   Main init
 ---------------------------- */
 export async function initApp() {
   showLoader();
 
-  cacheDOM();
-  installInteractions();
-  installGlobalErrorHooks();
-
   try {
-    loadState();
-  } catch {
-    toast("Storage error — running in recovery mode", { timeout: 6000 });
-  }
+    cacheDOM();
+    installInteractions();
+    installGlobalErrorHooks();
 
-  applyTheme(getThemePref());
-  dom.btnTheme?.addEventListener("click", toggleTheme);
-  dom.settingTheme?.addEventListener("change", (e) => applyTheme(e.target.value));
-  applySportTheme(STATE.sport);
-
-  bindNav();
-  bindDelegatedActions();
-  bindSearch();
-  bindSettings();
-  bindDataManagement();
-  bindTopActions();
-
-  bindTrainViewEvents();
-  bindAthletesViewEvents();
-  bindWellnessEvents();
-  bindNutritionEvents();
-
-  applyRoleVisibility();
-
-  initOnboarding({
-    onAfterFinish: () => {
-      renderDashboard();
-      applyRoleVisibility();
-      navigate("dashboard");
+    try {
+      loadState();
+    } catch {
+      toast("Storage error — running in recovery mode", { timeout: 6000 });
     }
-  });
 
-  const TodayTour = createTodayTour({ navigate });
-  TodayTour.bindKeyboardShortcuts();
+    applyTheme(getThemePref());
+    dom.btnTheme?.addEventListener("click", toggleTheme);
+    dom.settingTheme?.addEventListener("change", (e) => applyTheme(e.target.value));
+    applySportTheme(STATE.sport);
 
-  window.addEventListener("piq:tour", () => {
-    try { navigate("dashboard"); } catch {}
-    try { TodayTour.maybeShow(); } catch {}
-  });
+    bindNav();
+    bindDelegatedActions();
+    bindSearch();
+    bindSettings();
+    bindDataManagement();
+    bindTopActions();
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeOnboardingIfOpen();
-  });
+    bindTrainViewEvents();
+    bindAthletesViewEvents();
+    bindWellnessEvents();
+    bindNutritionEvents();
 
-  initRouter({ onEnter });
+    applyRoleVisibility();
 
-  renderDashboard();
-  applyRoleVisibility();
-  navigate(STATE.currentView || "dashboard");
+    initOnboarding({
+      onAfterFinish: () => {
+        renderDashboard();
+        applyRoleVisibility();
+        navigate("dashboard");
+      }
+    });
 
-  maybeShowOnboarding();
-  TodayTour.maybeShow?.();
+    const TodayTour = createTodayTour({ navigate });
+    TodayTour.bindKeyboardShortcuts();
 
-  await new Promise((r) => setTimeout(r, 250));
-  hideLoader();
-            }
+    window.addEventListener("piq:tour", () => {
+      try { navigate("dashboard"); } catch {}
+      try { TodayTour.maybeShow(); } catch {}
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeOnboardingIfOpen();
+    });
+
+    initRouter({ onEnter });
+
+    renderDashboard();
+    applyRoleVisibility();
+    navigate(STATE.currentView || "dashboard");
+
+    maybeShowOnboarding();
+    TodayTour.maybeShow?.();
+
+    await new Promise((r) => setTimeout(r, 250));
+  } finally {
+    hideLoader();
+  }
+}
