@@ -519,12 +519,13 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger):not(.btn-ghost):not(.btn-
 
 :root {
   /* Brand tokens */
-  --brand-accent: #2EC4B6;
-  --brand-accent-soft: rgba(46,196,182,.14);
+  /* Midnight blue default (can still be overridden at runtime via sportTheme.js) */
+  --brand-accent: #2563eb;
+  --brand-accent-soft: rgba(37,99,235,.14);
 
   --accent: var(--brand-accent);
   --accent-2: var(--brand-accent-soft);
-  --accent-3: rgba(46,196,182,.28);
+  --accent-3: rgba(37,99,235,.28);
 
   --ok: #22C55E;    --ok-soft: rgba(34,197,94,.13);
   --warn: #F59E0B;  --warn-soft: rgba(245,158,11,.13);
