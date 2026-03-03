@@ -59,6 +59,24 @@ function navigate(viewId) {
   switchView(viewId, { onEnter });
 }
 
+function applyRoleVisibility() {
+  const role = String(STATE.role || "coach");
+  const items = Array.from(document.querySelectorAll("[data-roles][data-view]"));
+  items.forEach((el) => {
+    const roles = String(el.getAttribute("data-roles") || "");
+    const ok = roles.split(",").map(s => s.trim()).filter(Boolean).includes(role);
+    el.style.display = ok ? "" : "none";
+  });
+
+  // If current view is hidden, fall back to dashboard.
+  const activeView = String(STATE.currentView || "dashboard");
+  const activeBtn = document.querySelector(`[data-view="${activeView}"][data-roles]`);
+  if (activeBtn && activeBtn.style.display === "none") {
+    STATE.currentView = "dashboard";
+    saveState();
+  }
+}
+
 function bindNav() {
   document.querySelectorAll("[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => navigate(btn.dataset.view));
@@ -250,10 +268,13 @@ export async function initApp() {
   bindWellnessEvents();
   bindNutritionEvents();
 
+  applyRoleVisibility();
+
   // Onboarding + tour
   initOnboarding({
     onAfterFinish: () => {
       renderDashboard();
+      applyRoleVisibility();
       navigate("dashboard");
     }
   });
@@ -276,6 +297,7 @@ export async function initApp() {
 
   // First render
   renderDashboard();
+  applyRoleVisibility();
   navigate(STATE.currentView || "dashboard");
 
   // Show onboarding once if not seen
