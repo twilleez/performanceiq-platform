@@ -1,646 +1,1023 @@
-<!-- index.html — PerformanceIQ (Elite UI + Midnight theme + Loader + Onboarding + Role switch) -->
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PerformanceIQ</title>
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="favicon.ico">
-  <meta name="theme-color" content="#070b12">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PerformanceIQ</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;900&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080b0f;--surface:#0e1318;--card:#131920;--card2:#161d26;
+  --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.1);
+  --accent:#2563eb;--accent-dim:rgba(37,99,235,0.15);
+  --warn:#f5a623;--warn-dim:rgba(245,166,35,0.12);
+  --danger:#ff4d4d;--danger-dim:rgba(255,77,77,0.12);
+  --good:#22c55e;--good-dim:rgba(34,197,94,0.12);
+  --gold:#fbbf24;--gold-dim:rgba(251,191,36,0.12);
+  --info:#5b8cff;--info-dim:rgba(91,140,255,0.12);
+  --text:#e8edf3;--text2:#8a95a3;--text3:#4a5568;
+  --sidebar-w:200px;--topbar-h:56px;
+  --radius:16px;--radius-sm:10px;--radius-xs:8px;
+}
+[data-theme="light"]{
+  --bg:#f0f4f8;--surface:#fff;--card:#fff;--card2:#f8fafc;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.12);
+  --text:#0f172a;--text2:#475569;--text3:#94a3b8;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--text);display:flex;flex-direction:column}
+a{text-decoration:none;color:inherit}
+button{font-family:inherit;cursor:pointer}
+input,select{font-family:inherit}
+
+/* LOADING */
+#loadingScreen{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:radial-gradient(900px 600px at 50% -10%,rgba(37,99,235,0.08),transparent 55%),#070b12;transition:opacity 0.4s ease}
+#loadingScreen.hidden{opacity:0;pointer-events:none}
+.loader-inner{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.loader-logo{display:flex;align-items:center;gap:10px}
+.loader-dot{width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 6px rgba(37,99,235,0.18);animation:blink 1.2s ease infinite}
+.loader-name{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;letter-spacing:-0.5px}
+.loader-name span{color:var(--accent)}
+.loader-sub{font-size:12px;color:var(--text2);letter-spacing:0.5px}
+.loader-bar{width:140px;height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden}
+.loader-bar-fill{height:100%;background:var(--accent);border-radius:2px;animation:loadBar 1.2s ease forwards}
+@keyframes loadBar{from{width:0}to{width:100%}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* ONBOARDING MODAL */
+.ob-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:1;transition:opacity 0.3s ease}
+.ob-overlay.hidden{opacity:0;pointer-events:none}
+.ob-shell{width:100%;max-width:420px;animation:slideUp 0.4s cubic-bezier(0.16,1,0.3,1) both}
+@keyframes slideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.ob-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:0 4px}
+.ob-brand{display:flex;align-items:center;gap:10px}
+.ob-logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:20px;color:var(--text)}
+.ob-logo span{color:var(--accent)}
+.ob-badge{background:var(--accent-dim);border:1px solid rgba(37,99,235,0.25);color:var(--accent);font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px}
+.ob-close{background:rgba(255,255,255,0.05);border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:7px;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all 0.2s}
+.ob-close:hover{background:rgba(255,255,255,0.1);color:var(--text)}
+.ob-progress{display:flex;align-items:center;margin-bottom:20px}
+.ob-step{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1;background:none;border:none;cursor:pointer}
+.ob-step-circle{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;transition:all 0.3s}
+.ob-step.done .ob-step-circle{background:var(--accent);color:#fff;box-shadow:0 0 14px rgba(37,99,235,0.4)}
+.ob-step.active .ob-step-circle{background:var(--text);color:#000;transform:scale(1.1)}
+.ob-step.idle .ob-step-circle{background:rgba(255,255,255,0.06);color:var(--text3);border:1.5px solid var(--border2)}
+.ob-step-label{font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text3)}
+.ob-step.active .ob-step-label{color:var(--text)}
+.ob-step.done .ob-step-label{color:var(--accent)}
+.ob-step-line{height:2px;flex:1;background:rgba(255,255,255,0.06);border-radius:1px;margin-bottom:20px;overflow:hidden}
+.ob-step-line-fill{height:100%;border-radius:1px;background:var(--accent);transform-origin:left;transition:transform 0.5s cubic-bezier(0.16,1,0.3,1)}
+.line-done .ob-step-line-fill{transform:scaleX(1)}
+.line-idle .ob-step-line-fill{transform:scaleX(0)}
+.ob-card{background:var(--card);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.5)}
+.ob-card-header{padding:24px 24px 18px;border-bottom:1px solid var(--border);position:relative;overflow:hidden}
+.ob-card-header::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.1),transparent 70%);pointer-events:none}
+.ob-step-tag{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.ob-step-tag::before{content:'';display:inline-block;width:18px;height:2px;background:var(--accent);border-radius:1px}
+.ob-card-title{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;letter-spacing:-0.5px;line-height:1;margin-bottom:3px}
+.ob-card-sub{font-size:12px;color:var(--text2)}
+.ob-card-body{padding:20px 24px;display:flex;flex-direction:column;gap:16px}
+.ob-field{display:flex;flex-direction:column;gap:5px}
+.ob-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text2)}
+.ob-input{background:rgba(255,255,255,0.04);border:1.5px solid var(--border2);border-radius:10px;padding:11px 14px;color:var(--text);font-size:14px;font-weight:500;outline:none;transition:all 0.2s;width:100%}
+.ob-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+.ob-input::placeholder{color:var(--text3)}
+.ob-chip-row{display:flex;gap:7px;flex-wrap:wrap}
+.ob-chip{padding:7px 14px;border-radius:20px;border:1.5px solid var(--border2);background:rgba(255,255,255,0.03);font-size:12px;font-weight:500;color:var(--text2);transition:all 0.2s}
+.ob-chip.selected{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.ob-chip:hover:not(.selected){border-color:rgba(255,255,255,0.2);color:var(--text)}
+.ob-season-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ob-season{padding:10px 6px;border-radius:10px;border:1.5px solid var(--border2);background:rgba(255,255,255,0.03);text-align:center;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:4px}
+.ob-season-ico{font-size:18px}
+.ob-season-txt{font-size:11px;color:var(--text2);font-weight:500}
+.ob-season.selected{border-color:var(--accent);background:var(--accent-dim)}
+.ob-season.selected .ob-season-txt{color:var(--accent)}
+.ob-row{display:flex;gap:10px}
+.ob-add{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:11px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:0.5px;text-transform:uppercase;white-space:nowrap;transition:all 0.2s}
+.ob-add:hover{box-shadow:0 6px 18px rgba(37,99,235,0.35)}
+.ob-roster{display:flex;flex-wrap:wrap;gap:7px}
+.ob-roster-chip{padding:5px 10px;border-radius:20px;background:var(--accent-dim);border:1px solid rgba(37,99,235,0.25);color:var(--accent);font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+.ob-roster-chip button{background:none;border:none;color:var(--accent);opacity:0.6;font-size:14px;cursor:pointer}
+.ob-empty{text-align:center;padding:24px;border:1.5px dashed rgba(255,255,255,0.07);border-radius:12px}
+.ob-empty-ico{font-size:28px;margin-bottom:6px}
+.ob-empty-title{font-size:13px;color:var(--text2);font-weight:600;margin-bottom:2px}
+.ob-empty-sub{font-size:11px;color:var(--text3)}
+.ob-or{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text3);font-weight:600}
+.ob-or span{flex:1;height:1px;background:var(--border)}
+.ob-import{width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--border2);background:rgba(255,255,255,0.02);color:var(--text2);font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:8px;transition:all 0.2s}
+.ob-import:hover{border-color:rgba(255,255,255,0.2);color:var(--text)}
+.ob-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ob-mini{padding:14px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid var(--border)}
+.ob-mini-ico{font-size:20px;margin-bottom:5px}
+.ob-mini-title{font-size:12px;font-weight:600;margin-bottom:2px}
+.ob-mini-sub{font-size:11px;color:var(--text2)}
+.ob-divider{height:1px;background:var(--border)}
+.ob-card-footer{padding:16px 24px 20px;display:flex;align-items:center;justify-content:space-between}
+.ob-timer{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);font-weight:500}
+.ob-timer-dot{width:7px;height:7px;border-radius:50%;background:var(--warn);animation:blink 1.5s ease infinite;display:inline-block}
+.ob-actions{display:flex;gap:10px;align-items:center}
+.ob-skip{background:none;border:none;font-size:13px;font-weight:500;color:var(--text2)}
+.ob-skip:hover{color:var(--text)}
+.ob-next{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:0.5px;text-transform:uppercase;display:flex;align-items:center;gap:7px;transition:all 0.2s}
+.ob-next:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(37,99,235,0.4)}
+.ob-arrow{font-size:17px;transition:transform 0.2s}
+.ob-next:hover .ob-arrow{transform:translateX(3px)}
+.ob-motivation{margin-top:14px;padding:11px 16px;background:rgba(245,166,35,0.07);border:1px solid rgba(245,166,35,0.15);border-radius:12px;display:flex;align-items:center;gap:9px;font-size:12px;color:#ffb347;font-weight:500}
+.ob-motivation strong{color:var(--warn);font-weight:700}
+
+/* TOPBAR */
+.topbar{height:var(--topbar-h);background:rgba(14,19,24,0.96);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px 0 0;gap:12px;position:sticky;top:0;z-index:100;backdrop-filter:blur(14px);flex-shrink:0}
+.topbar-logo{width:var(--sidebar-w);padding:0 20px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(37,99,235,0.7);animation:blink 2.5s ease infinite}
+.logo-text{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:18px;letter-spacing:-0.3px;color:var(--text)}
+.logo-text span{color:var(--accent)}
+.topbar-pills{display:flex;align-items:center;gap:8px;flex:1}
+.pill{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:500;border:1px solid transparent}
+.pill-online{background:var(--accent-dim);border-color:rgba(37,99,235,0.25);color:var(--accent)}
+.pill-season{background:rgba(255,255,255,0.04);border-color:var(--border2);color:var(--text2)}
+.pill-dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.topbar-search{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;cursor:text;transition:all 0.2s;min-width:180px}
+.topbar-search:focus-within{border-color:var(--accent)}
+.search-input-top{background:none;border:none;outline:none;color:var(--text);font-size:13px;width:100%}
+.search-input-top::placeholder{color:var(--text3)}
+.topbar-actions{display:flex;align-items:center;gap:4px;margin-left:auto}
+.icon-btn{width:34px;height:34px;border-radius:8px;border:none;background:rgba(255,255,255,0.04);color:var(--text2);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s}
+.icon-btn:hover{background:rgba(255,255,255,0.09);color:var(--text)}
+.topbar-avatar{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#2563eb,#1e40af);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;cursor:pointer;margin-left:4px}
+
+/* APP SHELL */
+.app-shell{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);flex-shrink:0;padding:18px 12px;display:flex;flex-direction:column;gap:3px;overflow-y:auto}
+.nav-group-label{font-size:9px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);padding:10px 10px 5px;margin-top:4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--text2);cursor:pointer;transition:all 0.15s;border:1px solid transparent;user-select:none}
+.nav-item:hover{background:rgba(255,255,255,0.04);color:var(--text)}
+.nav-item.active{background:var(--accent-dim);border-color:rgba(37,99,235,0.15);color:var(--accent)}
+.nav-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+.nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px}
+
+/* VIEWS */
+.main-content{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.view{display:none;padding:28px 28px 48px;flex-direction:column;gap:22px;animation:fadeView 0.3s ease both}
+.view.active{display:flex}
+@keyframes fadeView{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* PAGE HEADER */
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0}
+.page-eyebrow{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.page-eyebrow::before{content:'';width:16px;height:2px;background:var(--accent);border-radius:1px}
+.page-title{font-family:'Barlow Condensed',sans-serif;font-size:34px;font-weight:900;letter-spacing:-1px;line-height:1;color:var(--text)}
+.page-sub{font-size:13px;color:var(--text2);margin-top:4px}
+.page-header-actions{display:flex;align-items:center;gap:10px}
+
+/* BUTTONS */
+.btn-primary{display:flex;align-items:center;gap:7px;padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:0.5px;text-transform:uppercase;cursor:pointer;transition:all 0.2s}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(37,99,235,0.35)}
+.btn-ghost{display:flex;align-items:center;gap:7px;padding:10px 16px;background:rgba(255,255,255,0.04);color:var(--text2);border:1px solid var(--border2);border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s}
+.btn-ghost:hover{background:rgba(255,255,255,0.08);color:var(--text)}
+.btn-danger{display:flex;align-items:center;gap:7px;padding:8px 14px;background:var(--danger-dim);color:var(--danger);border:1px solid rgba(255,77,77,0.2);border-radius:var(--radius-xs);font-size:12px;font-weight:500;cursor:pointer}
+.btn-sm{padding:7px 13px!important;font-size:12px!important}
+
+/* STAT CARDS */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden;transition:transform 0.2s,border-color 0.2s;cursor:default}
+.stat-card:hover{transform:translateY(-2px);border-color:rgba(255,255,255,0.12)}
+.stat-card::before{content:'';position:absolute;top:0;right:0;width:60px;height:60px;border-radius:50%;opacity:0.09;background:var(--glow,var(--accent));filter:blur(20px);pointer-events:none}
+.stat-card.good{--glow:#2563eb}
+.stat-card.warn{--glow:#f5a623}
+.stat-card.danger{--glow:#ff4d4d}
+.stat-card.info{--glow:#5b8cff}
+.stat-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.stat-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text2)}
+.stat-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.stat-icon.good{background:var(--accent-dim)}
+.stat-icon.warn{background:var(--warn-dim)}
+.stat-icon.danger{background:var(--danger-dim)}
+.stat-icon.info{background:var(--info-dim)}
+.stat-value{font-family:'Barlow Condensed',sans-serif;font-size:40px;font-weight:900;line-height:1;letter-spacing:-1px;margin-bottom:4px}
+.stat-value.good{color:var(--accent)}
+.stat-value.warn{color:var(--warn)}
+.stat-value.danger{color:var(--danger)}
+.stat-value.info{color:var(--info)}
+.stat-sub{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:5px}
+.stat-delta{font-size:11px;font-weight:600;padding:2px 6px;border-radius:5px}
+.delta-up{color:var(--accent);background:var(--accent-dim)}
+.delta-down{color:var(--danger);background:var(--danger-dim)}
+
+/* GRIDS */
+.grid-2{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.dash-left{display:flex;flex-direction:column;gap:16px}
+
+/* PANELS */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.panel-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2)}
+.panel-link{font-size:12px;font-weight:500;color:var(--accent);cursor:pointer;opacity:0.8;transition:opacity 0.2s}
+.panel-link:hover{opacity:1}
+.panel-body{padding:16px 20px}
+
+/* HEATMAP */
+.heatmap-grid{display:flex;flex-direction:column;gap:5px}
+.heatmap-row{display:flex;align-items:center;gap:6px}
+.heatmap-name{font-size:11px;font-weight:600;color:var(--text2);min-width:28px;text-align:right;flex-shrink:0}
+.heatmap-cells{display:flex;gap:3px}
+.hm-cell{width:17px;height:17px;border-radius:4px;transition:transform 0.15s;cursor:pointer;position:relative}
+.hm-cell:hover{transform:scale(1.35);z-index:2}
+.hm-cell .hm-tip{position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#1f2937;border:1px solid var(--border2);border-radius:6px;padding:3px 8px;font-size:10px;font-weight:600;color:var(--text);white-space:nowrap;pointer-events:none;z-index:10;opacity:0;transition:opacity 0.15s}
+.hm-cell:hover .hm-tip{opacity:1}
+.heatmap-dates{display:flex;gap:3px;padding-left:36px;margin-bottom:4px}
+.hm-date{width:17px;font-size:8px;font-weight:600;color:var(--text3);text-align:center}
+.heatmap-legend{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:10px;color:var(--text3)}
+.hm-legend-cells{display:flex;gap:3px}
+.hm-legend-cell{width:14px;height:14px;border-radius:3px}
+
+/* READINESS TABLE */
+.readiness-table{width:100%;border-collapse:collapse}
+.readiness-table th{font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text3);padding:10px 18px;text-align:left;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.01)}
+.readiness-table td{padding:11px 18px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
+.readiness-table tr:last-child td{border-bottom:none}
+.readiness-table tr{transition:background 0.15s;cursor:pointer}
+.readiness-table tr:hover td{background:rgba(255,255,255,0.02)}
+.athlete-name{font-weight:600;display:flex;align-items:center;gap:9px}
+.athlete-avatar{width:28px;height:28px;border-radius:7px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff}
+.piq-bar-wrap{display:flex;align-items:center;gap:8px}
+.piq-bar{flex:1;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;min-width:60px}
+.piq-fill{height:100%;border-radius:3px}
+.piq-num{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;min-width:26px;text-align:right}
+.flag-dot{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:600}
+.flag-ready{background:var(--accent-dim);color:var(--accent)}
+.flag-watch{background:var(--warn-dim);color:var(--warn)}
+.flag-risk{background:var(--danger-dim);color:var(--danger)}
+.acwr-val{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700}
+.acwr-good{color:var(--accent)}
+.acwr-warn{color:var(--warn)}
+.acwr-risk{color:var(--danger)}
+.spark{display:inline-flex;align-items:flex-end;gap:2px;height:16px}
+.spark-bar{width:3px;border-radius:1px;background:var(--accent);opacity:0.35}
+.spark-bar.hi{opacity:1}
+
+/* RIGHT COL / RING */
+.right-col{display:flex;flex-direction:column;gap:16px}
+.roster-ring-wrap{padding:20px;display:flex;align-items:center;gap:16px}
+.ring-chart{position:relative;width:80px;height:80px;flex-shrink:0}
+.ring-svg{transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:8}
+.ring-fill-good{fill:none;stroke:var(--accent);stroke-width:8;stroke-linecap:round;stroke-dasharray:163;stroke-dashoffset:25}
+.ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-pct{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;color:var(--accent);line-height:1}
+.ring-pct-label{font-size:8px;color:var(--text3);font-weight:600;letter-spacing:0.5px}
+.roster-legend{flex:1;display:flex;flex-direction:column;gap:8px}
+.legend-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.legend-label{color:var(--text2);flex:1}
+.legend-count{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700}
+.acwr-legend{padding:14px 20px;display:flex;flex-direction:column;gap:10px}
+.acwr-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2)}
+.acwr-icon{font-size:13px}
+.acwr-range{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;min-width:52px}
+.acwr-desc{flex:1;color:var(--text2)}
+.acwr-badge{padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600}
+.upcoming-list{padding:6px 0}
+.upcoming-item{display:flex;align-items:center;gap:12px;padding:10px 18px;transition:background 0.15s;cursor:pointer;border-bottom:1px solid var(--border)}
+.upcoming-item:last-child{border-bottom:none}
+.upcoming-item:hover{background:rgba(255,255,255,0.02)}
+.upcoming-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.upcoming-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px}
+.upcoming-time{font-size:11px;color:var(--text2)}
+.activity-list{padding:8px 20px 16px;display:flex;flex-direction:column;gap:10px}
+.activity-row{display:flex;align-items:flex-start;gap:10px;font-size:12.5px;color:var(--text2);padding:9px 11px;border-radius:10px;background:rgba(255,255,255,0.02)}
+.activity-dot{width:7px;height:7px;border-radius:50%;margin-top:4px;flex-shrink:0}
+.activity-content{flex:1}
+.activity-who{font-weight:600;color:var(--text)}
+.activity-time{font-size:10px;color:var(--text3);margin-top:2px}
+
+/* ATHLETE CARDS */
+.athlete-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;gap:12px}
+.athlete-card:hover{transform:translateY(-2px);border-color:rgba(37,99,235,0.25);box-shadow:0 8px 24px rgba(0,0,0,0.2)}
+.ac-top{display:flex;align-items:center;gap:11px}
+.ac-avatar{width:40px;height:40px;border-radius:11px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ac-name{font-weight:600;font-size:13.5px;margin-bottom:2px}
+.ac-pos{font-size:11px;color:var(--text2)}
+.ac-piq{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:900;margin-left:auto;line-height:1}
+.ac-bar{height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden}
+.ac-bar-fill{height:100%;border-radius:3px}
+.ac-bottom{display:flex;align-items:center;justify-content:space-between}
+.ac-acwr{font-size:11px;color:var(--text2)}
+.ac-acwr strong{font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:700}
+
+/* TRAIN */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text2)}
+.form-select,.form-input{background:rgba(255,255,255,0.04);border:1.5px solid var(--border2);border-radius:9px;padding:10px 13px;color:var(--text);font-size:13px;outline:none;transition:all 0.2s;width:100%}
+.form-select:focus,.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+.form-select option{background:#1a2035}
+.section-label{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:10px}
+.session-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:15px;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:all 0.2s}
+.session-card:hover{border-color:rgba(37,99,235,0.25)}
+.sc-tag{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--accent)}
+.sc-name{font-size:13.5px;font-weight:700}
+.sc-meta{font-size:11px;color:var(--text2)}
+.sc-pills{display:flex;gap:6px;flex-wrap:wrap}
+.sc-pill{padding:3px 9px;border-radius:10px;font-size:10px;font-weight:600;background:rgba(255,255,255,0.05);color:var(--text2)}
+.inj-chips{display:flex;gap:7px;flex-wrap:wrap}
+.inj-chip{padding:6px 12px;border-radius:20px;border:1.5px solid var(--border2);background:rgba(255,255,255,0.03);font-size:12px;font-weight:500;color:var(--text2);transition:all 0.2s;cursor:pointer}
+.inj-chip.active{background:var(--danger-dim);border-color:rgba(255,77,77,0.25);color:var(--danger)}
+.gen-card{background:var(--card2);border:1.5px solid var(--border2);border-radius:var(--radius-sm);padding:18px;min-height:140px;display:flex;flex-direction:column;gap:10px}
+.gen-spinner{width:18px;height:18px;border:2px solid rgba(37,99,235,0.2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.gen-phase{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent)}
+.gen-name{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;line-height:1}
+.gen-meta{font-size:11px;color:var(--text2)}
+.gen-exercises{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.gen-ex{display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(255,255,255,0.03);border-radius:7px}
+.gen-ex-name{flex:1;font-size:12.5px;font-weight:500}
+.gen-ex-detail{font-size:11px;color:var(--text2)}
+
+/* ANALYTICS */
+.analytics-table{width:100%;border-collapse:collapse}
+.analytics-table th{font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text3);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.01)}
+.analytics-table td{padding:10px 14px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
+.analytics-table tr:last-child td{border-bottom:none}
+.analytics-table tr:hover td{background:rgba(255,255,255,0.02)}
+.chart-bars-wrap{display:flex;align-items:flex-end;gap:8px;height:90px;margin-bottom:6px}
+.cb-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%}
+.cb-bw{flex:1;width:100%;display:flex;align-items:flex-end}
+.cb-bar{width:100%;border-radius:4px 4px 0 0;cursor:pointer;transition:filter 0.2s;animation:growUp 0.7s cubic-bezier(0.16,1,0.3,1) both}
+@keyframes growUp{from{height:0!important}}
+.cb-bar:hover{filter:brightness(1.2)}
+.cb-label{font-size:9px;font-weight:700;text-transform:uppercase;color:var(--text3)}
+
+/* SCHEDULE */
+.event-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:all 0.2s;margin-bottom:10px}
+.event-item:hover{border-color:rgba(37,99,235,0.2);transform:translateX(3px)}
+.event-date-block{display:flex;flex-direction:column;align-items:center;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:7px 11px;min-width:50px;flex-shrink:0;text-align:center}
+.event-month{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--accent)}
+.event-day-num{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;line-height:1;color:var(--text)}
+.event-info{flex:1}
+.event-name{font-size:13.5px;font-weight:700;margin-bottom:3px}
+.event-meta{font-size:12px;color:var(--text2)}
+.event-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
+
+/* WELLNESS */
+.wellness-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.wellness-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:15px;display:flex;flex-direction:column;gap:9px}
+.wellness-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text2)}
+.wellness-dots{display:flex;gap:5px}
+.wdot{width:20px;height:20px;border-radius:6px;cursor:pointer;border:1.5px solid transparent;transition:transform 0.15s}
+.wdot:hover{transform:scale(1.12)}
+.wellness-score{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700}
+
+/* NUTRITION */
+.macro-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.macro-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;text-align:center}
+.macro-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text2);margin-bottom:8px}
+.macro-val{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:900;line-height:1;margin-bottom:2px}
+.macro-sub{font-size:11px;color:var(--text2)}
+.hydration-bar-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px}
+.hydration-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text2);margin-bottom:12px;display:flex;justify-content:space-between}
+.hydration-track{height:10px;background:rgba(255,255,255,0.05);border-radius:5px;overflow:hidden;margin-bottom:12px}
+.hydration-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,#2563eb,#38bdf8);transition:width 0.4s ease}
+.hydration-glasses{display:flex;gap:8px;justify-content:center}
+.hglass{font-size:22px;cursor:pointer;transition:transform 0.15s;opacity:0.3}
+.hglass.filled{opacity:1}
+.hglass:hover{transform:scale(1.15)}
+
+/* TOAST */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:12px 16px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.3);animation:toastIn 0.3s ease both}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.toast.success{border-color:rgba(34,197,94,0.25);color:#22c55e}
+.toast.error{border-color:rgba(255,77,77,0.25);color:var(--danger)}
+.toast.info{border-color:rgba(37,99,235,0.25);color:var(--accent)}
+
+/* MOBILE NAV */
+.mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(14,19,24,0.97);border-top:1px solid var(--border);padding:8px 0;z-index:200;justify-content:space-around;backdrop-filter:blur(14px)}
+.mnav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;color:var(--text3);font-size:10px;font-weight:600;cursor:pointer;padding:0 12px}
+.mnav-btn .mico{font-size:19px}
+.mnav-btn.active{color:var(--accent)}
+
+/* CARD */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
+.card-body{padding:20px}
+
+/* BG */
+.bg-layer{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 50% 30% at 70% 15%,rgba(37,99,235,0.04),transparent 70%),radial-gradient(ellipse 40% 40% at 10% 85%,rgba(91,140,255,0.03),transparent 70%)}
+.topbar,.sidebar,.main-content,.ob-overlay,#loadingScreen{position:relative;z-index:1}
+
+/* RESPONSIVE */
+@media(max-width:900px){.stat-grid{grid-template-columns:repeat(2,1fr)}.grid-2{grid-template-columns:1fr}.grid-3{grid-template-columns:repeat(2,1fr)}.right-col{flex-direction:row;flex-wrap:wrap}.right-col .panel{flex:1;min-width:200px}}
+@media(max-width:700px){:root{--sidebar-w:0px}.sidebar{display:none}.view{padding:16px 16px 80px}.stat-grid{grid-template-columns:1fr 1fr;gap:10px}.grid-3{grid-template-columns:1fr 1fr}.mobile-nav{display:flex}.macro-grid{grid-template-columns:1fr 1fr}}
+</style>
 </head>
-
 <body>
+<div class="bg-layer"></div>
 
-<!-- LOADING SCREEN (simple + reliable; hidden by core.js init) -->
-<div id="loadingScreen" style="
-  position:fixed;inset:0;z-index:9999;
-  display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(900px 600px at 50% -10%, rgba(255,255,255,0.06), transparent 55%), #070b12;
-  color:#eaf0ff;
-  pointer-events:auto;
-">
-  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:24px;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:12px;height:12px;border-radius:50%;background:rgba(16,42,79,.95);box-shadow:0 0 0 6px rgba(16,42,79,.18)"></div>
-      <div style="font-weight:800;letter-spacing:.06em">PerformanceIQ</div>
+<!-- LOADING -->
+<div id="loadingScreen">
+  <div class="loader-inner">
+    <div class="loader-logo">
+      <div class="loader-dot"></div>
+      <div class="loader-name">Performance<span>IQ</span></div>
     </div>
-    <div style="font-size:12px;opacity:.78;letter-spacing:.03em">Loading dashboard…</div>
+    <div class="loader-bar"><div class="loader-bar-fill"></div></div>
+    <div class="loader-sub">Loading dashboard&hellip;</div>
   </div>
 </div>
 
-<!-- ONBOARDING MODAL (shown once unless piq_onboarded_v2 is set) -->
-<div id="onboardingModal" class="ob-modal" aria-modal="true" role="dialog">
-  <div class="ob-shell" role="document">
+<!-- ONBOARDING -->
+<div class="ob-overlay" id="onboardingModal">
+  <div class="ob-shell">
     <div class="ob-header">
       <div class="ob-brand">
         <div class="ob-logo">Performance<span>IQ</span></div>
-        <div class="ob-badge">⚡ Setup · 60 sec</div>
+        <div class="ob-badge">&#9889; Setup &middot; 60 sec</div>
       </div>
-      <button class="icon-btn ob-close" id="btnCloseOnboarding" aria-label="Close onboarding">✕</button>
+      <button class="ob-close" id="btnCloseOnboarding">&#10005;</button>
     </div>
-
-    <div class="ob-progress" aria-label="Setup progress">
-      <button type="button" class="ob-step done" data-ob-step="1" aria-label="Step 1 Team">
-        <div class="ob-step-circle" data-ob-circle="1">✓</div>
-        <div class="ob-step-label">Team</div>
-      </button>
-
+    <div class="ob-progress">
+      <button class="ob-step done" data-ob-step="1"><div class="ob-step-circle" id="ob-c1">&#10003;</div><div class="ob-step-label">Team</div></button>
       <div class="ob-step-line line-done"><div class="ob-step-line-fill"></div></div>
-
-      <button type="button" class="ob-step active" data-ob-step="2" aria-label="Step 2 Roster">
-        <div class="ob-step-circle" data-ob-circle="2">2</div>
-        <div class="ob-step-label">Roster</div>
-      </button>
-
-      <div class="ob-step-line line-idle"><div class="ob-step-line-fill"></div></div>
-
-      <button type="button" class="ob-step idle" data-ob-step="3" aria-label="Step 3 Launch">
-        <div class="ob-step-circle" data-ob-circle="3">3</div>
-        <div class="ob-step-label">Launch</div>
-      </button>
+      <button class="ob-step active" data-ob-step="2"><div class="ob-step-circle" id="ob-c2">2</div><div class="ob-step-label">Roster</div></button>
+      <div class="ob-step-line line-idle" id="ob-line2"><div class="ob-step-line-fill"></div></div>
+      <button class="ob-step idle" data-ob-step="3"><div class="ob-step-circle" id="ob-c3">3</div><div class="ob-step-label">Launch</div></button>
     </div>
-
-    <!-- Hidden canonical inputs to keep state wiring stable -->
-    <input id="onboardTeamName" class="ob-hidden-input" type="text" autocomplete="off" />
-    <select id="onboardSport" class="ob-hidden-input">
-      <option value="basketball">basketball</option>
-      <option value="soccer">soccer</option>
-      <option value="football">football</option>
-      <option value="baseball">baseball</option>
-      <option value="volleyball">volleyball</option>
-      <option value="track">track</option>
-    </select>
-    <select id="onboardSeason" class="ob-hidden-input">
-      <option value="Pre-Season">Pre-Season</option>
-      <option value="In-Season">In-Season</option>
-      <option value="Post-Season">Post-Season</option>
-      <option value="Off-Season">Off-Season</option>
-    </select>
-
-    <!-- STEP 1 -->
+    <!-- Step 1 -->
     <section class="ob-card" id="onboardStep1" style="display:none">
       <div class="ob-card-header">
-        <div class="ob-step-tag">Step 1 — Team Identity</div>
+        <div class="ob-step-tag">Step 1 &mdash; Team Identity</div>
         <div class="ob-card-title">Name Your Squad</div>
         <div class="ob-card-sub">This is how your team shows up everywhere</div>
       </div>
-
       <div class="ob-card-body">
-        <div class="ob-field">
-          <div class="ob-label">Team name</div>
-          <input id="onboardTeamNameVisible" class="ob-input" type="text" placeholder="e.g. Westview Varsity" autocomplete="off">
-        </div>
-
-        <div class="ob-field">
-          <div class="ob-label">Sport</div>
-          <div class="ob-chip-row" role="list">
-            <button type="button" class="ob-chip selected" data-onboard-sport="basketball">🏀 Basketball</button>
-            <button type="button" class="ob-chip" data-onboard-sport="soccer">⚽ Soccer</button>
-            <button type="button" class="ob-chip" data-onboard-sport="football">🏈 Football</button>
-            <button type="button" class="ob-chip" data-onboard-sport="baseball">⚾ Baseball</button>
-            <button type="button" class="ob-chip" data-onboard-sport="volleyball">🏐 Volleyball</button>
-          </div>
-        </div>
-
-        <div class="ob-field">
-          <div class="ob-label">Season phase</div>
-          <div class="ob-season-row">
-            <button type="button" class="ob-season selected" data-onboard-season="Pre-Season">
-              <div class="ob-season-ico">🌱</div><div class="ob-season-txt">Pre-Season</div>
-            </button>
-            <button type="button" class="ob-season" data-onboard-season="In-Season">
-              <div class="ob-season-ico">🔥</div><div class="ob-season-txt">In-Season</div>
-            </button>
-            <button type="button" class="ob-season" data-onboard-season="Post-Season">
-              <div class="ob-season-ico">🏆</div><div class="ob-season-txt">Post-Season</div>
-            </button>
-          </div>
-        </div>
+        <div class="ob-field"><div class="ob-label">Team Name</div><input id="onboardTeamNameVisible" class="ob-input" type="text" placeholder="e.g. Westview Varsity"/></div>
+        <div class="ob-field"><div class="ob-label">Sport</div><div class="ob-chip-row">
+          <button class="ob-chip selected" data-sport="basketball">&#127936; Basketball</button>
+          <button class="ob-chip" data-sport="soccer">&#9917; Soccer</button>
+          <button class="ob-chip" data-sport="football">&#127944; Football</button>
+          <button class="ob-chip" data-sport="baseball">&#9918; Baseball</button>
+          <button class="ob-chip" data-sport="volleyball">&#127952; Volleyball</button>
+        </div></div>
+        <div class="ob-field"><div class="ob-label">Season Phase</div><div class="ob-season-row">
+          <button class="ob-season selected" data-season="Pre-Season"><div class="ob-season-ico">&#127807;</div><div class="ob-season-txt">Pre-Season</div></button>
+          <button class="ob-season" data-season="In-Season"><div class="ob-season-ico">&#128293;</div><div class="ob-season-txt">In-Season</div></button>
+          <button class="ob-season" data-season="Post-Season"><div class="ob-season-ico">&#127942;</div><div class="ob-season-txt">Post-Season</div></button>
+        </div></div>
       </div>
-
       <div class="ob-divider"></div>
-
       <div class="ob-card-footer">
-        <div class="ob-timer"><span class="ob-timer-dot"></span><span id="obCountdownText">Game in 3 days</span></div>
-        <div class="ob-actions">
-          <button type="button" class="ob-skip" id="btnSkipOnboarding">Skip</button>
-          <button type="button" class="ob-next" id="btnOnboardNext1">Next <span class="ob-arrow">→</span></button>
-        </div>
+        <div class="ob-timer"><span class="ob-timer-dot"></span> Game in 3 days</div>
+        <div class="ob-actions"><button class="ob-skip" id="btnSkipOb">Skip</button><button class="ob-next" id="btnObNext1">Next <span class="ob-arrow">&#8594;</span></button></div>
       </div>
     </section>
-
-    <!-- STEP 2 -->
+    <!-- Step 2 -->
     <section class="ob-card" id="onboardStep2">
       <div class="ob-card-header">
-        <div class="ob-step-tag">Step 2 — Roster</div>
+        <div class="ob-step-tag">Step 2 &mdash; Roster</div>
         <div class="ob-card-title">Add Your Athletes</div>
-        <div class="ob-card-sub">Build your roster — you can always add more later</div>
+        <div class="ob-card-sub">Build your roster &mdash; add more any time</div>
       </div>
-
       <div class="ob-card-body">
-        <div class="ob-field">
-          <div class="ob-label">Athlete name</div>
-          <div class="ob-row">
-            <input id="onboardAthleteName" class="ob-input" type="text" placeholder="Full name or jersey #…" autocomplete="off">
-            <button type="button" class="ob-add" id="btnOnboardAddAthlete">+ Add</button>
-          </div>
+        <div class="ob-field"><div class="ob-label">Athlete Name</div>
+          <div class="ob-row"><input id="onboardAthleteName" class="ob-input" type="text" placeholder="Full name or jersey #&hellip;"/><button class="ob-add" id="btnObAddAthlete">+ Add</button></div>
         </div>
-
         <div id="onboardRosterChips" class="ob-roster"></div>
-
-        <div class="ob-empty" id="onboardEmptyRoster">
-          <div class="ob-empty-ico">🏀</div>
-          <div class="ob-empty-title">No athletes yet</div>
-          <div class="ob-empty-sub">Add your first player above to get started</div>
-        </div>
-
+        <div class="ob-empty" id="obEmpty"><div class="ob-empty-ico">&#127936;</div><div class="ob-empty-title">No athletes yet</div><div class="ob-empty-sub">Add your first player above</div></div>
         <div class="ob-or"><span></span><em>OR</em><span></span></div>
-
-        <button type="button" class="ob-import" id="btnOnboardImport">
-          📋 Import from CSV or Spreadsheet
-        </button>
+        <button class="ob-import">&#128203; Import from CSV or Spreadsheet</button>
       </div>
-
       <div class="ob-divider"></div>
-
       <div class="ob-card-footer">
-        <div class="ob-timer"><span class="ob-timer-dot"></span><span id="obCountdownText2">Game in 3 days</span></div>
-        <div class="ob-actions">
-          <button type="button" class="ob-skip" id="btnOnboardBack2">Back</button>
-          <button type="button" class="ob-next" id="btnOnboardNext2">Next <span class="ob-arrow">→</span></button>
-        </div>
+        <div class="ob-timer"><span class="ob-timer-dot"></span> Game in 3 days</div>
+        <div class="ob-actions"><button class="ob-skip" id="btnObBack2">Back</button><button class="ob-next" id="btnObNext2">Next <span class="ob-arrow">&#8594;</span></button></div>
       </div>
     </section>
-
-    <!-- STEP 3 -->
+    <!-- Step 3 -->
     <section class="ob-card" id="onboardStep3" style="display:none">
       <div class="ob-card-header">
-        <div class="ob-step-tag">Step 3 — Ready</div>
-        <div class="ob-card-title">You’re All Set 🎯</div>
+        <div class="ob-step-tag">Step 3 &mdash; Ready</div>
+        <div class="ob-card-title">You&#39;re All Set &#127919;</div>
         <div class="ob-card-sub">Take a quick tour or dive straight in</div>
       </div>
-
       <div class="ob-card-body">
         <div class="ob-grid">
-          <div class="ob-mini"><div class="ob-mini-ico">📊</div><div class="ob-mini-title">Dashboard</div><div class="ob-mini-sub">Live overview</div></div>
-          <div class="ob-mini"><div class="ob-mini-ico">🏃</div><div class="ob-mini-title">Training</div><div class="ob-mini-sub">Workouts & drills</div></div>
-          <div class="ob-mini"><div class="ob-mini-ico">🧠</div><div class="ob-mini-title">Wellness</div><div class="ob-mini-sub">Readiness tracking</div></div>
-          <div class="ob-mini"><div class="ob-mini-ico">📅</div><div class="ob-mini-title">Schedule</div><div class="ob-mini-sub">Games & events</div></div>
+          <div class="ob-mini"><div class="ob-mini-ico">&#128202;</div><div class="ob-mini-title">Dashboard</div><div class="ob-mini-sub">Live overview</div></div>
+          <div class="ob-mini"><div class="ob-mini-ico">&#127939;</div><div class="ob-mini-title">Training</div><div class="ob-mini-sub">Workouts &amp; drills</div></div>
+          <div class="ob-mini"><div class="ob-mini-ico">&#129504;</div><div class="ob-mini-title">Wellness</div><div class="ob-mini-sub">Readiness tracking</div></div>
+          <div class="ob-mini"><div class="ob-mini-ico">&#128197;</div><div class="ob-mini-title">Schedule</div><div class="ob-mini-sub">Games &amp; events</div></div>
         </div>
       </div>
-
       <div class="ob-divider"></div>
-
       <div class="ob-card-footer">
-        <button type="button" class="ob-skip" id="btnOnboardTour">Take Tour</button>
-        <button type="button" class="ob-next" id="btnFinishOnboarding">Launch Dashboard <span class="ob-arrow">→</span></button>
+        <button class="ob-skip">Take Tour</button>
+        <button class="ob-next" id="btnObFinish">Launch Dashboard <span class="ob-arrow">&#8594;</span></button>
       </div>
     </section>
-
-    <div class="ob-motivation">
-      <span>⚡</span>
-      <div><strong>Game in 3 days</strong> — Your setup keeps your team sharp when it counts.</div>
-    </div>
+    <div class="ob-motivation"><span>&#9889;</span><div><strong>Game in 3 days</strong> &mdash; Your setup keeps your team sharp when it counts.</div></div>
   </div>
 </div>
 
+<!-- TOPBAR -->
 <header class="topbar">
-  <div class="topbar-left">
-    <div class="brand-mark"><div class="brand-dot"></div></div>
-    <span class="brand-name">PerformanceIQ</span>
+  <div class="topbar-logo"><div class="logo-dot"></div><div class="logo-text">Performance<span>IQ</span></div></div>
+  <div class="topbar-pills">
+    <div class="pill pill-online"><div class="pill-dot"></div> Team Online</div>
+    <div class="pill pill-season" id="pillSeason">Pre-Season</div>
   </div>
-
-  <div class="topbar-center">
-    <div class="pill live" id="pillOnline"><span class="pulse"></span><span id="pillOnlineText">Team Online</span></div>
-    <div class="pill" id="pillSeason">Pre-Season</div>
-    <div class="pill orange" id="pillGame" style="display:none">⚡ <span id="pillGameText"></span></div>
-  </div>
-
-  <div class="topbar-right">
-    <div class="search-wrap">
-      <span class="search-icon">🔍</span>
-      <input class="search-input" type="text" placeholder="Search athletes…" id="athleteSearch" />
-    </div>
-    <button class="icon-btn" id="btnTheme" title="Toggle theme">🌙</button>
-    <button class="icon-btn" id="btnRefresh" title="Refresh data">↺</button>
-    <button class="icon-btn" id="btnExport" title="Export report">📤</button>
+  <div class="topbar-search"><span>&#128269;</span><input class="search-input-top" type="text" placeholder="Search athletes&hellip;"/></div>
+  <div class="topbar-actions">
+    <button class="icon-btn" id="btnTheme">&#127769;</button>
+    <button class="icon-btn">&#128276;</button>
+    <div class="topbar-avatar">JC</div>
   </div>
 </header>
 
 <div class="app-shell">
   <nav class="sidebar">
-    <div class="sidebar-section">Main</div>
-    <button class="nav-btn active" data-view="dashboard" data-roles="coach,athlete,admin"><i class="nav-icon">⬡</i> Dashboard</button>
-    <button class="nav-btn" data-view="athletes" data-roles="coach,admin"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none">0</span></button>
-    <button class="nav-btn" data-view="train" data-roles="coach,athlete,admin"><i class="nav-icon">▷</i> Train</button>
-    <button class="nav-btn" data-view="analytics" data-roles="coach,athlete,admin"><i class="nav-icon">◈</i> Analytics</button>
-
-    <div class="sidebar-section">Manage</div>
-    <button class="nav-btn" data-view="schedule" data-roles="coach,athlete,admin"><i class="nav-icon">📅</i> Schedule</button>
-    <button class="nav-btn" data-view="wellness" data-roles="coach,athlete,admin"><i class="nav-icon">🌙</i> Wellness</button>
-    <button class="nav-btn" data-view="nutrition" data-roles="coach,athlete,admin"><i class="nav-icon">🥗</i> Nutrition</button>
-    <button class="nav-btn" data-view="settings" data-roles="coach,athlete,admin"><i class="nav-icon">⚙</i> Settings</button>
-
-    <div class="sidebar-bottom">
-      <div class="user-block" id="userBlock">
-        <div class="user-avatar" id="userAv">CD</div>
-        <div>
-          <div class="user-name" id="userName">Coach Davis</div>
-          <div class="user-role" id="userRole">Head Coach · Basketball</div>
-        </div>
-      </div>
-    </div>
+    <div class="nav-group-label">Main</div>
+    <div class="nav-item active" data-view="dashboard"><span class="nav-icon">&#127968;</span>Dashboard</div>
+    <div class="nav-item" data-view="athletes"><span class="nav-icon">&#127939;</span>Athletes</div>
+    <div class="nav-item" data-view="train"><span class="nav-icon">&#9889;</span>Train</div>
+    <div class="nav-item" data-view="analytics"><span class="nav-icon">&#128202;</span>Analytics</div>
+    <div class="nav-group-label">Manage</div>
+    <div class="nav-item" data-view="schedule"><span class="nav-icon">&#128197;</span>Schedule</div>
+    <div class="nav-item" data-view="wellness"><span class="nav-icon">&#128154;</span>Wellness<span class="nav-badge">2</span></div>
+    <div class="nav-item" data-view="nutrition"><span class="nav-icon">&#127822;</span>Nutrition</div>
+    <div class="nav-item" data-view="settings"><span class="nav-icon">&#9881;&#65039;</span>Settings</div>
   </nav>
 
   <main class="main-content">
 
+    <!-- DASHBOARD -->
     <section class="view active" id="view-dashboard">
-      <div class="dash-wrap">
-        <div class="page-header dash-header stagger">
-          <div class="page-title-wrap">
-            <div class="page-eyebrow">Team Dashboard</div>
-            <div class="page-title" id="dashTitle">Team Dashboard</div>
-            <div class="page-sub" id="dashSub">—</div>
+      <div class="page-header">
+        <div><div class="page-eyebrow">Team Dashboard</div><div class="page-title">Westview Varsity</div><div class="page-sub">Tuesday, March 3 &middot; Game in 3 days</div></div>
+        <div class="page-header-actions"><button class="btn-ghost">&#128228; Export</button><button class="btn-primary">+ Log Session</button></div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card good"><div class="stat-header"><div class="stat-label">Avg PIQ Score</div><div class="stat-icon good">&#128200;</div></div><div class="stat-value good">84</div><div class="stat-sub"><span class="stat-delta delta-up">&#8593; 3.2</span> from last week</div></div>
+        <div class="stat-card good"><div class="stat-header"><div class="stat-label">Ready to Train</div><div class="stat-icon good">&#9989;</div></div><div class="stat-value good">11</div><div class="stat-sub">of 15 athletes cleared</div></div>
+        <div class="stat-card warn"><div class="stat-header"><div class="stat-label">Monitor Load</div><div class="stat-icon warn">&#9888;&#65039;</div></div><div class="stat-value warn">3</div><div class="stat-sub">athletes flagged ACWR 1.3&ndash;1.5</div></div>
+        <div class="stat-card danger"><div class="stat-header"><div class="stat-label">High Risk / Rest</div><div class="stat-icon danger">&#128680;</div></div><div class="stat-value danger">1</div><div class="stat-sub"><span class="stat-delta delta-down">Action required</span></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="dash-left">
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Team Heatmap (Last 14 Days)</div><a class="panel-link" data-view="analytics">Open analytics &#8594;</a></div>
+            <div class="panel-body" id="teamHeatmap"></div>
           </div>
-          <div class="page-header-actions">
-            <button class="btn-ghost" data-action="export">📤 Export</button>
-            <button class="btn-primary" data-action="logSession">+ Log Session</button>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Athlete Readiness Board</div><a class="panel-link" data-view="athletes">View all &#8594;</a></div>
+            <div style="overflow-x:auto">
+              <table class="readiness-table"><thead><tr><th>Athlete</th><th>PIQ Score</th><th>ACWR</th><th>Flag</th><th>Trend</th></tr></thead><tbody id="readinessTable"></tbody></table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Load Monitoring (ACWR)</div></div>
+            <div class="acwr-legend">
+              <div class="acwr-row"><span class="acwr-icon">&#9989;</span><span class="acwr-range acwr-good">&lt; 1.3</span><span class="acwr-desc">Optimal training load &mdash; cleared</span><span class="acwr-badge" style="background:var(--accent-dim);color:var(--accent)">Safe</span></div>
+              <div class="acwr-row"><span class="acwr-icon">&#9888;&#65039;</span><span class="acwr-range acwr-warn">1.3 &ndash; 1.5</span><span class="acwr-desc">Monitor closely, reduce intensity</span><span class="acwr-badge" style="background:var(--warn-dim);color:var(--warn)">Watch</span></div>
+              <div class="acwr-row"><span class="acwr-icon">&#128680;</span><span class="acwr-range acwr-risk">&gt; 1.5</span><span class="acwr-desc">High injury risk &mdash; recommend rest</span><span class="acwr-badge" style="background:var(--danger-dim);color:var(--danger)">Risk</span></div>
+            </div>
           </div>
         </div>
-
-        <div class="stat-grid stagger">
-          <div class="stat-card good">
-            <div class="stat-header">
-              <div class="stat-label">Avg PIQ Score</div>
-              <div class="stat-icon good">📈</div>
+        <div class="right-col">
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Roster Readiness</div><a class="panel-link">Full &#8594;</a></div>
+            <div class="roster-ring-wrap">
+              <div class="ring-chart"><svg class="ring-svg" width="80" height="80" viewBox="0 0 80 80"><circle class="ring-bg" cx="40" cy="40" r="26"/><circle class="ring-fill-good" cx="40" cy="40" r="26"/></svg><div class="ring-center"><div class="ring-pct">84%</div><div class="ring-pct-label">ready</div></div></div>
+              <div class="roster-legend">
+                <div class="legend-row"><div class="legend-dot" style="background:var(--accent)"></div><div class="legend-label">Ready</div><div class="legend-count" style="color:var(--accent)">11</div></div>
+                <div class="legend-row"><div class="legend-dot" style="background:var(--warn)"></div><div class="legend-label">Monitor</div><div class="legend-count" style="color:var(--warn)">3</div></div>
+                <div class="legend-row"><div class="legend-dot" style="background:var(--danger)"></div><div class="legend-label">At Risk</div><div class="legend-count" style="color:var(--danger)">1</div></div>
+              </div>
             </div>
-            <div class="stat-value good" id="statAvg">—</div>
-            <div class="stat-sub" id="statAvgSub">—</div>
           </div>
-
-          <div class="stat-card good">
-            <div class="stat-header">
-              <div class="stat-label">Ready to Train</div>
-              <div class="stat-icon good">✅</div>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Upcoming</div></div>
+            <div class="upcoming-list">
+              <div class="upcoming-item"><div class="upcoming-icon" style="background:rgba(91,140,255,0.12)">&#10024;</div><div><div class="upcoming-name">Weekly Insight Report</div><div class="upcoming-time">Today &middot; Auto-generated</div></div></div>
+              <div class="upcoming-item"><div class="upcoming-icon" style="background:var(--warn-dim)">&#128197;</div><div><div class="upcoming-name">Periodization &middot; 4-Week</div><div class="upcoming-time">Starts Thu, Mar 5</div></div></div>
+              <div class="upcoming-item"><div class="upcoming-icon" style="background:var(--danger-dim)">&#127936;</div><div><div class="upcoming-name">Game vs. Riverside</div><div class="upcoming-time">Thu, Mar 5 &middot; 7:00 PM</div></div></div>
             </div>
-            <div class="stat-value good" id="statReady">—</div>
-            <div class="stat-sub" id="statReadySub">—</div>
           </div>
-
-          <div class="stat-card danger">
-            <div class="stat-header">
-              <div class="stat-label">Top Risk Flag</div>
-              <div class="stat-icon danger">🚨</div>
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Team Activity</div><a class="panel-link">See all &#8594;</a></div>
+            <div class="activity-list">
+              <div class="activity-row"><div class="activity-dot" style="background:var(--accent)"></div><div class="activity-content"><div><span class="activity-who">M. Johnson</span> logged wellness check</div><div class="activity-time">8 min ago</div></div></div>
+              <div class="activity-row"><div class="activity-dot" style="background:var(--warn)"></div><div class="activity-content"><div><span class="activity-who">Coach Rivera</span> flagged A. Kim for reduced load</div><div class="activity-time">42 min ago</div></div></div>
+              <div class="activity-row"><div class="activity-dot" style="background:var(--danger)"></div><div class="activity-content"><div><span class="activity-who">System</span> &mdash; T. Williams exceeded ACWR threshold</div><div class="activity-time">2 hrs ago</div></div></div>
             </div>
-            <div class="stat-value danger" id="statRisk">—</div>
-            <div class="stat-sub" id="statRiskSub">—</div>
-          </div>
-
-          <div class="stat-card info">
-            <div class="stat-header">
-              <div class="stat-label">Roster Size</div>
-              <div class="stat-icon info">👥</div>
-            </div>
-            <div class="stat-value info" id="statRoster">—</div>
-            <div class="stat-sub">athletes on roster</div>
           </div>
         </div>
+      </div>
+    </section>
 
-        <div class="grid-2 dash-grid stagger">
-          <div class="dash-left"><div class="panel" style="margin-top:16px">
-<div class="panel-header">
-<div class="panel-title">Team Heatmap (Last 14 Days)</div>
-<a class="panel-link" href="#/analytics">Open analytics →</a>
-</div>
-<div class="panel-body" id="teamHeatmap" style="padding:16px 20px"></div>
-</div><div class="panel">
-<div class="panel-header">
-<div class="panel-title">Athlete Readiness Board</div>
-<a class="panel-link" href="#/athletes" id="viewAllAthletes">View all →</a>
-</div>
-<div class="table-wrap">
-<table class="readiness-table">
-<thead>
-<tr>
-<th>Athlete</th>
-<th>PIQ Score</th>
-<th>ACWR</th>
-<th>Flag</th>
-</tr>
-</thead>
-<tbody id="readinessTable"></tbody>
-</table>
-</div>
-</div></div>
-<div class="right-col">
-<div class="panel">
-<div class="panel-header">
-<div class="panel-title">Roster Readiness</div>
-</div>
-<div class="roster-ring-wrap">
-<div id="rosterRing"></div>
-<div class="roster-legend" id="rosterMini"></div>
-</div>
-</div>
+    <!-- ATHLETES -->
+    <section class="view" id="view-athletes">
+      <div class="page-header">
+        <div><div class="page-eyebrow">Roster</div><div class="page-title">Athletes</div><div class="page-sub">15 athletes on roster</div></div>
+        <div class="page-header-actions"><button class="btn-ghost btn-sm">+ Add Athlete</button></div>
+      </div>
+      <div class="grid-3" id="athleteCardGrid"></div>
+    </section>
+
+    <!-- TRAIN -->
+    <section class="view" id="view-train">
+      <div class="page-header">
+        <div><div class="page-eyebrow">Session Builder</div><div class="page-title">Train</div><div class="page-sub">Generate sport-specific sessions instantly</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card card-body">
+            <div class="section-label">SESSION BUILDER</div>
+            <div class="form-grid" style="margin-bottom:14px">
+              <div class="form-group"><div class="form-label">Sport</div><select class="form-select" id="buildSport"><option value="basketball">&#127936; Basketball</option><option value="football">&#127944; Football</option><option value="soccer">&#9917; Soccer</option><option value="baseball">&#9918; Baseball</option><option value="volleyball">&#127952; Volleyball</option><option value="track">&#127939; Track</option></select></div>
+              <div class="form-group"><div class="form-label">Session Type</div><select class="form-select" id="buildType"><option>Practice</option><option>Strength</option><option>Speed</option><option>Conditioning</option><option>Recovery</option><option>Competition Prep</option></select></div>
+              <div class="form-group"><div class="form-label">Duration</div><select class="form-select"><option>30 min</option><option>45 min</option><option selected>60 min</option><option>90 min</option></select></div>
+              <div class="form-group"><div class="form-label">Intensity</div><select class="form-select" id="buildIntensity"><option>Low (Recovery)</option><option selected>Moderate</option><option>High</option></select></div>
+            </div>
+            <div style="margin-bottom:14px">
+              <div class="form-label" style="margin-bottom:8px">Injury Filters</div>
+              <div class="inj-chips" id="injuryChips">
+                <button class="inj-chip" data-inj="knee">Knee</button>
+                <button class="inj-chip" data-inj="ankle">Ankle</button>
+                <button class="inj-chip" data-inj="shoulder">Shoulder</button>
+                <button class="inj-chip" data-inj="back">Back</button>
+                <button class="inj-chip" data-inj="hip">Hip</button>
+                <button class="inj-chip" data-inj="hamstring">Hamstring</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:9px"><button class="btn-primary" id="btnGenerateInline" style="flex:1">&#9889; Generate Session</button><button class="btn-ghost">Push to Today</button></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="section-label">GENERATED SESSION</div>
+          <div class="gen-card" id="generatedSession"><div style="color:var(--text2);font-size:13px;display:flex;align-items:center;gap:8px;opacity:0.55"><span style="font-size:20px">&#9889;</span>Configure and hit Generate to build a session</div></div>
+          <div class="section-label">SESSION LIBRARY</div>
+          <div style="display:flex;flex-direction:column;gap:10px" id="sessionLibrary"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section class="view" id="view-analytics">
+      <div class="page-header">
+        <div><div class="page-eyebrow">Insights</div><div class="page-title">Analytics</div><div class="page-sub">Team performance trends</div></div>
+        <div class="page-header-actions"><button class="btn-ghost btn-sm">Export PDF &#128196;</button></div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card good"><div class="stat-header"><div class="stat-label">Team Avg PIQ</div><div class="stat-icon good">&#128200;</div></div><div class="stat-value good">84</div><div class="stat-sub"><span class="stat-delta delta-up">&#8593; 3.2</span> vs last week</div></div>
+        <div class="stat-card info"><div class="stat-header"><div class="stat-label">Sessions Logged</div><div class="stat-icon info">&#128203;</div></div><div class="stat-value info">47</div><div class="stat-sub">this month</div></div>
+        <div class="stat-card warn"><div class="stat-header"><div class="stat-label">Avg ACWR</div><div class="stat-icon warn">&#9889;</div></div><div class="stat-value warn">1.18</div><div class="stat-sub">within optimal zone</div></div>
+        <div class="stat-card good"><div class="stat-header"><div class="stat-label">Wellness Rate</div><div class="stat-icon good">&#128154;</div></div><div class="stat-value good">89%</div><div class="stat-sub">check-in compliance</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div class="card card-body"><div class="section-label">7-DAY TEAM LOAD</div><div id="loadChartWrap" style="margin-top:10px"></div></div>
+        <div class="card card-body"><div class="section-label">PIQ SCORE DISTRIBUTION</div><div id="scoreDistWrap" style="margin-top:10px"></div></div>
+      </div>
+      <div class="card card-body">
+        <div class="section-label">ATHLETE SCORE TRENDS (4 WEEKS)</div>
+        <div style="overflow-x:auto;margin-top:10px">
+          <table class="analytics-table"><thead><tr><th>Athlete</th><th>W-4</th><th>W-3</th><th>W-2</th><th>This Week</th><th>Change</th><th>ACWR</th></tr></thead><tbody id="analyticsBody"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCHEDULE -->
+    <section class="view" id="view-schedule">
+      <div class="page-header">
+        <div><div class="page-eyebrow">Calendar</div><div class="page-title">Schedule</div><div class="page-sub">Upcoming games, practices, and events</div></div>
+        <div class="page-header-actions"><button class="btn-primary">+ Add Event</button></div>
+      </div>
+      <div id="fullEventList" style="max-width:620px"></div>
+    </section>
+
+    <!-- WELLNESS -->
+    <section class="view" id="view-wellness">
+      <div class="page-header">
+        <div><div class="page-eyebrow">Daily Check-In</div><div class="page-title">Wellness</div><div class="page-sub">How is the team feeling today?</div></div>
+        <div class="page-header-actions"><button class="btn-primary" id="btnSaveWellness">Save Check-in</button></div>
+      </div>
+      <div class="wellness-grid" id="wellnessMount"></div>
+      <div class="card card-body" style="max-width:500px">
+        <div class="section-label">TEAM WELLNESS SUMMARY</div>
+        <div style="display:flex;flex-direction:column;gap:9px;margin-top:10px" id="wellnessSummary"></div>
+      </div>
+    </section>
+
+    <!-- NUTRITION -->
+    <section class="view" id="view-nutrition">
+      <div class="page-header">
+        <div><div class="page-eyebrow">Performance Fuel</div><div class="page-title">Nutrition</div><div class="page-sub">Macro targets + hydration tracking</div></div>
+        <div class="page-header-actions"><button class="btn-primary">Save Log</button></div>
+      </div>
+      <div class="macro-grid" id="macroGrid"></div>
+      <div class="hydration-bar-wrap">
+        <div class="hydration-label"><span>&#128167; Hydration</span><span id="hydrationVal">1.25L / 2.0L</span></div>
+        <div class="hydration-track"><div class="hydration-fill" id="hydrationFill" style="width:62%"></div></div>
+        <div class="hydration-glasses" id="hydrationGlasses"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="page-header"><div><div class="page-eyebrow">Configuration</div><div class="page-title">Settings</div><div class="page-sub">Team configuration and data management</div></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div class="card card-body">
+          <div class="section-label" style="margin-bottom:16px">TEAM PROFILE</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="form-group"><div class="form-label">Role</div><select class="form-select" id="settingRole"><option selected value="coach">Coach</option><option value="athlete">Athlete</option><option value="admin">Admin / AD</option></select></div>
+            <div class="form-group"><div class="form-label">Team Name</div><input class="form-input" id="settingTeamName" type="text" value="Westview Varsity Basketball"/></div>
+            <div class="form-grid">
+              <div class="form-group"><div class="form-label">Sport</div><select class="form-select"><option selected>Basketball</option><option>Football</option><option>Soccer</option><option>Baseball</option></select></div>
+              <div class="form-group"><div class="form-label">Season Phase</div><select class="form-select" id="settingSeason"><option selected>Pre-Season</option><option>In-Season</option><option>Post-Season</option><option>Off-Season</option></select></div>
+            </div>
+            <div class="form-group"><div class="form-label">Theme</div><select class="form-select" id="settingTheme"><option selected value="dark">Dark</option><option value="light">Light</option></select></div>
+          </div>
+          <button class="btn-primary" id="btnSaveSettings" style="margin-top:18px">Save Changes</button>
+        </div>
+        <div class="card card-body">
+          <div class="section-label" style="margin-bottom:16px">DATA MANAGEMENT</div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <button class="btn-ghost">&#128228; Export JSON Backup</button>
+            <button class="btn-ghost">&#128229; Import JSON</button>
+            <button class="btn-ghost" id="btnShowOnboarding">&#128260; Re-run Onboarding</button>
+            <button class="btn-danger" id="btnResetData">&#9888; Reset to Demo Data</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
 </div>
 
-
-
-<section class="view" id="view-athletes">
-<div class="page-header">
-<div>
-<div class="page-title">ATHLETES</div>
-<div class="page-sub" id="athleteCountSub">— athletes on roster</div>
-</div>
-<div class="page-actions">
-<div class="search-wrap">
-<span class="search-icon">🔍</span>
-<input class="search-input" id="athleteFilterInput" placeholder="Filter athletes…" style="width:200px" type="text"/>
-</div>
-<button class="btn btn-ghost btn-sm">+ Add Athlete</button>
-</div>
-</div>
-<div class="grid-3" id="athleteCardGrid"></div>
-<div id="athleteDetail" style="display:none;flex-direction:column;gap:18px">
-<button class="btn btn-ghost btn-sm" id="backToList" style="align-self:flex-start;">← Back to athletes</button>
-<div class="athlete-hero" id="detailHero"></div>
-<div class="grid-2">
-<div class="card">
-<div class="card-header"><div class="card-title">PIQ Score Breakdown</div></div>
-<div class="card-body">
-<div style="display:flex;gap:20px;align-items:center;margin-bottom:18px">
-<div class="ring-wrap" id="detailRingWrap">
-<svg class="ring-svg" viewbox="0 0 158 158">
-<circle class="ring-track" cx="79" cy="79" r="70"></circle>
-<circle class="ring-fill" cx="79" cy="79" id="detailRingFill" r="70"></circle>
-</svg>
-<div class="ring-center">
-<div class="ring-number" id="detailRingNum">—</div>
-<div class="ring-label">PIQ Score</div>
-<div class="ring-delta" id="detailRingDelta"></div>
-</div>
-</div>
-<div style="flex:1">
-<div class="score-tier" id="detailTier" style="margin-bottom:10px">—</div>
-<div id="detailScoreNote" style="font-size:13px;color:var(--text-mid);line-height:1.7">—</div>
-</div>
-</div>
-<div class="pillar-grid" id="detailPillars"></div>
-</div>
-</div>
-<div>
-<div class="section-label">WELLNESS CHECK-IN</div>
-<div class="wellness-grid" id="detailWellness"></div>
-<div style="margin-top:16px">
-<div class="section-label">LOAD MONITORING</div>
-<div class="load-bar-list" id="detailLoad"></div>
-</div>
-<div style="margin-top:16px">
-<div class="insight-card">
-<div class="insight-tag">✦ Insight</div>
-<div class="insight-body" id="detailInsight">—</div>
-</div>
-</div>
-</div>
-</div>
-<div>
-<div class="section-label">TODAY'S ASSIGNED SESSION</div>
-<div id="detailWorkout"></div>
-</div>
-<div class="card">
-<div class="card-header"><div class="card-title">Personal Records</div></div>
-<div class="card-body">
-<table class="pr-table" id="detailPRs">
-<thead><tr><th>Exercise</th><th>Current PR</th><th>Previous</th><th>Date</th></tr></thead>
-<tbody></tbody>
-</table>
-</div>
-</div>
-</div>
-</section>
-<section class="view" id="view-train">
-<div class="page-header">
-<div>
-<div class="page-title">TRAIN</div>
-<div class="page-sub">Generate sport-specific sessions instantly</div>
-</div>
-<div class="page-actions">
-<button class="btn btn-primary" id="btnGenerate">⚡ Generate Session</button>
-</div>
-</div>
-<div class="grid-2">
-<div class="card card-body">
-<div class="section-label">SESSION BUILDER</div>
-<div class="form-grid" style="margin-bottom:14px">
-<div class="form-group">
-<div class="form-label">Sport</div>
-<select class="form-select" id="buildSport">
-<option value="basketball">🏀 Basketball</option>
-<option value="football">🏈 Football</option>
-<option value="soccer">⚽ Soccer</option>
-<option value="baseball">⚾ Baseball</option>
-<option value="volleyball">🏐 Volleyball</option>
-<option value="track">🏃 Track</option>
-</select>
-</div>
-<div class="form-group">
-<div class="form-label">Session Type</div>
-<select class="form-select" id="buildType">
-<option value="practice">Practice</option>
-<option value="strength">Strength</option>
-<option value="speed">Speed</option>
-<option value="conditioning">Conditioning</option>
-<option value="recovery">Recovery</option>
-<option value="competition">Competition Prep</option>
-</select>
-</div>
-<div class="form-group">
-<div class="form-label">Duration</div>
-<select class="form-select" id="buildDuration">
-<option value="30">30 min</option>
-<option value="45">45 min</option>
-<option selected="" value="60">60 min</option>
-<option value="90">90 min</option>
-</select>
-</div>
-<div class="form-group">
-<div class="form-label">Intensity</div>
-<select class="form-select" id="buildIntensity">
-<option value="low">Low (Recovery)</option>
-<option selected="" value="moderate">Moderate</option>
-<option value="high">High</option>
-</select>
-</div>
-</div>
-<div style="margin-bottom:16px">
-<div class="form-label" style="margin-bottom:8px">Injury Filters</div>
-<div class="inj-chips" id="injuryChips">
-<button class="inj-chip" data-injury="knee" type="button">Knee</button>
-<button class="inj-chip" data-injury="ankle" type="button">Ankle</button>
-<button class="inj-chip" data-injury="shoulder" type="button">Shoulder</button>
-<button class="inj-chip" data-injury="back" type="button">Back</button>
-<button class="inj-chip" data-injury="hip" type="button">Hip</button>
-<button class="inj-chip" data-injury="hamstring" type="button">Hamstring</button>
-</div>
-</div>
-<div style="display:flex;gap:9px">
-<button class="btn btn-primary btn-full" id="btnGenerateInline">▷ Generate</button>
-<button class="btn btn-ghost" id="btnPushToday">Push to Today</button>
-</div>
-</div>
-<div>
-<div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
-            GENERATED SESSION
-            <span class="pill accent" id="sessionSaved" style="display:none">✓ Saved</span>
-</div>
-<div id="generatedSessionWrap">
-<div class="workout-card" id="generatedSession" style="opacity:0.5">
-<div class="workout-type-tag">Configure and generate a session →</div>
-<div class="workout-name" style="font-size:16px;color:var(--text-dim)">Awaiting generation</div>
-<div class="workout-meta" style="margin-top:6px">Adjust filters on the left, then hit Generate</div>
-</div>
-</div>
-</div>
-</div>
-<div>
-<div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
-          SESSION LIBRARY
-          <a class="card-link">View all →</a>
-</div>
-<div class="grid-3" id="sessionLibrary"></div>
-</div>
-</section>
-<section class="view" id="view-analytics">
-<div class="page-header">
-<div>
-<div class="page-title">ANALYTICS</div>
-<div class="page-sub" id="analyticsSub">Team performance trends</div>
-</div>
-<div class="page-actions">
-<button class="btn btn-ghost btn-sm" id="btnExportAnalytics">Export PDF 📄</button>
-</div>
-</div>
-<div class="stat-grid stagger" id="analyticsStatGrid"></div>
-<div class="grid-2">
-<div class="card">
-<div class="card-header"><div class="card-title">7-Day Team Load</div><span style="font-size:12px;color:var(--text-dim)">Acute workload units</span></div>
-<div class="card-body"><div class="chart-bars" id="loadChart"></div></div>
-</div>
-<div class="card">
-<div class="card-header"><div class="card-title">PIQ Score Distribution</div></div>
-<div class="card-body">
-<div class="chart-bars" id="scoreDistChart"></div>
-<div id="scoreRanges" style="margin-top:14px;display:flex;flex-direction:column;gap:7px"></div>
-</div>
-</div>
-</div>
-<div class="card">
-<div class="card-header"><div class="card-title">Athlete Score Trends (4 Weeks)</div></div>
-<div class="card-body">
-<table class="heatmap" id="analyticsTable">
-<thead>
-<tr>
-<th>Athlete</th>
-<th>W-4</th>
-<th>W-3</th>
-<th>W-2</th>
-<th>This Week</th>
-<th>Change</th>
-<th>ACWR</th>
-</tr>
-</thead>
-<tbody id="analyticsBody"></tbody>
-</table>
-</div>
-</div>
-</section>
-<section class="view" id="view-schedule">
-<div class="page-header">
-<div><div class="page-title">SCHEDULE</div><div class="page-sub">Upcoming games, practices, and events</div></div>
-<div class="page-actions"><button class="btn btn-primary btn-sm">+ Add Event</button></div>
-</div>
-<div class="event-list" id="fullEventList" style="max-width:600px"></div>
-</section>
-<section class="view" id="view-wellness"><div class="page-header"><div><div class="page-title">Wellness</div><div class="page-sub" id="wellnessSub">Daily check-in</div></div><div class="page-actions"><button class="btn btn-primary" id="btnSaveWellness">Save Check-in</button></div></div><div id="wellnessMount"></div></section>
-<section class="view" id="view-nutrition"><div class="page-header"><div><div class="page-title">Nutrition</div><div class="page-sub" id="nutritionSub">Macro targets + hydration</div></div><div class="page-actions"><button class="btn btn-primary" id="btnSaveNutrition">Save Nutrition</button></div></div><div id="nutritionMount"></div></section>
-<section class="view" id="view-settings">
-<div class="page-header">
-<div><div class="page-title">SETTINGS</div><div class="page-sub">Team configuration and data management</div></div>
-</div>
-<div class="grid-2">
-<div class="card card-body">
-<div class="section-label">TEAM PROFILE</div>
-<!-- ROLE SWITCHING (fix: now exists in HTML and is wired in core.js) -->
-<div class="form-group" style="margin-bottom:13px">
-<div class="form-label">Role</div>
-<select class="form-select" id="settingRole">
-<option selected="" value="coach">Coach</option>
-<option value="athlete">Athlete</option>
-<option value="admin">Admin / AD</option>
-<option value="parent">Parent</option>
-<option value="owner">Owner</option>
-<option value="viewer">Viewer</option>
-</select>
-</div>
-<div class="form-group" style="margin-bottom:13px">
-<div class="form-label">Team Name</div>
-<input class="form-input" id="settingTeamName" type="text" value="Westview Varsity Basketball"/>
-</div>
-<div class="form-grid">
-<div class="form-group">
-<div class="form-label">Sport</div>
-<select class="form-select" id="settingSport">
-<option selected="" value="basketball">Basketball</option>
-<option value="football">Football</option>
-<option value="soccer">Soccer</option>
-<option value="baseball">Baseball</option>
-<option value="volleyball">Volleyball</option>
-<option value="track">Track</option>
-</select>
-</div>
-<div class="form-group">
-<div class="form-label">Season Phase</div>
-<select class="form-select" id="settingSeason">
-<option selected="">Pre-Season</option><option>In-Season</option><option>Post-Season</option><option>Off-Season</option>
-</select>
-</div>
-<div class="form-group">
-<div class="form-label">Theme</div>
-<select class="form-select" id="settingTheme">
-<option selected="" value="dark">Dark</option>
-<option value="light">Light</option>
-</select>
-</div>
-</div>
-<button class="btn btn-primary" id="btnSaveSettings" style="margin-top:16px">Save Changes</button>
-</div>
-<div class="card card-body">
-<div class="section-label">DATA MANAGEMENT</div>
-<div style="display:flex;flex-direction:column;gap:8px">
-<button class="btn btn-ghost btn-sm" id="btnExportData">📤 Export JSON Backup</button>
-<button class="btn btn-ghost btn-sm" id="btnImportData">📥 Import JSON</button>
-<button class="btn btn-danger btn-sm" id="btnResetData">⚠ Reset to Demo Data</button>
-</div>
-<input accept="application/json" id="importFileInput" style="display:none" type="file"/>
-</div>
-</div>
-</section>
-
-
-<!-- Mobile Bottom Nav (small screens) -->
-<nav aria-label="Primary" class="mobile-nav">
-<button aria-label="Dashboard" class="mnav-btn" data-roles="coach,athlete,admin" data-view="dashboard">🏠<span>Home</span></button>
-<button aria-label="Athletes" class="mnav-btn" data-roles="coach,admin" data-view="athletes">🏃<span>Athletes</span></button>
-<button aria-label="Train" class="mnav-btn" data-roles="coach,athlete,admin" data-view="train">⚡<span>Train</span></button>
-<button aria-label="Analytics" class="mnav-btn" data-roles="coach,athlete,admin" data-view="analytics">📊<span>Analytics</span></button>
-<button aria-label="Schedule" class="mnav-btn" data-roles="coach,athlete,admin" data-view="schedule">📅<span>Schedule</span></button>
+<nav class="mobile-nav">
+  <button class="mnav-btn active" data-view="dashboard"><span class="mico">&#127968;</span><span>Home</span></button>
+  <button class="mnav-btn" data-view="athletes"><span class="mico">&#127939;</span><span>Team</span></button>
+  <button class="mnav-btn" data-view="train"><span class="mico">&#9889;</span><span>Train</span></button>
+  <button class="mnav-btn" data-view="analytics"><span class="mico">&#128202;</span><span>Stats</span></button>
+  <button class="mnav-btn" data-view="schedule"><span class="mico">&#128197;</span><span>Schedule</span></button>
 </nav>
 <div class="toast-container" id="toastContainer"></div>
-<!-- MAIN APP ENTRY (modular) -->
-<!-- MAIN APP ENTRY (module build) -->
-<script src="./js/app.js?v=20260302" type="module"></script>
 
-<!-- Boot diagnostics + safe loader failsafe (must run AFTER app.js) -->
+<script>
+const ATHLETES=[
+  {id:1,ini:'MJ',name:'Marcus Johnson',pos:'Point Guard',piq:92,acwr:1.1,flag:'ready',grad:'#2563eb,#1d4ed8',trend:[40,60,50,90,85]},
+  {id:2,ini:'DS',name:'D. Santos',pos:'Shooting Guard',piq:78,acwr:1.2,flag:'ready',grad:'#5b8cff,#3b6cff',trend:[70,80,75,78,80]},
+  {id:3,ini:'AK',name:'A. Kim',pos:'Small Forward',piq:66,acwr:1.4,flag:'watch',grad:'#f5a623,#e8920f',trend:[80,75,65,60,55]},
+  {id:4,ini:'TW',name:'T. Williams',pos:'Power Forward',piq:48,acwr:1.7,flag:'risk',grad:'#ff4d4d,#e03030',trend:[85,75,60,50,40]},
+  {id:5,ini:'RL',name:'R. Lee',pos:'Center',piq:87,acwr:1.0,flag:'ready',grad:'#2563eb,#1d4ed8',trend:[60,70,80,85,90]},
+  {id:6,ini:'JB',name:'J. Brown',pos:'Guard',piq:81,acwr:1.1,flag:'ready',grad:'#7c3aed,#5b21b6',trend:[70,75,78,80,81]},
+  {id:7,ini:'CP',name:'C. Park',pos:'Forward',piq:74,acwr:1.3,flag:'watch',grad:'#059669,#047857',trend:[80,78,76,74,74]},
+  {id:8,ini:'MT',name:'M. Torres',pos:'Guard',piq:89,acwr:0.9,flag:'ready',grad:'#2563eb,#1d4ed8',trend:[82,84,86,88,89]},
+  {id:9,ini:'KN',name:'K. Nguyen',pos:'Forward',piq:58,acwr:1.5,flag:'watch',grad:'#d97706,#b45309',trend:[75,70,65,60,58]},
+];
+const SESS_LIB=[
+  {tag:'SPEED',name:'Sprint & Agility Circuit',meta:'45 min · High',ex:['10x40m Sprint','Cone Drill x6','Lateral Shuffle','Box Jump 4x8']},
+  {tag:'STRENGTH',name:'Lower Body Power',meta:'60 min · Heavy',ex:['Squat 5x5','RDL 4x8','Step-ups 3x10','Calf Raises 3x15']},
+  {tag:'RECOVERY',name:'Mobility & Flush',meta:'30 min · Low',ex:['Foam Roll 10min','Hip Flexor Stretch','Band Pull-Apart','Light Jog 10min']},
+];
+const EVENTS=[
+  {month:'MAR',day:3,name:'Morning Practice',meta:'7:00 AM · Fieldhouse A',badge:'Practice',bg:'var(--accent-dim)',tc:'var(--accent)'},
+  {month:'MAR',day:5,name:'Game vs. Riverside',meta:'7:00 PM · Away',badge:'🏀 Game',bg:'var(--danger-dim)',tc:'var(--danger)'},
+  {month:'MAR',day:7,name:'Film Review',meta:'3:00 PM · Film Room',badge:'Meeting',bg:'rgba(167,139,250,0.12)',tc:'#a78bfa'},
+  {month:'MAR',day:10,name:'Conditioning Day',meta:'6:30 AM · Weight Room',badge:'Training',bg:'var(--warn-dim)',tc:'var(--warn)'},
+  {month:'MAR',day:12,name:'Game vs. Lincoln',meta:'7:00 PM · Home',badge:'🏀 Game',bg:'var(--danger-dim)',tc:'var(--danger)'},
+];
+const WELL_ITEMS=[
+  {key:'sleep',label:'😴 Sleep Quality',scores:['Poor','Bad','OK','Good','Great']},
+  {key:'energy',label:'⚡ Energy Level',scores:['Depleted','Low','OK','High','Peak']},
+  {key:'sore',label:'🦵 Soreness',scores:['Extreme','High','Mild','Low','None']},
+  {key:'mood',label:'🧠 Mental Readiness',scores:['Off','Low','Neutral','Focused','Locked In']},
+];
+const WELL_COLORS={sleep:['#1e3a5f','#1e4d8c','#2563eb','#3b82f6','#60a5fa'],energy:['#78350f','#b45309','#d97706','#fbbf24','#fcd34d'],sore:['#7f1d1d','#991b1b','#dc2626','#f87171','rgba(239,68,68,0.2)'],mood:['#1a2744','#1e3a6e','#2563eb','#3b82f6','#60a5fa']};
+let wellState={sleep:4,energy:5,sore:2,mood:5};
+let hydGlasses=5;
+let generating=false;
+let obRoster=[];
 
-<script type="module" src="./js/boot.js"></script>
+function navigate(v){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('[data-view]').forEach(x=>x.classList.remove('active'));
+  const vEl=document.getElementById('view-'+v);
+  if(vEl) vEl.classList.add('active');
+  document.querySelectorAll('[data-view="'+v+'"]').forEach(x=>x.classList.add('active'));
+}
+document.querySelectorAll('[data-view]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.view)));
+
+window.addEventListener('load',()=>{
+  setTimeout(()=>{
+    document.getElementById('loadingScreen').classList.add('hidden');
+    if(!localStorage.getItem('piq_ob_v2')){obGoStep(1);}
+    else{document.getElementById('onboardingModal').classList.add('hidden');}
+    buildAll();
+  },1300);
+});
+
+function obDismiss(){document.getElementById('onboardingModal').classList.add('hidden');localStorage.setItem('piq_ob_v2','1');}
+function obGoStep(n){
+  [1,2,3].forEach(i=>{
+    const c=document.getElementById('onboardStep'+i);
+    if(c) c.style.display=(i===n?'block':'none');
+    const step=document.querySelector('[data-ob-step="'+i+'"]');
+    if(!step) return;
+    step.className='ob-step '+(i<n?'done':i===n?'active':'idle');
+    const ci=document.getElementById('ob-c'+i);
+    if(ci) ci.textContent=(i<n?'✓':i);
+  });
+  const l2=document.getElementById('ob-line2');
+  if(l2) l2.className='ob-step-line '+(n>=3?'line-done':'line-idle');
+}
+function obAddAthlete(){
+  const inp=document.getElementById('onboardAthleteName');
+  const v=inp.value.trim();
+  if(!v) return;
+  obRoster.push(v);inp.value='';obRenderRoster();
+}
+function obRenderRoster(){
+  const wrap=document.getElementById('onboardRosterChips');
+  const empty=document.getElementById('obEmpty');
+  if(empty) empty.style.display=obRoster.length?'none':'block';
+  wrap.innerHTML=obRoster.map((n,i)=>'<div class="ob-roster-chip">'+n+'<button onclick="obRemove('+i+')">x</button></div>').join('');
+}
+function obRemove(i){obRoster.splice(i,1);obRenderRoster();}
+document.getElementById('btnCloseOnboarding').onclick=obDismiss;
+document.getElementById('btnSkipOb').onclick=obDismiss;
+document.getElementById('btnObNext1').onclick=()=>obGoStep(2);
+document.getElementById('btnObBack2').onclick=()=>obGoStep(1);
+document.getElementById('btnObNext2').onclick=()=>obGoStep(3);
+document.getElementById('btnObFinish').onclick=obDismiss;
+document.getElementById('btnObAddAthlete').onclick=obAddAthlete;
+document.getElementById('onboardAthleteName').addEventListener('keydown',e=>{if(e.key==='Enter')obAddAthlete();});
+document.querySelectorAll('[data-sport]').forEach(b=>b.addEventListener('click',()=>{b.closest('.ob-chip-row').querySelectorAll('.ob-chip').forEach(c=>c.classList.remove('selected'));b.classList.add('selected')}));
+document.querySelectorAll('[data-season]').forEach(b=>b.addEventListener('click',()=>{b.closest('.ob-season-row').querySelectorAll('.ob-season').forEach(c=>c.classList.remove('selected'));b.classList.add('selected')}));
+document.getElementById('btnShowOnboarding').onclick=()=>{document.getElementById('onboardingModal').classList.remove('hidden');obGoStep(2);};
+
+document.getElementById('btnTheme').onclick=function(){
+  const d=document.documentElement;
+  d.dataset.theme=d.dataset.theme==='dark'?'light':'dark';
+  this.textContent=d.dataset.theme==='dark'?'🌙':'☀️';
+};
+document.getElementById('settingTheme').onchange=function(){
+  document.documentElement.dataset.theme=this.value;
+  document.getElementById('btnTheme').textContent=this.value==='dark'?'🌙':'☀️';
+};
+
+function buildHeatmap(){
+  const wrap=document.getElementById('teamHeatmap');
+  if(!wrap) return;
+  const days=14;
+  const cols=['rgba(37,99,235,0.07)','rgba(37,99,235,0.18)','rgba(37,99,235,0.36)','rgba(37,99,235,0.58)','rgba(37,99,235,0.82)'];
+  const today=new Date();
+  let dates=[];
+  for(let i=days-1;i>=0;i--){const d=new Date(today);d.setDate(d.getDate()-i);dates.push(d.getDate());}
+  let h='<div class="heatmap-dates">'+dates.map(d=>'<div class="hm-date">'+d+'</div>').join('')+'</div>';
+  h+='<div class="heatmap-grid">';
+  ATHLETES.slice(0,6).forEach(a=>{
+    h+='<div class="heatmap-row"><div class="heatmap-name">'+a.ini+'</div><div class="heatmap-cells">';
+    for(let d=0;d<days;d++){
+      const lvl=Math.floor(Math.random()*5);
+      const au=Math.floor(Math.random()*600+80);
+      h+='<div class="hm-cell" style="background:'+cols[lvl]+'"><div class="hm-tip">'+a.ini+' Day '+(d+1)+' '+au+' AU</div></div>';
+    }
+    h+='</div></div>';
+  });
+  h+='</div><div class="heatmap-legend"><span>Low</span><div class="hm-legend-cells">'+cols.map(c=>'<div class="hm-legend-cell" style="background:'+c+'"></div>').join('')+'</div><span>High</span><span style="margin-left:auto;font-size:9px">= training load (AU)</span></div>';
+  wrap.innerHTML=h;
+}
+
+function buildReadinessTable(){
+  const tb=document.getElementById('readinessTable');
+  if(!tb) return;
+  tb.innerHTML=ATHLETES.slice(0,5).map(a=>{
+    const bc=a.flag==='ready'?'var(--accent)':a.flag==='watch'?'var(--warn)':'var(--danger)';
+    const fc=a.flag==='ready'?'flag-ready':a.flag==='watch'?'flag-watch':'flag-risk';
+    const ft=a.flag==='ready'?'● Ready':a.flag==='watch'?'▲ Watch':'⛔ Risk';
+    const ac=a.acwr<=1.3?'acwr-good':a.acwr<=1.5?'acwr-warn':'acwr-risk';
+    const sp=a.trend.map((h,i)=>'<div class="spark-bar'+(i===a.trend.length-1?' hi':'')+(a.flag!=='ready'?' "+bc+"':'')+'" style="height:'+h+'%;'+(a.flag!=='ready'?'background:'+bc+';':'')+'"></div>').join('');
+    return '<tr><td><div class="athlete-name"><div class="athlete-avatar" style="background:linear-gradient(135deg,'+a.grad+')">'+a.ini+'</div>'+a.name+'</div></td><td><div class="piq-bar-wrap"><div class="piq-bar"><div class="piq-fill" style="width:'+a.piq+'%;background:'+bc+'"></div></div><div class="piq-num" style="color:'+bc+'">'+a.piq+'</div></div></td><td><span class="acwr-val '+ac+'">'+a.acwr+'</span></td><td><span class="flag-dot '+fc+'">'+ft+'</span></td><td><div class="spark">'+sp+'</div></td></tr>';
+  }).join('');
+}
+
+function buildAthleteCards(){
+  const g=document.getElementById('athleteCardGrid');
+  if(!g) return;
+  g.innerHTML=ATHLETES.map(a=>{
+    const bc=a.flag==='ready'?'var(--accent)':a.flag==='watch'?'var(--warn)':'var(--danger)';
+    const fc=a.flag==='ready'?'flag-ready':a.flag==='watch'?'flag-watch':'flag-risk';
+    const ft=a.flag==='ready'?'● Ready':a.flag==='watch'?'▲ Watch':'⛔ Risk';
+    const ac=a.flag==='ready'?'acwr-good':a.flag==='watch'?'acwr-warn':'acwr-risk';
+    return '<div class="athlete-card"><div class="ac-top"><div class="ac-avatar" style="background:linear-gradient(135deg,'+a.grad+')">'+a.ini+'</div><div><div class="ac-name">'+a.name+'</div><div class="ac-pos">'+a.pos+'</div></div><div class="ac-piq" style="color:'+bc+'">'+a.piq+'</div></div><div class="ac-bar"><div class="ac-bar-fill" style="width:'+a.piq+'%;background:'+bc+'"></div></div><div class="ac-bottom"><div class="ac-acwr"><strong class="'+ac+'">'+a.acwr+'</strong> ACWR</div><span class="flag-dot '+fc+'">'+ft+'</span></div></div>';
+  }).join('');
+}
+
+function buildSessionLibrary(){
+  const wrap=document.getElementById('sessionLibrary');
+  if(!wrap) return;
+  wrap.innerHTML=SESS_LIB.map(s=>'<div class="session-card"><div class="sc-tag">'+s.tag+'</div><div class="sc-name">'+s.name+'</div><div class="sc-meta">'+s.meta+'</div><div class="sc-pills">'+s.ex.slice(0,2).map(e=>'<span class="sc-pill">'+e+'</span>').join('')+'<span class="sc-pill">+'+Math.max(0,s.ex.length-2)+' more</span></div></div>').join('');
+}
+
+document.querySelectorAll('.inj-chip').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('active')));
+
+document.getElementById('btnGenerateInline').onclick=async function(){
+  if(generating) return;
+  generating=true;
+  const sport=document.getElementById('buildSport').value||'basketball';
+  const type=document.getElementById('buildType').value||'Practice';
+  const intensity=document.getElementById('buildIntensity').value||'Moderate';
+  const card=document.getElementById('generatedSession');
+  card.innerHTML='<div style="display:flex;align-items:center;gap:10px;color:var(--text2);font-size:13px"><div class="gen-spinner"></div>Generating '+intensity+' '+type+' session&hellip;</div>';
+  await new Promise(r=>setTimeout(r,900));
+  const exSets={Practice:['3-Man Weave Drill','Full-Court Press Break','Spot Shooting 5x20','4-on-4 Transition'],Strength:['Box Jumps 4x8','Nordic Curls 3x6','Sled Push 6x20m','Pallof Press 3x12'],Speed:['Flying 20m Sprint x8','T-Drill x6','Pro Agility x8','Lateral Bounds 3x10'],Conditioning:['Suicide Sprints x5','Defensive Slides 3x60s','Full-Court 3x','Rest 90s x3'],Recovery:['Foam Roll 10min','Hip Flexor 3x60s','Band Pull-Apart 3x20','Light Jog 10min']};
+  const tKey=Object.keys(exSets).find(k=>type.startsWith(k))||'Practice';
+  const exs=exSets[tKey];
+  card.innerHTML='<div class="gen-phase">'+sport.toUpperCase()+' &middot; '+type.toUpperCase()+'</div><div class="gen-name">'+intensity+' '+type+'</div><div class="gen-meta">Generated '+new Date().toLocaleDateString()+' &middot; Pre-Season</div><div class="gen-exercises">'+exs.map((e,i)=>'<div class="gen-ex"><div style="font-family:Barlow Condensed,sans-serif;font-weight:700;font-size:13px;color:var(--text3);min-width:18px">'+(i+1)+'</div><div class="gen-ex-name">'+e+'</div><div class="gen-ex-detail">'+['3x10','4x8','5x5','3x12','6x20m'][i%5]+'</div></div>').join('')+'</div>';
+  toast('Session generated!','success');
+  generating=false;
+};
+
+function buildAnalytics(){
+  const lw=document.getElementById('loadChartWrap');
+  if(lw){
+    const days=['MON','TUE','WED','THU','FRI','SAT','SUN'];
+    const vals=[420,510,240,600,455,140,490];
+    const mx=Math.max(...vals);
+    lw.innerHTML='<div class="chart-bars-wrap">'+days.map((d,i)=>'<div class="cb-col"><div class="cb-bw"><div class="cb-bar" style="height:'+(vals[i]/mx*90)+'%;background:linear-gradient(180deg,#2563eb,#1e40af);animation-delay:'+(i*0.07)+'s"></div></div><div class="cb-label">'+d+'</div></div>').join('')+'</div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);padding-top:8px;border-top:1px solid var(--border)"><span>0 AU</span><span>Optimal: 400-600 AU</span><span>700 AU</span></div>';
+  }
+  const dw=document.getElementById('scoreDistWrap');
+  if(dw){
+    const ranges=[{l:'90-100',n:3,c:'#2563eb'},{l:'80-89',n:5,c:'#5b8cff'},{l:'70-79',n:4,c:'#f5a623'},{l:'60-69',n:2,c:'#ff6b35'},{l:'< 60',n:1,c:'#ff4d4d'}];
+    const mx2=Math.max(...ranges.map(r=>r.n));
+    dw.innerHTML='<div class="chart-bars-wrap">'+ranges.map(r=>'<div class="cb-col"><div class="cb-bw"><div class="cb-bar" style="height:'+(r.n/mx2*90)+'%;background:'+r.c+'"></div></div><div class="cb-label" style="font-size:9px">'+r.l+'</div></div>').join('')+'</div>';
+  }
+  const ab=document.getElementById('analyticsBody');
+  if(ab){
+    ab.innerHTML=ATHLETES.slice(0,6).map(a=>{
+      const w4=a.piq-Math.round(Math.random()*12);
+      const w3=w4+Math.round(Math.random()*6-2);
+      const w2=w3+Math.round(Math.random()*6-2);
+      const chg=a.piq-w4;
+      const ac=a.acwr<=1.3?'acwr-good':a.acwr<=1.5?'acwr-warn':'acwr-risk';
+      return '<tr><td><div class="athlete-name" style="gap:8px"><div class="athlete-avatar" style="background:linear-gradient(135deg,'+a.grad+');width:24px;height:24px;font-size:9px">'+a.ini+'</div>'+a.name+'</div></td><td style="color:var(--text2);font-family:Barlow Condensed,sans-serif;font-weight:700">'+w4+'</td><td style="color:var(--text2);font-family:Barlow Condensed,sans-serif;font-weight:700">'+w3+'</td><td style="color:var(--text2);font-family:Barlow Condensed,sans-serif;font-weight:700">'+w2+'</td><td style="color:var(--accent);font-family:Barlow Condensed,sans-serif;font-weight:700">'+a.piq+'</td><td><span class="stat-delta '+(chg>=0?'delta-up':'delta-down')+'">'+(chg>=0?'↑ +':'↓ ')+Math.abs(chg)+'</span></td><td><span class="acwr-val '+ac+'">'+a.acwr+'</span></td></tr>';
+    }).join('');
+  }
+}
+
+function buildSchedule(){
+  const wrap=document.getElementById('fullEventList');
+  if(!wrap) return;
+  wrap.innerHTML=EVENTS.map(e=>'<div class="event-item"><div class="event-date-block"><div class="event-month">'+e.month+'</div><div class="event-day-num">'+e.day+'</div></div><div class="event-info"><div class="event-name">'+e.name+'</div><div class="event-meta">'+e.meta+'</div></div><span class="event-badge" style="background:'+e.bg+';color:'+e.tc+'">'+e.badge+'</span></div>').join('');
+}
+
+function buildWellness(){
+  const wrap=document.getElementById('wellnessMount');
+  if(!wrap) return;
+  wrap.innerHTML=WELL_ITEMS.map(item=>{
+    const cur=wellState[item.key];
+    const clrs=WELL_COLORS[item.key];
+    const dots=clrs.map((c,i)=>'<div class="wdot" style="background:'+(i<cur?c:'rgba(255,255,255,0.04)')+';border-color:'+(i<cur?c:'var(--border2)')+';" onclick="setWell(\''+item.key+'\','+(i+1)+')"></div>').join('');
+    return '<div class="wellness-item"><div class="wellness-label">'+item.label+'</div><div class="wellness-dots">'+dots+'</div><div class="wellness-score">'+cur+'/5 &middot; '+item.scores[cur-1]+'</div></div>';
+  }).join('');
+  const sw=document.getElementById('wellnessSummary');
+  if(sw) sw.innerHTML=[{l:'Team Avg Sleep',v:'4.1/5',c:'var(--accent)'},{l:'Team Energy',v:'3.8/5',c:'var(--gold)'},{l:'Team Soreness',v:'2.9/5',c:'var(--warn)'},{l:'Team Focus',v:'4.3/5',c:'var(--accent)'}].map(t=>'<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:rgba(255,255,255,0.02);border-radius:8px"><div style="font-size:13px;color:var(--text2)">'+t.l+'</div><div style="font-family:Barlow Condensed,sans-serif;font-size:18px;font-weight:700;color:'+t.c+'">'+t.v+'</div></div>').join('');
+}
+
+function setWell(k,v){wellState[k]=v;buildWellness();}
+document.getElementById('btnSaveWellness').onclick=()=>toast('Wellness check-in saved','success');
+
+function buildNutrition(){
+  const mg=document.getElementById('macroGrid');
+  if(mg) mg.innerHTML=[{l:'Calories',v:'2,840',s:'/ 3,200 kcal',c:'var(--accent)'},{l:'Protein',v:'142g',s:'/ 180g target',c:'#34d399'},{l:'Carbs',v:'310g',s:'/ 380g target',c:'var(--gold)'},{l:'Fat',v:'78g',s:'/ 95g target',c:'#f472b6'}].map(m=>'<div class="macro-card"><div class="macro-label">'+m.l+'</div><div class="macro-val" style="color:'+m.c+'">'+m.v+'</div><div class="macro-sub">'+m.s+'</div></div>').join('');
+  const gw=document.getElementById('hydrationGlasses');
+  if(gw) gw.innerHTML=Array.from({length:8},(_,i)=>'<div class="hglass'+(i<hydGlasses?' filled':'')+'" onclick="toggleGlass('+i+')">💧</div>').join('');
+  const fEl=document.getElementById('hydrationFill');
+  if(fEl) fEl.style.width=(hydGlasses/8*100)+'%';
+  const vEl=document.getElementById('hydrationVal');
+  if(vEl) vEl.textContent=(hydGlasses*0.25).toFixed(2).replace(/[.]?0+$/,'')+'L / 2.0L';
+}
+
+function toggleGlass(i){hydGlasses=i+1;buildNutrition();}
+
+document.getElementById('btnSaveSettings').onclick=()=>{
+  document.getElementById('pillSeason').textContent=document.getElementById('settingSeason').value||'Pre-Season';
+  toast('Settings saved','success');
+};
+document.getElementById('btnResetData').onclick=()=>toast('Demo data restored','info');
+
+function toast(msg,type='info'){
+  const tc=document.getElementById('toastContainer');
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  el.textContent=msg;
+  tc.appendChild(el);
+  setTimeout(()=>el.remove(),3000);
+}
+
+function buildAll(){buildHeatmap();buildReadinessTable();buildAthleteCards();buildSessionLibrary();buildAnalytics();buildSchedule();buildWellness();buildNutrition();}
+</script>
+</body>
+                                      </html>
