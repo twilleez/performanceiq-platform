@@ -2177,3 +2177,24 @@ html[data-theme="light"] .ex-line { color: color-mix(in oklab, var(--text) 75%, 
 .hidden {
   display: none !important;
 }
+/* ============================================================
+   PATCH 2 — Ensure active view is visible (fix blank main panel)
+   Paste at END of styles.css
+   ============================================================ */
+
+/* Your base CSS hides all views by default */
+.view { display: none; }
+
+/* Show view for ANY of the common "active" markers used by JS */
+.view.active,
+.view.is-active,
+.view[aria-hidden="false"],
+.view[data-active="true"] {
+  display: flex;
+}
+
+/* If a view should be shown but uses block layout instead of flex, this keeps it safe */
+.view.active,
+.view.is-active {
+  flex-direction: column;
+}
