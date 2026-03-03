@@ -1,9 +1,55 @@
 // /js/views/wellness.js
-import { ATHLETES, saveAthletes } from "../state/state.js";
+import { STATE, ATHLETES, saveAthletes } from "../state/state.js";
 import { toast } from "../services/toast.js";
 import { computePIQ } from "../features/piqScore.js";
 
+// NEW: Score Engine v1 (for daily snapshots)
+import { computeAthleteScoreV1 } from "../features/scoring.js";
+
 function $(id) { return document.getElementById(id); }
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function ensureScoreSnapshotForToday(athlete) {
+  athlete.history = athlete.history || {};
+  athlete.history.score = Array.isArray(athlete.history.score) ? athlete.history.score : [];
+
+  const dk = todayKey();
+  const exists = athlete.history.score.some(s => s && s.date === dk);
+  if (exists) return;
+
+  const breakdown = computeAthleteScoreV1(athlete, { state: STATE });
+  athlete.history.score.push({
+    date: dk,
+    total: breakdown.total,
+    subscores: breakdown.subscores,
+    injuryPenalty: breakdown.injuryPenalty,
+    created_at: new Date().toISOString()
+  });
+}
+
+function sliderRow(label, id, def) {
+  return `
+    <div class="form-row">
+      <label class="label">${label} <span class="val" id="${id}Val">${def}</span>/10</label>
+      <input type="range" min="0" max="10" step="1" value="${def}" id="${id}" aria-label="${label}" />
+    </div>
+  `;
+}
+
+function getFormData(root) {
+  const num = (id) => Number(root.querySelector("#" + id)?.value || 0);
+  return {
+    athleteId: String(root.querySelector("#wellAthlete")?.value || ""),
+    sleep: num("wellSleep"),
+    soreness: num("wellSoreness"),
+    stress: num("wellStress"),
+    mood: num("wellMood"),
+    readiness: num("wellReady")
+  };
+}
 
 export function renderWellness() {
   const host = $("wellnessMount");
@@ -44,6 +90,17 @@ export function renderWellness() {
     sel.appendChild(opt);
   });
 
+  // Bind live value labels INSIDE render (guarantees elements exist)
+  function bindVal(id) {
+    const r = wrap.querySelector("#" + id);
+    const v = wrap.querySelector("#" + id + "Val");
+    if (!r || !v) return;
+    const sync = () => { v.textContent = r.value; };
+    r.addEventListener("input", sync);
+    sync();
+  }
+  ["wellSleep", "wellSoreness", "wellStress", "wellMood", "wellReady"].forEach(bindVal);
+
   function updatePreview() {
     const data = getFormData(wrap);
     const piq = computePIQ(data);
@@ -55,44 +112,20 @@ export function renderWellness() {
   updatePreview();
 }
 
-function sliderRow(label, id, def) {
-  return `
-    <div class="form-row">
-      <label class="label">${label} <span class="val" id="${id}Val">${def}</span>/10</label>
-      <input type="range" min="0" max="10" step="1" value="${def}" id="${id}" aria-label="${label}" />
-    </div>
-  `;
-}
-
-function getFormData(root) {
-  const num = (id) => Number(root.querySelector("#" + id)?.value || 0);
-  // keep soreness/stress "as entered" (0-10)
-  return {
-    athleteId: String(root.querySelector("#wellAthlete")?.value || ""),
-    sleep: num("wellSleep"),
-    soreness: num("wellSoreness"),
-    stress: num("wellStress"),
-    mood: num("wellMood"),
-    readiness: num("wellReady")
-  };
-}
+let __wellnessBound = false;
 
 export function bindWellnessEvents() {
-  // Live value labels
-  function bindVal(id) {
-    const r = document.getElementById(id);
-    const v = document.getElementById(id + "Val");
-    if (!r || !v) return;
-    const sync = () => v.textContent = r.value;
-    r.addEventListener("input", sync);
-    sync();
-  }
-  ["wellSleep","wellSoreness","wellStress","wellMood","wellReady"].forEach(bindVal);
+  if (__wellnessBound) return;
+  __wellnessBound = true;
 
   document.getElementById("btnSaveWellness")?.addEventListener("click", () => {
     const root = document.getElementById("wellnessMount");
     if (!root) return;
-    const data = getFormData(root);
+
+    // The form-card is inside wellnessMount
+    const wrap = root.querySelector(".form-card") || root;
+    const data = getFormData(wrap);
+
     if (!data.athleteId) { toast("Select an athlete"); return; }
 
     const a = ATHLETES.find(x => x.id === data.athleteId);
@@ -101,7 +134,7 @@ export function bindWellnessEvents() {
     a.history = a.history || {};
     a.history.wellness = Array.isArray(a.history.wellness) ? a.history.wellness : [];
     a.history.wellness.push({
-      date: new Date().toISOString().slice(0,10),
+      date: todayKey(),
       sleep: data.sleep,
       soreness: data.soreness,
       stress: data.stress,
@@ -110,8 +143,14 @@ export function bindWellnessEvents() {
       created_at: new Date().toISOString()
     });
 
+    // Elite: snapshot score once per day for trend analytics
+    ensureScoreSnapshotForToday(a);
+
     saveAthletes();
+
     const piq = computePIQ(data).score;
-    toast(`Wellness saved ✓ PIQ ${piq}`);
+    const perf = computeAthleteScoreV1(a, { state: STATE }).total;
+
+    toast(`Wellness saved ✓ PIQ ${piq} • PerformanceIQ ${perf}`);
   });
 }
