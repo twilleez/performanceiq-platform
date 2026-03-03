@@ -17,8 +17,8 @@ import {
   setAthletes,
   validateBackupPayload
 } from "./state/state.js";
-import { STORAGE_KEY_STATE, STORAGE_KEY_ATHLETES } from "./state/keys.js";
 
+import { STORAGE_KEY_STATE, STORAGE_KEY_ATHLETES } from "./state/keys.js";
 import { switchView, initRouter } from "./router.js";
 
 import { renderDashboard } from "./views/dashboard.js";
@@ -32,9 +32,6 @@ import { renderNutrition, bindNutritionEvents } from "./views/nutrition.js";
 import { initOnboarding, maybeShowOnboarding, closeOnboardingIfOpen } from "./ui/onboarding.js";
 import { createTodayTour } from "./ui/tour.js";
 
-/* ---------------------------
-   Loader
----------------------------- */
 function showLoader() {
   if (dom.loadingScreen) {
     dom.loadingScreen.style.display = "flex";
@@ -48,9 +45,6 @@ function hideLoader() {
   }
 }
 
-/* ---------------------------
-   Navigation
----------------------------- */
 function onEnter(viewId) {
   if (viewId === "dashboard") renderDashboard();
   if (viewId === "athletes") renderAthletesView(dom.athleteSearch?.value || "");
@@ -59,7 +53,6 @@ function onEnter(viewId) {
   if (viewId === "schedule") renderSchedule(dom.fullEventList || null);
   if (viewId === "wellness") renderWellness();
   if (viewId === "nutrition") renderNutrition();
-  if (viewId === "settings") { /* native HTML */ }
 }
 
 function applyRoleVisibility() {
@@ -68,12 +61,7 @@ function applyRoleVisibility() {
 
   items.forEach((el) => {
     const roles = String(el.getAttribute("data-roles") || "");
-    const ok = roles
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .includes(role);
-
+    const ok = roles.split(",").map(s => s.trim()).filter(Boolean).includes(role);
     el.style.display = ok ? "" : "none";
   });
 
@@ -96,9 +84,6 @@ function bindNav() {
   });
 }
 
-/* ---------------------------
-   Search
----------------------------- */
 function bindSearch() {
   dom.athleteSearch?.addEventListener("input", (e) => {
     const val = e.target.value;
@@ -107,14 +92,19 @@ function bindSearch() {
   });
 }
 
-/* ---------------------------
-   Settings
----------------------------- */
 function bindSettings() {
+  if (dom.settingRole) dom.settingRole.value = STATE.role || "coach";
   if (dom.settingTeamName) dom.settingTeamName.value = STATE.teamName;
   if (dom.settingSeason) dom.settingSeason.value = STATE.season;
   if (dom.settingSport) dom.settingSport.value = STATE.sport;
   if (dom.settingTheme) dom.settingTheme.value = getThemePref();
+
+  dom.settingRole?.addEventListener("change", (e) => {
+    STATE.role = String(e.target.value || "coach");
+    try { saveState(); } catch {}
+    applyRoleVisibility();
+    toast(`Role set: ${STATE.role}`);
+  });
 
   dom.btnSaveSettings?.addEventListener("click", () => {
     STATE.teamName = (dom.settingTeamName?.value || "").trim() || STATE.teamName;
@@ -128,32 +118,12 @@ function bindSettings() {
   });
 }
 
-/* ---------------------------
-   Safe state import (whitelist only)
----------------------------- */
 function applyImportedState(raw) {
   if (!raw || typeof raw !== "object") return;
-
-  const allowed = [
-    "currentView",
-    "teamName",
-    "sport",
-    "season",
-    "theme",
-    "role",
-    "events",
-    "periodization",
-    "nutrition"
-  ];
-
-  allowed.forEach((k) => {
-    if (k in raw) STATE[k] = raw[k];
-  });
+  const allowed = ["currentView","teamName","sport","season","theme","role","events","periodization","nutrition"];
+  allowed.forEach((k) => { if (k in raw) STATE[k] = raw[k]; });
 }
 
-/* ---------------------------
-   Export / Import / Reset
----------------------------- */
 function bindDataManagement() {
   dom.btnExportData?.addEventListener("click", () => {
     try {
@@ -162,10 +132,7 @@ function bindDataManagement() {
         { type: "application/json" }
       );
       const url = URL.createObjectURL(blob);
-      const a = Object.assign(document.createElement("a"), {
-        href: url,
-        download: `piq-backup-${Date.now()}.json`
-      });
+      const a = Object.assign(document.createElement("a"), { href: url, download: `piq-backup-${Date.now()}.json` });
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -187,10 +154,7 @@ function bindDataManagement() {
       try {
         const p = JSON.parse(evt.target.result);
         const v = validateBackupPayload(p);
-        if (!v.ok) {
-          toast("Import failed — " + (v.reason || "Invalid backup"));
-          return;
-        }
+        if (!v.ok) { toast("Import failed — " + (v.reason || "Invalid backup")); return; }
 
         setAthletes(p.athletes);
         applyImportedState(p.state);
@@ -198,7 +162,6 @@ function bindDataManagement() {
         saveState();
         saveAthletes();
         applySportTheme(STATE.sport);
-
         renderDashboard();
         applyRoleVisibility();
         navigate(STATE.currentView || "dashboard");
@@ -229,9 +192,6 @@ function bindDataManagement() {
   });
 }
 
-/* ---------------------------
-   Top actions
----------------------------- */
 function bindTopActions() {
   dom.btnRefresh?.addEventListener("click", () => {
     renderDashboard();
@@ -251,32 +211,19 @@ function bindTopActions() {
   dom.btnExportAnalytics?.addEventListener("click", doExport);
 }
 
-/* ---------------------------
-   Delegated actions
----------------------------- */
 function bindDelegatedActions() {
   document.addEventListener("click", (e) => {
     const el = e.target?.closest?.("[data-action]");
     if (!el) return;
 
     const act = el.getAttribute("data-action");
-
-    if (act === "export") {
-      dom.btnExport?.click?.();
-      return;
-    }
-
-    if (act === "logSession") {
-      navigate("train");
-      return;
-    }
+    if (act === "export") { dom.btnExport?.click?.(); return; }
+    if (act === "logSession") { navigate("train"); return; }
 
     if (act === "open-athlete") {
       const athleteId = el.getAttribute("data-athlete-id");
       if (!athleteId) return;
-
       navigate("athletes");
-
       setTimeout(() => {
         try {
           const card = document.querySelector(`[data-athlete-card-id="${CSS.escape(athleteId)}"]`);
@@ -287,89 +234,72 @@ function bindDelegatedActions() {
   });
 }
 
-/* ---------------------------
-   Elite: global error hooks
----------------------------- */
 function installGlobalErrorHooks() {
   if (window.__PIQ_ERR_HOOKS__) return;
   window.__PIQ_ERR_HOOKS__ = true;
 
-  window.addEventListener("error", (e) => {
-    try { console.error("[PIQ] error", e.error || e.message || e); } catch {}
-  });
-
-  window.addEventListener("unhandledrejection", (e) => {
-    try { console.error("[PIQ] unhandledrejection", e.reason || e); } catch {}
-  });
+  window.addEventListener("error", (e) => { try { console.error("[PIQ] error", e.error || e.message || e); } catch {} });
+  window.addEventListener("unhandledrejection", (e) => { try { console.error("[PIQ] unhandledrejection", e.reason || e); } catch {} });
 }
 
-/* ---------------------------
-   Main init
----------------------------- */
 export async function initApp() {
   showLoader();
 
-  try {
-    cacheDOM();
-    installInteractions();
-    installGlobalErrorHooks();
+  cacheDOM();
+  installInteractions();
+  installGlobalErrorHooks();
 
-    try {
-      loadState();
-    } catch {
-      toast("Storage error — running in recovery mode", { timeout: 6000 });
+  try { loadState(); }
+  catch { toast("Storage error — running in recovery mode", { timeout: 6000 }); }
+
+  applyTheme(getThemePref());
+  dom.btnTheme?.addEventListener("click", toggleTheme);
+  dom.settingTheme?.addEventListener("change", (e) => applyTheme(e.target.value));
+  applySportTheme(STATE.sport);
+
+  bindNav();
+  bindDelegatedActions();
+  bindSearch();
+  bindSettings();
+  bindDataManagement();
+  bindTopActions();
+
+  bindTrainViewEvents();
+  bindAthletesViewEvents();
+  bindWellnessEvents();
+  bindNutritionEvents();
+
+  applyRoleVisibility();
+
+  initOnboarding({
+    onAfterFinish: () => {
+      renderDashboard();
+      applyRoleVisibility();
+      navigate("dashboard");
     }
+  });
 
-    applyTheme(getThemePref());
-    dom.btnTheme?.addEventListener("click", toggleTheme);
-    dom.settingTheme?.addEventListener("change", (e) => applyTheme(e.target.value));
-    applySportTheme(STATE.sport);
+  const TodayTour = createTodayTour({ navigate });
+  TodayTour.bindKeyboardShortcuts();
 
-    bindNav();
-    bindDelegatedActions();
-    bindSearch();
-    bindSettings();
-    bindDataManagement();
-    bindTopActions();
+  window.addEventListener("piq:tour", () => {
+    try { navigate("dashboard"); } catch {}
+    try { TodayTour.maybeShow(); } catch {}
+  });
 
-    bindTrainViewEvents();
-    bindAthletesViewEvents();
-    bindWellnessEvents();
-    bindNutritionEvents();
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeOnboardingIfOpen();
+  });
 
-    applyRoleVisibility();
+  initRouter({ onEnter });
 
-    initOnboarding({
-      onAfterFinish: () => {
-        renderDashboard();
-        applyRoleVisibility();
-        navigate("dashboard");
-      }
-    });
+  renderDashboard();
+  applyRoleVisibility();
+  navigate(STATE.currentView || "dashboard");
 
-    const TodayTour = createTodayTour({ navigate });
-    TodayTour.bindKeyboardShortcuts();
+  maybeShowOnboarding();
+  TodayTour.maybeShow?.();
 
-    window.addEventListener("piq:tour", () => {
-      try { navigate("dashboard"); } catch {}
-      try { TodayTour.maybeShow(); } catch {}
-    });
-
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeOnboardingIfOpen();
-    });
-
-    initRouter({ onEnter });
-
-    renderDashboard();
-    applyRoleVisibility();
-    navigate(STATE.currentView || "dashboard");
-
-    maybeShowOnboarding();
-    TodayTour.maybeShow?.();
-
-    await new Promise((r) => setTimeout(r, 250));
-  } finally {
-    hideLoader();
-  }
-}
+  await new Promise((r) => setTimeout(r, 250));
+  hideLoader();
+    }
