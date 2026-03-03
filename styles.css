@@ -1936,6 +1936,12 @@ html[data-theme="light"] .ex-line { color: color-mix(in oklab, var(--text) 75%, 
 .delta-down{color:#ff4d4d;background:rgba(255,77,77,.12)}
 
 .dash-grid{grid-template-columns:1fr 320px;gap:20px;align-items:start}
+.dash-left{display:flex;flex-direction:column;gap:16px}
+.right-col{display:flex;flex-direction:column;gap:16px}
+@media (max-width:900px){
+  .right-col{flex-direction:column}
+}
+
 .grid-2{display:grid}
 
 .panel{
