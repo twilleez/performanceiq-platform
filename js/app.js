@@ -9,8 +9,16 @@ import { Storage } from "./services/storage.js";
 import { toast } from "./services/toast.js";
 import { exportPrintableReport } from "./services/storage.js";
 
-import { STATE, ATHLETES, loadState, saveState, saveAthletes, setAthletes, validateBackupPayload } from "./state/state.js";
-import { STORAGE_KEY_TOUR, STORAGE_KEY_ATHLETES } from "./state/keys.js";
+import {
+  STATE,
+  ATHLETES,
+  loadState,
+  saveState,
+  saveAthletes,
+  setAthletes,
+  validateBackupPayload
+} from "./state/state.js";
+import { STORAGE_KEY_ATHLETES } from "./state/keys.js";
 
 import { switchView, initRouter } from "./router.js";
 
@@ -52,7 +60,9 @@ function onEnter(viewId) {
   if (viewId === "schedule") renderSchedule(dom.fullEventList);
   if (viewId === "wellness") renderWellness();
   if (viewId === "nutrition") renderNutrition();
-  if (viewId === "settings") { /* settings are native HTML */ }
+  if (viewId === "settings") {
+    /* settings are native HTML */
+  }
 }
 
 function navigate(viewId) {
@@ -62,9 +72,15 @@ function navigate(viewId) {
 function applyRoleVisibility() {
   const role = String(STATE.role || "coach");
   const items = Array.from(document.querySelectorAll("[data-roles][data-view]"));
+
   items.forEach((el) => {
     const roles = String(el.getAttribute("data-roles") || "");
-    const ok = roles.split(",").map(s => s.trim()).filter(Boolean).includes(role);
+    const ok = roles
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .includes(role);
+
     el.style.display = ok ? "" : "none";
   });
 
@@ -126,12 +142,17 @@ function bindDataManagement() {
         { type: "application/json" }
       );
       const url = URL.createObjectURL(blob);
-      const a = Object.assign(document.createElement("a"), { href: url, download: `piq-backup-${Date.now()}.json` });
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      const a = Object.assign(document.createElement("a"), {
+        href: url,
+        download: `piq-backup-${Date.now()}.json`
+      });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast("Backup downloaded ✓");
     } catch (e) {
-      toast("Export failed: " + e.message);
+      toast("Export failed: " + (e?.message || "unknown error"));
     }
   });
 
@@ -150,14 +171,17 @@ function bindDataManagement() {
           toast("Import failed — " + (v.reason || "Invalid backup"));
           return;
         }
+
         setAthletes(p.athletes);
+
         if (p?.state && typeof p.state === "object") Object.assign(STATE, p.state);
+
         saveState();
         saveAthletes();
         applySportTheme(STATE.sport);
         renderDashboard();
         toast(`Imported ${ATHLETES.length} athletes ✓`);
-      } catch (err) {
+      } catch {
         toast("Import failed — invalid JSON");
       }
     };
@@ -177,7 +201,9 @@ function bindDataManagement() {
     try {
       Storage.remove(STORAGE_KEY_ATHLETES);
       Storage.remove("piq_state_v3");
-    } catch {}
+    } catch {
+      // ignore
+    }
     location.reload();
   });
 }
@@ -186,7 +212,11 @@ function bindDataManagement() {
    Top actions
 ---------------------------- */
 function bindTopActions() {
-  dom.btnRefresh?.addEventListener("click", () => { renderDashboard(); toast("Refreshed ↺"); });
+  dom.btnRefresh?.addEventListener("click", () => {
+    renderDashboard();
+    toast("Refreshed ↺");
+  });
+
   const doExport = () => {
     try {
       exportPrintableReport({ state: STATE, athletes: ATHLETES });
@@ -195,6 +225,7 @@ function bindTopActions() {
       toast(e?.message || "Export failed");
     }
   };
+
   dom.btnExport?.addEventListener("click", doExport);
   dom.btnExportAnalytics?.addEventListener("click", doExport);
 }
@@ -206,12 +237,14 @@ function bindDelegatedActions() {
   document.addEventListener("click", (e) => {
     const el = e.target?.closest?.("[data-action]");
     if (!el) return;
+
     const act = el.getAttribute("data-action");
+
     if (act === "export") {
-      // Shortcut: trigger the real export button if present.
       dom.btnExport?.click?.();
       return;
     }
+
     if (act === "logSession") {
       navigate("train");
       return;
@@ -220,32 +253,37 @@ function bindDelegatedActions() {
     if (act === "open-athlete") {
       const athleteId = el.getAttribute("data-athlete-id");
       if (!athleteId) return;
+
       navigate("athletes");
+
+      // Wait for the athletes view to render, then click the card.
       setTimeout(() => {
         try {
-          const card = document.querySelector(
-            `[data-athlete-card-id="${CSS.escape(athleteId)}"]`
-          );
-          if (card) card.click();
-        } catch {}
+          const card = document.querySelector(`[data-athlete-card-id="${CSS.escape(athleteId)}"]`);
+          card?.click?.();
+        } catch {
+          // ignore
+        }
       }, 0);
+
       return;
     }
   });
 }
 
 /* ---------------------------
-   Main init
+   Main init (single source of truth)
 ---------------------------- */
 export async function initApp() {
   showLoader();
+
   cacheDOM();
   installInteractions();
 
   // Load state safely
   try {
     loadState();
-  } catch (err) {
+  } catch {
     toast("Storage error — running in recovery mode", { timeout: 6000 });
   }
 
@@ -263,6 +301,7 @@ export async function initApp() {
   bindDataManagement();
   bindTopActions();
 
+  // Bind view-level events
   bindTrainViewEvents();
   bindAthletesViewEvents();
   bindWellnessEvents();
@@ -305,14 +344,6 @@ export async function initApp() {
   TodayTour.maybeShow?.();
 
   // Let loader be visible briefly (prevents "no loader" complaint)
-  await new Promise(r => setTimeout(r, 250));
-  hideLoader();
-}
-export function initApp() {
-  showLoader();
-  loadState();
-  applyTheme(getThemePref());
-  initRouter();
-  maybeShowOnboarding();
+  await new Promise((r) => setTimeout(r, 250));
   hideLoader();
 }
