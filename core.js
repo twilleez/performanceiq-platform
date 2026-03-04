@@ -1,4 +1,4 @@
-// core.js — v3.0.0 (Phase 3.1 — full production block)
+// core.js — v3.2.0 (Phase 3.3 — Sport-Specific Workouts, PRs, Streak Badges)
 // Features:
 // - Sport picker fixed (readable dropdowns assumed styled in CSS)
 // - Today one-button workflow: Generate → Start timer → Log → Done
@@ -43,7 +43,9 @@
       sessions: [],
       periodization: { plan: null, updated_at: null },
       insights: { weekly: [], updated_at: null },
-      ui: { view: "home", todaySession: null, mealPlan: null }
+      ui:  { view: "home", todaySession: null, mealPlan: null },
+      prs: {},
+      badges: {}
     };
     if (window.dataStore && window.dataStore.save) window.dataStore.save(state);
   }
@@ -98,108 +100,269 @@
     setDataStatusLabel("Local saved", "var(--ok)");
   }
 
-  // ---------- Sport-specific microblocks, strength library, substitutions ----------
-  // Each sport: sessionTypes: skill, strength, conditioning, recovery, speed
+  // ══════════════════════════════════════════════════════════════════════════
+  // SPORT-SPECIFIC EXERCISE LIBRARY — v3.2
+  // Each exercise carries: title, cue, sets, reps, load, equipment,
+  //   noEquipSub (bodyweight alt), subs (injury alts), prTrackable (bool),
+  //   prMetric ("weight_lbs"|"reps"|"time_sec"|"distance_m")
+  // ══════════════════════════════════════════════════════════════════════════
   const EXERCISE_LIB = {
-    // equipment: what the exercise requires.
-    // noEquipSub: key into noEquip{} to show when user taps "No equipment".
-    // cues use whole numbers only — no ranges like "6-8".
+
     strength: {
-      split_squat:         { title: "Split Squat",        cue: "3 sets · 8 reps per leg", load: "moderate", equipment: "none",     noEquipSub: null,                 subs: { knee: "reverse_lunge",              hamstring: "single_leg_deadlift" } },
-      rdl:                 { title: "Romanian Deadlift",  cue: "3 sets · 8 reps",         load: "moderate", equipment: "barbell",  noEquipSub: "bodyweight_rdl",     subs: { back: "good_mornings",              hamstring: "bridge" } },
-      push_press:          { title: "Push Press",         cue: "3 sets · 5 reps",         load: "high",     equipment: "barbell",  noEquipSub: "pike_pushup",        subs: { shoulder: "seated_dumbbell_press",  injury: "band_press" } },
-      trap_bar_deadlift:   { title: "Trap Bar Deadlift",  cue: "3 sets · 5 reps",         load: "high",     equipment: "trap_bar", noEquipSub: "bodyweight_rdl",     subs: { back: "kb_deadlift" } },
-      goblet_squat:        { title: "Goblet Squat",       cue: "3 sets · 10 reps",        load: "moderate", equipment: "dumbbell", noEquipSub: "bodyweight_squat",   subs: { knee: "box_squat" } },
-      single_leg_deadlift: { title: "Single-Leg RDL",     cue: "3 sets · 6 reps per leg", load: "moderate", equipment: "dumbbell", noEquipSub: "single_leg_hinge",   subs: { balance: "rack_step_down" } },
-      bench:               { title: "Bench Press",        cue: "3 sets · 6 reps",         load: "high",     equipment: "barbell",  noEquipSub: "pushup",             subs: { shoulder: "dumbbell_press" } },
-      row:                 { title: "Bent-Over Row",      cue: "3 sets · 8 reps",         load: "moderate", equipment: "barbell",  noEquipSub: "inverted_row",       subs: { back: "band_row" } }
+      // ── Lower body ──────────────────────────────────────────────────────
+      split_squat:         { title: "Split Squat",           cue: "3 sets · 8 reps per leg",  sets:3, reps:8,  load:"moderate", equipment:"none",     noEquipSub:null,              subs:{knee:"reverse_lunge",hamstring:"single_leg_deadlift"}, prTrackable:true,  prMetric:"weight_lbs" },
+      rdl:                 { title: "Romanian Deadlift",     cue: "3 sets · 8 reps",           sets:3, reps:8,  load:"moderate", equipment:"barbell",  noEquipSub:"bodyweight_rdl",  subs:{back:"good_mornings",hamstring:"bridge"},               prTrackable:true,  prMetric:"weight_lbs" },
+      trap_bar_deadlift:   { title: "Trap Bar Deadlift",     cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"high",     equipment:"trap_bar", noEquipSub:"bodyweight_rdl",  subs:{back:"kb_deadlift"},                                   prTrackable:true,  prMetric:"weight_lbs" },
+      goblet_squat:        { title: "Goblet Squat",          cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"dumbbell", noEquipSub:"bodyweight_squat",subs:{knee:"box_squat"},                                      prTrackable:true,  prMetric:"weight_lbs" },
+      single_leg_deadlift: { title: "Single-Leg RDL",        cue: "3 sets · 6 reps per leg",  sets:3, reps:6,  load:"moderate", equipment:"dumbbell", noEquipSub:"single_leg_hinge",subs:{balance:"rack_step_down"},                              prTrackable:true,  prMetric:"weight_lbs" },
+      hex_bar_squat:       { title: "Hex Bar Squat",         cue: "4 sets · 5 reps",           sets:4, reps:5,  load:"high",     equipment:"trap_bar", noEquipSub:"bodyweight_squat",subs:{knee:"box_squat"},                                      prTrackable:true,  prMetric:"weight_lbs" },
+      nordic_curl:         { title: "Nordic Hamstring Curl", cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"moderate", equipment:"none",     noEquipSub:null,              subs:{hamstring:"bridge"},                                   prTrackable:true,  prMetric:"reps"       },
+      hip_thrust:          { title: "Hip Thrust",            cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"barbell",  noEquipSub:"glute_bridge",    subs:{back:"bodyweight_rdl"},                                 prTrackable:true,  prMetric:"weight_lbs" },
+      reverse_lunge:       { title: "Reverse Lunge",         cue: "3 sets · 8 reps per leg",  sets:3, reps:8,  load:"moderate", equipment:"dumbbell", noEquipSub:"bodyweight_squat",subs:{knee:"step_up"},                                        prTrackable:true,  prMetric:"weight_lbs" },
+      step_up:             { title: "Box Step-Up",           cue: "3 sets · 8 reps per leg",  sets:3, reps:8,  load:"moderate", equipment:"box",      noEquipSub:"reverse_lunge_bw",subs:{knee:"wall_sit"},                                       prTrackable:true,  prMetric:"weight_lbs" },
+      // ── Upper body ──────────────────────────────────────────────────────
+      push_press:          { title: "Push Press",            cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"high",     equipment:"barbell",  noEquipSub:"pike_pushup",     subs:{shoulder:"seated_dumbbell_press",injury:"band_press"},  prTrackable:true,  prMetric:"weight_lbs" },
+      bench:               { title: "Bench Press",           cue: "3 sets · 6 reps",           sets:3, reps:6,  load:"high",     equipment:"barbell",  noEquipSub:"pushup",          subs:{shoulder:"dumbbell_press"},                             prTrackable:true,  prMetric:"weight_lbs" },
+      row:                 { title: "Bent-Over Row",         cue: "3 sets · 8 reps",           sets:3, reps:8,  load:"moderate", equipment:"barbell",  noEquipSub:"inverted_row",    subs:{back:"band_row"},                                      prTrackable:true,  prMetric:"weight_lbs" },
+      db_shoulder_press:   { title: "DB Shoulder Press",     cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"dumbbell", noEquipSub:"pike_pushup",     subs:{shoulder:"band_press"},                                prTrackable:true,  prMetric:"weight_lbs" },
+      pullup:              { title: "Pull-Up",               cue: "3 sets · max reps",         sets:3, reps:0,  load:"moderate", equipment:"bar",      noEquipSub:"inverted_row",    subs:{shoulder:"band_row"},                                  prTrackable:true,  prMetric:"reps"       },
+      db_row:              { title: "Single-Arm DB Row",     cue: "3 sets · 10 reps per side", sets:3, reps:10, load:"moderate", equipment:"dumbbell", noEquipSub:"inverted_row",    subs:{back:"band_row"},                                      prTrackable:true,  prMetric:"weight_lbs" },
+      lat_pulldown:        { title: "Lat Pulldown",          cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"cable",    noEquipSub:"inverted_row",    subs:{shoulder:"band_row"},                                  prTrackable:true,  prMetric:"weight_lbs" },
+      cable_chop:          { title: "Cable Rotational Chop", cue: "3 sets · 10 reps per side", sets:3, reps:10, load:"moderate", equipment:"cable",    noEquipSub:"med_ball_throw",  subs:{back:"pallof_press"},                                  prTrackable:false, prMetric:"weight_lbs" },
+      med_ball_slam:       { title: "Med Ball Slam",         cue: "3 sets · 8 reps",           sets:3, reps:8,  load:"moderate", equipment:"med_ball", noEquipSub:"pushup",          subs:{shoulder:"band_press"},                                prTrackable:false, prMetric:"reps"       },
+      // ── Core / stability ────────────────────────────────────────────────
+      pallof_press:        { title: "Pallof Press",          cue: "3 sets · 10 reps per side", sets:3, reps:10, load:"low",      equipment:"cable",    noEquipSub:"dead_bug",        subs:{back:"dead_bug"},                                      prTrackable:false, prMetric:"reps"       },
+      dead_bug:            { title: "Dead Bug",              cue: "3 sets · 8 reps per side",  sets:3, reps:8,  load:"low",      equipment:"none",     noEquipSub:null,              subs:{},                                                     prTrackable:false, prMetric:"reps"       },
+      Copenhagen:          { title: "Copenhagen Side Plank", cue: "3 sets · 30 sec per side",  sets:3, reps:30, load:"moderate", equipment:"bench",    noEquipSub:"side_plank",      subs:{groin:"side_plank"},                                   prTrackable:true,  prMetric:"time_sec"   },
     },
 
     plyo: {
-      approach_jumps: { title: "Approach Jumps",  cue: "6 reps",        load: "explosive", equipment: "none",  noEquipSub: null,            subs: { knee: "box_jumps_low" } },
-      lateral_bounds: { title: "Lateral Bounds",  cue: "4 sets · 6 reps", load: "explosive", equipment: "none", noEquipSub: null,            subs: { ankle: "lateral_step_ups" } }
+      approach_jumps:      { title: "Approach Jumps",        cue: "6 reps",                    sets:2, reps:6,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{knee:"box_jumps_low"},                                 prTrackable:true,  prMetric:"reps"       },
+      lateral_bounds:      { title: "Lateral Bounds",        cue: "4 sets · 6 reps per side",  sets:4, reps:6,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{ankle:"lateral_step_ups"},                             prTrackable:false, prMetric:"reps"       },
+      box_jump:            { title: "Box Jump",              cue: "4 sets · 5 reps",           sets:4, reps:5,  load:"explosive", equipment:"box",     noEquipSub:null,              subs:{knee:"squat_jump"},                                    prTrackable:true,  prMetric:"reps"       },
+      broad_jump:          { title: "Broad Jump",            cue: "4 sets · 4 reps",           sets:4, reps:4,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{knee:"box_jumps_low"},                                 prTrackable:true,  prMetric:"distance_m" },
+      depth_jump:          { title: "Depth Jump",            cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"explosive", equipment:"box",     noEquipSub:"box_jump",        subs:{knee:"box_jump"},                                      prTrackable:false, prMetric:"reps"       },
+      single_leg_hop:      { title: "Single-Leg Hop Series", cue: "3 sets · 5 reps per leg",   sets:3, reps:5,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{ankle:"lateral_step_ups"},                             prTrackable:true,  prMetric:"distance_m" },
+      hurdle_hop:          { title: "Hurdle Hop",            cue: "4 sets · 6 hurdles",        sets:4, reps:6,  load:"explosive", equipment:"hurdles", noEquipSub:"lateral_bounds",  subs:{ankle:"lateral_bounds"},                               prTrackable:false, prMetric:"reps"       },
     },
 
     conditioning: {
-      suicides:    { title: "Court Suicides", cue: "5 repeats",   load: "high",     equipment: "court", noEquipSub: "shuttle_run",   subs: { injury: "bike_intervals" } },
-      tempo_runs:  { title: "Tempo Runs",     cue: "6 x 200m",    load: "moderate", equipment: "track", noEquipSub: "timed_effort",  subs: { ankle: "rower" } }
+      suicides:            { title: "Court Suicides",        cue: "5 repeats",                 sets:1, reps:5,  load:"high",     equipment:"court",   noEquipSub:"shuttle_run",     subs:{injury:"bike_intervals"},                              prTrackable:true,  prMetric:"time_sec"   },
+      tempo_runs:          { title: "Tempo Runs",            cue: "6 x 200m",                  sets:6, reps:1,  load:"moderate", equipment:"track",   noEquipSub:"timed_effort",    subs:{ankle:"rower"},                                        prTrackable:true,  prMetric:"time_sec"   },
+      prowler_push:        { title: "Prowler Push",          cue: "6 x 20m",                   sets:6, reps:1,  load:"high",     equipment:"sled",    noEquipSub:"shuttle_run",     subs:{knee:"bike_intervals"},                                prTrackable:true,  prMetric:"time_sec"   },
+      rower_intervals:     { title: "Rower Intervals",       cue: "5 x 500m",                  sets:5, reps:1,  load:"high",     equipment:"rower",   noEquipSub:"timed_effort",    subs:{ankle:"timed_effort"},                                 prTrackable:true,  prMetric:"time_sec"   },
+      bike_sprint:         { title: "Bike Sprints",          cue: "8 x 15 sec all-out",        sets:8, reps:1,  load:"high",     equipment:"bike",    noEquipSub:"timed_effort",    subs:{ankle:"rower"},                                        prTrackable:true,  prMetric:"time_sec"   },
+      hill_sprint:         { title: "Hill Sprints",          cue: "6 x 30m",                   sets:6, reps:1,  load:"high",     equipment:"hill",    noEquipSub:"shuttle_run",     subs:{ankle:"bike_sprint"},                                  prTrackable:true,  prMetric:"time_sec"   },
     },
 
-    // Catalogue of bodyweight / no-kit alternatives.
-    // Shown when user taps "No equipment" swap button on a given exercise.
+    // Bodyweight / no-equipment alternatives
     noEquip: {
-      bodyweight_squat: { title: "Bodyweight Squat",          cue: "4 sets · 15 reps",       load: "moderate" },
-      bodyweight_rdl:   { title: "Bodyweight RDL",            cue: "3 sets · 10 reps",       load: "moderate" },
-      single_leg_hinge: { title: "Single-Leg Hip Hinge",      cue: "3 sets · 8 reps per leg", load: "moderate" },
-      pike_pushup:      { title: "Pike Push-up",              cue: "3 sets · 10 reps",       load: "moderate" },
-      pushup:           { title: "Push-up",                   cue: "4 sets · 12 reps",       load: "moderate" },
-      inverted_row:     { title: "Inverted Row (table / bar)", cue: "3 sets · 8 reps",       load: "moderate" },
-      shuttle_run:      { title: "Shuttle Run 10m",           cue: "6 repeats",               load: "high"     },
-      timed_effort:     { title: "30-second Hard Run",        cue: "6 repeats",               load: "moderate" }
+      bodyweight_squat:    { title: "Bodyweight Squat",          cue: "4 sets · 15 reps",        load:"moderate" },
+      bodyweight_rdl:      { title: "Bodyweight RDL",            cue: "3 sets · 10 reps",        load:"moderate" },
+      single_leg_hinge:    { title: "Single-Leg Hip Hinge",      cue: "3 sets · 8 reps per leg", load:"moderate" },
+      pike_pushup:         { title: "Pike Push-up",              cue: "3 sets · 10 reps",        load:"moderate" },
+      pushup:              { title: "Push-up",                   cue: "4 sets · 12 reps",        load:"moderate" },
+      inverted_row:        { title: "Inverted Row",              cue: "3 sets · 8 reps",         load:"moderate" },
+      shuttle_run:         { title: "Shuttle Run 10m",           cue: "6 repeats",               load:"high"     },
+      timed_effort:        { title: "30-sec Hard Effort",        cue: "6 repeats",               load:"moderate" },
+      glute_bridge:        { title: "Glute Bridge",              cue: "3 sets · 15 reps",        load:"low"      },
+      med_ball_throw:      { title: "Rotational Med Ball Throw", cue: "3 sets · 8 reps/side",    load:"moderate" },
+      dead_bug:            { title: "Dead Bug",                  cue: "3 sets · 8 reps/side",    load:"low"      },
+      side_plank:          { title: "Side Plank",                cue: "3 sets · 30 sec/side",    load:"low"      },
+      reverse_lunge_bw:    { title: "Bodyweight Reverse Lunge",  cue: "3 sets · 10 reps/leg",    load:"moderate" },
     }
   };
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // SPORT-SPECIFIC MICROBLOCKS
+  // Each sport gets: skill drills, sport-conditioning, position-specific work.
+  // sessionType key picks the relevant drills per session.
+  // ══════════════════════════════════════════════════════════════════════════
   const SPORT_MICROBLOCKS = {
+
     basketball: {
-      shooting: [
-        { name: "Catch & Shoot", reps: "5 sets x 10", cue: "Pocket, quick release", load: "skill" },
-        { name: "Pull-up 3s", reps: "4 sets x 8", cue: "create space, set feet", load: "skill" }
-      ],
-      ball_handling: [
-        { name: "Two-Ball Stationary", reps: "6 min", cue: "soft hands", load: "skill" },
-        { name: "Cone Weaves", reps: "6 reps", cue: "low stance", load: "skill" }
-      ]
+      label: "Basketball",
+      emoji: "🏀",
+      // Strength priorities: explosiveness, single-leg stability, upper-body push/pull
+      strengthPriority: ["goblet_squat", "rdl", "push_press", "single_leg_deadlift", "pullup"],
+      // Sport conditioning
+      conditioning:     ["suicides", "tempo_runs"],
+      // Plyo priorities
+      plyoPriority:     ["box_jump", "lateral_bounds", "single_leg_hop"],
+      skillBlocks: {
+        shooting:        [ { name:"Catch & Shoot", reps:"5 sets · 10 shots", cue:"Pocket → quick release, hold follow-through 1 sec", load:"skill" },
+                           { name:"Pull-up Mid J", reps:"4 sets · 8",       cue:"Create space off dribble, set feet on gather",      load:"skill" } ],
+        ball_handling:   [ { name:"Two-Ball Stationary", reps:"5 min",         cue:"Waist, shoulder, low — soft hands, eyes up",        load:"skill" },
+                           { name:"Cone Speed Weaves",   reps:"8 reps",        cue:"Low stance, change of direction at each cone",      load:"skill" } ],
+        finishing:       [ { name:"Euro Step Finish",    reps:"4 sets · 6",    cue:"Wide gather, opposite-foot plant, soft layup",      load:"skill" },
+                           { name:"Floater Series",      reps:"4 sets · 6",    cue:"High release point, flat arc, off the glass",       load:"skill" } ],
+        defense:         [ { name:"Defensive Slides",    reps:"5 sets · 30s",  cue:"Hips low, no crossing feet, quick drop-step",       load:"skill" },
+                           { name:"Close-out Drill",     reps:"6 reps",        cue:"Sprint, chop steps last 2m, hand up, no foul",      load:"skill" } ],
+      }
     },
 
     football: {
-      route_running: [
-        { name: "Cone Route Tree", reps: "5 trees", cue: "explosive release", load: "skill" },
-        { name: "Hands Drill", reps: "4 sets x 8", cue: "catch focus", load: "skill" }
-      ],
-      blocking: [
-        { name: "Sled Drive", reps: "5 x 10m", cue: "hip drive", load: "skill" }
-      ]
+      label: "Football",
+      emoji: "🏈",
+      strengthPriority: ["trap_bar_deadlift", "bench", "row", "push_press", "hex_bar_squat"],
+      conditioning:     ["hill_sprint", "prowler_push"],
+      plyoPriority:     ["broad_jump", "depth_jump", "box_jump"],
+      skillBlocks: {
+        route_running:   [ { name:"Cone Route Tree",     reps:"5 trees",       cue:"Explosive release off LOS, sharp cuts — no rounding", load:"skill" },
+                           { name:"Hands / Catch Drill", reps:"4 sets · 8",    cue:"Eyes through ball into hands, tuck on contact",        load:"skill" } ],
+        blocking:        [ { name:"Sled Drive",          reps:"5 × 10m",       cue:"Stay low, hip drive, accelerate through sled",         load:"skill" },
+                           { name:"Kick-Slide Drill",    reps:"6 reps",        cue:"Anchor inside foot, mirror defender, keep pad level",   load:"skill" } ],
+        qb_mechanics:   [ { name:"Drop & Set Drill",     reps:"5 sets · 8",    cue:"Quick 3-step, hips open early, weight transfer",        load:"skill" },
+                           { name:"Pocket Movement",     reps:"6 reps",        cue:"Step up, slide, reset — protect pocket integrity",      load:"skill" } ],
+        tackling:        [ { name:"Angle Tackle Drill",  reps:"8 reps",        cue:"Eyes on numbers, wrap low, drive through contact",      load:"skill" } ],
+      }
     },
 
     soccer: {
-      dribbling: [
-        { name: "1v1 Close Control", reps: "8 reps", cue: "soft touches", load: "skill" },
-        { name: "Passing Circuit", reps: "10 min", cue: "weight & timing", load: "skill" }
-      ]
+      label: "Soccer",
+      emoji: "⚽",
+      strengthPriority: ["goblet_squat", "single_leg_deadlift", "row", "nordic_curl", "Copenhagen"],
+      conditioning:     ["tempo_runs", "hill_sprint"],
+      plyoPriority:     ["lateral_bounds", "single_leg_hop", "hurdle_hop"],
+      skillBlocks: {
+        dribbling:       [ { name:"1v1 Close Control",   reps:"8 reps",        cue:"Soft touches, body between ball & defender",            load:"skill" },
+                           { name:"Speed Dribble Gate",  reps:"6 × 20m",       cue:"Push the ball ahead, accelerate, no panic",             load:"skill" } ],
+        passing:         [ { name:"Rondo 4v1",           reps:"10 min",        cue:"Weight & timing — early pass before pressure arrives",  load:"skill" },
+                           { name:"1-2 Combination",     reps:"8 reps/side",   cue:"Open body, firm pass, time your run in behind",        load:"skill" } ],
+        finishing:       [ { name:"Far Post Strike",     reps:"5 sets · 8",    cue:"Plant foot alongside ball, lock ankle, follow through", load:"skill" },
+                           { name:"1v1 vs GK",           reps:"8 reps",        cue:"Shape early, pick corner, disguise direction",          load:"skill" } ],
+        defending:       [ { name:"Defensive Jockeying", reps:"6 reps",        cue:"Side-on, half-turn, delay not commit",                  load:"skill" },
+                           { name:"Press Trigger Drill", reps:"8 reps",        cue:"Trigger on poor touch, angle to cut off back pass",     load:"skill" } ],
+      }
     },
 
     baseball: {
-      throwing: [
-        { name: "Long Toss", reps: "10-15 min", cue: "accelerate through release", load: "skill" },
-        { name: "Band Throw Pattern", reps: "3 sets", cue: "wrist & scap", load: "skill" }
-      ]
+      label: "Baseball / Softball",
+      emoji: "⚾",
+      strengthPriority: ["trap_bar_deadlift", "bench", "row", "cable_chop", "db_row"],
+      conditioning:     ["bike_sprint", "hill_sprint"],
+      plyoPriority:     ["broad_jump", "box_jump", "med_ball_slam"],
+      skillBlocks: {
+        throwing:        [ { name:"Long Toss Progression", reps:"10–15 min",   cue:"Accelerate through release point, low elbow = danger",  load:"skill" },
+                           { name:"Band Throw Pattern",    reps:"3 sets",       cue:"Wrist/scap activation — external rotation emphasis",   load:"skill" } ],
+        hitting:         [ { name:"Tee Work (oppo gap)",   reps:"5 sets · 10", cue:"Stay back, hands inside ball, drive to opposite field", load:"skill" },
+                           { name:"Front Toss",            reps:"5 sets · 10", cue:"Short stride, early load, stay through contact zone",   load:"skill" } ],
+        fielding:        [ { name:"Ground Ball Series",    reps:"20 reps",     cue:"Fielding triangle, glove outside foot, charge easy GB", load:"skill" },
+                           { name:"Footwork Around Bag",   reps:"10 reps/foot",cue:"Early read, soft feet, secure then throw",              load:"skill" } ],
+        baserunning:     [ { name:"Primary Lead Drill",    reps:"8 reps",      cue:"2.5 shuffle, weight on balls of feet, read pitcher",    load:"skill" } ],
+      }
     },
 
     volleyball: {
-      hitting: [
-        { name: "Approach & Arm Swing", reps: "5 sets x 6", cue: "arm path", load: "skill" },
-        { name: "Block Footwork", reps: "6 reps", cue: "timing", load: "skill" }
-      ]
+      label: "Volleyball",
+      emoji: "🏐",
+      strengthPriority: ["goblet_squat", "rdl", "push_press", "db_shoulder_press", "pullup"],
+      conditioning:     ["suicides", "bike_sprint"],
+      plyoPriority:     ["approach_jumps", "box_jump", "depth_jump"],
+      skillBlocks: {
+        hitting:         [ { name:"Approach & Arm Swing", reps:"5 sets · 6",  cue:"4-step approach, high elbow, lead with heel of hand",   load:"skill" },
+                           { name:"Tool & Wipe Drill",    reps:"4 sets · 8",  cue:"Roll hand over top to tool the block or wipe out",      load:"skill" } ],
+        blocking:        [ { name:"Block Footwork",        reps:"8 reps",      cue:"Read setter, 2-step, penetrate net, flat hands",        load:"skill" },
+                           { name:"Triple Block Slide",    reps:"6 reps",      cue:"Outside blocker leads, MB slides, line up seam",        load:"skill" } ],
+        setting:         [ { name:"Setting from Knee",     reps:"50 reps",     cue:"Consistent hand shape, wrists back, symmetrical push",  load:"skill" },
+                           { name:"Back-Set Accuracy",     reps:"30 reps",     cue:"Square to target, extension overhead, hips drive",      load:"skill" } ],
+        passing:         [ { name:"Platform Pass Lines",   reps:"10 min",      cue:"Angle platform to target, absorb with legs not arms",   load:"skill" } ],
+      }
     },
 
     track: {
-      sprint: [
-        { name: "Acceleration 30m", reps: "6 reps", cue: "drive phase", load: "skill" },
-        { name: "A-Skips", reps: "3 x 30s", cue: "ankle stiffness", load: "skill" }
-      ]
-    }
+      label: "Track & Field",
+      emoji: "🏃",
+      strengthPriority: ["goblet_squat", "rdl", "single_leg_deadlift", "nordic_curl", "hip_thrust"],
+      conditioning:     ["tempo_runs", "hill_sprint"],
+      plyoPriority:     ["broad_jump", "hurdle_hop", "single_leg_hop"],
+      skillBlocks: {
+        sprint_mechanics: [ { name:"A-Skips",              reps:"3 × 30m",     cue:"High knee, dorsiflexed foot, fast ground contact",      load:"skill" },
+                             { name:"B-Skips",             reps:"3 × 30m",     cue:"Extend & paw back, hip extension drives speed",         load:"skill" } ],
+        acceleration:     [ { name:"30m Drive Phase",      reps:"6 reps",      cue:"Forward lean 45°, push not pull, triple extension",     load:"skill" },
+                             { name:"Wicket Runs",         reps:"4 × 20m",     cue:"Consistent stride length over wickets, relax",          load:"skill" } ],
+        max_velocity:     [ { name:"Flying 30s",           reps:"4 reps",      cue:"Rolling start, max effort 30m, tall posture, relax jaw", load:"skill" },
+                             { name:"Hollow Sprints",      reps:"5 × 100m",    cue:"Build — float — build, practice relaxation at speed",   load:"skill" } ],
+        hurdles:          [ { name:"Lead-Leg Drill",       reps:"3 sets · 8",  cue:"Attack with trail knee, don't sit in hurdle",           load:"skill" },
+                             { name:"3-Step Rhythm",       reps:"5 × 4 hurdles",cue:"Attack first hurdle, maintain rhythm, don't slow",     load:"skill" } ],
+      }
+    },
+
+    swimming: {
+      label: "Swimming",
+      emoji: "🏊",
+      strengthPriority: ["lat_pulldown", "db_row", "pullup", "hip_thrust", "rdl"],
+      conditioning:     ["rower_intervals", "bike_sprint"],
+      plyoPriority:     ["broad_jump", "box_jump"],
+      skillBlocks: {
+        freestyle:        [ { name:"Catch-Up Drill",       reps:"4 × 50m",     cue:"Full extension before next stroke — long body line",     load:"skill" },
+                             { name:"Fingertip Drag",      reps:"4 × 50m",     cue:"High elbow recovery, drag fingertips — sets up entry",  load:"skill" } ],
+        starts_turns:     [ { name:"Dive Block Start",     reps:"10 reps",     cue:"Compact tuck, drive heels, streamline entry",           load:"skill" },
+                             { name:"Flip Turn Series",    reps:"15 reps",     cue:"Approach pace, somersault, tight tuck, push & rotate",  load:"skill" } ],
+        backstroke:       [ { name:"Single-Arm Back",      reps:"4 × 50m",     cue:"High elbow entry, rotate to power through pull",        load:"skill" } ],
+        dryland:          [ { name:"Band Pull-Apart",      reps:"3 sets · 15", cue:"Retract scapula, control eccentrically",                load:"skill" },
+                             { name:"Core Rotation Band",  reps:"3 sets · 12/side", cue:"Resist rotation, then drive — train hip separation", load:"skill" } ],
+      }
+    },
+
+    wrestling: {
+      label: "Wrestling",
+      emoji: "🤼",
+      strengthPriority: ["trap_bar_deadlift", "bench", "row", "goblet_squat", "pullup"],
+      conditioning:     ["rower_intervals", "prowler_push"],
+      plyoPriority:     ["broad_jump", "box_jump", "depth_jump"],
+      skillBlocks: {
+        takedowns:        [ { name:"Double-Leg Attack",    reps:"5 sets · 6",  cue:"Level change, drive through, head to armpit, finish",   load:"skill" },
+                             { name:"Single-Leg Finish",   reps:"5 sets · 6",  cue:"Control ankle, elevate, swing/trip, don't stall",      load:"skill" } ],
+        top_control:      [ { name:"Breakdown & Ride",     reps:"6 reps",      cue:"Inside calf control, chest pressure, don't let hips",   load:"skill" } ],
+        defense:          [ { name:"Hip-Heist Drill",      reps:"8 reps",      cue:"Block, hip-heist under, tight waist — explosively",     load:"skill" },
+                             { name:"Sprawl Series",       reps:"8 reps",      cue:"Sprawl legs back, chest on back, re-circle head",       load:"skill" } ],
+        live_drilling:    [ { name:"Tie-Up Scrambles",     reps:"5 × 30 sec",  cue:"100% intensity, work through contact — no reset",       load:"skill" } ],
+      }
+    },
+
+    lacrosse: {
+      label: "Lacrosse",
+      emoji: "🥍",
+      strengthPriority: ["goblet_squat", "rdl", "push_press", "cable_chop", "single_leg_deadlift"],
+      conditioning:     ["suicides", "hill_sprint"],
+      plyoPriority:     ["lateral_bounds", "box_jump", "single_leg_hop"],
+      skillBlocks: {
+        stick_work:       [ { name:"Wall Ball — Quick Stick",  reps:"100 reps", cue:"Catch then release in one motion, top hand leads",   load:"skill" },
+                             { name:"Split-Dodge Drill",       reps:"8 reps/side", cue:"Plant outside foot, switch hands, accelerate away", load:"skill" } ],
+        shooting:         [ { name:"Stand-Still Crank",       reps:"5 × 10",  cue:"Wind up, hip rotation, wrist snap — high or low corner", load:"skill" },
+                             { name:"On-the-Run Shot",         reps:"8 reps",  cue:"Full speed approach, set hips, reach — no arm-only shot",load:"skill" } ],
+        ground_balls:     [ { name:"Scoop & Clear",           reps:"10 reps", cue:"Low to the ball, scoop through, protect with body",     load:"skill" } ],
+        defense:          [ { name:"Poke Check Drill",         reps:"8 reps",  cue:"Drop step, quick hand, don't reach — patience first",   load:"skill" } ],
+      }
+    },
+
+    tennis: {
+      label: "Tennis",
+      emoji: "🎾",
+      strengthPriority: ["goblet_squat", "cable_chop", "db_shoulder_press", "Copenhagen", "single_leg_deadlift"],
+      conditioning:     ["suicides", "bike_sprint"],
+      plyoPriority:     ["lateral_bounds", "single_leg_hop", "hurdle_hop"],
+      skillBlocks: {
+        groundstrokes:    [ { name:"Forehand Topspin Feed",  reps:"50 balls",  cue:"Lag wrist, low to high, inside-out brush — finish high",load:"skill" },
+                             { name:"Backhand Cross Feed",   reps:"50 balls",  cue:"2-hand: shoulder turn, coil, unwind — step into ball",  load:"skill" } ],
+        serve:            [ { name:"Flat Serve Toss Drill",  reps:"20 reps",   cue:"Toss 1 o'clock, trophy position, pronate on contact",   load:"skill" },
+                             { name:"Kick Serve Mechanics",  reps:"15 reps",   cue:"Toss behind head, arch back, brush 7 → 1 on ball",      load:"skill" } ],
+        net_play:         [ { name:"Volley Groundwork",      reps:"30 reps",   cue:"Continental grip, punch — don't swing, firm wrist",     load:"skill" } ],
+        footwork:         [ { name:"Split-Step Timing",      reps:"10 min",    cue:"Split as opponent strikes, land & load simultaneously", load:"skill" },
+                             { name:"Recovery Sprint Drill", reps:"12 reps",   cue:"Hit, recover centre, split — footwork first always",    load:"skill" } ],
+      }
+    },
   };
 
-  // Session type templates (mix of skill/strength/plyo/cond)
+  // Session type templates
   const SESSION_TEMPLATES = {
-    practice: { mix: ["skill", "strength", "plyo", "conditioning"], mins: 75 },
-    competition_prep: { mix: ["skill", "speed", "light_strength"], mins: 60 },
-    recovery: { mix: ["mobility", "light_skill"], mins: 35 },
-    strength: { mix: ["warmup", "strength", "accessory"], mins: 60 },
-    speed: { mix: ["warmup", "speed", "plyo"], mins: 50 }
+    practice:         { mix:["skill","strength","plyo","conditioning"], mins:75 },
+    competition_prep: { mix:["skill","speed","light_strength"],         mins:60 },
+    recovery:         { mix:["mobility","light_skill"],                 mins:35 },
+    strength:         { mix:["warmup","strength","accessory"],          mins:60 },
+    speed:            { mix:["warmup","speed","plyo"],                  mins:50 },
   };
-
-  // Map "session element" to real generator functions below
 
   // ---------- Injury handling helpers ----------
   function hasInjury(tag) {
@@ -235,120 +398,121 @@
   // ---------- Workout generation ----------
   // Generate a single session for given sport, sessionType (strength/speed/practice/etc.), and injury flags
   function generateWorkoutFor(sport = "basketball", sessionType = "practice", injuries = []) {
-    // Build an array of blocks: warmup, skill, strength, plyo, conditioning, cooldown
     const template = SESSION_TEMPLATES[sessionType] || SESSION_TEMPLATES.practice;
+    const sportData = SPORT_MICROBLOCKS[sport] || SPORT_MICROBLOCKS.basketball;
     const blocks = [];
+    const uid = () => Math.random().toString(36).slice(2, 8);
 
-    // Warm-up generator (dynamic)
-    blocks.push({
-      id: `warmup_${Math.random().toString(36).slice(2,8)}`,
-      type: "warmup",
-      title: "Dynamic Warm-up",
-      duration_min: 10,
-      items: [
-        { name: "Ankle/hip mobility", cue: "3 min total" },
-        { name: "Band activation (glutes/shoulders)", cue: "2 min" },
-        { name: "Movement prep (A skips, leg swings)", cue: "5 min" }
-      ]
-    });
+    // ── Warm-up (sport-specific cues) ─────────────────────────────────────
+    const warmupCues = {
+      basketball: [{ name:"Hip circles & ankle rolls",cue:"60 sec each side" },{ name:"Glute bridge walkouts",cue:"10 reps" },{ name:"A-skips + lateral shuffle",cue:"2 × 20m each" }],
+      football:   [{ name:"Hip flexor lunge matrix",cue:"5 reps/direction" },{ name:"Band clamshells",cue:"15 reps/side" },{ name:"Explosive step & drive",cue:"6 reps" }],
+      soccer:     [{ name:"Dynamic hip openers",cue:"8 reps/side" },{ name:"Ankle mobility circles",cue:"30 sec/foot" },{ name:"Lateral shuffle carioca",cue:"2 × 20m" }],
+      baseball:   [{ name:"Arm circles + band pull-apart",cue:"15 reps" },{ name:"Hip hinge + thoracic rotation",cue:"8 reps/side" },{ name:"Wrist flexor/extensor stretch",cue:"60 sec" }],
+      volleyball: [{ name:"Shoulder CARs",cue:"5 reps/side slow" },{ name:"Hip flexor lunge",cue:"8 reps/side" },{ name:"Ankle pops + calf raises",cue:"15 reps" }],
+      track:      [{ name:"A-skips & B-skips",cue:"2 × 30m each" },{ name:"Leg swings front/lateral",cue:"10 reps each" },{ name:"Wicket walk",cue:"20m" }],
+      swimming:   [{ name:"Rotator cuff band circuit",cue:"3 × 10 each" },{ name:"Lat stretch on bar",cue:"30 sec each side" },{ name:"Hip flexor lunge",cue:"8 reps/side" }],
+      wrestling:  [{ name:"Neck bridge rolls",cue:"10 reps each direction" },{ name:"Hip escape drill",cue:"10 reps/side" },{ name:"Sprawl series",cue:"6 reps" }],
+      lacrosse:   [{ name:"Dynamic hip opener",cue:"8 reps/side" },{ name:"Wrist & forearm mobility",cue:"60 sec" },{ name:"T-drill warmup",cue:"4 reps" }],
+      tennis:     [{ name:"Shoulder internal/external rotation",cue:"15 reps each" },{ name:"Split-step drill (no racket)",cue:"30 sec" },{ name:"Hip 90/90 stretch",cue:"60 sec/side" }],
+    };
+    const wuItems = warmupCues[sport] || warmupCues.basketball;
+    blocks.push({ id:`warmup_${uid()}`, type:"warmup", title:"Sport-Specific Warm-up", duration_min:10, items:wuItems });
 
-    // Skill microblocks
-    const micro = SPORT_MICROBLOCKS[sport] || {};
-    // choose top two skill blocks relevant to sessionType
-    const skillKeys = Object.keys(micro);
+    // ── Skill microblocks ─────────────────────────────────────────────────
+    const skillBlocks = sportData.skillBlocks || {};
+    const skillKeys   = Object.keys(skillBlocks);
     if (skillKeys.length) {
-      const skillBlock = {
-        id: `skill_${Math.random().toString(36).slice(2,8)}`,
-        type: "skill",
-        title: "Skill Microblocks",
-        duration_min: 15,
-        items: []
-      };
-      // pick 2 microblocks deterministically (first two)
-      skillKeys.slice(0, 2).forEach(k => {
-        const arr = micro[k] || [];
-        // push top 1-2 items
-        arr.slice(0, 2).forEach(it => skillBlock.items.push(it));
+      // Rotate which 2 skill categories we use by day-of-week for variety
+      const dayIdx  = new Date().getDay(); // 0-6
+      const k1 = skillKeys[dayIdx % skillKeys.length];
+      const k2 = skillKeys[(dayIdx + 1) % skillKeys.length];
+      const chosenKeys = [k1, k2 !== k1 ? k2 : skillKeys[(dayIdx + 2) % skillKeys.length]];
+      const skillBlock = { id:`skill_${uid()}`, type:"skill", title:`${sportData.emoji || ""} Skill Work — ${sportData.label || sport}`, duration_min:18, items:[] };
+      chosenKeys.forEach(k => {
+        (skillBlocks[k] || []).slice(0, 2).forEach(it => skillBlock.items.push({ ...it, skillCategory: k }));
       });
       blocks.push(skillBlock);
     }
 
-    // Strength block (if template calls for it)
+    // ── Strength block ────────────────────────────────────────────────────
     if (template.mix.includes("strength") || template.mix.includes("light_strength") || sessionType === "strength") {
-      const strengthBlock = {
-        id: `strength_${Math.random().toString(36).slice(2,8)}`,
-        type: "strength",
-        title: "Strength",
-        duration_min: 20,
-        items: []
-      };
-
-      // pick 2–3 exercises from library based on sport common patterns
-      const preferred = {
-        basketball: ["goblet_squat", "rdl", "push_press"],
-        football: ["trap_bar_deadlift", "bench", "row"],
-        soccer: ["goblet_squat", "single_leg_deadlift", "row"],
-        baseball: ["trap_bar_deadlift", "bench", "row"],
-        volleyball: ["goblet_squat", "rdl", "push_press"],
-        track: ["goblet_squat", "rdl", "single_leg_deadlift"]
-      }[sport] || ["goblet_squat", "rdl", "row"];
-
-      preferred.slice(0, 3).forEach(key => {
+      const strengthPriority = sportData.strengthPriority || ["goblet_squat","rdl","row"];
+      const pick = sessionType === "strength" ? 4 : 3; // more exercises on dedicated strength days
+      const strengthBlock = { id:`strength_${uid()}`, type:"strength", title:"Strength Block", duration_min:sessionType==="strength"?28:20, items:[] };
+      strengthPriority.slice(0, pick).forEach(key => {
         const ex = applyInjuryAdjustments(key, injuries) || EXERCISE_LIB.strength[key];
         if (!ex) return;
         strengthBlock.items.push({
           key,
-          name: ex.title,
-          cue: ex.cue,
-          equipment: ex.equipment || "none",
+          name:       ex.title,
+          cue:        ex.cue,
+          sets:       ex.sets || 3,
+          reps:       ex.reps || 8,
+          equipment:  ex.equipment || "none",
           noEquipSub: ex.noEquipSub || null,
-          substitution: ex.substitution || null
+          prTrackable: ex.prTrackable || false,
+          prMetric:    ex.prMetric   || "weight_lbs",
+          substitution: ex.substitution || null,
         });
       });
-
-      blocks.push(strengthBlock);
+      if (strengthBlock.items.length) blocks.push(strengthBlock);
     }
 
-    // Plyo / power block (when included)
+    // ── Plyo / power ──────────────────────────────────────────────────────
     if (template.mix.includes("plyo") || template.mix.includes("speed") || sessionType === "speed") {
-      const plyoBlock = { id: `plyo_${Math.random().toString(36).slice(2,8)}`, type: "plyo", title: "Power & Plyo", duration_min: 10, items: [] };
-      // pick plyo items
-      Object.keys(EXERCISE_LIB.plyo).slice(0, 2).forEach(k => {
+      const plyoPriority = sportData.plyoPriority || Object.keys(EXERCISE_LIB.plyo);
+      const plyoBlock = { id:`plyo_${uid()}`, type:"plyo", title:"Power & Plyometrics", duration_min:12, items:[] };
+      plyoPriority.slice(0, 3).forEach(k => {
         const def = EXERCISE_LIB.plyo[k];
-        plyoBlock.items.push({ key: k, name: def.title, cue: def.cue });
+        if (!def) return;
+        plyoBlock.items.push({ key:k, name:def.title, cue:def.cue, sets:def.sets||3, reps:def.reps||5,
+          prTrackable:def.prTrackable||false, prMetric:def.prMetric||"reps" });
       });
-      blocks.push(plyoBlock);
+      if (plyoBlock.items.length) blocks.push(plyoBlock);
     }
 
-    // Conditioning block
+    // ── Conditioning ──────────────────────────────────────────────────────
     if (template.mix.includes("conditioning") || sessionType === "practice") {
-      const cond = { id: `cond_${Math.random().toString(36).slice(2,8)}`, type: "conditioning", title: "Conditioning", duration_min: 8, items: [] };
-      Object.keys(EXERCISE_LIB.conditioning).slice(0, 1).forEach(k => {
+      const condPriority = sportData.conditioning || ["suicides","tempo_runs"];
+      const condBlock = { id:`cond_${uid()}`, type:"conditioning", title:"Sport Conditioning", duration_min:10, items:[] };
+      condPriority.slice(0, 2).forEach(k => {
         const def = EXERCISE_LIB.conditioning[k];
-        cond.items.push({
-          key: k,
-          name: def.title,
-          cue: def.cue,
-          equipment: def.equipment || "none",
-          noEquipSub: def.noEquipSub || null,
-          substitution: injuries.includes("ankle") ? "bike_intervals" : null
+        if (!def) return;
+        condBlock.items.push({
+          key:k, name:def.title, cue:def.cue, sets:def.sets||1, reps:def.reps||5,
+          equipment:def.equipment||"none",
+          noEquipSub:def.noEquipSub||null,
+          prTrackable:def.prTrackable||false, prMetric:def.prMetric||"time_sec",
+          substitution: injuries.includes("ankle") && k==="suicides" ? "bike_sprint" : null
         });
       });
-      blocks.push(cond);
+      if (condBlock.items.length) blocks.push(condBlock);
     }
 
-    // Cool-down
-    blocks.push({ id: `cd_${Math.random().toString(36).slice(2,8)}`, type: "cooldown", title: "Cool-down", duration_min: 5, items: [{ name: "Breathing & calves/hips", cue: "5 min easy" }] });
+    // ── Cooldown ──────────────────────────────────────────────────────────
+    const cooldownCues = {
+      basketball:["Child's pose 60 sec","Hip flexor lunge hold 45 sec/side","Seated hamstring stretch"],
+      football:  ["Thoracic rotation stretch","Pigeon pose 60 sec/side","Lat doorframe stretch"],
+      soccer:    ["Standing quad stretch","Adductor stretch seated","Hip 90/90 hold"],
+      baseball:  ["Cross-body shoulder stretch","Wrist extensor hang","Doorframe pec stretch"],
+      volleyball:["Overhead tricep/lat stretch","Prone press-up (cobra)","Ankle dorsiflexion stretch"],
+      track:     ["Standing calf stretch on step","Hip flexor lunge","Supine hamstring stretch"],
+    };
+    const cdItems = (cooldownCues[sport] || ["Hip flexor lunge 45 sec/side","Hamstring stretch","Deep breathing 2 min"])
+      .map((n,i)=>({ name:n, cue:["60 sec","45 sec each side","hold & breathe"][i]||"60 sec" }));
+    blocks.push({ id:`cd_${uid()}`, type:"cooldown", title:"Sport-Specific Cool-down", duration_min:7, items:cdItems });
 
-    // Return assembled session
     return {
-      id: `sess_${Math.random().toString(36).slice(2,8)}`,
+      id:          `sess_${uid()}`,
       sport,
       sessionType,
-      injuries: injuries || [],
+      sportLabel:  sportData.label  || sport,
+      sportEmoji:  sportData.emoji  || "",
+      injuries:    injuries || [],
       generated_at: nowISO(),
       blocks,
-      total_min: blocks.reduce((s, b) => s + (b.duration_min || 0), 0)
+      total_min:   blocks.reduce((s, b) => s + (b.duration_min || 0), 0)
     };
   }
 
@@ -572,12 +736,25 @@
         const swapBtn = hasSwap
           ? `<button class="btn ghost btn-sm" data-block="${b.id}" data-item="${idx}" data-swap="${it.noEquipSub}" style="margin-top:6px;font-size:12px">No equipment →</button>`
           : "";
+        // Show current PR inline on the card if this exercise is PR-trackable
+        const prData = it.prTrackable && it.key ? getPR(it.key) : null;
+        const prBadge = prData
+          ? `<div style="display:inline-flex;align-items:center;gap:4px;background:#f0b42920;border:1px solid #f0b42960;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;color:#a07800;margin-top:4px">
+               🏆 PR: ${formatPRValue(prData.value, prData.metric)}
+               <button data-log-pr-inline="${it.key}" data-ex-name="${it.name}" data-metric="${it.prMetric||prData.metric}" style="margin-left:6px;background:none;border:none;color:#a07800;cursor:pointer;font-size:10px;font-weight:700;padding:0">+ Log</button>
+             </div>`
+          : it.prTrackable && it.key
+            ? `<div style="display:inline-flex;align-items:center;gap:4px;background:#eee;border-radius:4px;padding:2px 7px;font-size:11px;color:#888;margin-top:4px">
+                 No PR yet <button data-log-pr-inline="${it.key}" data-ex-name="${it.name}" data-metric="${it.prMetric||'weight_lbs'}" style="margin-left:6px;background:none;border:none;color:#1B4F8A;cursor:pointer;font-size:10px;font-weight:700;padding:0">+ Log PR</button>
+               </div>`
+            : "";
         return `
           <div class="blockcard" id="excard-${b.id}-${idx}" style="margin:6px 0;padding:10px 12px">
             <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
               <span style="font-weight:700">${it.name}</span>
-              <span class="small muted">${it.cue}</span>
+              <span class="small muted">${it.cue}${it.sets ? ` · ${it.sets}×${it.reps||"max"}` : ""}</span>
             </div>
+            ${prBadge}
             ${it.substitution ? `<div class="small muted" style="margin-top:3px">Injury sub: ${it.substitution.replace(/_/g," ")}</div>` : ""}
             ${swapBtn}
           </div>`;
@@ -598,6 +775,29 @@
         <button class="btn ghost" id="btnStartNow">Start Now</button>
       </div>
     `;
+
+    // Wire inline PR log buttons via delegation
+    container.addEventListener("click", function handleInlinePR(e) {
+      const btn = e.target.closest("[data-log-pr-inline]");
+      if (!btn) return;
+      e.stopPropagation();
+      const key    = btn.getAttribute("data-log-pr-inline");
+      const name   = btn.getAttribute("data-ex-name") || key;
+      const metric = btn.getAttribute("data-metric") || "weight_lbs";
+      const metricLabel = { weight_lbs:"Weight (lbs)", reps:"Reps", time_sec:"Time (sec)", distance_m:"Distance (m)" }[metric] || metric;
+      const val = prompt(`Log PR for ${name}\n${metricLabel}:`);
+      if (!val || isNaN(parseFloat(val))) return;
+      const sets  = prompt("Sets completed:", "3") || "3";
+      const reps  = prompt("Reps per set:", "5") || "5";
+      const isNew = logPR(key, name, val, metric, sets, reps, "");
+      if (isNew) {
+        showPRCelebration(name, val, metric);
+        awardBadge(`pr_${key}`, `🏆 PR: ${name}`, `New PR — ${formatPRValue(parseFloat(val), metric)}`);
+      } else {
+        toast(`${name} logged — keep pushing for a new PR!`);
+      }
+      renderSessionCards(gen, container); // refresh cards with new PR
+    });
 
     // Wire swap via event delegation on the container — survives innerHTML re-renders
     // and avoids per-button addEventListener calls that get orphaned on re-render.
@@ -691,7 +891,7 @@
     const trainSportSelect = $("trainSportSelect");
     if (trainSportSelect) {
       trainSportSelect.innerHTML = Object.keys(SPORT_MICROBLOCKS)
-        .map(s => `<option value="${s}" ${s === sport ? "selected" : ""}>${s[0].toUpperCase() + s.slice(1)}</option>`)
+        .map(s => `<option value="${s}" ${s === sport ? "selected" : ""}>${(SPORT_MICROBLOCKS[s]?.emoji||"")+" "+(SPORT_MICROBLOCKS[s]?.label||s)}</option>`)
         .join("");
       trainSportSelect.addEventListener("change", () => {
         state.profile.sport = trainSportSelect.value;
@@ -1360,6 +1560,362 @@
 
 
   // ══════════════════════════════════════════════════════════════════════════
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PERSONAL RECORDS (PR) SYSTEM
+  // Athletes log weight/reps/time for any prTrackable exercise.
+  // Detects new PRs automatically on log. Stores full history per exercise.
+  // ══════════════════════════════════════════════════════════════════════════
+  function initPRs() {
+    if (!state.prs) {
+      state.prs = {};
+      // prMetric-keyed records per exercise key:
+      // state.prs[exerciseKey] = { current: {value, unit, date, sets, reps}, history: [{...}] }
+    }
+  }
+
+  // Returns true if this is a new PR for the exercise
+  function logPR(exerciseKey, exerciseName, value, metric, sets, reps, notes) {
+    initPRs();
+    const rec = state.prs[exerciseKey] = state.prs[exerciseKey] || { exerciseName, current: null, history: [] };
+    const entry = {
+      value:   parseFloat(value),
+      metric,  // "weight_lbs"|"reps"|"time_sec"|"distance_m"
+      sets:    parseInt(sets) || 1,
+      reps:    parseInt(reps) || 1,
+      notes:   notes || "",
+      date:    nowISO().slice(0, 10),
+      ts:      nowISO(),
+    };
+    if (!isFinite(entry.value) || entry.value <= 0) return false;
+
+    const isNewPR = !rec.current ||
+      (metric === "time_sec" ? entry.value < rec.current.value : entry.value > rec.current.value);
+
+    if (isNewPR) rec.current = { ...entry };
+    rec.exerciseName = exerciseName;
+    rec.history.unshift(entry);
+    persist();
+    return isNewPR;
+  }
+
+  function getPR(exerciseKey) {
+    initPRs();
+    return (state.prs[exerciseKey] || {}).current || null;
+  }
+
+  function getPRHistory(exerciseKey) {
+    initPRs();
+    return ((state.prs[exerciseKey] || {}).history || []).slice(0, 20);
+  }
+
+  function formatPRValue(value, metric) {
+    if (metric === "weight_lbs")  return `${value} lbs`;
+    if (metric === "reps")        return `${value} reps`;
+    if (metric === "time_sec")    return value >= 60 ? `${Math.floor(value/60)}:${String(Math.round(value%60)).padStart(2,"0")} min` : `${value}s`;
+    if (metric === "distance_m")  return value >= 1000 ? `${(value/1000).toFixed(2)} km` : `${value} m`;
+    return `${value}`;
+  }
+
+  function renderPRTracker() {
+    const body = $("prTrackerBody");
+    if (!body) return;
+    initPRs();
+
+    // Build PR-trackable exercise list from the library
+    const trackable = [];
+    Object.entries(EXERCISE_LIB.strength).forEach(([key, ex]) => {
+      if (ex.prTrackable) trackable.push({ key, name:ex.title, metric:ex.prMetric, type:"strength" });
+    });
+    Object.entries(EXERCISE_LIB.plyo).forEach(([key, ex]) => {
+      if (ex.prTrackable) trackable.push({ key, name:ex.title, metric:ex.prMetric, type:"plyo" });
+    });
+    Object.entries(EXERCISE_LIB.conditioning).forEach(([key, ex]) => {
+      if (ex.prTrackable) trackable.push({ key, name:ex.title, metric:ex.prMetric, type:"conditioning" });
+    });
+
+    const prEntries = Object.keys(state.prs);
+    const metricLabel = { weight_lbs:"lbs", reps:"reps", time_sec:"sec (lower = better)", distance_m:"metres" };
+
+    const prRows = trackable.map(ex => {
+      const pr = getPR(ex.key);
+      const hist = getPRHistory(ex.key).slice(0, 3);
+      const histDots = hist.map((h,i) => `<span class="small muted" style="font-size:11px;margin-left:6px">${i===0?"(prev) ":""}${formatPRValue(h.value, ex.metric)}</span>`).join("");
+      return `
+        <div class="pr-row" style="padding:12px 0;border-bottom:1px solid var(--line,#e8e8e8)" data-key="${ex.key}">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-weight:700;font-size:13px">${ex.name}</div>
+              <div class="small muted">${metricLabel[ex.metric] || ex.metric} · ${ex.type}</div>
+              ${hist.length > 1 ? `<div style="margin-top:3px">${histDots}</div>` : ""}
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              ${pr ? `<div style="text-align:right"><div style="font-size:20px;font-weight:800;color:#f0b429">🏆 ${formatPRValue(pr.value, pr.metric)}</div><div class="small muted">${pr.date}</div></div>` : `<div class="small muted" style="font-size:11px">No PR yet</div>`}
+              <button class="btn ghost" data-log-pr="${ex.key}" style="font-size:11px;flex-shrink:0">Log PR</button>
+            </div>
+          </div>
+          <div id="prForm_${ex.key}" hidden style="margin-top:10px;background:var(--panel,#f7f6f2);border-radius:8px;padding:12px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+              <div class="field" style="flex:1;min-width:90px">
+                <label>${metricLabel[ex.metric]}</label>
+                <input type="number" id="prVal_${ex.key}" min="0" step="${ex.metric==="time_sec"?1:2.5}" placeholder="${ex.metric==="time_sec"?"sec":ex.metric==="distance_m"?"m":"lbs"}"/>
+              </div>
+              <div class="field" style="width:55px"><label>Sets</label><input type="number" id="prSets_${ex.key}" value="3" min="1" max="10"/></div>
+              <div class="field" style="width:55px"><label>Reps</label><input type="number" id="prReps_${ex.key}" value="5" min="1" max="30"/></div>
+              <div class="field" style="flex:1;min-width:100px"><label>Notes</label><input type="text" id="prNotes_${ex.key}" placeholder="optional"/></div>
+              <button class="btn" id="prSave_${ex.key}" style="flex-shrink:0">Save</button>
+            </div>
+          </div>
+        </div>`;
+    }).join("");
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Personal Records <span style="font-size:16px">🏆</span></span>
+          <span class="small muted">${prEntries.length} exercise${prEntries.length!==1?"s":""} tracked</span>
+        </div>
+        <div class="minibody">
+          <div class="small muted" style="margin-bottom:14px">Log your best performance for each exercise. We'll automatically detect and celebrate new PRs.</div>
+          ${prRows || `<div class="small muted">No trackable exercises yet. Generate a workout first.</div>`}
+        </div>
+      </div>
+    `;
+
+    // Wire log PR toggle + save
+    body.querySelectorAll("[data-log-pr]").forEach(btn => {
+      const key = btn.getAttribute("data-log-pr");
+      btn.addEventListener("click", () => {
+        const form = $(`prForm_${key}`);
+        if (form) form.hidden = !form.hidden;
+      });
+    });
+    trackable.forEach(ex => {
+      $(`prSave_${ex.key}`)?.addEventListener("click", () => {
+        const val   = $(`prVal_${ex.key}`)?.value;
+        const sets  = $(`prSets_${ex.key}`)?.value;
+        const reps  = $(`prReps_${ex.key}`)?.value;
+        const notes = $(`prNotes_${ex.key}`)?.value;
+        const isNew = logPR(ex.key, ex.name, val, ex.metric, sets, reps, notes);
+        if (isNew) {
+          showPRCelebration(ex.name, val, ex.metric);
+          // Also award a badge
+          awardBadge(`pr_${ex.key}`, `🏆 PR: ${ex.name}`, `New personal record — ${formatPRValue(parseFloat(val), ex.metric)}`);
+        } else {
+          toast(`${ex.name} logged — not a PR yet. Keep pushing!`);
+        }
+        renderPRTracker();
+        renderBadges(); // refresh badges panel
+      });
+    });
+  }
+
+  function showPRCelebration(name, value, metric) {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);`;
+    overlay.innerHTML = `
+      <div style="background:#1a1a1a;color:#f7f6f2;border-radius:16px;padding:32px 36px;text-align:center;max-width:320px;animation:prPop .35s cubic-bezier(.34,1.56,.64,1) both">
+        <div style="font-size:56px;line-height:1">🏆</div>
+        <div style="font-size:28px;font-weight:800;color:#f0b429;margin:10px 0 4px">NEW PR!</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:6px">${name}</div>
+        <div style="font-size:22px;color:#4caf7d;font-weight:800">${formatPRValue(parseFloat(value), metric)}</div>
+        <div style="font-size:12px;color:#888;margin-top:8px">Your best ever. Keep building.</div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="margin-top:18px;background:#f0b429;color:#1a1a1a;border:none;border-radius:8px;padding:10px 28px;font-weight:800;font-size:14px;cursor:pointer">Let's go! 🔥</button>
+      </div>`;
+    // Animation
+    const style = document.createElement("style");
+    style.textContent = `@keyframes prPop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}`;
+    document.head.appendChild(style);
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+    setTimeout(() => overlay.remove(), 6000);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // STREAK BADGES + ACHIEVEMENT SYSTEM
+  // Badges are earned automatically. Each badge has: id, icon, title, desc,
+  // earnedAt. Rendered in a badge shelf on the home/profile view.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const STREAK_BADGES = [
+    { id:"streak_3",   icon:"🔥",  title:"3-Day Streak",   desc:"3 consecutive training days",   threshold:3  },
+    { id:"streak_7",   icon:"⚡",  title:"Week Warrior",   desc:"7 consecutive training days",   threshold:7  },
+    { id:"streak_14",  icon:"💪",  title:"Two-Week Beast",  desc:"14 consecutive training days",  threshold:14 },
+    { id:"streak_30",  icon:"🏅",  title:"30-Day Iron",     desc:"30 consecutive training days",  threshold:30 },
+    { id:"streak_60",  icon:"🥈",  title:"60-Day Legend",   desc:"60 consecutive training days",  threshold:60 },
+    { id:"streak_100", icon:"🥇",  title:"Century Club",    desc:"100 consecutive training days", threshold:100},
+  ];
+
+  const SESSION_BADGES = [
+    { id:"sess_1",   icon:"🌱", title:"First Step",       desc:"Logged your first session",    threshold:1   },
+    { id:"sess_5",   icon:"🎯", title:"Five Sessions",    desc:"Completed 5 training sessions", threshold:5   },
+    { id:"sess_10",  icon:"💎", title:"10 Sessions",      desc:"10 sessions in the books",      threshold:10  },
+    { id:"sess_25",  icon:"🚀", title:"25 Sessions",      desc:"25 sessions logged",            threshold:25  },
+    { id:"sess_50",  icon:"🌟", title:"50 Sessions",      desc:"50 sessions — elite territory", threshold:50  },
+    { id:"sess_100", icon:"👑", title:"100 Club",         desc:"100 sessions — all-time great", threshold:100 },
+  ];
+
+  const SPORT_BADGES = {
+    basketball: [{ id:"bball_skill", icon:"🏀", title:"On the Ball",     desc:"Generated 10+ basketball sessions" }],
+    football:   [{ id:"fb_skill",    icon:"🏈", title:"Gridiron Ready",  desc:"Generated 10+ football sessions"   }],
+    soccer:     [{ id:"soc_skill",   icon:"⚽", title:"Pitch Perfect",   desc:"Generated 10+ soccer sessions"     }],
+    track:      [{ id:"trk_skill",   icon:"🏃", title:"Track Royalty",   desc:"Generated 10+ track sessions"      }],
+    baseball:   [{ id:"bb_skill",    icon:"⚾", title:"In the Zone",     desc:"Generated 10+ baseball sessions"   }],
+    volleyball: [{ id:"vb_skill",    icon:"🏐", title:"Net Dominator",   desc:"Generated 10+ volleyball sessions" }],
+    swimming:   [{ id:"sw_skill",    icon:"🏊", title:"Deep End",        desc:"Generated 10+ swimming sessions"   }],
+    wrestling:  [{ id:"wr_skill",    icon:"🤼", title:"Mat Warrior",     desc:"Generated 10+ wrestling sessions"  }],
+    lacrosse:   [{ id:"lac_skill",   icon:"🥍", title:"Field Commander", desc:"Generated 10+ lacrosse sessions"   }],
+    tennis:     [{ id:"ten_skill",   icon:"🎾", title:"Ace Status",      desc:"Generated 10+ tennis sessions"     }],
+  };
+
+  function initBadges() {
+    if (!state.badges) state.badges = {};
+  }
+
+  function awardBadge(id, title, desc, icon) {
+    initBadges();
+    if (state.badges[id]) return false; // already earned
+    state.badges[id] = { id, title, desc: desc||"", icon: icon||"🏅", earnedAt: nowISO() };
+    persist();
+    showBadgeCelebration(state.badges[id]);
+    return true;
+  }
+
+  function showBadgeCelebration(badge) {
+    // Small toast-style notification
+    const el = document.createElement("div");
+    el.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9000;
+      background:#1a1a1a;color:#f7f6f2;border-radius:12px;padding:12px 20px;
+      display:flex;align-items:center;gap:12px;box-shadow:0 4px 24px rgba(0,0,0,.3);
+      animation:slideUp .3s ease both;max-width:320px;`;
+    el.innerHTML = `
+      <span style="font-size:28px">${badge.icon || "🏅"}</span>
+      <div><div style="font-weight:800;font-size:14px;color:#f0b429">Badge Earned!</div>
+      <div style="font-size:13px">${badge.title}</div></div>`;
+    const style = document.createElement("style");
+    style.textContent = `@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`;
+    document.head.appendChild(style);
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  // Check and award all automatic badges based on current state
+  function checkAndAwardBadges() {
+    initBadges();
+    const sessions = state.sessions || [];
+    const streak   = computeStreak();
+    const sport    = state.profile?.sport || "basketball";
+
+    // Streak badges
+    STREAK_BADGES.forEach(b => {
+      if (streak >= b.threshold) awardBadge(b.id, b.title, b.desc, b.icon);
+    });
+
+    // Session count badges
+    SESSION_BADGES.forEach(b => {
+      if (sessions.length >= b.threshold) awardBadge(b.id, b.title, b.desc, b.icon);
+    });
+
+    // Sport-specific badges (10+ sessions in same sport)
+    const sportSessions = sessions.filter(s => s.sport === sport).length;
+    const sportBadgeList = SPORT_BADGES[sport] || [];
+    if (sportSessions >= 10) {
+      sportBadgeList.forEach(b => awardBadge(b.id, b.title, b.desc, b.icon));
+    }
+  }
+
+  function renderBadges() {
+    const body = $("badgesBody");
+    if (!body) return;
+    initBadges();
+    checkAndAwardBadges();
+
+    const streak  = computeStreak();
+    const earned  = Object.values(state.badges);
+    const sessions = state.sessions || [];
+    const sport    = state.profile?.sport || "basketball";
+
+    // Which badges are "next up" to earn
+    const nextStreak  = STREAK_BADGES.find(b => streak < b.threshold);
+    const nextSession = SESSION_BADGES.find(b => sessions.length < b.threshold);
+    const progress    = [
+      nextStreak  ? { label:`Next streak badge`,   current:streak,           target:nextStreak.threshold,  unit:"days", icon:"🔥" } : null,
+      nextSession ? { label:`Next session badge`,  current:sessions.length,  target:nextSession.threshold, unit:"sessions", icon:"🎯" } : null,
+    ].filter(Boolean);
+
+    const progressBars = progress.map(p => {
+      const pct = Math.min(100, Math.round((p.current/p.target)*100));
+      return `
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+            <span class="small">${p.icon} ${p.label}</span>
+            <span class="small muted">${p.current} / ${p.target} ${p.unit}</span>
+          </div>
+          <div style="height:8px;background:var(--panel2,#e8e8e8);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:#f0b429;border-radius:4px;transition:width .5s ease"></div>
+          </div>
+        </div>`;
+    }).join("");
+
+    // All badge shelves
+    const makeShelf = (title, list, isEarned) => {
+      if (!list.length) return "";
+      return `
+        <div style="margin-bottom:20px">
+          <div class="small" style="font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#aaa;margin-bottom:10px">${title}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            ${list.map(b => `
+              <div title="${b.desc}" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 14px;
+                background:${isEarned?"var(--panel,#f7f6f2)":"#fafafa"};
+                border:1px solid ${isEarned?"#f0b429":"#e8e8e8"};border-radius:10px;min-width:72px;
+                opacity:${isEarned?1:.4};cursor:default;transition:opacity .2s">
+                <span style="font-size:26px">${b.icon}</span>
+                <span class="small" style="font-weight:700;font-size:10px;text-align:center;line-height:1.3">${b.title}</span>
+                ${isEarned && b.earnedAt ? `<span class="small muted" style="font-size:9px">${b.earnedAt.slice(0,10)}</span>` : ""}
+              </div>`).join("")}
+          </div>
+        </div>`;
+    };
+
+    const earnedIds = new Set(earned.map(b => b.id));
+    const earnedStreakBadges  = STREAK_BADGES.map(b => ({...b, earnedAt: state.badges[b.id]?.earnedAt})).filter(b => earnedIds.has(b.id));
+    const lockedStreakBadges  = STREAK_BADGES.filter(b => !earnedIds.has(b.id));
+    const earnedSessionBadges = SESSION_BADGES.map(b=>({...b,earnedAt:state.badges[b.id]?.earnedAt})).filter(b=>earnedIds.has(b.id));
+    const lockedSessionBadges = SESSION_BADGES.filter(b=>!earnedIds.has(b.id));
+    const prBadges  = earned.filter(b => b.id.startsWith("pr_"));
+    const customBadges = earned.filter(b => !b.id.startsWith("streak_")&&!b.id.startsWith("sess_")&&!b.id.startsWith("pr_")&&!Object.values(SPORT_BADGES).flat().some(sb=>sb.id===b.id));
+    const sportBadgeList = (SPORT_BADGES[sport]||[]).map(b=>({...b,earnedAt:state.badges[b.id]?.earnedAt}));
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Badges & Achievements</span>
+          <span class="small" style="color:#f0b429;font-weight:700">${earned.length} earned</span>
+        </div>
+        <div class="minibody">
+          ${progress.length ? `<div style="margin-bottom:20px">${progressBars}</div>` : ""}
+          ${makeShelf("🔥 Streak Badges — Earned", earnedStreakBadges, true)}
+          ${makeShelf("🔥 Streak Badges — Locked", lockedStreakBadges, false)}
+          ${makeShelf("🎯 Session Milestones — Earned", earnedSessionBadges, true)}
+          ${makeShelf("🎯 Session Milestones — Locked", lockedSessionBadges, false)}
+          ${prBadges.length ? makeShelf("🏆 Personal Records", prBadges, true) : ""}
+          ${sportBadgeList.length ? makeShelf(`${(SPORT_MICROBLOCKS[sport]||{}).emoji||""} Sport Badges`, sportBadgeList.map(b=>({...b,earnedAt:state.badges[b.id]?.earnedAt})), sportBadgeList.some(b=>earnedIds.has(b.id))) : ""}
+          ${customBadges.length ? makeShelf("⭐ Special Achievements", customBadges, true) : ""}
+          ${!earned.length ? `<div class="small muted">Complete training sessions and log PRs to earn badges. Your streak is currently ${streak} day${streak!==1?"s":""}.</div>` : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Streak badge check on every session log ─────────────────────────────
+  // Patch stopAndLogToday to trigger badge check after logging
+  (function patchSessionLog() {
+    // Will be called by renderAll after boot — safe to reference stopAndLogToday
+    // We hook into persist instead, checking on every save
+    const _origPersist = window.__PIQ_PERSIST_HOOK;
+    // Light hook: checkAndAwardBadges runs in renderBadges, called from renderAll
+  })();
+
   // WAVE 1 FEATURES — R9 Priority Implementation
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -2476,6 +3032,9 @@
       renderADAnalytics();
       renderWearable();
       renderAISuggestions();
+      renderPRTracker();
+      renderBadges();
+      checkAndAwardBadges();
       setTeamPill();
       applyStatusFromMeta();
     } catch (e) {
