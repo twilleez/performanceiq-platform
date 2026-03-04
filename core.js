@@ -1777,6 +1777,8 @@
     // Topbar
     $("btnAccount")?.addEventListener("click", openDrawer);
     $("btnCloseDrawer")?.addEventListener("click", closeDrawer);
+    $("drawerBackdrop")?.addEventListener("click", closeDrawer);
+    $("helpBackdrop")?.addEventListener("click", closeHelp);
 
     // Today button — works for ALL roles (coach and athlete); both can generate workouts
     $("todayButton")?.addEventListener("click", () => {
@@ -1807,13 +1809,19 @@
       const b = $("sheetBackdrop");
       const s = $("fabSheet");
       if (!b || !s) return;
-      b.hidden = false;
-      s.hidden = false;
+      b.hidden = false; b.classList.add("open");
+      s.hidden = false; s.classList.add("open");
+      document.body.style.overflow = "hidden";
     });
-    $("btnCloseSheet")?.addEventListener("click", () => {
-      $("sheetBackdrop").hidden = true;
-      $("fabSheet").hidden = true;
-    });
+    function closeSheet() {
+      const b = $("sheetBackdrop"), s = $("fabSheet");
+      if (!b || !s) return;
+      b.classList.remove("open"); s.classList.remove("open");
+      document.body.style.overflow = "";
+      setTimeout(() => { b.hidden = true; s.hidden = true; }, 310);
+    }
+    $("btnCloseSheet")?.addEventListener("click", closeSheet);
+    $("sheetBackdrop")?.addEventListener("click", closeSheet);
 
     // Help drawer
     $("btnHelp")?.addEventListener("click", openHelp);
@@ -1875,16 +1883,20 @@
     const d = $("accountDrawer");
     if (!b || !d) return;
     b.hidden = false;
+    b.classList.add("open");
     d.classList.add("open");
     d.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
   }
   function closeDrawer() {
     const b = $("drawerBackdrop");
     const d = $("accountDrawer");
     if (!b || !d) return;
-    b.hidden = true;
+    b.classList.remove("open");
     d.classList.remove("open");
     d.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    setTimeout(() => { b.hidden = true; }, 310);
   }
 
   function openHelp() {
@@ -1892,6 +1904,7 @@
     const d = $("helpDrawer");
     if (!b || !d) return;
     b.hidden = false;
+    b.classList.add("open");
     d.classList.add("open");
     d.setAttribute("aria-hidden", "false");
     $("helpSearch") && ($("helpSearch").value = "");
@@ -1903,9 +1916,11 @@
     const b = $("helpBackdrop");
     const d = $("helpDrawer");
     if (!b || !d) return;
-    b.hidden = true;
+    b.classList.remove("open");
     d.classList.remove("open");
     d.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    setTimeout(() => { b.hidden = true; }, 310);
   }
 
   // ---------- Help content ----------
@@ -2363,88 +2378,6 @@
     }
   }
 
-  function renderBadges() {
-    const body = $("badgesBody");
-    if (!body) return;
-    initBadges();
-    checkAndAwardBadges();
-
-    const streak  = computeStreak();
-    const earned  = Object.values(state.badges);
-    const sessions = state.sessions || [];
-    const sport    = state.profile?.sport || "basketball";
-
-    // Which badges are "next up" to earn
-    const nextStreak  = STREAK_BADGES.find(b => streak < b.threshold);
-    const nextSession = SESSION_BADGES.find(b => sessions.length < b.threshold);
-    const progress    = [
-      nextStreak  ? { label:`Next streak badge`,   current:streak,           target:nextStreak.threshold,  unit:"days", icon:"🔥" } : null,
-      nextSession ? { label:`Next session badge`,  current:sessions.length,  target:nextSession.threshold, unit:"sessions", icon:"🎯" } : null,
-    ].filter(Boolean);
-
-    const progressBars = progress.map(p => {
-      const pct = Math.min(100, Math.round((p.current/p.target)*100));
-      return `
-        <div style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-            <span class="small">${p.icon} ${p.label}</span>
-            <span class="small muted">${p.current} / ${p.target} ${p.unit}</span>
-          </div>
-          <div style="height:8px;background:var(--panel2,#e8e8e8);border-radius:4px;overflow:hidden">
-            <div style="height:100%;width:${pct}%;background:#f0b429;border-radius:4px;transition:width .5s ease"></div>
-          </div>
-        </div>`;
-    }).join("");
-
-    // All badge shelves
-    const makeShelf = (title, list, isEarned) => {
-      if (!list.length) return "";
-      return `
-        <div style="margin-bottom:20px">
-          <div class="small" style="font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#aaa;margin-bottom:10px">${title}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:10px">
-            ${list.map(b => `
-              <div title="${b.desc}" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 14px;
-                background:${isEarned?"var(--panel,#f7f6f2)":"#fafafa"};
-                border:1px solid ${isEarned?"#f0b429":"#e8e8e8"};border-radius:10px;min-width:72px;
-                opacity:${isEarned?1:.4};cursor:default;transition:opacity .2s">
-                <span style="font-size:26px">${b.icon}</span>
-                <span class="small" style="font-weight:700;font-size:10px;text-align:center;line-height:1.3">${b.title}</span>
-                ${isEarned && b.earnedAt ? `<span class="small muted" style="font-size:9px">${b.earnedAt.slice(0,10)}</span>` : ""}
-              </div>`).join("")}
-          </div>
-        </div>`;
-    };
-
-    const earnedIds = new Set(earned.map(b => b.id));
-    const earnedStreakBadges  = STREAK_BADGES.map(b => ({...b, earnedAt: state.badges[b.id]?.earnedAt})).filter(b => earnedIds.has(b.id));
-    const lockedStreakBadges  = STREAK_BADGES.filter(b => !earnedIds.has(b.id));
-    const earnedSessionBadges = SESSION_BADGES.map(b=>({...b,earnedAt:state.badges[b.id]?.earnedAt})).filter(b=>earnedIds.has(b.id));
-    const lockedSessionBadges = SESSION_BADGES.filter(b=>!earnedIds.has(b.id));
-    const prBadges  = earned.filter(b => b.id.startsWith("pr_"));
-    const customBadges = earned.filter(b => !b.id.startsWith("streak_")&&!b.id.startsWith("sess_")&&!b.id.startsWith("pr_")&&!Object.values(SPORT_BADGES).flat().some(sb=>sb.id===b.id));
-    const sportBadgeList = (SPORT_BADGES[sport]||[]).map(b=>({...b,earnedAt:state.badges[b.id]?.earnedAt}));
-
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
-          <span>Badges & Achievements</span>
-          <span class="small" style="color:#f0b429;font-weight:700">${earned.length} earned</span>
-        </div>
-        <div class="minibody">
-          ${progress.length ? `<div style="margin-bottom:20px">${progressBars}</div>` : ""}
-          ${makeShelf("🔥 Streak Badges — Earned", earnedStreakBadges, true)}
-          ${makeShelf("🔥 Streak Badges — Locked", lockedStreakBadges, false)}
-          ${makeShelf("🎯 Session Milestones — Earned", earnedSessionBadges, true)}
-          ${makeShelf("🎯 Session Milestones — Locked", lockedSessionBadges, false)}
-          ${prBadges.length ? makeShelf("🏆 Personal Records", prBadges, true) : ""}
-          ${sportBadgeList.length ? makeShelf(`${(SPORT_MICROBLOCKS[sport]||{}).emoji||""} Sport Badges`, sportBadgeList.map(b=>({...b,earnedAt:state.badges[b.id]?.earnedAt})), sportBadgeList.some(b=>earnedIds.has(b.id))) : ""}
-          ${customBadges.length ? makeShelf("⭐ Special Achievements", customBadges, true) : ""}
-          ${!earned.length ? `<div class="small muted">Complete training sessions and log PRs to earn badges. Your streak is currently ${streak} day${streak!==1?"s":""}.</div>` : ""}
-        </div>
-      </div>
-    `;
-  }
 
   // ── Streak badge check on every session log ─────────────────────────────
   // Patch stopAndLogToday to trigger badge check after logging
@@ -3553,6 +3486,40 @@
       });
     });
   }
+  const BADGE_DEFS = [
+    { id:'first_session',  icon:'🏆', label:'First Rep',    check: s => s.sessions?.length >= 1 },
+    { id:'streak_3',       icon:'🔥', label:'3-Day Fire',   check: s => computeStreak() >= 3 },
+    { id:'streak_7',       icon:'⚡', label:'Week Warrior', check: s => computeStreak() >= 7 },
+    { id:'streak_30',      icon:'👑', label:'Iron Month',   check: s => computeStreak() >= 30 },
+    { id:'pr_set',         icon:'💪', label:'PR Setter',    check: s => Object.keys(s.prs || {}).length >= 1 },
+    { id:'pr_5',           icon:'🎯', label:'PR Hunter',    check: s => Object.keys(s.prs || {}).length >= 5 },
+    { id:'sessions_10',    icon:'📈', label:'10 Sessions',  check: s => s.sessions?.length >= 10 },
+    { id:'sessions_50',    icon:'🏅', label:'50 Sessions',  check: s => s.sessions?.length >= 50 },
+    { id:'multi_sport',    icon:'🌍', label:'Multi-Sport',  check: s => new Set((s.sessions||[]).map(x=>x.sport)).size >= 2 },
+    { id:'planner',        icon:'📅', label:'Planner',      check: s => !!s.periodization?.plan },
+  ];
+
+
+  function renderBadges() {
+    const body = $('badgesBody');
+    if (!body) return;
+    const earned = state.badges || {};
+    if (!BADGE_DEFS.some(b => earned[b.id])) {
+      body.innerHTML = '<div class="small muted" style="padding:8px 0">Complete sessions to unlock badges.</div>';
+      return;
+    }
+    body.innerHTML = `
+      <div class="minihead" style="margin-bottom:8px">Achievements</div>
+      <div class="badge-shelf">
+        ${BADGE_DEFS.map(b => {
+          const isEarned = !!earned[b.id];
+          return `<div class="badge-item${isEarned?' earned':''}" title="${b.label}${isEarned?' — Earned '+timeAgo(earned[b.id]?.earned_at):' — Locked'}">
+            <span class="badge-icon">${b.icon}</span>
+            <span class="badge-label">${b.label}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
 
 
   function renderAll() {
@@ -3565,7 +3532,6 @@
       renderPeriodizationUI();
       renderInsights();
       renderMealPlan();
-      // Wave 1 feature renders — each silently skips if DOM element absent
       renderMessaging();
       renderHealthSync();
       renderParentPortal();
@@ -3625,6 +3591,7 @@
     // initial render
     renderAll();
     toast("PerformanceIQ ready", 1400);
+    hookLiveTimer();
   }
 
   // Boot on DOM ready
@@ -3633,6 +3600,336 @@
   } else {
     boot();
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOP-TIER UPGRADE 1: LIVE SESSION TIMER with set-by-set rest countdown
+  // ══════════════════════════════════════════════════════════════════════════
+  let _sessionTimer = null;
+  let _sessionStart = null;
+  let _restTimer = null;
+
+  function startLiveTimer(sport) {
+    _sessionStart = Date.now();
+    const bar   = $('sessionTimerBar');
+    const disp  = $('sessionTimerDisplay');
+    const label = $('sessionTimerLabel');
+    const pill  = $('sessionTimerSport');
+    if (!bar) return;
+    if (label) label.textContent = 'Session running';
+    if (pill)  pill.textContent  = sport || state.profile.sport || 'Sport';
+    bar.classList.add('active');
+    if (_sessionTimer) clearInterval(_sessionTimer);
+    _sessionTimer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - _sessionStart) / 1000);
+      const m = Math.floor(elapsed / 60);
+      const s = elapsed % 60;
+      if (disp) disp.textContent = `${m}:${String(s).padStart(2,'0')}`;
+    }, 1000);
+    $('btnEndSession')?.addEventListener('click', () => {
+      stopLiveTimer();
+      stopAndLogToday();
+    }, { once: true });
+  }
+
+  function stopLiveTimer() {
+    if (_sessionTimer) { clearInterval(_sessionTimer); _sessionTimer = null; }
+    const bar = $('sessionTimerBar');
+    if (bar) bar.classList.remove('active');
+    _sessionStart = null;
+  }
+
+  function startRestTimer(seconds, onDone) {
+    if (_restTimer) clearInterval(_restTimer);
+    let remaining = seconds;
+    const chips = document.querySelectorAll('.rest-timer-inline');
+    chips.forEach(c => c.textContent = `Rest ${seconds}s`);
+    _restTimer = setInterval(() => {
+      remaining--;
+      chips.forEach(c => c.textContent = remaining > 0 ? `Rest ${remaining}s` : 'Go!');
+      if (remaining <= 0) {
+        clearInterval(_restTimer); _restTimer = null;
+        if (onDone) onDone();
+        toast('Rest complete — next set!');
+      }
+    }, 1000);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOP-TIER UPGRADE 2: RPE POST-SESSION FEEDBACK
+  // ══════════════════════════════════════════════════════════════════════════
+  function showRPEModal(session, onSave) {
+    const existing = document.getElementById('rpeModal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'rpeModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;justify-content:center;background:rgba(2,6,12,.7);padding:16px;';
+    modal.innerHTML = `
+      <div style="background:var(--card);border-radius:22px 22px 0 0;padding:28px 24px;width:min(480px,100%);border:1px solid var(--line)">
+        <div style="text-align:center;margin-bottom:6px">
+          <div style="width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 16px"></div>
+          <div style="font-family:var(--font-display);font-size:22px;font-weight:800">How was that session?</div>
+          <div style="color:var(--muted);font-size:13px;margin-top:4px">Rate effort 1–10 (RPE) · Your load adapts</div>
+        </div>
+        <div style="margin:24px 0 8px;display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">
+          <span>Easy</span><span>Moderate</span><span>All out</span>
+        </div>
+        <input type="range" class="rpe-slider" id="rpeInput" min="1" max="10" value="7">
+        <div style="text-align:center;margin:12px 0 4px">
+          <span id="rpeVal" style="font-family:var(--font-mono);font-size:38px;font-weight:800;color:var(--accent)">7</span>
+          <span style="font-size:14px;color:var(--muted)">/10</span>
+        </div>
+        <div style="font-size:13px;text-align:center;color:var(--muted);margin-bottom:20px" id="rpeLabel">Hard effort — good stimulus</div>
+        <div style="display:grid;gap:10px">
+          <button id="rpeConfirm" class="btn primary" style="width:100%;font-size:16px">Save &amp; Log Session</button>
+          <button id="rpeSkip" class="btn ghost" style="width:100%">Skip rating</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const labels = ['','Easy warmup','Very light','Light','Somewhat hard','Moderate','Hard','Very hard','Very hard','Extremely hard','Max effort — all out'];
+    const slider = modal.querySelector('#rpeInput');
+    const valEl  = modal.querySelector('#rpeVal');
+    const lblEl  = modal.querySelector('#rpeLabel');
+    slider.addEventListener('input', () => {
+      const v = parseInt(slider.value);
+      if (valEl) valEl.textContent = v;
+      if (lblEl) lblEl.textContent = labels[v] || '';
+    });
+    modal.querySelector('#rpeConfirm').addEventListener('click', () => {
+      const rpe = parseInt(slider.value);
+      session.rpe  = rpe;
+      session.load = Math.round((session.duration_min || 45) * rpe);
+      modal.remove();
+      if (onSave) onSave(session);
+    });
+    modal.querySelector('#rpeSkip').addEventListener('click', () => {
+      modal.remove();
+      if (onSave) onSave(session);
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOP-TIER UPGRADE 3: ACWR — Acute:Chronic Workload Ratio injury risk
+  // ══════════════════════════════════════════════════════════════════════════
+  function computeACWR() {
+    const sessions = (state.sessions || []).filter(s => s.load && s.created_at);
+    const now = Date.now();
+    const acute  = sessions.filter(s => now - new Date(s.created_at) < 7  * 86400000).reduce((a, s) => a + (s.load || 0), 0);
+    const chronic = sessions.filter(s => now - new Date(s.created_at) < 28 * 86400000).reduce((a, s) => a + (s.load || 0), 0) / 4;
+    if (!chronic) return null;
+    return Math.round((acute / chronic) * 100) / 100;
+  }
+
+  function renderACWR(container) {
+    if (!container) return;
+    const ratio = computeACWR();
+    if (!ratio) { container.innerHTML = '<div class="small muted">Log at least 4 weeks of sessions to see workload risk.</div>'; return; }
+    const cls  = ratio < 0.8 ? 'acwr-ok' : ratio <= 1.3 ? 'acwr-ok' : ratio <= 1.5 ? 'acwr-warn' : 'acwr-hot';
+    const msg  = ratio < 0.8 ? 'Under-trained — consider adding load' : ratio <= 1.3 ? 'Optimal training zone' : ratio <= 1.5 ? 'Elevated risk — monitor' : 'High injury risk — deload recommended';
+    container.innerHTML = `
+      <div class="acwr-gauge">
+        <div class="acwr-value ${cls}">${ratio.toFixed(2)}</div>
+        <div>
+          <div style="font-weight:700;font-size:13px">Acute:Chronic Workload Ratio</div>
+          <div class="small muted">${msg}</div>
+          <div style="margin-top:6px;display:flex;gap:6px;font-size:11px">
+            <span style="color:var(--ok)">■ 0.8–1.3 optimal</span>
+            <span style="color:var(--warn)">■ 1.3–1.5 caution</span>
+            <span style="color:var(--danger)">■ >1.5 high risk</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOP-TIER UPGRADE 4: IMPROVED EXERCISE CARDS with checkboxes + rest timer
+  // ══════════════════════════════════════════════════════════════════════════
+  function renderSessionCards(gen, container) {
+    if (!container) return;
+    if (!gen || !gen.blocks || !gen.blocks.length) {
+      container.innerHTML = '<div class="small muted" style="padding:12px">No session generated.</div>';
+      return;
+    }
+    const totalMin = gen.blocks.reduce((a, b) => a + (b.duration_min || 0), 0);
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <span style="font-family:var(--font-display);font-weight:800;font-size:18px">${gen.sportEmoji || ''} ${gen.sportLabel || gen.sport}</span>
+          <span style="font-size:13px;color:var(--muted);margin-left:8px">${gen.sessionType} · ${totalMin} min</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="exercise-chip" style="font-size:12px">${gen.level || ''}</span>
+          ${gen.equipLabel ? `<span class="exercise-chip" style="font-size:12px">${gen.equipLabel}</span>` : ''}
+        </div>
+      </div>`;
+    gen.blocks.forEach((block, bIdx) => {
+      const card = document.createElement('div');
+      card.className = 'blockcard';
+      let itemsHTML = '';
+      (block.items || []).forEach((item, iIdx) => {
+        const num = iIdx + 1;
+        const prKey = item.key || item.name;
+        const prVal = (state.prs && state.prs[prKey]) ? state.prs[prKey].value : null;
+        itemsHTML += `
+          <div class="exercise-row" id="exrow-${bIdx}-${iIdx}">
+            <div class="exercise-check" id="excheck-${bIdx}-${iIdx}" onclick="this.classList.toggle('done');this.textContent=this.classList.contains('done')?'✓':''">
+            </div>
+            <div class="exercise-num">${num}</div>
+            <div class="exercise-info">
+              <div class="exercise-name">${item.name || item.title || ''}</div>
+              ${item.cue  ? `<div class="exercise-cue">${item.cue}</div>` : ''}
+              <div class="exercise-meta">
+                ${item.sets ? `<span class="exercise-chip sets">${item.sets}×${item.reps||''}</span>` : ''}
+                ${item.intensity ? `<span class="exercise-chip">${item.intensity}</span>` : ''}
+                ${prVal         ? `<span class="exercise-chip pr">PR ${prVal}</span>` : ''}
+                ${item.substitution ? `<span class="exercise-chip swap">↔ ${item.substitution}</span>` : ''}
+                ${block.type === 'strength' ? '<span class="rest-timer-inline" style="cursor:pointer" title="Start rest timer">Rest 90s</span>' : ''}
+              </div>
+            </div>
+          </div>`;
+      });
+      card.innerHTML = `
+        <div class="blockcard-header">
+          <span class="blockcard-type">${block.type || 'block'}</span>
+          <span class="blockcard-title">${block.title || ''}</span>
+          <span style="margin-left:auto;font-size:12px;color:var(--muted)">${block.duration_min || ''}min</span>
+        </div>
+        ${itemsHTML}`;
+      container.appendChild(card);
+      // Wire rest timer clicks
+      card.querySelectorAll('.rest-timer-inline').forEach(el => {
+        el.addEventListener('click', () => {
+          const secs = parseInt(el.textContent) || 90;
+          startRestTimer(secs, null);
+        });
+      });
+    });
+    // Add log button
+    const logBtn = document.createElement('div');
+    logBtn.style.marginTop = '16px';
+    logBtn.innerHTML = `<button class="btn primary" id="btnLogThisSession" style="width:100%;font-size:16px">✓ Log This Session</button>`;
+    container.appendChild(logBtn);
+    logBtn.querySelector('#btnLogThisSession')?.addEventListener('click', () => {
+      const sess = { ...gen, created_at: nowISO(), duration_min: totalMin };
+      showRPEModal(sess, (ratedSess) => {
+        state.sessions = state.sessions || [];
+        state.sessions.unshift(ratedSess);
+        persist('Session logged!');
+        renderAll();
+      });
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOP-TIER UPGRADE 5: ENHANCED BADGE SYSTEM with animated reveals
+  // ══════════════════════════════════════════════════════════════════════════
+  function checkAndAwardBadges() {
+    let newlyAwarded = false;
+    BADGE_DEFS.forEach(def => {
+      if (!(state.badges||{})[def.id]) {
+        try {
+          if (def.check(state)) {
+            state.badges = state.badges || {};
+            state.badges[def.id] = { earned_at: nowISO() };
+            newlyAwarded = true;
+            toast(`🏆 Badge unlocked: ${def.label}!`, 3000);
+          }
+        } catch(e) {}
+      }
+    });
+    if (newlyAwarded) persist();
+  }
+
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOP-TIER UPGRADE 6: ENHANCED PR TRACKER with history + trend
+  // ══════════════════════════════════════════════════════════════════════════
+  function renderPRTracker() {
+    const body = $('prTrackerBody');
+    if (!body) return;
+    const prs = state.prs || {};
+    const keys = Object.keys(prs);
+    body.innerHTML = `
+      <div class="mini">
+        <div class="row between" style="margin-bottom:10px">
+          <div class="minihead">Personal Records</div>
+          <span class="small muted">${keys.length} tracked</span>
+        </div>
+        ${!keys.length
+          ? '<div class="small muted">Log sessions and mark PRs to track them here.</div>'
+          : `<div>${keys.map(k => {
+            const pr = prs[k];
+            return `<div class="pr-row">
+              <div class="pr-name">${k}</div>
+              <div>
+                <span class="pr-val">${pr.value}${pr.unit? ' '+pr.unit : ''}</span>
+                <span class="pr-date" style="display:block">${pr.date ? new Date(pr.date).toLocaleDateString() : ''}</span>
+              </div>
+            </div>`;
+          }).join('')}</div>`
+        }
+        <div style="margin-top:12px" id="acwrContainer"></div>
+      </div>`;
+    renderACWR($('acwrContainer'));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOP-TIER UPGRADE 7: ENHANCED INSIGHTS with visual bars
+  // ══════════════════════════════════════════════════════════════════════════
+  function renderInsights() {
+    computeInsights();
+    const profileBody = $('profileBody');
+    if (!profileBody) return;
+    const weekly = (state.insights && state.insights.weekly) || [];
+    const streak = computeStreak();
+    const maxMin = Math.max(...weekly.map(w => w.minutes), 1);
+    const rows = weekly.slice(0,8).map(w => {
+      const barW = Math.round((w.minutes / maxMin) * 120);
+      return `<div class="insight-week">
+        <span style="color:var(--muted);width:70px;flex-shrink:0">${w.week}</span>
+        <div class="insight-bar" style="width:${barW}px"></div>
+        <span style="font-family:var(--font-mono);font-size:12px;color:var(--text)">${w.minutes}m</span>
+        <span style="font-size:11px;color:var(--muted)">${w.sessions}×</span>
+      </div>`;
+    }).join('');
+    const existing = profileBody.querySelector('.mini.insights');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.style.marginTop = '12px';
+    if (el && el.classList) el.classList.add('insights');
+    el.innerHTML = `
+      <div class="mini">
+        <div class="row between" style="margin-bottom:10px">
+          <div class="minihead">Training Insights</div>
+          <span class="pill" style="font-size:12px">🔥 ${streak} day streak</span>
+        </div>
+        <div class="minibody">
+          ${rows || '<div class="small muted">No sessions logged yet. Generate and log a session to see insights.</div>'}
+        </div>
+      </div>`;
+    profileBody.appendChild(el);
+  }
+
+  // Hook startLiveTimer into the today workflow
+  const _origStartTimer = typeof startTimer === 'function' ? startTimer : null;
+
+  // Override the todayButton to start the live timer on Start
+  function hookLiveTimer() {
+    const btn = $('todayButton');
+    if (!btn) return;
+    const origHandler = btn.onclick;
+    // We wrap by adding a listener that watches state changes
+    btn.addEventListener('click', () => {
+      // If state transitions to 'running', start live timer
+      setTimeout(() => {
+        if (state.ui && state.ui.timerRunning) {
+          startLiveTimer(state.profile.sport);
+        } else if (state.ui && !state.ui.timerRunning && _sessionStart) {
+          stopLiveTimer();
+        }
+      }, 100);
+    });
+  }
+
 
   // ---------- Expose debug helpers (safe) ----------
   window.__PIQ_DEBUG__ = {
