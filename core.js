@@ -1,4 +1,4 @@
-// core.js — v3.2.0 (Phase 3.3 — Sport-Specific Workouts, PRs, Streak Badges)
+// core.js — v4.0.0 (Phase 4 — Accurate Sport Workouts, Levels, Equipment Swap)
 // Features:
 // - Sport picker fixed (readable dropdowns assumed styled in CSS)
 // - Today one-button workflow: Generate → Start timer → Log → Done
@@ -38,7 +38,7 @@
     // minimal fallback if dataStore missing
     state = {
       meta: { version: "3.0.0", updated_at: nowISO() },
-      profile: { role: "coach", sport: "basketball", preferred_session_type: "strength", injuries: [], weight_lbs: 160, goal: "maintain", activity: "med" },
+      profile: { role: "coach", sport: "basketball", preferred_session_type: "strength", injuries: [], weight_lbs: 160, goal: "maintain", activity: "med", level: "intermediate", equipment: ["dumbbell","barbell","bar","bench","box","cable","med_ball","sled","rower","bike","track","court","hill","hurdles","trap_bar"] },
       team: { teams: [], active_team_id: null },
       sessions: [],
       periodization: { plan: null, updated_at: null },
@@ -99,259 +99,1095 @@
     // simple local-only status for offline-first
     setDataStatusLabel("Local saved", "var(--ok)");
   }
+  // ══════════════════════════════════════════════════════════════════════════
+  // EXERCISE LIBRARY  v4.0 — Full sport science accuracy
+  //
+  // Equipment tags used throughout:
+  //   "none"      = bodyweight only
+  //   "dumbbell"  = dumbbells
+  //   "barbell"   = barbell + plates
+  //   "trap_bar"  = hex/trap bar
+  //   "cable"     = cable machine
+  //   "med_ball"  = medicine ball
+  //   "bar"       = pull-up / chin-up bar
+  //   "bench"     = flat bench
+  //   "box"       = plyo box
+  //   "band"      = resistance band
+  //   "sled"      = prowler/sled
+  //   "rower"     = rowing machine
+  //   "bike"      = stationary bike / assault bike
+  //   "court"     = basketball / volleyball court
+  //   "track"     = running track or marked turf
+  //   "hill"      = outdoor hill / incline
+  //   "hurdles"   = hurdle sticks
+  //   "pool"      = swimming pool
+  //
+  // Each exercise has:
+  //   beginner   — low-skill, lower-load prescription
+  //   advanced   — higher-load, higher-skill prescription
+  //   altEquip   — map of equipment → alternate exercise key when that
+  //                equipment is NOT available
+  //   subs       — injury-tag → alternate exercise key
+  //   prTrackable / prMetric
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Equipment availability helpers ────────────────────────────────────────
+  // state.profile.equipment = array of available equipment tags, e.g.
+  //   ["dumbbell","bar","bench","band","box"]
+  // If empty / absent  → bodyweight-only mode
+
+  function hasEquip(tag) {
+    const avail = state.profile?.equipment;
+    if (!avail || !avail.length) return false;
+    return avail.includes(tag);
+  }
+
+  function equip(primary, ...fallbacks) {
+    // Return first equipment tag that the user has, or "none"
+    if (hasEquip(primary)) return primary;
+    for (const f of fallbacks) { if (hasEquip(f)) return f; }
+    return "none";
+  }
+
+  // ── Athlete level helper ───────────────────────────────────────────────────
+  // state.profile.level = "beginner" | "intermediate" | "advanced"
+  function athleteLevel() {
+    return state.profile?.level || "intermediate";
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SPORT-SPECIFIC EXERCISE LIBRARY — v3.2
-  // Each exercise carries: title, cue, sets, reps, load, equipment,
-  //   noEquipSub (bodyweight alt), subs (injury alts), prTrackable (bool),
-  //   prMetric ("weight_lbs"|"reps"|"time_sec"|"distance_m")
+  // EXERCISE DEFINITIONS
+  // beginner / advanced are { cue, sets, reps, load } overrides for that tier.
+  // altEquip[missingEquipTag] = fallback exercise key to use instead.
   // ══════════════════════════════════════════════════════════════════════════
   const EXERCISE_LIB = {
 
+    // ── LOWER BODY ──────────────────────────────────────────────────────────
     strength: {
-      // ── Lower body ──────────────────────────────────────────────────────
-      split_squat:         { title: "Split Squat",           cue: "3 sets · 8 reps per leg",  sets:3, reps:8,  load:"moderate", equipment:"none",     noEquipSub:null,              subs:{knee:"reverse_lunge",hamstring:"single_leg_deadlift"}, prTrackable:true,  prMetric:"weight_lbs" },
-      rdl:                 { title: "Romanian Deadlift",     cue: "3 sets · 8 reps",           sets:3, reps:8,  load:"moderate", equipment:"barbell",  noEquipSub:"bodyweight_rdl",  subs:{back:"good_mornings",hamstring:"bridge"},               prTrackable:true,  prMetric:"weight_lbs" },
-      trap_bar_deadlift:   { title: "Trap Bar Deadlift",     cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"high",     equipment:"trap_bar", noEquipSub:"bodyweight_rdl",  subs:{back:"kb_deadlift"},                                   prTrackable:true,  prMetric:"weight_lbs" },
-      goblet_squat:        { title: "Goblet Squat",          cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"dumbbell", noEquipSub:"bodyweight_squat",subs:{knee:"box_squat"},                                      prTrackable:true,  prMetric:"weight_lbs" },
-      single_leg_deadlift: { title: "Single-Leg RDL",        cue: "3 sets · 6 reps per leg",  sets:3, reps:6,  load:"moderate", equipment:"dumbbell", noEquipSub:"single_leg_hinge",subs:{balance:"rack_step_down"},                              prTrackable:true,  prMetric:"weight_lbs" },
-      hex_bar_squat:       { title: "Hex Bar Squat",         cue: "4 sets · 5 reps",           sets:4, reps:5,  load:"high",     equipment:"trap_bar", noEquipSub:"bodyweight_squat",subs:{knee:"box_squat"},                                      prTrackable:true,  prMetric:"weight_lbs" },
-      nordic_curl:         { title: "Nordic Hamstring Curl", cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"moderate", equipment:"none",     noEquipSub:null,              subs:{hamstring:"bridge"},                                   prTrackable:true,  prMetric:"reps"       },
-      hip_thrust:          { title: "Hip Thrust",            cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"barbell",  noEquipSub:"glute_bridge",    subs:{back:"bodyweight_rdl"},                                 prTrackable:true,  prMetric:"weight_lbs" },
-      reverse_lunge:       { title: "Reverse Lunge",         cue: "3 sets · 8 reps per leg",  sets:3, reps:8,  load:"moderate", equipment:"dumbbell", noEquipSub:"bodyweight_squat",subs:{knee:"step_up"},                                        prTrackable:true,  prMetric:"weight_lbs" },
-      step_up:             { title: "Box Step-Up",           cue: "3 sets · 8 reps per leg",  sets:3, reps:8,  load:"moderate", equipment:"box",      noEquipSub:"reverse_lunge_bw",subs:{knee:"wall_sit"},                                       prTrackable:true,  prMetric:"weight_lbs" },
-      // ── Upper body ──────────────────────────────────────────────────────
-      push_press:          { title: "Push Press",            cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"high",     equipment:"barbell",  noEquipSub:"pike_pushup",     subs:{shoulder:"seated_dumbbell_press",injury:"band_press"},  prTrackable:true,  prMetric:"weight_lbs" },
-      bench:               { title: "Bench Press",           cue: "3 sets · 6 reps",           sets:3, reps:6,  load:"high",     equipment:"barbell",  noEquipSub:"pushup",          subs:{shoulder:"dumbbell_press"},                             prTrackable:true,  prMetric:"weight_lbs" },
-      row:                 { title: "Bent-Over Row",         cue: "3 sets · 8 reps",           sets:3, reps:8,  load:"moderate", equipment:"barbell",  noEquipSub:"inverted_row",    subs:{back:"band_row"},                                      prTrackable:true,  prMetric:"weight_lbs" },
-      db_shoulder_press:   { title: "DB Shoulder Press",     cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"dumbbell", noEquipSub:"pike_pushup",     subs:{shoulder:"band_press"},                                prTrackable:true,  prMetric:"weight_lbs" },
-      pullup:              { title: "Pull-Up",               cue: "3 sets · max reps",         sets:3, reps:0,  load:"moderate", equipment:"bar",      noEquipSub:"inverted_row",    subs:{shoulder:"band_row"},                                  prTrackable:true,  prMetric:"reps"       },
-      db_row:              { title: "Single-Arm DB Row",     cue: "3 sets · 10 reps per side", sets:3, reps:10, load:"moderate", equipment:"dumbbell", noEquipSub:"inverted_row",    subs:{back:"band_row"},                                      prTrackable:true,  prMetric:"weight_lbs" },
-      lat_pulldown:        { title: "Lat Pulldown",          cue: "3 sets · 10 reps",          sets:3, reps:10, load:"moderate", equipment:"cable",    noEquipSub:"inverted_row",    subs:{shoulder:"band_row"},                                  prTrackable:true,  prMetric:"weight_lbs" },
-      cable_chop:          { title: "Cable Rotational Chop", cue: "3 sets · 10 reps per side", sets:3, reps:10, load:"moderate", equipment:"cable",    noEquipSub:"med_ball_throw",  subs:{back:"pallof_press"},                                  prTrackable:false, prMetric:"weight_lbs" },
-      med_ball_slam:       { title: "Med Ball Slam",         cue: "3 sets · 8 reps",           sets:3, reps:8,  load:"moderate", equipment:"med_ball", noEquipSub:"pushup",          subs:{shoulder:"band_press"},                                prTrackable:false, prMetric:"reps"       },
-      // ── Core / stability ────────────────────────────────────────────────
-      pallof_press:        { title: "Pallof Press",          cue: "3 sets · 10 reps per side", sets:3, reps:10, load:"low",      equipment:"cable",    noEquipSub:"dead_bug",        subs:{back:"dead_bug"},                                      prTrackable:false, prMetric:"reps"       },
-      dead_bug:            { title: "Dead Bug",              cue: "3 sets · 8 reps per side",  sets:3, reps:8,  load:"low",      equipment:"none",     noEquipSub:null,              subs:{},                                                     prTrackable:false, prMetric:"reps"       },
-      Copenhagen:          { title: "Copenhagen Side Plank", cue: "3 sets · 30 sec per side",  sets:3, reps:30, load:"moderate", equipment:"bench",    noEquipSub:"side_plank",      subs:{groin:"side_plank"},                                   prTrackable:true,  prMetric:"time_sec"   },
+
+      goblet_squat: {
+        title:"Goblet Squat", equipment:"dumbbell",
+        beginner:  { cue:"3 × 10 — heel elevation if needed, hip crease below knee",  sets:3, reps:10, load:"low"      },
+        intermediate:{ cue:"3 × 10 — tempo 3-1-1, elbows track inside knees",          sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 6 — pause at bottom 2 sec, heavy KB/DB",               sets:4, reps:6,  load:"high"     },
+        altEquip:  { dumbbell:"bodyweight_squat_adv" },
+        subs:      { knee:"step_up", back:"goblet_squat" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      split_squat: {
+        title:"Bulgarian Split Squat", equipment:"dumbbell",
+        beginner:  { cue:"3 × 8/leg — rear foot on low surface, bodyweight or light DB", sets:3, reps:8,  load:"low"      },
+        intermediate:{ cue:"3 × 8/leg — rear foot elevated on bench, moderate DB",        sets:3, reps:8,  load:"moderate" },
+        advanced:  { cue:"4 × 6/leg — barbell on back or heavy DBs, 3-sec eccentric",   sets:4, reps:6,  load:"high"     },
+        altEquip:  { dumbbell:"reverse_lunge_bw", barbell:"split_squat" },
+        subs:      { knee:"step_up", hip:"reverse_lunge_bw" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      rdl: {
+        title:"Romanian Deadlift", equipment:"barbell",
+        beginner:  { cue:"3 × 10 — light bar or DBs, hinge from hips, soft knee",       sets:3, reps:10, load:"low"      },
+        intermediate:{ cue:"3 × 8 — barbell, push floor away, maintain lumbar curve",    sets:3, reps:8,  load:"moderate" },
+        advanced:  { cue:"4 × 5 — heavy barbell, eccentric 3 sec, explosive up",        sets:4, reps:5,  load:"high"     },
+        altEquip:  { barbell:"db_rdl" },
+        subs:      { back:"hip_thrust", hamstring:"glute_bridge" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      db_rdl: {
+        title:"DB Romanian Deadlift", equipment:"dumbbell",
+        beginner:  { cue:"3 × 10 — light DBs, hinge until mild hamstring tension",      sets:3, reps:10, load:"low"      },
+        intermediate:{ cue:"3 × 10 — heavy DBs, scapulae packed, lumbar neutral",       sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 8 — tempo 3-0-1, single-leg variation option",            sets:4, reps:8,  load:"high"     },
+        altEquip:  { dumbbell:"bodyweight_rdl" },
+        subs:      { back:"glute_bridge", hamstring:"glute_bridge" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      trap_bar_deadlift: {
+        title:"Trap Bar Deadlift", equipment:"trap_bar",
+        beginner:  { cue:"4 × 5 — high handles, hips high, push floor away",            sets:4, reps:5,  load:"moderate" },
+        intermediate:{ cue:"4 × 4 — low handles, hips athletic position, bar mid-foot", sets:4, reps:4,  load:"high"     },
+        advanced:  { cue:"5 × 3 — max velocity intent, 85%+ 1RM, full reset each rep",  sets:5, reps:3,  load:"max"      },
+        altEquip:  { trap_bar:"rdl", barbell:"rdl" },
+        subs:      { back:"db_rdl", knee:"goblet_squat" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      barbell_back_squat: {
+        title:"Back Squat", equipment:"barbell",
+        beginner:  { cue:"3 × 8 — high bar, depth to parallel, knees track toes",       sets:3, reps:8,  load:"moderate" },
+        intermediate:{ cue:"4 × 5 — hip crease below parallel, brace hard, stay tall",  sets:4, reps:5,  load:"high"     },
+        advanced:  { cue:"5 × 3 — low bar, 80%+ 1RM, rebound out of hole",              sets:5, reps:3,  load:"max"      },
+        altEquip:  { barbell:"goblet_squat" },
+        subs:      { knee:"split_squat", back:"goblet_squat" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      power_clean: {
+        title:"Power Clean", equipment:"barbell",
+        beginner:  { cue:"4 × 4 — hang position, triple extension, rack at shoulder height", sets:4, reps:4, load:"moderate" },
+        intermediate:{ cue:"4 × 3 — from floor, aggressive pull, fast elbows through",   sets:4, reps:3,  load:"high"     },
+        advanced:  { cue:"5 × 2 — 80%+ 1RM, elbows lead, aggressive turnover",           sets:5, reps:2,  load:"max"      },
+        altEquip:  { barbell:"db_power_clean" },
+        subs:      { shoulder:"kb_swing", wrist:"kb_swing" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      db_power_clean: {
+        title:"DB Hang Clean", equipment:"dumbbell",
+        beginner:  { cue:"3 × 6 — hang position, triple extension, DBs to shoulders",   sets:3, reps:6,  load:"low"      },
+        intermediate:{ cue:"4 × 5 — aggressive hip drive, fast elbow turnover",          sets:4, reps:5,  load:"moderate" },
+        advanced:  { cue:"4 × 4 — heavy DBs, max acceleration intent",                  sets:4, reps:4,  load:"high"     },
+        altEquip:  { dumbbell:"kb_swing" },
+        subs:      { wrist:"kb_swing", shoulder:"box_jump" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      kb_swing: {
+        title:"Kettlebell Swing", equipment:"dumbbell", // use DB as alt for KB
+        beginner:  { cue:"3 × 12 — hip hinge pattern, KB between feet, powerful hip snap", sets:3, reps:12, load:"low"     },
+        intermediate:{ cue:"4 × 12 — heavy KB, lat tension on backswing, eye level at top",sets:4, reps:12, load:"moderate"},
+        advanced:  { cue:"5 × 10 — single-arm or double KB, ballistic hip extension",    sets:5, reps:10, load:"high"     },
+        altEquip:  { dumbbell:"bodyweight_rdl" },
+        subs:      { back:"glute_bridge", knee:"glute_bridge" },
+        prTrackable:false, prMetric:"reps",
+      },
+
+      hip_thrust: {
+        title:"Hip Thrust", equipment:"barbell",
+        beginner:  { cue:"3 × 12 — bodyweight or DB, upper back on bench, full hip extension", sets:3, reps:12, load:"low" },
+        intermediate:{ cue:"3 × 10 — barbell, toes forward, posterior pelvic tilt at top",    sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 8 — heavy barbell, 1-sec pause at top, band around knees",     sets:4, reps:8,  load:"high"    },
+        altEquip:  { barbell:"glute_bridge", bench:"glute_bridge" },
+        subs:      { back:"glute_bridge", knee:"glute_bridge" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      nordic_curl: {
+        title:"Nordic Hamstring Curl", equipment:"none",
+        beginner:  { cue:"3 × 4 — partner holds ankles, use hands to control descent",  sets:3, reps:4,  load:"moderate" },
+        intermediate:{ cue:"3 × 5 — controlled fall, pull back using hamstrings only",  sets:3, reps:5,  load:"high"     },
+        advanced:  { cue:"4 × 6 — add weight vest or pause at bottom",                  sets:4, reps:6,  load:"max"      },
+        altEquip:  {},
+        subs:      { hamstring:"db_rdl", knee:"glute_bridge" },
+        prTrackable:true, prMetric:"reps",
+      },
+
+      single_leg_deadlift: {
+        title:"Single-Leg RDL", equipment:"dumbbell",
+        beginner:  { cue:"3 × 8/leg — light DB or bodyweight, hand on wall for balance", sets:3, reps:8,  load:"low"      },
+        intermediate:{ cue:"3 × 8/leg — contralateral DB, hips square, T-spine neutral", sets:3, reps:8,  load:"moderate" },
+        advanced:  { cue:"4 × 6/leg — heavy DB, eyes down, controlled wobble is fine",   sets:4, reps:6,  load:"high"     },
+        altEquip:  { dumbbell:"bodyweight_rdl" },
+        subs:      { balance:"step_up", ankle:"rdl" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      step_up: {
+        title:"Loaded Step-Up", equipment:"dumbbell",
+        beginner:  { cue:"3 × 10/leg — low box, bodyweight, drive through heel",        sets:3, reps:10, load:"low"      },
+        intermediate:{ cue:"3 × 8/leg — moderate box + DBs, no push-off from bottom",  sets:3, reps:8,  load:"moderate" },
+        advanced:  { cue:"4 × 6/leg — high box + heavy DBs, full hip extension at top", sets:4, reps:6,  load:"high"     },
+        altEquip:  { dumbbell:"step_up_bw", box:"reverse_lunge_bw" },
+        subs:      { knee:"wall_sit", hip:"glute_bridge" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      copenhagen_plank: {
+        title:"Copenhagen Side Plank", equipment:"bench",
+        beginner:  { cue:"3 × 20 sec/side — bottom knee on floor, hip elevated",        sets:3, reps:20, load:"low"      },
+        intermediate:{ cue:"3 × 30 sec/side — top ankle on bench, hips level",          sets:3, reps:30, load:"moderate" },
+        advanced:  { cue:"4 × 45 sec/side — full Copenhagen, add hip adduction reps",   sets:4, reps:45, load:"high"     },
+        altEquip:  { bench:"side_plank_adv" },
+        subs:      { groin:"side_plank_adv" },
+        prTrackable:true, prMetric:"time_sec",
+      },
+
+      // ── UPPER BODY ──────────────────────────────────────────────────────
+
+      bench_press: {
+        title:"Bench Press", equipment:"barbell",
+        beginner:  { cue:"3 × 8 — grip just outside shoulder-width, touch chest, lock out", sets:3, reps:8, load:"moderate" },
+        intermediate:{ cue:"4 × 6 — arch, leg drive, bar path slight curve to shoulder",   sets:4, reps:6, load:"high"     },
+        advanced:  { cue:"5 × 3 — competition arch, 80%+ 1RM, pause option",               sets:5, reps:3, load:"max"      },
+        altEquip:  { barbell:"db_bench" },
+        subs:      { shoulder:"db_bench", wrist:"pushup_plus" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      db_bench: {
+        title:"DB Bench Press", equipment:"dumbbell",
+        beginner:  { cue:"3 × 12 — full stretch at bottom, neutral grip ok",            sets:3, reps:12, load:"low"      },
+        intermediate:{ cue:"3 × 10 — pronated grip, full ROM, controlled eccentric",    sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 8 — heavy DBs, 2-sec pause at chest",                    sets:4, reps:8,  load:"high"     },
+        altEquip:  { dumbbell:"pushup_plus" },
+        subs:      { shoulder:"pushup_plus" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      push_press: {
+        title:"Push Press", equipment:"barbell",
+        beginner:  { cue:"3 × 6 — bar in front rack, slight dip-drive, lock out overhead", sets:3, reps:6, load:"moderate" },
+        intermediate:{ cue:"4 × 5 — aggressive leg drive, fast elbows from rack",          sets:4, reps:5, load:"high"     },
+        advanced:  { cue:"5 × 3 — heavy loading, re-rack under control, wrists straight",  sets:5, reps:3, load:"max"      },
+        altEquip:  { barbell:"db_push_press" },
+        subs:      { shoulder:"db_shoulder_press", wrist:"pike_pushup" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      db_push_press: {
+        title:"DB Push Press", equipment:"dumbbell",
+        beginner:  { cue:"3 × 8 — DBs at shoulders, small dip, drive overhead",         sets:3, reps:8,  load:"low"      },
+        intermediate:{ cue:"3 × 8 — aggressive leg drive, full lockout, lower controlled",sets:3, reps:8, load:"moderate" },
+        advanced:  { cue:"4 × 6 — heavy DBs, single-arm alternating option",            sets:4, reps:6,  load:"high"     },
+        altEquip:  { dumbbell:"pike_pushup" },
+        subs:      { shoulder:"pike_pushup" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      db_shoulder_press: {
+        title:"DB Shoulder Press", equipment:"dumbbell",
+        beginner:  { cue:"3 × 12 — seated, 90° at bottom, elbows slightly forward",     sets:3, reps:12, load:"low"      },
+        intermediate:{ cue:"3 × 10 — standing, slight core brace, full lockout",         sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 8 — Arnold press or Z-press variation",                   sets:4, reps:8,  load:"high"     },
+        altEquip:  { dumbbell:"pike_pushup" },
+        subs:      { shoulder:"pike_pushup", neck:"lateral_raise" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      bent_over_row: {
+        title:"Bent-Over Row", equipment:"barbell",
+        beginner:  { cue:"3 × 10 — 45° torso, overhand, pull to lower chest",          sets:3, reps:10, load:"low"      },
+        intermediate:{ cue:"3 × 8 — horizontal torso, elbows flare, retract scap",     sets:3, reps:8,  load:"moderate" },
+        advanced:  { cue:"4 × 6 — pendlay row (dead stop) or heavy barbell row",       sets:4, reps:6,  load:"high"     },
+        altEquip:  { barbell:"db_row" },
+        subs:      { back:"db_row", shoulder:"band_row" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      db_row: {
+        title:"Single-Arm DB Row", equipment:"dumbbell",
+        beginner:  { cue:"3 × 12/side — bench-supported, full stretch at bottom",      sets:3, reps:12, load:"low"      },
+        intermediate:{ cue:"3 × 10/side — chest-supported or bent-over, elbow to hip", sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 8/side — heavy DB, kroc row style, controlled eccentric",sets:4, reps:8,  load:"high"     },
+        altEquip:  { dumbbell:"inverted_row_bw" },
+        subs:      { back:"band_row", shoulder:"band_row" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      pullup: {
+        title:"Pull-Up", equipment:"bar",
+        beginner:  { cue:"3 × 3-5 — band-assisted or jumping negatives, full hang",    sets:3, reps:4,  load:"moderate" },
+        intermediate:{ cue:"3 × max — dead hang, chin above bar, elbows fully extend", sets:3, reps:8,  load:"high"     },
+        advanced:  { cue:"4 × max — add weight belt, strict dead-hang, L-sit option",  sets:4, reps:10, load:"max"      },
+        altEquip:  { bar:"inverted_row_bw" },
+        subs:      { shoulder:"band_row", elbow:"inverted_row_bw" },
+        prTrackable:true, prMetric:"reps",
+      },
+
+      lat_pulldown: {
+        title:"Lat Pulldown", equipment:"cable",
+        beginner:  { cue:"3 × 12 — wide grip, pull to upper chest, lean back slightly",sets:3, reps:12, load:"low"      },
+        intermediate:{ cue:"3 × 10 — supinated grip, elbows drive down to hip",        sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 8 — neutral grip, pause at bottom, 3-sec eccentric",     sets:4, reps:8,  load:"high"     },
+        altEquip:  { cable:"band_row" },
+        subs:      { shoulder:"band_row" },
+        prTrackable:true, prMetric:"weight_lbs",
+      },
+
+      cable_chop: {
+        title:"Cable Rotational Chop", equipment:"cable",
+        beginner:  { cue:"3 × 10/side — half-kneeling, high to low, resist rotation",  sets:3, reps:10, load:"low"      },
+        intermediate:{ cue:"3 × 10/side — standing, rotate through thoracic spine",    sets:3, reps:10, load:"moderate" },
+        advanced:  { cue:"4 × 10/side — heavy cable, explosive concentric, slow ecc",  sets:4, reps:10, load:"high"     },
+        altEquip:  { cable:"med_ball_rotational_throw", band:"band_chop" },
+        subs:      { back:"pallof_press", shoulder:"dead_bug" },
+        prTrackable:false, prMetric:"weight_lbs",
+      },
+
+      pallof_press: {
+        title:"Pallof Press", equipment:"cable",
+        beginner:  { cue:"3 × 10/side — half-kneeling, press and hold 2 sec",          sets:3, reps:10, load:"low"      },
+        intermediate:{ cue:"3 × 12/side — standing, move away from anchor = harder",   sets:3, reps:12, load:"moderate" },
+        advanced:  { cue:"4 × 12/side — overhead Pallof or tall-kneeling variation",   sets:4, reps:12, load:"high"     },
+        altEquip:  { cable:"band_pallof", band:"band_pallof" },
+        subs:      { back:"dead_bug", shoulder:"dead_bug" },
+        prTrackable:false, prMetric:"reps",
+      },
+
+      dead_bug: {
+        title:"Dead Bug", equipment:"none",
+        beginner:  { cue:"3 × 6/side — lower back glued to floor, slow extension",     sets:3, reps:6,  load:"low"      },
+        intermediate:{ cue:"3 × 8/side — opposite arm + leg, exhale fully, 3-sec hold",sets:3, reps:8,  load:"low"      },
+        advanced:  { cue:"3 × 10/side — add light DB in hand or resistance band",      sets:3, reps:10, load:"moderate" },
+        altEquip:  {},
+        subs:      {},
+        prTrackable:false, prMetric:"reps",
+      },
     },
 
+    // ── PLYOMETRICS ──────────────────────────────────────────────────────────
     plyo: {
-      approach_jumps:      { title: "Approach Jumps",        cue: "6 reps",                    sets:2, reps:6,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{knee:"box_jumps_low"},                                 prTrackable:true,  prMetric:"reps"       },
-      lateral_bounds:      { title: "Lateral Bounds",        cue: "4 sets · 6 reps per side",  sets:4, reps:6,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{ankle:"lateral_step_ups"},                             prTrackable:false, prMetric:"reps"       },
-      box_jump:            { title: "Box Jump",              cue: "4 sets · 5 reps",           sets:4, reps:5,  load:"explosive", equipment:"box",     noEquipSub:null,              subs:{knee:"squat_jump"},                                    prTrackable:true,  prMetric:"reps"       },
-      broad_jump:          { title: "Broad Jump",            cue: "4 sets · 4 reps",           sets:4, reps:4,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{knee:"box_jumps_low"},                                 prTrackable:true,  prMetric:"distance_m" },
-      depth_jump:          { title: "Depth Jump",            cue: "3 sets · 5 reps",           sets:3, reps:5,  load:"explosive", equipment:"box",     noEquipSub:"box_jump",        subs:{knee:"box_jump"},                                      prTrackable:false, prMetric:"reps"       },
-      single_leg_hop:      { title: "Single-Leg Hop Series", cue: "3 sets · 5 reps per leg",   sets:3, reps:5,  load:"explosive", equipment:"none",    noEquipSub:null,              subs:{ankle:"lateral_step_ups"},                             prTrackable:true,  prMetric:"distance_m" },
-      hurdle_hop:          { title: "Hurdle Hop",            cue: "4 sets · 6 hurdles",        sets:4, reps:6,  load:"explosive", equipment:"hurdles", noEquipSub:"lateral_bounds",  subs:{ankle:"lateral_bounds"},                               prTrackable:false, prMetric:"reps"       },
+
+      broad_jump: {
+        title:"Broad Jump", equipment:"none",
+        beginner:  { cue:"4 × 3 — stick landing 2 sec, soft knees, hips back",         sets:4, reps:3,  load:"explosive" },
+        intermediate:{ cue:"4 × 4 — max horizontal distance, aggressive arm swing",    sets:4, reps:4,  load:"explosive" },
+        advanced:  { cue:"5 × 4 — triple broad jump, continuous, stick final landing",  sets:5, reps:4,  load:"explosive" },
+        altEquip:  {},
+        subs:      { knee:"lateral_step_up", ankle:"lateral_step_up" },
+        prTrackable:true, prMetric:"distance_m",
+      },
+
+      box_jump: {
+        title:"Box Jump", equipment:"box",
+        beginner:  { cue:"4 × 4 — step DOWN off box (don't jump down), land softly",   sets:4, reps:4,  load:"moderate"  },
+        intermediate:{ cue:"4 × 5 — countermovement, full hip extension, stick top",   sets:4, reps:5,  load:"explosive" },
+        advanced:  { cue:"4 × 5 — high box, rebound option — minimal ground contact",  sets:4, reps:5,  load:"explosive" },
+        altEquip:  { box:"broad_jump" },
+        subs:      { knee:"broad_jump", ankle:"step_up_bw" },
+        prTrackable:true, prMetric:"reps",
+      },
+
+      approach_jumps: {
+        title:"4-Step Approach Jump", equipment:"none",
+        beginner:  { cue:"3 × 5 — 2-step approach, two-foot takeoff, land balanced",   sets:3, reps:5,  load:"moderate"  },
+        intermediate:{ cue:"4 × 6 — full 4-step approach, swing arms, peak height",    sets:4, reps:6,  load:"explosive" },
+        advanced:  { cue:"5 × 6 — attack step + jump-set timing, arm swing timing",    sets:5, reps:6,  load:"explosive" },
+        altEquip:  {},
+        subs:      { knee:"lateral_step_up", ankle:"lateral_step_up" },
+        prTrackable:true, prMetric:"reps",
+      },
+
+      lateral_bounds: {
+        title:"Lateral Bounds", equipment:"none",
+        beginner:  { cue:"3 × 4/side — small bound, stick 2 sec, single-leg balance",  sets:3, reps:4,  load:"moderate"  },
+        intermediate:{ cue:"4 × 6/side — max lateral distance, aggressive push-off",   sets:4, reps:6,  load:"explosive" },
+        advanced:  { cue:"5 × 6/side — continuous zigzag, minimal ground time",         sets:5, reps:6,  load:"explosive" },
+        altEquip:  {},
+        subs:      { ankle:"lateral_step_up", knee:"step_up_bw" },
+        prTrackable:false, prMetric:"reps",
+      },
+
+      depth_jump: {
+        title:"Depth Jump", equipment:"box",
+        beginner:  { cue:"— Not for beginners. Use box jump instead." ,                sets:0, reps:0,  load:"none" },
+        intermediate:{ cue:"3 × 4 — low box (12\"), step off, immediate jump on contact",sets:3, reps:4, load:"explosive" },
+        advanced:  { cue:"4 × 5 — 18-24\" box, amortize instantly, maximum height",    sets:4, reps:5,  load:"max"       },
+        altEquip:  { box:"box_jump" },
+        subs:      { knee:"box_jump", ankle:"box_jump" },
+        prTrackable:false, prMetric:"reps",
+      },
+
+      single_leg_hop: {
+        title:"Single-Leg Hop Series", equipment:"none",
+        beginner:  { cue:"3 × 3/leg — short forward hops, stick each landing 2 sec",   sets:3, reps:3,  load:"moderate"  },
+        intermediate:{ cue:"3 × 5/leg — triple-hop for distance, aggressive push-off", sets:3, reps:5,  load:"explosive" },
+        advanced:  { cue:"4 × 5/leg — max distance, continuous reactive hops",          sets:4, reps:5,  load:"explosive" },
+        altEquip:  {},
+        subs:      { ankle:"step_up_bw", knee:"step_up_bw" },
+        prTrackable:true, prMetric:"distance_m",
+      },
+
+      hurdle_hop: {
+        title:"Hurdle Hop", equipment:"hurdles",
+        beginner:  { cue:"3 × 4 — low hurdles (6\"), two-foot, stick after last",       sets:3, reps:4,  load:"moderate"  },
+        intermediate:{ cue:"4 × 6 — rhythm hops, minimize ground contact time",         sets:4, reps:6,  load:"explosive" },
+        advanced:  { cue:"4 × 8 — max height hurdles, single-leg option",               sets:4, reps:8,  load:"max"       },
+        altEquip:  { hurdles:"lateral_bounds" },
+        subs:      { ankle:"lateral_bounds", knee:"lateral_bounds" },
+        prTrackable:false, prMetric:"reps",
+      },
     },
 
+    // ── CONDITIONING ────────────────────────────────────────────────────────
     conditioning: {
-      suicides:            { title: "Court Suicides",        cue: "5 repeats",                 sets:1, reps:5,  load:"high",     equipment:"court",   noEquipSub:"shuttle_run",     subs:{injury:"bike_intervals"},                              prTrackable:true,  prMetric:"time_sec"   },
-      tempo_runs:          { title: "Tempo Runs",            cue: "6 x 200m",                  sets:6, reps:1,  load:"moderate", equipment:"track",   noEquipSub:"timed_effort",    subs:{ankle:"rower"},                                        prTrackable:true,  prMetric:"time_sec"   },
-      prowler_push:        { title: "Prowler Push",          cue: "6 x 20m",                   sets:6, reps:1,  load:"high",     equipment:"sled",    noEquipSub:"shuttle_run",     subs:{knee:"bike_intervals"},                                prTrackable:true,  prMetric:"time_sec"   },
-      rower_intervals:     { title: "Rower Intervals",       cue: "5 x 500m",                  sets:5, reps:1,  load:"high",     equipment:"rower",   noEquipSub:"timed_effort",    subs:{ankle:"timed_effort"},                                 prTrackable:true,  prMetric:"time_sec"   },
-      bike_sprint:         { title: "Bike Sprints",          cue: "8 x 15 sec all-out",        sets:8, reps:1,  load:"high",     equipment:"bike",    noEquipSub:"timed_effort",    subs:{ankle:"rower"},                                        prTrackable:true,  prMetric:"time_sec"   },
-      hill_sprint:         { title: "Hill Sprints",          cue: "6 x 30m",                   sets:6, reps:1,  load:"high",     equipment:"hill",    noEquipSub:"shuttle_run",     subs:{ankle:"bike_sprint"},                                  prTrackable:true,  prMetric:"time_sec"   },
+
+      suicides: {
+        title:"Court Suicides", equipment:"court",
+        beginner:  { cue:"4 repeats @ 70% — touch each line, walk back",               sets:1, reps:4,  load:"moderate" },
+        intermediate:{ cue:"5 repeats — full court, touch & go, rest 90 sec between",  sets:1, reps:5,  load:"high"     },
+        advanced:  { cue:"6 repeats — max effort, rest only 60 sec, track best split", sets:1, reps:6,  load:"max"      },
+        altEquip:  { court:"shuttle_run" },
+        subs:      { ankle:"bike_sprint", knee:"rower_intervals" },
+        prTrackable:true, prMetric:"time_sec",
+      },
+
+      shuttle_run: {
+        title:"10m Shuttle Run", equipment:"none",
+        beginner:  { cue:"4 × 4 reps @ 70% — focus on deceleration & acceleration",    sets:4, reps:4,  load:"moderate" },
+        intermediate:{ cue:"5 × 6 — max effort, plant foot, no sliding",               sets:5, reps:6,  load:"high"     },
+        advanced:  { cue:"6 × 8 — timed, add 5-10-5 drill variation",                  sets:6, reps:8,  load:"max"      },
+        altEquip:  {},
+        subs:      { ankle:"bike_sprint", knee:"rower_intervals" },
+        prTrackable:true, prMetric:"time_sec",
+      },
+
+      tempo_runs: {
+        title:"Tempo Runs", equipment:"track",
+        beginner:  { cue:"4 × 100m @ 65% — conversational effort, consistent pace",    sets:4, reps:1,  load:"low"      },
+        intermediate:{ cue:"6 × 200m @ 75% — 90-sec rest, hold pace each rep",         sets:6, reps:1,  load:"moderate" },
+        advanced:  { cue:"8 × 200m @ 80% — 60-sec rest, last 2 at race pace",          sets:8, reps:1,  load:"high"     },
+        altEquip:  { track:"shuttle_run" },
+        subs:      { ankle:"bike_sprint", knee:"rower_intervals" },
+        prTrackable:true, prMetric:"time_sec",
+      },
+
+      hill_sprint: {
+        title:"Hill Sprints", equipment:"hill",
+        beginner:  { cue:"4 × 20m — moderate incline, drive knees, walk down fully",   sets:4, reps:1,  load:"moderate" },
+        intermediate:{ cue:"6 × 30m — steep incline, pump arms, explosive each rep",   sets:6, reps:1,  load:"high"     },
+        advanced:  { cue:"8 × 40m — max effort, weighted vest option, 2-min rest",     sets:8, reps:1,  load:"max"      },
+        altEquip:  { hill:"treadmill_sprint", track:"shuttle_run" },
+        subs:      { ankle:"bike_sprint", knee:"rower_intervals" },
+        prTrackable:true, prMetric:"time_sec",
+      },
+
+      prowler_push: {
+        title:"Prowler/Sled Push", equipment:"sled",
+        beginner:  { cue:"4 × 20m — light load, upright torso, steady cadence",        sets:4, reps:1,  load:"moderate" },
+        intermediate:{ cue:"6 × 20m — heavy load, drive from hips, minimal rest",      sets:6, reps:1,  load:"high"     },
+        advanced:  { cue:"8 × 20m — very heavy, sprint pace, 90-sec rest",             sets:8, reps:1,  load:"max"      },
+        altEquip:  { sled:"hill_sprint" },
+        subs:      { knee:"bike_sprint", ankle:"bike_sprint" },
+        prTrackable:true, prMetric:"time_sec",
+      },
+
+      rower_intervals: {
+        title:"Rower Intervals", equipment:"rower",
+        beginner:  { cue:"4 × 250m @ 70% — focus on leg drive → body swing → arms",    sets:4, reps:1,  load:"moderate" },
+        intermediate:{ cue:"5 × 500m @ 80% — 2-min rest, rate 24-26 spm",             sets:5, reps:1,  load:"high"     },
+        advanced:  { cue:"6 × 500m @ 90% — 90-sec rest, rate 28+ spm, track split",   sets:6, reps:1,  load:"max"      },
+        altEquip:  { rower:"bike_sprint" },
+        subs:      { back:"bike_sprint", shoulder:"bike_sprint" },
+        prTrackable:true, prMetric:"time_sec",
+      },
+
+      bike_sprint: {
+        title:"Assault Bike / Bike Sprints", equipment:"bike",
+        beginner:  { cue:"6 × 10 sec all-out — full recovery between, arms + legs",    sets:6, reps:1,  load:"high"     },
+        intermediate:{ cue:"8 × 15 sec all-out — 45 sec rest, track calories per set", sets:8, reps:1,  load:"max"      },
+        advanced:  { cue:"10 × 15 sec all-out — 30 sec rest, Tabata-style option",     sets:10,reps:1,  load:"max"      },
+        altEquip:  { bike:"shuttle_run" },
+        subs:      { back:"shuttle_run", knee:"rower_intervals" },
+        prTrackable:true, prMetric:"time_sec",
+      },
     },
 
-    // Bodyweight / no-equipment alternatives
+    // ── BODYWEIGHT FALLBACKS ─────────────────────────────────────────────────
+    // Used when required equipment is unavailable — accessible by altEquip mapping
     noEquip: {
-      bodyweight_squat:    { title: "Bodyweight Squat",          cue: "4 sets · 15 reps",        load:"moderate" },
-      bodyweight_rdl:      { title: "Bodyweight RDL",            cue: "3 sets · 10 reps",        load:"moderate" },
-      single_leg_hinge:    { title: "Single-Leg Hip Hinge",      cue: "3 sets · 8 reps per leg", load:"moderate" },
-      pike_pushup:         { title: "Pike Push-up",              cue: "3 sets · 10 reps",        load:"moderate" },
-      pushup:              { title: "Push-up",                   cue: "4 sets · 12 reps",        load:"moderate" },
-      inverted_row:        { title: "Inverted Row",              cue: "3 sets · 8 reps",         load:"moderate" },
-      shuttle_run:         { title: "Shuttle Run 10m",           cue: "6 repeats",               load:"high"     },
-      timed_effort:        { title: "30-sec Hard Effort",        cue: "6 repeats",               load:"moderate" },
-      glute_bridge:        { title: "Glute Bridge",              cue: "3 sets · 15 reps",        load:"low"      },
-      med_ball_throw:      { title: "Rotational Med Ball Throw", cue: "3 sets · 8 reps/side",    load:"moderate" },
-      dead_bug:            { title: "Dead Bug",                  cue: "3 sets · 8 reps/side",    load:"low"      },
-      side_plank:          { title: "Side Plank",                cue: "3 sets · 30 sec/side",    load:"low"      },
-      reverse_lunge_bw:    { title: "Bodyweight Reverse Lunge",  cue: "3 sets · 10 reps/leg",    load:"moderate" },
-    }
+      bodyweight_squat:     { title:"Bodyweight Squat",          cue:"4 × 15 — hip depth, heels down, slow 3-sec descent",  load:"moderate" },
+      bodyweight_rdl:       { title:"Bodyweight RDL",            cue:"3 × 12 — single or double, hinge pattern, flat back",  load:"moderate" },
+      single_leg_hinge:     { title:"Single-Leg Hip Hinge",      cue:"3 × 8/leg — arms forward, spine neutral, balance",     load:"moderate" },
+      pike_pushup:          { title:"Pike Push-Up",              cue:"3 × 10 — hips high, head through arms at bottom",      load:"moderate" },
+      pushup_plus:          { title:"Push-Up",                   cue:"4 × max — full ROM, chest to floor, full lockout",      load:"moderate" },
+      inverted_row_bw:      { title:"Inverted Row",              cue:"3 × max — table or bar low, body rigid, elbows back",   load:"moderate" },
+      shuttle_run:          { title:"Shuttle Run 10m",           cue:"5 × 6 — plant, change direction, sprint each way",      load:"high"     },
+      timed_effort:         { title:"30-sec Hard Sprint",        cue:"6 repeats — 100%, walk back, full recovery",            load:"high"     },
+      glute_bridge:         { title:"Glute Bridge",              cue:"3 × 15 — pause 2 sec at top, posterior tilt",          load:"low"      },
+      dead_bug_bw:          { title:"Dead Bug",                  cue:"3 × 8/side — lumbar flat to floor, breathe out",        load:"low"      },
+      side_plank_adv:       { title:"Side Plank",                cue:"3 × 40 sec/side — hip stacked, no sag",                load:"moderate" },
+      reverse_lunge_bw:     { title:"Reverse Lunge",             cue:"3 × 10/leg — tall posture, knee over ankle",            load:"moderate" },
+      step_up_bw:           { title:"Step-Up (bodyweight)",      cue:"3 × 10/leg — drive through heel, no push-off",          load:"low"      },
+      wall_sit:             { title:"Wall Sit",                  cue:"3 × 45 sec — 90° at knee, press back into wall",        load:"low"      },
+      lateral_step_up:      { title:"Lateral Step-Up",           cue:"3 × 10/leg — lateral load, control descent",            load:"low"      },
+      band_row:             { title:"Band Row",                  cue:"3 × 15 — anchor at chest height, elbows back",          load:"low"      },
+      band_chop:            { title:"Band Rotational Chop",      cue:"3 × 12/side — anchor high, resist and control",         load:"low"      },
+      band_pallof:          { title:"Band Pallof Press",         cue:"3 × 12/side — resist rotation, press & return",         load:"low"      },
+      med_ball_rotational_throw: { title:"Med Ball Rotational Throw", cue:"3 × 8/side — wall throw, hip turn drives power",   load:"moderate" },
+    },
   };
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SPORT-SPECIFIC MICROBLOCKS
-  // Each sport gets: skill drills, sport-conditioning, position-specific work.
-  // sessionType key picks the relevant drills per session.
+  // SPORT-SPECIFIC MICROBLOCKS  v4.0
+  // Science-accurate drill selection for each sport & level.
+  //
+  // strengthPriority[level] = ordered list of exercise keys for that tier.
+  // plyoPriority[level], conditioning[level] likewise.
+  // skillBlocks are position/skill-specific — same for all levels but
+  // volume/intensity prescribed by the generator based on level.
   // ══════════════════════════════════════════════════════════════════════════
   const SPORT_MICROBLOCKS = {
 
+    // ────────────────────────────────────────────────────────────────────────
     basketball: {
-      label: "Basketball",
-      emoji: "🏀",
-      // Strength priorities: explosiveness, single-leg stability, upper-body push/pull
-      strengthPriority: ["goblet_squat", "rdl", "push_press", "single_leg_deadlift", "pullup"],
-      // Sport conditioning
-      conditioning:     ["suicides", "tempo_runs"],
-      // Plyo priorities
-      plyoPriority:     ["box_jump", "lateral_bounds", "single_leg_hop"],
+      label:"Basketball", emoji:"🏀",
+      // Science rationale: NBA S&C data shows single-leg explosiveness,
+      // triple extension (for jump shot + rim protection), reactive agility,
+      // and lateral change of direction are the primary physical demands.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","db_bench","pullup","dead_bug"],
+        intermediate: ["split_squat","rdl","push_press","bent_over_row","copenhagen_plank"],
+        advanced:     ["trap_bar_deadlift","barbell_back_squat","push_press","pullup","single_leg_deadlift"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","lateral_bounds","approach_jumps"],
+        intermediate: ["box_jump","lateral_bounds","approach_jumps","single_leg_hop"],
+        advanced:     ["depth_jump","box_jump","lateral_bounds","single_leg_hop"],
+      },
+      conditioning: {
+        beginner:     ["shuttle_run","tempo_runs"],
+        intermediate: ["suicides","shuttle_run"],
+        advanced:     ["suicides","bike_sprint"],
+      },
+      warmup: {
+        items:[
+          { name:"Ankle circles + hip 90/90 rotation",   cue:"60 sec/side" },
+          { name:"Glute bridge walkout",                  cue:"10 reps" },
+          { name:"A-skip + lateral shuffle combo",        cue:"2 × 20m each" },
+          { name:"Band hip activation (clamshells)",      cue:"15 reps/side" },
+        ]
+      },
+      cooldown: [
+        { name:"Seated hamstring stretch",         cue:"60 sec each side" },
+        { name:"Hip flexor lunge hold",            cue:"45 sec each side" },
+        { name:"Thoracic rotation (thread-needle)",cue:"8 reps each side" },
+      ],
       skillBlocks: {
-        shooting:        [ { name:"Catch & Shoot", reps:"5 sets · 10 shots", cue:"Pocket → quick release, hold follow-through 1 sec", load:"skill" },
-                           { name:"Pull-up Mid J", reps:"4 sets · 8",       cue:"Create space off dribble, set feet on gather",      load:"skill" } ],
-        ball_handling:   [ { name:"Two-Ball Stationary", reps:"5 min",         cue:"Waist, shoulder, low — soft hands, eyes up",        load:"skill" },
-                           { name:"Cone Speed Weaves",   reps:"8 reps",        cue:"Low stance, change of direction at each cone",      load:"skill" } ],
-        finishing:       [ { name:"Euro Step Finish",    reps:"4 sets · 6",    cue:"Wide gather, opposite-foot plant, soft layup",      load:"skill" },
-                           { name:"Floater Series",      reps:"4 sets · 6",    cue:"High release point, flat arc, off the glass",       load:"skill" } ],
-        defense:         [ { name:"Defensive Slides",    reps:"5 sets · 30s",  cue:"Hips low, no crossing feet, quick drop-step",       load:"skill" },
-                           { name:"Close-out Drill",     reps:"6 reps",        cue:"Sprint, chop steps last 2m, hand up, no foul",      load:"skill" } ],
-      }
+        shooting: [
+          { name:"Spot Shooting — Catch & Shoot",  reps:"5 spots × 10 shots",  cue:"Ball to pocket first, square shoulders before catch, hold follow-through 1 sec", load:"skill", level_note:"Beginner: 3 spots. Advanced: off movement, game-speed." },
+          { name:"Pull-Up Mid-Range J",            reps:"4 sets × 8",          cue:"Dribble into space, gather on jump foot, get feet under body, flat arc",         load:"skill" },
+          { name:"3-Point Spot Work",              reps:"5 spots × 8",         cue:"Wide base, hips into ground, quick release — triple threat before every shot",    load:"skill", advanced_only:false },
+        ],
+        ball_handling: [
+          { name:"Two-Ball Stationary",            reps:"6 min total",          cue:"Waist → shoulder → low — soft hands, eyes up entire time, vary rhythm",         load:"skill" },
+          { name:"Cone Speed Weave",               reps:"8 reps",              cue:"Stay low, lead with inside hand, change of direction at every cone",              load:"skill" },
+          { name:"Behind-Back / Between-Legs Combo", reps:"4 min",             cue:"Game-speed moves, protect ball with body, stay in athletic stance",              load:"skill" },
+        ],
+        finishing: [
+          { name:"Euro Step Finish",               reps:"4 sets × 6",          cue:"Wide gather off 2 feet, plant outside foot, opposite-hand finish",               load:"skill" },
+          { name:"Floater (off 2 dribbles)",       reps:"4 sets × 6",          cue:"Push off inside foot, high release, flat arc — aim back of rim",                load:"skill" },
+          { name:"Contact Finish (foam pad drill)",reps:"5 sets × 5",          cue:"Absorb contact, stay aggressive to the glass, don't fade",                      load:"skill" },
+        ],
+        defense: [
+          { name:"Defensive Slides — full length", reps:"5 × 28m",             cue:"Hips low, never cross feet, lead with front foot, hands active",                load:"skill" },
+          { name:"Close-out Drill (1-2 chops)",    reps:"8 reps",              cue:"Sprint, chop last 2m into low stance, hand up — no reach foul",                 load:"skill" },
+          { name:"Deny Drill — 45° wing",          reps:"6 reps",              cue:"Denial stance: lead hand in passing lane, see ball and man",                    load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     football: {
-      label: "Football",
-      emoji: "🏈",
-      strengthPriority: ["trap_bar_deadlift", "bench", "row", "push_press", "hex_bar_squat"],
-      conditioning:     ["hill_sprint", "prowler_push"],
-      plyoPriority:     ["broad_jump", "depth_jump", "box_jump"],
+      label:"Football", emoji:"🏈",
+      // Science: NFL combine data — 40-yd dash, broad jump, and vertical
+      // dominate physical performance. Heavy posterior chain loading,
+      // max-strength base (for linemen), explosive upper body for skill positions.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","db_bench","db_row","dead_bug"],
+        intermediate: ["trap_bar_deadlift","bench_press","bent_over_row","push_press","hip_thrust"],
+        advanced:     ["trap_bar_deadlift","barbell_back_squat","power_clean","bench_press","pullup"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","box_jump","lateral_bounds"],
+        intermediate: ["broad_jump","depth_jump","box_jump","lateral_bounds"],
+        advanced:     ["depth_jump","broad_jump","single_leg_hop","hurdle_hop"],
+      },
+      conditioning: {
+        beginner:     ["shuttle_run","tempo_runs"],
+        intermediate: ["hill_sprint","prowler_push"],
+        advanced:     ["prowler_push","hill_sprint","bike_sprint"],
+      },
+      warmup: {
+        items:[
+          { name:"Hip flexor lunge matrix (forward/lateral/rotational)", cue:"5 reps/direction" },
+          { name:"Band clamshells + monster walk",                       cue:"15 reps/side" },
+          { name:"Explosive start & drive (half-speed)",                 cue:"6 reps" },
+          { name:"Arm circles + thoracic rotation",                      cue:"10 reps each" },
+        ]
+      },
+      cooldown: [
+        { name:"Pigeon pose hold",           cue:"60 sec each side" },
+        { name:"Thoracic rotation stretch",  cue:"8 reps each side" },
+        { name:"Lat & pec doorframe stretch",cue:"30 sec each side" },
+      ],
       skillBlocks: {
-        route_running:   [ { name:"Cone Route Tree",     reps:"5 trees",       cue:"Explosive release off LOS, sharp cuts — no rounding", load:"skill" },
-                           { name:"Hands / Catch Drill", reps:"4 sets · 8",    cue:"Eyes through ball into hands, tuck on contact",        load:"skill" } ],
-        blocking:        [ { name:"Sled Drive",          reps:"5 × 10m",       cue:"Stay low, hip drive, accelerate through sled",         load:"skill" },
-                           { name:"Kick-Slide Drill",    reps:"6 reps",        cue:"Anchor inside foot, mirror defender, keep pad level",   load:"skill" } ],
-        qb_mechanics:   [ { name:"Drop & Set Drill",     reps:"5 sets · 8",    cue:"Quick 3-step, hips open early, weight transfer",        load:"skill" },
-                           { name:"Pocket Movement",     reps:"6 reps",        cue:"Step up, slide, reset — protect pocket integrity",      load:"skill" } ],
-        tackling:        [ { name:"Angle Tackle Drill",  reps:"8 reps",        cue:"Eyes on numbers, wrap low, drive through contact",      load:"skill" } ],
-      }
+        route_running: [
+          { name:"Cone Route Tree (all 9 routes)",  reps:"5 full trees",     cue:"Explosive release off line, plant at cone, cut at 90°+ with no rounding", load:"skill" },
+          { name:"Hands Drill — Focus Catches",     reps:"4 sets × 10",     cue:"Reach for ball away from body, eyes through ball, tuck immediately",      load:"skill" },
+          { name:"Stem & Break Drill",              reps:"8 reps/route",    cue:"Sell the stem (3-4 steps), hard plant, lean into break, get in/out fast",  load:"skill" },
+        ],
+        blocking: [
+          { name:"Sled Drive — hip explosion",      reps:"5 × 10m",         cue:"Low pad level, drive through — don't push, stay in contact zone",         load:"skill" },
+          { name:"Kick-Slide Pass-Pro Drill",       reps:"8 reps",          cue:"Anchor inside foot, kick to set edge, mirror defender, keep inside hand", load:"skill" },
+          { name:"Hand-Combat Punch Drill",         reps:"3 × 10 reps",     cue:"Inside hands, thumbs up, punch at breastplate — not head or outside",     load:"skill" },
+        ],
+        qb_mechanics: [
+          { name:"Drop & Set Footwork",             reps:"5 sets × 10",     cue:"3/5/7-step drop, plant off back foot, hip rotation precedes arm action",  load:"skill" },
+          { name:"Pocket Movement — Step Up/Slide", reps:"8 reps",          cue:"Mirror pass rush, step up in pocket, reset feet before throwing",         load:"skill" },
+          { name:"Half-Speed Throw Mechanics",      reps:"50 throws",       cue:"Elbow up, wrist snap, stride toward target — drive hip, not just arm",    load:"skill" },
+        ],
+        tackling_pursuit: [
+          { name:"Angle Tackle Drill",              reps:"10 reps",         cue:"Eyes on numbers/belt, buzz feet at contact, wrap low — no high targeting",load:"skill" },
+          { name:"Pursuit Angle Drill",             reps:"8 reps",          cue:"Take proper angle — don't over-pursue, eyes on near hip of ball carrier", load:"skill" },
+          { name:"Form Tackle in Bags",             reps:"10 reps",         cue:"Hit through, not at — drive legs on contact, generate power from ground", load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     soccer: {
-      label: "Soccer",
-      emoji: "⚽",
-      strengthPriority: ["goblet_squat", "single_leg_deadlift", "row", "nordic_curl", "Copenhagen"],
-      conditioning:     ["tempo_runs", "hill_sprint"],
-      plyoPriority:     ["lateral_bounds", "single_leg_hop", "hurdle_hop"],
+      label:"Soccer", emoji:"⚽",
+      // Science: Soccer demands repeated sprint capacity, aerobic base,
+      // single-leg strength + stability (cutting), hamstring resilience
+      // (hamstring strains #1 injury) → Nordic curl is essential.
+      // Adductor work (Copenhagen) for groin injury prevention.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","single_leg_deadlift","dead_bug","pullup"],
+        intermediate: ["split_squat","rdl","single_leg_deadlift","nordic_curl","copenhagen_plank"],
+        advanced:     ["barbell_back_squat","single_leg_deadlift","nordic_curl","copenhagen_plank","power_clean"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","lateral_bounds"],
+        intermediate: ["lateral_bounds","single_leg_hop","hurdle_hop"],
+        advanced:     ["single_leg_hop","hurdle_hop","lateral_bounds","depth_jump"],
+      },
+      conditioning: {
+        beginner:     ["tempo_runs","shuttle_run"],
+        intermediate: ["tempo_runs","hill_sprint"],
+        advanced:     ["tempo_runs","hill_sprint","bike_sprint"],
+      },
+      warmup: {
+        items:[
+          { name:"Dynamic hip openers (world's greatest stretch)", cue:"8 reps/side" },
+          { name:"Ankle mobility circles (both directions)",       cue:"30 sec/foot" },
+          { name:"Lateral shuffle + carioca",                      cue:"2 × 20m each" },
+          { name:"Leg swings (front/lateral)",                     cue:"12 reps each" },
+        ]
+      },
+      cooldown: [
+        { name:"Standing quad stretch",         cue:"45 sec each side" },
+        { name:"Seated adductor stretch",       cue:"60 sec" },
+        { name:"Hip 90/90 with rotation",       cue:"8 reps each side" },
+      ],
       skillBlocks: {
-        dribbling:       [ { name:"1v1 Close Control",   reps:"8 reps",        cue:"Soft touches, body between ball & defender",            load:"skill" },
-                           { name:"Speed Dribble Gate",  reps:"6 × 20m",       cue:"Push the ball ahead, accelerate, no panic",             load:"skill" } ],
-        passing:         [ { name:"Rondo 4v1",           reps:"10 min",        cue:"Weight & timing — early pass before pressure arrives",  load:"skill" },
-                           { name:"1-2 Combination",     reps:"8 reps/side",   cue:"Open body, firm pass, time your run in behind",        load:"skill" } ],
-        finishing:       [ { name:"Far Post Strike",     reps:"5 sets · 8",    cue:"Plant foot alongside ball, lock ankle, follow through", load:"skill" },
-                           { name:"1v1 vs GK",           reps:"8 reps",        cue:"Shape early, pick corner, disguise direction",          load:"skill" } ],
-        defending:       [ { name:"Defensive Jockeying", reps:"6 reps",        cue:"Side-on, half-turn, delay not commit",                  load:"skill" },
-                           { name:"Press Trigger Drill", reps:"8 reps",        cue:"Trigger on poor touch, angle to cut off back pass",     load:"skill" } ],
-      }
+        dribbling: [
+          { name:"1v1 Close Control",            reps:"8 reps",           cue:"Soft first touch, body between ball and defender, change pace to beat",    load:"skill" },
+          { name:"Speed Dribble Through Gates",  reps:"6 × 20m",          cue:"Push ball 2-3 steps ahead, sprint to it — don't babysit the ball",        load:"skill" },
+          { name:"Cruyff / V-Turn Drill",        reps:"8 reps each",      cue:"Sell the direction, cut back sharply with inside of foot, explosive exit", load:"skill" },
+        ],
+        passing: [
+          { name:"Rondo 4v1 (or 2-touch wall)",  reps:"10 min",           cue:"Weight and timing — early pass before pressure, open body to receive",    load:"skill" },
+          { name:"1-2 Combination Play",         reps:"8 reps/side",      cue:"Firm return pass, time your run, make the movement before ball arrives",  load:"skill" },
+          { name:"Switch-of-Play Long Pass",     reps:"20 reps",          cue:"Strike through centre of ball, non-kick foot beside ball, follow through", load:"skill" },
+        ],
+        finishing: [
+          { name:"Far-Post Driven Strike",       reps:"5 × 8 balls",      cue:"Plant foot beside ball, locked ankle, strike laces, follow through low",  load:"skill" },
+          { name:"1v1 vs Goalkeeper",            reps:"10 reps",          cue:"Shape early, pick your corner before shooting — disguise decision late",   load:"skill" },
+          { name:"Volley / Half-Volley",         reps:"30 reps",          cue:"Get over ball at contact, knee above ball, sidefoot for placement",       load:"skill" },
+        ],
+        defending: [
+          { name:"Defensive Jockey Drill",       reps:"6 reps",           cue:"Side-on stance, half-turn — delay, show outside, don't commit first",     load:"skill" },
+          { name:"Press Trigger & Win Ball",     reps:"8 reps",           cue:"Trigger on poor touch or backwards pass — angle press, cut off back pass", load:"skill" },
+          { name:"Block Tackle Technique",       reps:"10 reps",          cue:"Weight on front foot, lock ankle, commit and follow through on contact",   load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     baseball: {
-      label: "Baseball / Softball",
-      emoji: "⚾",
-      strengthPriority: ["trap_bar_deadlift", "bench", "row", "cable_chop", "db_row"],
-      conditioning:     ["bike_sprint", "hill_sprint"],
-      plyoPriority:     ["broad_jump", "box_jump", "med_ball_slam"],
+      label:"Baseball / Softball", emoji:"⚾",
+      // Science: Rotational power through hips (not arms) drives bat speed.
+      // Posterior chain (RDL, rows) crucial for throwing velocity.
+      // Shoulder health = internal/external rotation balance, scap stability.
+      // Arm care before and after throwing is non-negotiable.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","db_row","dead_bug","cable_chop"],
+        intermediate: ["trap_bar_deadlift","db_bench","bent_over_row","cable_chop","hip_thrust"],
+        advanced:     ["trap_bar_deadlift","db_bench","pullup","cable_chop","power_clean"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","box_jump"],
+        intermediate: ["broad_jump","box_jump","single_leg_hop"],
+        advanced:     ["broad_jump","depth_jump","single_leg_hop"],
+      },
+      conditioning: {
+        beginner:     ["shuttle_run","bike_sprint"],
+        intermediate: ["hill_sprint","bike_sprint"],
+        advanced:     ["hill_sprint","prowler_push","bike_sprint"],
+      },
+      warmup: {
+        items:[
+          { name:"Arm circles (small → large) + band pull-apart", cue:"15 reps each" },
+          { name:"90/90 shoulder external rotation stretch",       cue:"30 sec each side" },
+          { name:"Hip hinge + thoracic rotation",                  cue:"8 reps/side" },
+          { name:"Wrist flexor/extensor stretch",                  cue:"60 sec total" },
+        ]
+      },
+      cooldown: [
+        { name:"Cross-body shoulder stretch",    cue:"60 sec each arm" },
+        { name:"Wrist extensor hang",            cue:"30 sec each" },
+        { name:"Doorframe pec stretch",          cue:"30 sec each side" },
+      ],
       skillBlocks: {
-        throwing:        [ { name:"Long Toss Progression", reps:"10–15 min",   cue:"Accelerate through release point, low elbow = danger",  load:"skill" },
-                           { name:"Band Throw Pattern",    reps:"3 sets",       cue:"Wrist/scap activation — external rotation emphasis",   load:"skill" } ],
-        hitting:         [ { name:"Tee Work (oppo gap)",   reps:"5 sets · 10", cue:"Stay back, hands inside ball, drive to opposite field", load:"skill" },
-                           { name:"Front Toss",            reps:"5 sets · 10", cue:"Short stride, early load, stay through contact zone",   load:"skill" } ],
-        fielding:        [ { name:"Ground Ball Series",    reps:"20 reps",     cue:"Fielding triangle, glove outside foot, charge easy GB", load:"skill" },
-                           { name:"Footwork Around Bag",   reps:"10 reps/foot",cue:"Early read, soft feet, secure then throw",              load:"skill" } ],
-        baserunning:     [ { name:"Primary Lead Drill",    reps:"8 reps",      cue:"2.5 shuffle, weight on balls of feet, read pitcher",    load:"skill" } ],
-      }
+        throwing_arm_care: [
+          { name:"Long Toss Progression",        reps:"10–15 min build-up",  cue:"Start at 30ft, extend to max. Accelerate through release, low elbow = danger", load:"skill" },
+          { name:"J-Band Arm Care Routine",      reps:"3 sets — 5 exercises", cue:"External/internal rotation, scarecrow, D2 pattern — feel shoulder, stop if pain", load:"skill" },
+          { name:"Flat-Ground Throwing (command)",reps:"30 throws",           cue:"4-seam grip, 4/2-seam split, work corners — hit targets not just mechanics",  load:"skill" },
+        ],
+        hitting: [
+          { name:"Tee Work — Opposite-Field Gap", reps:"5 sets × 10",        cue:"Stay back, hands inside ball, contact out front — drive to opposite field",   load:"skill" },
+          { name:"Front Toss / Soft Toss",        reps:"5 sets × 10",        cue:"Short stride, early load, stay through contact zone — don't pull off",        load:"skill" },
+          { name:"Rotational Med Ball Slam",      reps:"4 × 8/side",          cue:"Hip turn precedes hands — drive rotation from lead hip, hands follow",        load:"skill" },
+        ],
+        fielding: [
+          { name:"Ground Ball Series (5-hole)",   reps:"25 reps",             cue:"Fielding triangle, glove outside front foot, charge routine GB aggressively",  load:"skill" },
+          { name:"First-Step Reaction Drill",     reps:"15 reps",             cue:"Pitcher-focus stance, crossover step first — don't false step",               load:"skill" },
+          { name:"Footwork Around the Bag",       reps:"10 reps each foot",   cue:"Early read of throw, soft feet on base, secure before transferring",          load:"skill" },
+        ],
+        baserunning: [
+          { name:"Primary Lead + Read Pitcher",   reps:"10 reps",             cue:"2.5 shuffle steps, weight on balls of feet, time pickoff move",              load:"skill" },
+          { name:"Rounding 1st — Secondary Lead", reps:"8 reps",              cue:"Banana route around first, read ball to outfield on contact, decisive",       load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     volleyball: {
-      label: "Volleyball",
-      emoji: "🏐",
-      strengthPriority: ["goblet_squat", "rdl", "push_press", "db_shoulder_press", "pullup"],
-      conditioning:     ["suicides", "bike_sprint"],
-      plyoPriority:     ["approach_jumps", "box_jump", "depth_jump"],
+      label:"Volleyball", emoji:"🏐",
+      // Science: Vertical jump is primary performance indicator. Shoulder
+      // stability and rotator cuff health essential for setters + hitters.
+      // Repeated approach jumps demand quad/posterior chain balance.
+      // Ankle stability (landing mechanics) = major injury prevention focus.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","db_shoulder_press","dead_bug","pullup"],
+        intermediate: ["split_squat","rdl","push_press","db_shoulder_press","pullup"],
+        advanced:     ["barbell_back_squat","rdl","push_press","pullup","single_leg_deadlift"],
+      },
+      plyoPriority: {
+        beginner:     ["approach_jumps","box_jump","broad_jump"],
+        intermediate: ["approach_jumps","depth_jump","box_jump","lateral_bounds"],
+        advanced:     ["depth_jump","approach_jumps","single_leg_hop","hurdle_hop"],
+      },
+      conditioning: {
+        beginner:     ["shuttle_run","bike_sprint"],
+        intermediate: ["suicides","bike_sprint"],
+        advanced:     ["suicides","bike_sprint","prowler_push"],
+      },
+      warmup: {
+        items:[
+          { name:"Shoulder CARs (Controlled Articular Rotations)", cue:"5 reps/side — very slow" },
+          { name:"Hip flexor lunge + thoracic reach",               cue:"8 reps/side" },
+          { name:"Ankle pops + calf raise complex",                 cue:"15 reps — build rhythm" },
+          { name:"Band external rotation (arm care)",               cue:"15 reps/side" },
+        ]
+      },
+      cooldown: [
+        { name:"Overhead tricep + lat stretch",      cue:"45 sec each" },
+        { name:"Cobra / prone press-up",             cue:"5 × 10-sec holds" },
+        { name:"Ankle dorsiflexion calf stretch",    cue:"60 sec each side" },
+      ],
       skillBlocks: {
-        hitting:         [ { name:"Approach & Arm Swing", reps:"5 sets · 6",  cue:"4-step approach, high elbow, lead with heel of hand",   load:"skill" },
-                           { name:"Tool & Wipe Drill",    reps:"4 sets · 8",  cue:"Roll hand over top to tool the block or wipe out",      load:"skill" } ],
-        blocking:        [ { name:"Block Footwork",        reps:"8 reps",      cue:"Read setter, 2-step, penetrate net, flat hands",        load:"skill" },
-                           { name:"Triple Block Slide",    reps:"6 reps",      cue:"Outside blocker leads, MB slides, line up seam",        load:"skill" } ],
-        setting:         [ { name:"Setting from Knee",     reps:"50 reps",     cue:"Consistent hand shape, wrists back, symmetrical push",  load:"skill" },
-                           { name:"Back-Set Accuracy",     reps:"30 reps",     cue:"Square to target, extension overhead, hips drive",      load:"skill" } ],
-        passing:         [ { name:"Platform Pass Lines",   reps:"10 min",      cue:"Angle platform to target, absorb with legs not arms",   load:"skill" } ],
-      }
+        hitting: [
+          { name:"4-Step Approach + Arm Swing",  reps:"5 sets × 6",   cue:"Left-right-left-jump (RH). High elbow at peak, heel of hand leads contact", load:"skill" },
+          { name:"Tool & Wipe Off Block",        reps:"4 sets × 8",   cue:"See block hands, roll wrist over top OR wipe outside line — don't just spike", load:"skill" },
+          { name:"Back-Row Attack Approach",     reps:"4 × 6",        cue:"Jump well behind 10-ft line, steep angle, land inside court",               load:"skill" },
+        ],
+        blocking: [
+          { name:"Block Footwork — Slide/Cross", reps:"10 reps each", cue:"Read setter early, 2-step slide or cross-step, hands penetrate net",        load:"skill" },
+          { name:"Triple Block Assignment",      reps:"8 sequences",  cue:"Outside blocker sets line, MB closes seam — no air between hands",          load:"skill" },
+          { name:"Down-Ball / Tip Read",         reps:"10 reps",      cue:"Quick transition from block to dig: drop hands, turn hips, find ball",      load:"skill" },
+        ],
+        setting: [
+          { name:"Setting from Knee (form drill)",reps:"60 reps",     cue:"Consistent hand shape (window), wrists back, symmetric push — NO thumbing",  load:"skill" },
+          { name:"Back-Set Accuracy Drill",       reps:"30 reps",     cue:"Square target behind, extension overhead, hip drive — not a backward fall",  load:"skill" },
+          { name:"Jump-Set Timing",               reps:"5 sets × 8",  cue:"Time jump to ball, contact at top of jump, quick hands",                    load:"skill" },
+        ],
+        passing: [
+          { name:"Platform Pass to Target",       reps:"100 reps",    cue:"Angle platform toward target, absorb with legs — LEGS not arms move ball",   load:"skill" },
+          { name:"Serve-Receive Lines",           reps:"5 serves/person", cue:"Read spin early, move feet first — catch ball with body then platform",  load:"skill" },
+          { name:"Overhead Pass / Setting Form",  reps:"50 reps",     cue:"Same hand shape every time — snap through fingers, no push with palms",      load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     track: {
-      label: "Track & Field",
-      emoji: "🏃",
-      strengthPriority: ["goblet_squat", "rdl", "single_leg_deadlift", "nordic_curl", "hip_thrust"],
-      conditioning:     ["tempo_runs", "hill_sprint"],
-      plyoPriority:     ["broad_jump", "hurdle_hop", "single_leg_hop"],
+      label:"Track & Field", emoji:"🏃",
+      // Science: Sprint mechanics — max velocity demands stiff ankle,
+      // reactive strength index, hip flexor power. Acceleration = anterior
+      // drive. Hamstring injuries peak at max velocity. Posterior chain
+      // (RDL, hip thrust, Nordic) is primary injury prevention work.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","single_leg_deadlift","dead_bug","hip_thrust"],
+        intermediate: ["split_squat","rdl","single_leg_deadlift","nordic_curl","hip_thrust"],
+        advanced:     ["barbell_back_squat","rdl","nordic_curl","hip_thrust","power_clean"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","hurdle_hop","lateral_bounds"],
+        intermediate: ["broad_jump","hurdle_hop","single_leg_hop"],
+        advanced:     ["single_leg_hop","hurdle_hop","depth_jump","broad_jump"],
+      },
+      conditioning: {
+        beginner:     ["tempo_runs","shuttle_run"],
+        intermediate: ["tempo_runs","hill_sprint"],
+        advanced:     ["hill_sprint","tempo_runs","prowler_push"],
+      },
+      warmup: {
+        items:[
+          { name:"A-Skip + B-Skip (30m each)",                   cue:"2 × each — build rhythm" },
+          { name:"Leg swings (frontal and sagittal)",            cue:"12 reps each direction" },
+          { name:"Wicket walk (dorsiflexion + hip cycle)",       cue:"20m" },
+          { name:"High-knee march → acceleration",              cue:"4 × 20m progressive" },
+        ]
+      },
+      cooldown: [
+        { name:"Calf stretch on step (gastro + soleus)", cue:"60 sec each" },
+        { name:"Hip flexor lunge hold",                  cue:"45 sec each side" },
+        { name:"Supine hamstring stretch",               cue:"60 sec each side" },
+      ],
       skillBlocks: {
-        sprint_mechanics: [ { name:"A-Skips",              reps:"3 × 30m",     cue:"High knee, dorsiflexed foot, fast ground contact",      load:"skill" },
-                             { name:"B-Skips",             reps:"3 × 30m",     cue:"Extend & paw back, hip extension drives speed",         load:"skill" } ],
-        acceleration:     [ { name:"30m Drive Phase",      reps:"6 reps",      cue:"Forward lean 45°, push not pull, triple extension",     load:"skill" },
-                             { name:"Wicket Runs",         reps:"4 × 20m",     cue:"Consistent stride length over wickets, relax",          load:"skill" } ],
-        max_velocity:     [ { name:"Flying 30s",           reps:"4 reps",      cue:"Rolling start, max effort 30m, tall posture, relax jaw", load:"skill" },
-                             { name:"Hollow Sprints",      reps:"5 × 100m",    cue:"Build — float — build, practice relaxation at speed",   load:"skill" } ],
-        hurdles:          [ { name:"Lead-Leg Drill",       reps:"3 sets · 8",  cue:"Attack with trail knee, don't sit in hurdle",           load:"skill" },
-                             { name:"3-Step Rhythm",       reps:"5 × 4 hurdles",cue:"Attack first hurdle, maintain rhythm, don't slow",     load:"skill" } ],
-      }
+        sprint_mechanics: [
+          { name:"A-Skips",               reps:"4 × 30m",        cue:"High knee, dorsiflexed foot (toe up), fast ground contact — think 'pawback'",  load:"skill" },
+          { name:"B-Skips",               reps:"4 × 30m",        cue:"Extend leg fully then paw back aggressively — hip extension drives speed",     load:"skill" },
+          { name:"Wall Drill (3-point)",   reps:"3 × 10/leg",    cue:"45° lean into wall, cycle legs at full speed — hips stay forward, toe up",     load:"skill" },
+        ],
+        acceleration: [
+          { name:"30m Drive Phase",        reps:"6 reps",         cue:"Forward lean 45°, triple extension, push not pull — stay low through 30m",    load:"skill" },
+          { name:"Wicket Runs",            reps:"5 × 20m",        cue:"Wickets set to 70% max stride — consistent cycle, don't reach or chop",       load:"skill" },
+          { name:"3-Point Stance Start",   reps:"6 reps",         cue:"Dominant foot back, weight forward, fire arms first, stay low 10m",           load:"skill" },
+        ],
+        max_velocity: [
+          { name:"Flying 30s",             reps:"5 reps",         cue:"30m build-up, then MAX effort 30m — tall posture, relax face/hands",          load:"skill" },
+          { name:"Hollow Sprints",         reps:"4 × 100m",       cue:"Build (30m) → float (40m) → build (30m) — trains relaxation at speed",       load:"skill" },
+          { name:"In-Out Drill (30-20-30)",reps:"4 reps",         cue:"All out for 30, float 20, all out again 30 — simulate race changes",          load:"skill" },
+        ],
+        hurdles: [
+          { name:"Lead-Leg Drill over mini hurdles", reps:"4 × 4 hurdles", cue:"Attack with TRAIL knee up, lead foot strikes DOWN — don't sit in hurdle",load:"skill" },
+          { name:"3-Stride Rhythm",                  reps:"6 × 4 hurdles", cue:"Step-hurdle-step-step-hurdle rhythm — attack first hurdle, maintain",     load:"skill" },
+          { name:"Hurdle Side Drill",                reps:"3 × 10/side",   cue:"Lead-leg reach to outside, trail-leg clearance — hip flexibility focus",  load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     swimming: {
-      label: "Swimming",
-      emoji: "🏊",
-      strengthPriority: ["lat_pulldown", "db_row", "pullup", "hip_thrust", "rdl"],
-      conditioning:     ["rower_intervals", "bike_sprint"],
-      plyoPriority:     ["broad_jump", "box_jump"],
+      label:"Swimming", emoji:"🏊",
+      // Science: Dryland S&C for swimmers focuses on lat strength (pull),
+      // core anti-rotation, hip flexor power, shoulder cuff stability.
+      // Swimmers don't need heavy leg work — hip thrust + RDL for turn power.
+      strengthPriority: {
+        beginner:     ["lat_pulldown","db_row","dead_bug","hip_thrust","db_rdl"],
+        intermediate: ["pullup","db_row","hip_thrust","pallof_press","rdl"],
+        advanced:     ["pullup","bent_over_row","power_clean","hip_thrust","nordic_curl"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","box_jump"],
+        intermediate: ["broad_jump","box_jump","single_leg_hop"],
+        advanced:     ["depth_jump","broad_jump","single_leg_hop"],
+      },
+      conditioning: {
+        beginner:     ["rower_intervals","bike_sprint"],
+        intermediate: ["rower_intervals","bike_sprint"],
+        advanced:     ["rower_intervals","bike_sprint","prowler_push"],
+      },
+      warmup: {
+        items:[
+          { name:"Rotator cuff band circuit (ER/IR/D2/scaption)", cue:"3 × 10 each — feel not fatigue" },
+          { name:"Lat hang + active lat stretch",                  cue:"30 sec each side on bar" },
+          { name:"Hip flexor lunge + spine rotation",              cue:"8 reps/side" },
+          { name:"Ankle mobility + calf raise",                    cue:"15 reps — for turn push-off" },
+        ]
+      },
+      cooldown: [
+        { name:"Cross-body lat stretch",         cue:"45 sec each arm" },
+        { name:"Doorframe pec stretch",          cue:"30 sec each side" },
+        { name:"Supine hip flexor stretch",      cue:"60 sec each side" },
+      ],
       skillBlocks: {
-        freestyle:        [ { name:"Catch-Up Drill",       reps:"4 × 50m",     cue:"Full extension before next stroke — long body line",     load:"skill" },
-                             { name:"Fingertip Drag",      reps:"4 × 50m",     cue:"High elbow recovery, drag fingertips — sets up entry",  load:"skill" } ],
-        starts_turns:     [ { name:"Dive Block Start",     reps:"10 reps",     cue:"Compact tuck, drive heels, streamline entry",           load:"skill" },
-                             { name:"Flip Turn Series",    reps:"15 reps",     cue:"Approach pace, somersault, tight tuck, push & rotate",  load:"skill" } ],
-        backstroke:       [ { name:"Single-Arm Back",      reps:"4 × 50m",     cue:"High elbow entry, rotate to power through pull",        load:"skill" } ],
-        dryland:          [ { name:"Band Pull-Apart",      reps:"3 sets · 15", cue:"Retract scapula, control eccentrically",                load:"skill" },
-                             { name:"Core Rotation Band",  reps:"3 sets · 12/side", cue:"Resist rotation, then drive — train hip separation", load:"skill" } ],
-      }
+        freestyle: [
+          { name:"Catch-Up Drill",               reps:"6 × 50m",     cue:"Full extension before next stroke — maintain long body line, don't windmill",load:"skill" },
+          { name:"Fingertip Drag",               reps:"4 × 50m",     cue:"High elbow recovery — drag fingertips across water, sets up front-quadrant entry", load:"skill" },
+          { name:"Fist Drill",                   reps:"4 × 50m",     cue:"Closed fist forces forearm to catch water — builds awareness of full surface area", load:"skill" },
+        ],
+        starts_turns: [
+          { name:"Dive Block Start",             reps:"15 reps",     cue:"Compact arm swing, drive heels into block, narrow streamline — entry angle matters", load:"skill" },
+          { name:"Flip Turn Mechanics",          reps:"20 reps",     cue:"Approach pace, dolphin kick into flip, tight tuck, push off wall + rotate", load:"skill" },
+          { name:"Underwater Dolphin Kick",      reps:"6 × 15m underwater", cue:"Hips drive the kick — not feet. Remain streamlined, eyes down",       load:"skill" },
+        ],
+        backstroke_IM: [
+          { name:"Single-Arm Backstroke",        reps:"4 × 50m",     cue:"High entry at 12 o'clock, rotate body to generate power, not just arm pull", load:"skill" },
+          { name:"Breaststroke Timing",          reps:"4 × 50m",     cue:"Pull → breathe → kick → glide. Glide phase is where you go fast — don't rush", load:"skill" },
+        ],
+        dryland_activation: [
+          { name:"Band Pull-Apart (3 variations)", reps:"3 × 15",    cue:"Straight across / low / high — retract scap fully, control eccentrically",  load:"skill" },
+          { name:"Core Rotation Plank",            reps:"3 × 30 sec/side", cue:"Hold rotation under fatigue — resist collapse of hips",               load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     wrestling: {
-      label: "Wrestling",
-      emoji: "🤼",
-      strengthPriority: ["trap_bar_deadlift", "bench", "row", "goblet_squat", "pullup"],
-      conditioning:     ["rower_intervals", "prowler_push"],
-      plyoPriority:     ["broad_jump", "box_jump", "depth_jump"],
+      label:"Wrestling", emoji:"🤼",
+      // Science: Wrestling demands grip strength, neck strength, explosive
+      // hip extension, upper-back pulling (row / pull-up) for tie-ups,
+      // and elite anaerobic capacity. Heavy compound movements + grappling-
+      // specific conditioning (rower = perfect energy system match).
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","pullup","db_row","dead_bug"],
+        intermediate: ["trap_bar_deadlift","bent_over_row","pullup","hip_thrust","dead_bug"],
+        advanced:     ["trap_bar_deadlift","power_clean","pullup","bent_over_row","barbell_back_squat"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","box_jump"],
+        intermediate: ["broad_jump","depth_jump","box_jump"],
+        advanced:     ["depth_jump","broad_jump","single_leg_hop"],
+      },
+      conditioning: {
+        beginner:     ["rower_intervals","shuttle_run"],
+        intermediate: ["rower_intervals","prowler_push"],
+        advanced:     ["rower_intervals","prowler_push","bike_sprint"],
+      },
+      warmup: {
+        items:[
+          { name:"Neck bridge rolls (supervised)",       cue:"10 reps each direction — build tolerance" },
+          { name:"Hip escape drill (granby rolls)",      cue:"10 reps/side" },
+          { name:"Sprawl series (half speed)",           cue:"8 reps — react to signal" },
+          { name:"Grip circuit (wrist roller/dead hang)", cue:"3 × 30 sec" },
+        ]
+      },
+      cooldown: [
+        { name:"Neck stretches (4 directions)",   cue:"30 sec each hold" },
+        { name:"Thoracic rotation stretch",       cue:"8 reps each side" },
+        { name:"Hip flexor + lat combined stretch",cue:"45 sec each side" },
+      ],
       skillBlocks: {
-        takedowns:        [ { name:"Double-Leg Attack",    reps:"5 sets · 6",  cue:"Level change, drive through, head to armpit, finish",   load:"skill" },
-                             { name:"Single-Leg Finish",   reps:"5 sets · 6",  cue:"Control ankle, elevate, swing/trip, don't stall",      load:"skill" } ],
-        top_control:      [ { name:"Breakdown & Ride",     reps:"6 reps",      cue:"Inside calf control, chest pressure, don't let hips",   load:"skill" } ],
-        defense:          [ { name:"Hip-Heist Drill",      reps:"8 reps",      cue:"Block, hip-heist under, tight waist — explosively",     load:"skill" },
-                             { name:"Sprawl Series",       reps:"8 reps",      cue:"Sprawl legs back, chest on back, re-circle head",       load:"skill" } ],
-        live_drilling:    [ { name:"Tie-Up Scrambles",     reps:"5 × 30 sec",  cue:"100% intensity, work through contact — no reset",       load:"skill" } ],
-      }
+        takedowns: [
+          { name:"Double-Leg Attack (level change)", reps:"5 × 6",     cue:"Penetration step, drive head to armpit, lock hands, drive through to finish",  load:"skill" },
+          { name:"Single-Leg Finish (elevation)",    reps:"5 × 6",     cue:"Control ankle with both hands, elevate and swing or trip — don't stall",       load:"skill" },
+          { name:"High-Crotch to Double",            reps:"4 × 6",     cue:"Attack high crotch, transition to inside position, drive to double finish",     load:"skill" },
+        ],
+        top_control: [
+          { name:"Breakdown & Ride (inside-calf control)", reps:"6 min live", cue:"Inside calf, chest pressure, seal the hips — don't let them sit up",    load:"skill" },
+          { name:"Cross-Face Cradle Entry",                reps:"8 reps",     cue:"Drive cross-face deep, scoop near leg, lock quickly — explosively",       load:"skill" },
+        ],
+        bottom_defense: [
+          { name:"Hip-Heist (stand-up transition)", reps:"10 reps",    cue:"Post on far hand, hip-heist hard, tight waist — be explosive not gradual",     load:"skill" },
+          { name:"Granby Roll Defense",             reps:"8 reps",     cue:"Shoulder roll, hip-heist through, face opponent — maintain scramble pressure",  load:"skill" },
+          { name:"Sprawl Series (react to shot)",   reps:"10 reps",    cue:"Sprawl legs back, chest on opponent's back, re-circle head — no space given",   load:"skill" },
+        ],
+        live_drilling: [
+          { name:"Tie-Up Scrambles (pummeling)",    reps:"5 × 30 sec", cue:"Constant motion, work inside position — head in, hips low, always moving",     load:"skill" },
+          { name:"Penetration Step Reps",           reps:"3 × 20",     cue:"Lead step, level change simultaneously — practice the movement pattern",        load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     lacrosse: {
-      label: "Lacrosse",
-      emoji: "🥍",
-      strengthPriority: ["goblet_squat", "rdl", "push_press", "cable_chop", "single_leg_deadlift"],
-      conditioning:     ["suicides", "hill_sprint"],
-      plyoPriority:     ["lateral_bounds", "box_jump", "single_leg_hop"],
+      label:"Lacrosse", emoji:"🥍",
+      // Science: Lacrosse = rotational power (stick work), multi-directional
+      // sprint speed, single-leg stability, and aggressive contact conditioning.
+      // Copenhagen plank + adductor work for change-of-direction injury prevention.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","db_push_press","db_row","dead_bug"],
+        intermediate: ["split_squat","rdl","push_press","bent_over_row","cable_chop"],
+        advanced:     ["barbell_back_squat","rdl","push_press","power_clean","cable_chop"],
+      },
+      plyoPriority: {
+        beginner:     ["broad_jump","lateral_bounds","box_jump"],
+        intermediate: ["lateral_bounds","box_jump","single_leg_hop"],
+        advanced:     ["single_leg_hop","lateral_bounds","depth_jump"],
+      },
+      conditioning: {
+        beginner:     ["shuttle_run","tempo_runs"],
+        intermediate: ["suicides","hill_sprint"],
+        advanced:     ["suicides","hill_sprint","bike_sprint"],
+      },
+      warmup: {
+        items:[
+          { name:"Dynamic hip opener (world's greatest stretch)", cue:"8 reps/side" },
+          { name:"Wrist & forearm mobility circles",              cue:"60 sec total" },
+          { name:"T-Drill (warmup speed)",                        cue:"4 reps — feel footwork" },
+          { name:"Stick cradle + jog",                            cue:"3 min easy" },
+        ]
+      },
+      cooldown: [
+        { name:"Hip 90/90 with rotation",       cue:"8 reps each side" },
+        { name:"Wrist flexor/extensor stretch", cue:"30 sec each direction" },
+        { name:"Quad + hip flexor stretch",     cue:"45 sec each side" },
+      ],
       skillBlocks: {
-        stick_work:       [ { name:"Wall Ball — Quick Stick",  reps:"100 reps", cue:"Catch then release in one motion, top hand leads",   load:"skill" },
-                             { name:"Split-Dodge Drill",       reps:"8 reps/side", cue:"Plant outside foot, switch hands, accelerate away", load:"skill" } ],
-        shooting:         [ { name:"Stand-Still Crank",       reps:"5 × 10",  cue:"Wind up, hip rotation, wrist snap — high or low corner", load:"skill" },
-                             { name:"On-the-Run Shot",         reps:"8 reps",  cue:"Full speed approach, set hips, reach — no arm-only shot",load:"skill" } ],
-        ground_balls:     [ { name:"Scoop & Clear",           reps:"10 reps", cue:"Low to the ball, scoop through, protect with body",     load:"skill" } ],
-        defense:          [ { name:"Poke Check Drill",         reps:"8 reps",  cue:"Drop step, quick hand, don't reach — patience first",   load:"skill" } ],
-      }
+        stick_work: [
+          { name:"Wall Ball — Quick Stick",      reps:"100 reps",       cue:"Catch and release in one motion — top hand leads, bottom wrist snaps",         load:"skill" },
+          { name:"Split-Dodge Drill",            reps:"8 reps/side",    cue:"Plant outside foot hard, switch hands quickly, explode out of dodge",           load:"skill" },
+          { name:"Roll Dodge + Shot",            reps:"8 reps/side",    cue:"Protect stick, tight roll, step into shot — generate power from hips",          load:"skill" },
+        ],
+        shooting: [
+          { name:"Stand-Still Crank Shot",       reps:"5 × 10",         cue:"Wind up, hip rotation precedes hands, wrist snap at release — high or low corner", load:"skill" },
+          { name:"On-the-Run Shot (both sides)", reps:"8 reps",         cue:"Full approach speed, plant, set hips to target — reach across body for far side",  load:"skill" },
+          { name:"BTB / Sidearm Finish",         reps:"5 × 8",          cue:"Advanced: sell the look-off, BTB finish tight to goal — practice deception",      load:"skill" },
+        ],
+        ground_balls: [
+          { name:"Scoop & Clear Drill",          reps:"12 reps",        cue:"Low to ball, scoop through (don't poke), protect with body after pickup",         load:"skill" },
+          { name:"Contested Ground Ball",        reps:"8 reps",         cue:"Body-check legal position, scoop aggressively, accelerate away immediately",      load:"skill" },
+        ],
+        defense: [
+          { name:"Poke-Check Technique",         reps:"10 reps",        cue:"Lead with top hand only, drop-step, quick jab — patience, don't over-commit",     load:"skill" },
+          { name:"Angle Defense + Slide",        reps:"8 sequences",    cue:"Force to weak side, communicate slide assignment, crash on slide trigger",        load:"skill" },
+        ],
+      },
     },
 
+    // ────────────────────────────────────────────────────────────────────────
     tennis: {
-      label: "Tennis",
-      emoji: "🎾",
-      strengthPriority: ["goblet_squat", "cable_chop", "db_shoulder_press", "Copenhagen", "single_leg_deadlift"],
-      conditioning:     ["suicides", "bike_sprint"],
-      plyoPriority:     ["lateral_bounds", "single_leg_hop", "hurdle_hop"],
+      label:"Tennis", emoji:"🎾",
+      // Science: Tennis demands rotational shoulder power, ankle stability
+      // (split-step landing), repeated short-sprint lateral capacity,
+      // and shoulder/elbow durability. Copenhagen plank + single-leg work
+      // prevent ankle sprains. Cable chop builds rotational groundstroke power.
+      strengthPriority: {
+        beginner:     ["goblet_squat","db_rdl","db_shoulder_press","dead_bug","cable_chop"],
+        intermediate: ["split_squat","single_leg_deadlift","db_shoulder_press","cable_chop","copenhagen_plank"],
+        advanced:     ["barbell_back_squat","single_leg_deadlift","push_press","cable_chop","copenhagen_plank"],
+      },
+      plyoPriority: {
+        beginner:     ["lateral_bounds","broad_jump"],
+        intermediate: ["lateral_bounds","single_leg_hop","box_jump"],
+        advanced:     ["lateral_bounds","single_leg_hop","hurdle_hop"],
+      },
+      conditioning: {
+        beginner:     ["shuttle_run","bike_sprint"],
+        intermediate: ["suicides","bike_sprint"],
+        advanced:     ["suicides","bike_sprint","hill_sprint"],
+      },
+      warmup: {
+        items:[
+          { name:"Shoulder internal/external rotation (band)",  cue:"15 reps each direction" },
+          { name:"Split-step drill (no racket)",                cue:"30 sec at game pace" },
+          { name:"Hip 90/90 stretch + rotation",                cue:"60 sec/side" },
+          { name:"Ankle lunge matrix (forward/lateral/cross)",  cue:"8 reps each" },
+        ]
+      },
+      cooldown: [
+        { name:"Shoulder sleeper stretch",       cue:"60 sec each side" },
+        { name:"Wrist/forearm flexor stretch",   cue:"30 sec each direction" },
+        { name:"Hip flexor lunge hold",          cue:"45 sec each side" },
+      ],
       skillBlocks: {
-        groundstrokes:    [ { name:"Forehand Topspin Feed",  reps:"50 balls",  cue:"Lag wrist, low to high, inside-out brush — finish high",load:"skill" },
-                             { name:"Backhand Cross Feed",   reps:"50 balls",  cue:"2-hand: shoulder turn, coil, unwind — step into ball",  load:"skill" } ],
-        serve:            [ { name:"Flat Serve Toss Drill",  reps:"20 reps",   cue:"Toss 1 o'clock, trophy position, pronate on contact",   load:"skill" },
-                             { name:"Kick Serve Mechanics",  reps:"15 reps",   cue:"Toss behind head, arch back, brush 7 → 1 on ball",      load:"skill" } ],
-        net_play:         [ { name:"Volley Groundwork",      reps:"30 reps",   cue:"Continental grip, punch — don't swing, firm wrist",     load:"skill" } ],
-        footwork:         [ { name:"Split-Step Timing",      reps:"10 min",    cue:"Split as opponent strikes, land & load simultaneously", load:"skill" },
-                             { name:"Recovery Sprint Drill", reps:"12 reps",   cue:"Hit, recover centre, split — footwork first always",    load:"skill" } ],
-      }
+        groundstrokes: [
+          { name:"Forehand Topspin — Feed Drill", reps:"50 balls",       cue:"Lag wrist, low to high inside-out brush, finish high opposite shoulder",       load:"skill" },
+          { name:"Backhand Cross-Court Feed",     reps:"50 balls",       cue:"2-hand: shoulder coil, unwind from hips, step into ball — not arms first",     load:"skill" },
+          { name:"Baseline Rally (live or wall)", reps:"10 min",         cue:"Reset after every ball, consistent depth, vary spin — don't just bash",        load:"skill" },
+        ],
+        serve: [
+          { name:"Flat Serve — Toss Drill Only",  reps:"20 reps",        cue:"Toss 1 o'clock, trophy position, let ball drop — perfect toss only, no hit",   load:"skill" },
+          { name:"Flat Serve Full Swing",         reps:"20 serves",      cue:"Lead with trophy, pronate through contact, land inside baseline",               load:"skill" },
+          { name:"Kick Serve Mechanics",          reps:"15 serves",      cue:"Toss slightly behind head, back arch, brush 7 → 1 on ball — heavy topspin",    load:"skill" },
+        ],
+        net_play: [
+          { name:"Volley Fed Drill — compact punch", reps:"30 reps ea side",cue:"Continental grip — no backswing, punch with arm, firm wrist at contact",    load:"skill" },
+          { name:"Approach + Close",                 reps:"15 sequences",  cue:"Short ball → approach down line → split-step → put away volley",             load:"skill" },
+        ],
+        footwork: [
+          { name:"Split-Step Timing Drill",       reps:"10 min",         cue:"Split AS opponent strikes — not before/after. Land and immediately move",      load:"skill" },
+          { name:"Recovery Sprint to Centre",     reps:"12 reps",        cue:"Hit → push off back foot → recover centre → split — footwork is shot 2",       load:"skill" },
+          { name:"Lateral Shuffle + Crossover",   reps:"3 × 60 sec",     cue:"Shuffle for 3-4 steps, crossover to cover more court — stay athletic",         load:"skill" },
+        ],
+      },
     },
   };
 
@@ -364,155 +1200,249 @@
     speed:            { mix:["warmup","speed","plyo"],                  mins:50 },
   };
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // EQUIPMENT SWAP ENGINE
+  // resolveExercise(key, availableEquip, level) → actual exercise definition
+  // to use, applying equipment substitution and level tier selection.
+  // ══════════════════════════════════════════════════════════════════════════
+  function resolveExercise(key, availableEquip, level) {
+    const avail = availableEquip || (state.profile?.equipment) || [];
+    const lvl   = level || athleteLevel();
+
+    // Look up in all categories
+    const lib = {
+      ...EXERCISE_LIB.strength,
+      ...EXERCISE_LIB.plyo,
+      ...EXERCISE_LIB.conditioning,
+    };
+
+    let def = lib[key];
+    if (!def) return null;
+
+    // ── Equipment check ──────────────────────────────────────────────────
+    const requiredEquip = def.equipment;
+    const equipAvail = !requiredEquip || requiredEquip === "none" || avail.includes(requiredEquip);
+
+    if (!equipAvail && def.altEquip) {
+      // Find a substitute that uses available equipment
+      const altKeys = Object.entries(def.altEquip); // [[missingEquip, altKey], ...]
+      for (const [, altKey] of altKeys) {
+        const altDef = lib[altKey] || EXERCISE_LIB.noEquip[altKey];
+        if (!altDef) continue;
+        const altEquip = altDef.equipment || "none";
+        if (altEquip === "none" || avail.includes(altEquip)) {
+          def = altDef;
+          key = altKey;
+          break;
+        }
+      }
+      // If still no match, fall through to noEquip fallback
+      if (!avail.includes(def.equipment || "none") && def.equipment !== "none") {
+        // Try noEquip catalogue
+        const noEqDef = EXERCISE_LIB.noEquip[Object.values(def.altEquip || {})[0]];
+        if (noEqDef) { def = noEqDef; }
+      }
+    }
+
+    // ── Level tier selection ─────────────────────────────────────────────
+    const tier = def[lvl] || def.intermediate || def.beginner;
+    if (!tier) return null; // depth_jump beginner guard
+
+    return {
+      key,
+      title:       def.title,
+      name:        def.title,
+      cue:         tier.cue,
+      sets:        tier.sets,
+      reps:        tier.reps,
+      load:        tier.load,
+      equipment:   def.equipment || "none",
+      noEquipSub:  def.altEquip ? Object.values(def.altEquip)[0] : null,
+      prTrackable: def.prTrackable || false,
+      prMetric:    def.prMetric   || "weight_lbs",
+      subs:        def.subs       || {},
+      equipSwapped: !equipAvail,   // flag to show "swapped for your equipment" in UI
+    };
+  }
+
   // ---------- Injury handling helpers ----------
   function hasInjury(tag) {
     if (!state.profile || !Array.isArray(state.profile.injuries)) return false;
     return state.profile.injuries.includes(tag);
   }
 
-  function applyInjuryAdjustments(exercise, injuries) {
-    // exercise is a string key e.g. "split_squat"
-    // injuries is array
-    const def = EXERCISE_LIB.strength[exercise];
-    if (!def) return null;
-    const res = Object.assign({}, def);
-    // If knee injury -> prefer low impact subs and reduce load
-    if (injuries && injuries.length) {
-      injuries.forEach(i => {
-        if (def.subs && def.subs[i]) {
-          // map to substitution key name (string)
-          res.substitution = def.subs[i];
-        } else if (i === "knee") {
-          // generic knee fallback to goblet squat or box squat
-          res.substitution = res.substitution || "goblet_squat";
-        } else if (i === "shoulder") {
-          res.substitution = res.substitution || "band_press";
+  function applyInjuryAdjustments(exObj, injuries) {
+    if (!exObj || !injuries || !injuries.length) return exObj;
+    const res = { ...exObj };
+    injuries.forEach(tag => {
+      if (res.subs && res.subs[tag]) {
+        const subKey = res.subs[tag];
+        const allLib = { ...EXERCISE_LIB.strength, ...EXERCISE_LIB.plyo, ...EXERCISE_LIB.conditioning, ...EXERCISE_LIB.noEquip };
+        const subDef = allLib[subKey];
+        if (subDef) {
+          const lvl = athleteLevel();
+          const tier = subDef[lvl] || subDef.intermediate || subDef.beginner || {};
+          res.name  = subDef.title || res.name;
+          res.cue   = (tier.cue || res.cue) + " (injury substitution)";
+          res.sets  = tier.sets  || res.sets;
+          res.reps  = tier.reps  || res.reps;
+          res.substitution = subKey;
         }
-      });
-      // reduce load indicator
-      res.cue = (res.cue || "") + " — reduce load / higher reps for injury";
+      }
+    });
+    if (injuries.length) {
+      // Moderate load for injured athletes
+      if (res.load === "max" || res.load === "high") {
+        res.cue = (res.cue || "") + " — moderate load given injury history";
+        res.load = "moderate";
+      }
     }
     return res;
   }
 
   // ---------- Workout generation ----------
-  // Generate a single session for given sport, sessionType (strength/speed/practice/etc.), and injury flags
-  function generateWorkoutFor(sport = "basketball", sessionType = "practice", injuries = []) {
+  function generateWorkoutFor(sport, sessionType, injuries) {
+    sport       = sport       || state.profile?.sport       || "basketball";
+    sessionType = sessionType || state.profile?.preferred_session_type || "practice";
+    injuries    = injuries    || state.profile?.injuries    || [];
+
+    const level    = athleteLevel();
+    const avail    = state.profile?.equipment || [];
     const template = SESSION_TEMPLATES[sessionType] || SESSION_TEMPLATES.practice;
     const sportData = SPORT_MICROBLOCKS[sport] || SPORT_MICROBLOCKS.basketball;
-    const blocks = [];
-    const uid = () => Math.random().toString(36).slice(2, 8);
+    const blocks   = [];
+    const uid      = () => Math.random().toString(36).slice(2, 8);
 
-    // ── Warm-up (sport-specific cues) ─────────────────────────────────────
-    const warmupCues = {
-      basketball: [{ name:"Hip circles & ankle rolls",cue:"60 sec each side" },{ name:"Glute bridge walkouts",cue:"10 reps" },{ name:"A-skips + lateral shuffle",cue:"2 × 20m each" }],
-      football:   [{ name:"Hip flexor lunge matrix",cue:"5 reps/direction" },{ name:"Band clamshells",cue:"15 reps/side" },{ name:"Explosive step & drive",cue:"6 reps" }],
-      soccer:     [{ name:"Dynamic hip openers",cue:"8 reps/side" },{ name:"Ankle mobility circles",cue:"30 sec/foot" },{ name:"Lateral shuffle carioca",cue:"2 × 20m" }],
-      baseball:   [{ name:"Arm circles + band pull-apart",cue:"15 reps" },{ name:"Hip hinge + thoracic rotation",cue:"8 reps/side" },{ name:"Wrist flexor/extensor stretch",cue:"60 sec" }],
-      volleyball: [{ name:"Shoulder CARs",cue:"5 reps/side slow" },{ name:"Hip flexor lunge",cue:"8 reps/side" },{ name:"Ankle pops + calf raises",cue:"15 reps" }],
-      track:      [{ name:"A-skips & B-skips",cue:"2 × 30m each" },{ name:"Leg swings front/lateral",cue:"10 reps each" },{ name:"Wicket walk",cue:"20m" }],
-      swimming:   [{ name:"Rotator cuff band circuit",cue:"3 × 10 each" },{ name:"Lat stretch on bar",cue:"30 sec each side" },{ name:"Hip flexor lunge",cue:"8 reps/side" }],
-      wrestling:  [{ name:"Neck bridge rolls",cue:"10 reps each direction" },{ name:"Hip escape drill",cue:"10 reps/side" },{ name:"Sprawl series",cue:"6 reps" }],
-      lacrosse:   [{ name:"Dynamic hip opener",cue:"8 reps/side" },{ name:"Wrist & forearm mobility",cue:"60 sec" },{ name:"T-drill warmup",cue:"4 reps" }],
-      tennis:     [{ name:"Shoulder internal/external rotation",cue:"15 reps each" },{ name:"Split-step drill (no racket)",cue:"30 sec" },{ name:"Hip 90/90 stretch",cue:"60 sec/side" }],
-    };
-    const wuItems = warmupCues[sport] || warmupCues.basketball;
-    blocks.push({ id:`warmup_${uid()}`, type:"warmup", title:"Sport-Specific Warm-up", duration_min:10, items:wuItems });
+    // ── Level-aware volume modifiers ────────────────────────────────────
+    const volMod = { beginner:0.8, intermediate:1.0, advanced:1.2 }[level] || 1.0;
+    const strengthCount = level === "advanced" ? 5 : level === "intermediate" ? 4 : 3;
+    const plyoCount     = level === "advanced" ? 4 : 3;
+    const skillCount    = level === "advanced" ? 3 : 2; // categories of skill drills
 
-    // ── Skill microblocks ─────────────────────────────────────────────────
+    // ── Sport-specific warm-up ──────────────────────────────────────────
+    const wuDef = sportData.warmup || { items:[] };
+    blocks.push({
+      id:`warmup_${uid()}`, type:"warmup",
+      title:`Sport Warm-Up — ${sportData.label}`,
+      duration_min: level === "advanced" ? 12 : 10,
+      items: wuDef.items,
+    });
+
+    // ── Skill microblocks ───────────────────────────────────────────────
     const skillBlocks = sportData.skillBlocks || {};
     const skillKeys   = Object.keys(skillBlocks);
-    if (skillKeys.length) {
-      // Rotate which 2 skill categories we use by day-of-week for variety
-      const dayIdx  = new Date().getDay(); // 0-6
-      const k1 = skillKeys[dayIdx % skillKeys.length];
-      const k2 = skillKeys[(dayIdx + 1) % skillKeys.length];
-      const chosenKeys = [k1, k2 !== k1 ? k2 : skillKeys[(dayIdx + 2) % skillKeys.length]];
-      const skillBlock = { id:`skill_${uid()}`, type:"skill", title:`${sportData.emoji || ""} Skill Work — ${sportData.label || sport}`, duration_min:18, items:[] };
-      chosenKeys.forEach(k => {
-        (skillBlocks[k] || []).slice(0, 2).forEach(it => skillBlock.items.push({ ...it, skillCategory: k }));
+    if (skillKeys.length && (template.mix.includes("skill") || template.mix.includes("light_skill"))) {
+      const dayIdx = new Date().getDay();
+      // Rotate skill categories by day so athletes hit different drills each session
+      const chosen = [];
+      for (let i = 0; i < Math.min(skillCount, skillKeys.length); i++) {
+        chosen.push(skillKeys[(dayIdx + i) % skillKeys.length]);
+      }
+      const skillBlock = {
+        id:`skill_${uid()}`, type:"skill",
+        title:`${sportData.emoji} Skill Work · ${sportData.label} · ${level.charAt(0).toUpperCase()+level.slice(1)}`,
+        duration_min: Math.round(18 * volMod),
+        items:[],
+      };
+      chosen.forEach(k => {
+        const drills = skillBlocks[k] || [];
+        // Advanced: take all drills. Beginner: take first 1. Intermediate: first 2.
+        const take = level === "advanced" ? drills.length : level === "intermediate" ? 2 : 1;
+        drills.slice(0, take).forEach(it => {
+          // Skip depth_jump for beginners
+          if (it.advanced_only && level === "beginner") return;
+          skillBlock.items.push({ ...it, skillCategory:k, levelNote: it.level_note || null });
+        });
       });
-      blocks.push(skillBlock);
+      if (skillBlock.items.length) blocks.push(skillBlock);
     }
 
-    // ── Strength block ────────────────────────────────────────────────────
-    if (template.mix.includes("strength") || template.mix.includes("light_strength") || sessionType === "strength") {
-      const strengthPriority = sportData.strengthPriority || ["goblet_squat","rdl","row"];
-      const pick = sessionType === "strength" ? 4 : 3; // more exercises on dedicated strength days
-      const strengthBlock = { id:`strength_${uid()}`, type:"strength", title:"Strength Block", duration_min:sessionType==="strength"?28:20, items:[] };
-      strengthPriority.slice(0, pick).forEach(key => {
-        const ex = applyInjuryAdjustments(key, injuries) || EXERCISE_LIB.strength[key];
+    // ── Strength block ──────────────────────────────────────────────────
+    const needsStrength = template.mix.includes("strength") || template.mix.includes("light_strength") || sessionType === "strength";
+    if (needsStrength) {
+      const priorityList = sportData.strengthPriority?.[level] || sportData.strengthPriority?.intermediate || [];
+      const pick = sessionType === "strength" ? strengthCount + 1 : strengthCount;
+      const strengthBlock = {
+        id:`strength_${uid()}`, type:"strength",
+        title:`Strength · ${level.charAt(0).toUpperCase()+level.slice(1)}`,
+        duration_min: sessionType === "strength" ? Math.round(30 * volMod) : Math.round(22 * volMod),
+        items:[],
+      };
+
+      priorityList.slice(0, pick).forEach(key => {
+        let ex = resolveExercise(key, avail, level);
         if (!ex) return;
-        strengthBlock.items.push({
-          key,
-          name:       ex.title,
-          cue:        ex.cue,
-          sets:       ex.sets || 3,
-          reps:       ex.reps || 8,
-          equipment:  ex.equipment || "none",
-          noEquipSub: ex.noEquipSub || null,
-          prTrackable: ex.prTrackable || false,
-          prMetric:    ex.prMetric   || "weight_lbs",
-          substitution: ex.substitution || null,
-        });
+        // depth_jump beginners skipped inside resolveExercise (sets:0 guard)
+        if (ex.sets === 0) return;
+        ex = applyInjuryAdjustments(ex, injuries);
+        if (!ex) return;
+        strengthBlock.items.push(ex);
       });
       if (strengthBlock.items.length) blocks.push(strengthBlock);
     }
 
-    // ── Plyo / power ──────────────────────────────────────────────────────
-    if (template.mix.includes("plyo") || template.mix.includes("speed") || sessionType === "speed") {
-      const plyoPriority = sportData.plyoPriority || Object.keys(EXERCISE_LIB.plyo);
-      const plyoBlock = { id:`plyo_${uid()}`, type:"plyo", title:"Power & Plyometrics", duration_min:12, items:[] };
-      plyoPriority.slice(0, 3).forEach(k => {
-        const def = EXERCISE_LIB.plyo[k];
-        if (!def) return;
-        plyoBlock.items.push({ key:k, name:def.title, cue:def.cue, sets:def.sets||3, reps:def.reps||5,
-          prTrackable:def.prTrackable||false, prMetric:def.prMetric||"reps" });
+    // ── Plyo / power ────────────────────────────────────────────────────
+    const needsPlyo = template.mix.includes("plyo") || template.mix.includes("speed") || sessionType === "speed";
+    if (needsPlyo) {
+      const priorityList = sportData.plyoPriority?.[level] || sportData.plyoPriority?.intermediate || [];
+      const plyoBlock = {
+        id:`plyo_${uid()}`, type:"plyo",
+        title:`Power & Plyometrics · ${level.charAt(0).toUpperCase()+level.slice(1)}`,
+        duration_min: Math.round(12 * volMod),
+        items:[],
+      };
+      priorityList.slice(0, plyoCount).forEach(key => {
+        let ex = resolveExercise(key, avail, level);
+        if (!ex || ex.sets === 0) return; // skip depth_jump for beginners
+        plyoBlock.items.push(ex);
       });
       if (plyoBlock.items.length) blocks.push(plyoBlock);
     }
 
-    // ── Conditioning ──────────────────────────────────────────────────────
-    if (template.mix.includes("conditioning") || sessionType === "practice") {
-      const condPriority = sportData.conditioning || ["suicides","tempo_runs"];
-      const condBlock = { id:`cond_${uid()}`, type:"conditioning", title:"Sport Conditioning", duration_min:10, items:[] };
-      condPriority.slice(0, 2).forEach(k => {
-        const def = EXERCISE_LIB.conditioning[k];
-        if (!def) return;
-        condBlock.items.push({
-          key:k, name:def.title, cue:def.cue, sets:def.sets||1, reps:def.reps||5,
-          equipment:def.equipment||"none",
-          noEquipSub:def.noEquipSub||null,
-          prTrackable:def.prTrackable||false, prMetric:def.prMetric||"time_sec",
-          substitution: injuries.includes("ankle") && k==="suicides" ? "bike_sprint" : null
-        });
+    // ── Conditioning ────────────────────────────────────────────────────
+    const needsCond = template.mix.includes("conditioning") || sessionType === "practice";
+    if (needsCond) {
+      const condList = sportData.conditioning?.[level] || sportData.conditioning?.intermediate || [];
+      const condBlock = {
+        id:`cond_${uid()}`, type:"conditioning",
+        title:`Sport Conditioning · ${level.charAt(0).toUpperCase()+level.slice(1)}`,
+        duration_min: Math.round(12 * volMod),
+        items:[],
+      };
+      condList.slice(0, 2).forEach(key => {
+        let ex = resolveExercise(key, avail, level);
+        if (!ex) return;
+        ex = applyInjuryAdjustments(ex, injuries);
+        condBlock.items.push(ex);
       });
       if (condBlock.items.length) blocks.push(condBlock);
     }
 
-    // ── Cooldown ──────────────────────────────────────────────────────────
-    const cooldownCues = {
-      basketball:["Child's pose 60 sec","Hip flexor lunge hold 45 sec/side","Seated hamstring stretch"],
-      football:  ["Thoracic rotation stretch","Pigeon pose 60 sec/side","Lat doorframe stretch"],
-      soccer:    ["Standing quad stretch","Adductor stretch seated","Hip 90/90 hold"],
-      baseball:  ["Cross-body shoulder stretch","Wrist extensor hang","Doorframe pec stretch"],
-      volleyball:["Overhead tricep/lat stretch","Prone press-up (cobra)","Ankle dorsiflexion stretch"],
-      track:     ["Standing calf stretch on step","Hip flexor lunge","Supine hamstring stretch"],
-    };
-    const cdItems = (cooldownCues[sport] || ["Hip flexor lunge 45 sec/side","Hamstring stretch","Deep breathing 2 min"])
-      .map((n,i)=>({ name:n, cue:["60 sec","45 sec each side","hold & breathe"][i]||"60 sec" }));
-    blocks.push({ id:`cd_${uid()}`, type:"cooldown", title:"Sport-Specific Cool-down", duration_min:7, items:cdItems });
+    // ── Sport-specific cool-down ────────────────────────────────────────
+    const cdItems = (sportData.cooldown || [
+      { name:"Hip flexor lunge hold", cue:"45 sec each side" },
+      { name:"Hamstring stretch",     cue:"60 sec each side" },
+      { name:"Deep breathing",        cue:"2 min" },
+    ]);
+    blocks.push({
+      id:`cd_${uid()}`, type:"cooldown",
+      title:"Sport Cool-Down",
+      duration_min:7,
+      items: cdItems,
+    });
 
     return {
-      id:          `sess_${uid()}`,
+      id:           `sess_${uid()}`,
       sport,
       sessionType,
-      sportLabel:  sportData.label  || sport,
-      sportEmoji:  sportData.emoji  || "",
-      injuries:    injuries || [],
+      level,
+      sportLabel:   sportData.label  || sport,
+      sportEmoji:   sportData.emoji  || "",
+      injuries:     injuries,
+      equipment:    avail,
       generated_at: nowISO(),
       blocks,
-      total_min:   blocks.reduce((s, b) => s + (b.duration_min || 0), 0)
+      total_min:    blocks.reduce((s, b) => s + (b.duration_min || 0), 0),
     };
   }
 
@@ -755,6 +1685,7 @@
               <span class="small muted">${it.cue}${it.sets ? ` · ${it.sets}×${it.reps||"max"}` : ""}</span>
             </div>
             ${prBadge}
+            ${it.equipSwapped ? `<div style="display:inline-flex;align-items:center;gap:4px;background:#fff3cd;border:1px solid #f0d060;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:600;color:#856404;margin-top:4px">🔄 Swapped for your equipment</div>` : ""}
             ${it.substitution ? `<div class="small muted" style="margin-top:3px">Injury sub: ${it.substitution.replace(/_/g," ")}</div>` : ""}
             ${swapBtn}
           </div>`;
@@ -768,7 +1699,7 @@
     }).join("");
 
     container.innerHTML = `
-      <div class="minihead" style="margin-bottom:10px">${gen.sessionType.replace(/_/g," ").toUpperCase()} · ${gen.sport} · ${gen.total_min} min</div>
+      <div class="minihead" style="margin-bottom:10px">${(gen.sportEmoji||"")} ${gen.sportLabel||gen.sport} · ${gen.sessionType.replace(/_/g," ")} · ${(gen.level||"").toUpperCase()} · ${gen.total_min} min</div>
       ${blockRows}
       <div style="display:flex;gap:8px;margin-top:12px">
         <button class="btn" id="btnPushToday2">Push to Today</button>
@@ -891,7 +1822,7 @@
     const trainSportSelect = $("trainSportSelect");
     if (trainSportSelect) {
       trainSportSelect.innerHTML = Object.keys(SPORT_MICROBLOCKS)
-        .map(s => `<option value="${s}" ${s === sport ? "selected" : ""}>${(SPORT_MICROBLOCKS[s]?.emoji||"")+" "+(SPORT_MICROBLOCKS[s]?.label||s)}</option>`)
+        .map(s => { const sd = SPORT_MICROBLOCKS[s]; return `<option value="${s}" ${s===sport?"selected":""} >${sd?.emoji||""} ${sd?.label||s}</option>`; })
         .join("");
       trainSportSelect.addEventListener("change", () => {
         state.profile.sport = trainSportSelect.value;
@@ -1915,6 +2846,206 @@
     const _origPersist = window.__PIQ_PERSIST_HOOK;
     // Light hook: checkAndAwardBadges runs in renderBadges, called from renderAll
   })();
+
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // EQUIPMENT SETUP + ATHLETE LEVEL UI
+  // Renders an interactive equipment checklist and level selector.
+  // Mount with <div id="equipmentSetupBody"></div>
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // All possible equipment tags with friendly names and icons
+  const EQUIP_CATALOGUE = [
+    { tag:"none",     label:"Bodyweight Only",   icon:"🤸", category:"always"    },
+    { tag:"dumbbell", label:"Dumbbells",          icon:"🏋️", category:"free_weights" },
+    { tag:"barbell",  label:"Barbell + Plates",   icon:"🏋️", category:"free_weights" },
+    { tag:"trap_bar", label:"Trap / Hex Bar",     icon:"🔺", category:"free_weights" },
+    { tag:"bar",      label:"Pull-Up / Chin Bar", icon:"🔧", category:"free_weights" },
+    { tag:"bench",    label:"Flat Bench",         icon:"🪑", category:"free_weights" },
+    { tag:"box",      label:"Plyo Box",           icon:"📦", category:"gym"       },
+    { tag:"cable",    label:"Cable Machine",      icon:"🔌", category:"gym"       },
+    { tag:"med_ball", label:"Medicine Ball",      icon:"⚽", category:"gym"       },
+    { tag:"sled",     label:"Prowler / Sled",     icon:"🛷", category:"gym"       },
+    { tag:"band",     label:"Resistance Bands",   icon:"🪢", category:"gym"       },
+    { tag:"rower",    label:"Rowing Machine",     icon:"🚣", category:"cardio"    },
+    { tag:"bike",     label:"Assault/Stat Bike",  icon:"🚴", category:"cardio"    },
+    { tag:"court",    label:"Indoor Court",       icon:"🏟️", category:"facility"  },
+    { tag:"track",    label:"Track / Turf",       icon:"🏃", category:"facility"  },
+    { tag:"hill",     label:"Hill / Incline",     icon:"⛰️", category:"facility"  },
+    { tag:"hurdles",  label:"Hurdles",            icon:"🏃", category:"facility"  },
+    { tag:"pool",     label:"Swimming Pool",      icon:"🏊", category:"facility"  },
+  ];
+
+  const EQUIP_PRESETS = {
+    full_gym:    { label:"Full Gym",         icon:"🏋️", tags:["dumbbell","barbell","trap_bar","bar","bench","box","cable","med_ball","sled","band","rower","bike","court","track"] },
+    home:        { label:"Home / Garage",    icon:"🏠", tags:["dumbbell","bar","bench","box","band"] },
+    bodyweight:  { label:"Bodyweight Only",  icon:"🤸", tags:[] },
+    hotel:       { label:"Hotel / Minimal",  icon:"🏨", tags:["dumbbell","band"] },
+    school_gym:  { label:"School / Team Gym",icon:"🏫", tags:["dumbbell","barbell","trap_bar","bar","bench","box","med_ball","rower","bike","court","track"] },
+  };
+
+  const LEVEL_DESCRIPTIONS = {
+    beginner:     { label:"Beginner",     icon:"🌱", desc:"New to structured training or returning after a long break. Foundational movement patterns, lower loads, more coaching cues." },
+    intermediate: { label:"Intermediate", icon:"💪", desc:"6–18 months consistent training. Comfortable with major lifts, building towards more complex movements and higher intensity." },
+    advanced:     { label:"Advanced",     icon:"🔥", desc:"2+ years consistent structured training. Comfortable with Olympic lifts, high loads, reactive plyo, and higher training volume." },
+  };
+
+  function renderEquipmentSetup() {
+    const body = $("equipmentSetupBody");
+    if (!body) return;
+
+    if (!state.profile.equipment) state.profile.equipment = [];
+    if (!state.profile.level)     state.profile.level     = "intermediate";
+
+    const avail = new Set(state.profile.equipment);
+    const level = state.profile.level;
+
+    // Preset buttons
+    const presetBtns = Object.entries(EQUIP_PRESETS).map(([key, p]) =>
+      `<button class="btn ghost" data-preset="${key}" style="font-size:12px">${p.icon} ${p.label}</button>`
+    ).join("");
+
+    // Equipment by category
+    const cats = { free_weights:"Free Weights", gym:"Gym Equipment", cardio:"Cardio", facility:"Facility / Outdoor" };
+    const equipSections = Object.entries(cats).map(([cat, catLabel]) => {
+      const items = EQUIP_CATALOGUE.filter(e => e.category === cat);
+      const checks = items.map(e =>
+        `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;background:${avail.has(e.tag)?"var(--panel,#f0faf4)":"var(--surface,#fff)"};border:1px solid ${avail.has(e.tag)?"#b8e8cb":"var(--line,#e8e8e8)"};transition:all .15s;user-select:none">
+           <input type="checkbox" data-equip="${e.tag}" ${avail.has(e.tag)?"checked":""} style="width:16px;height:16px;accent-color:#1A6B3C"/>
+           <span style="font-size:15px">${e.icon}</span>
+           <span style="font-size:13px;font-weight:${avail.has(e.tag)?700:400}">${e.label}</span>
+         </label>`
+      ).join("");
+      return `<div style="margin-bottom:16px">
+        <div class="small" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#aaa;margin-bottom:8px">${catLabel}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${checks}</div>
+      </div>`;
+    }).join("");
+
+    // Level selector
+    const levelCards = Object.entries(LEVEL_DESCRIPTIONS).map(([key, ld]) =>
+      `<div data-level="${key}" style="flex:1;min-width:130px;padding:14px;border-radius:10px;cursor:pointer;
+        background:${level===key?"#1B4F8A":"var(--panel,#f7f6f2)"};
+        color:${level===key?"#fff":"inherit"};
+        border:2px solid ${level===key?"#1B4F8A":"var(--line,#e8e8e8)"};
+        transition:all .2s">
+        <div style="font-size:22px;margin-bottom:6px">${ld.icon}</div>
+        <div style="font-weight:800;font-size:14px;margin-bottom:4px">${ld.label}</div>
+        <div style="font-size:11px;opacity:${level===key?".85":".65"};line-height:1.5">${ld.desc}</div>
+      </div>`
+    ).join("");
+
+    // Swap preview — show what exercises would change
+    const swapPreview = generateSwapPreview(Array.from(avail), level);
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Athlete Setup — Level & Equipment</div>
+        <div class="minibody">
+
+          <div style="margin-bottom:24px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:12px">Training Level</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">${levelCards}</div>
+          </div>
+
+          <div style="border-top:1px solid var(--line,#e8e8e8);padding-top:20px;margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div style="font-weight:700;font-size:14px">Available Equipment</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">${presetBtns}</div>
+            </div>
+            ${equipSections}
+          </div>
+
+          ${swapPreview ? `
+          <div style="background:#fff8e8;border:1px solid #f0d060;border-radius:8px;padding:14px;margin-bottom:16px">
+            <div class="small" style="font-weight:700;color:#a07800;margin-bottom:8px">🔄 Equipment Swaps — What Changes for You</div>
+            ${swapPreview}
+          </div>` : ""}
+
+          <button class="btn" id="btnSaveSetup" style="width:100%">Save Setup & Regenerate Workout</button>
+        </div>
+      </div>
+    `;
+
+    // Level card click
+    body.querySelectorAll("[data-level]").forEach(card => {
+      card.addEventListener("click", () => {
+        state.profile.level = card.getAttribute("data-level");
+        persist();
+        renderEquipmentSetup();
+      });
+    });
+
+    // Equipment checkbox
+    body.querySelectorAll("[data-equip]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const tag = cb.getAttribute("data-equip");
+        const cur = new Set(state.profile.equipment || []);
+        if (cb.checked) cur.add(tag);
+        else cur.delete(tag);
+        state.profile.equipment = Array.from(cur);
+        persist();
+        renderEquipmentSetup(); // re-render to update styling + preview
+      });
+    });
+
+    // Preset buttons
+    body.querySelectorAll("[data-preset]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const preset = EQUIP_PRESETS[btn.getAttribute("data-preset")];
+        if (!preset) return;
+        state.profile.equipment = [...preset.tags];
+        persist();
+        renderEquipmentSetup();
+        toast(`Equipment set to: ${preset.label}`);
+      });
+    });
+
+    // Save + regenerate
+    $("btnSaveSetup")?.addEventListener("click", () => {
+      persist("Setup saved");
+      // Regenerate today's workout with new settings
+      const sport = state.profile.sport || "basketball";
+      const sType = state.profile.preferred_session_type || "practice";
+      const gen   = generateWorkoutFor(sport, sType, state.profile.injuries || []);
+      state.ui.todaySession = gen;
+      persist();
+      renderTodayBlock();
+      renderTrain();
+      toast(`Workout regenerated for ${LEVEL_DESCRIPTIONS[state.profile.level]?.label || state.profile.level} — ${Array.from(state.profile.equipment||[]).length} equipment items`);
+    });
+  }
+
+  function generateSwapPreview(avail, level) {
+    // Show 3–4 exercise examples where equipment swaps apply for this user
+    const sport = state.profile?.sport || "basketball";
+    const sportData = SPORT_MICROBLOCKS[sport] || {};
+    const priorityList = sportData.strengthPriority?.[level] || sportData.strengthPriority?.intermediate || [];
+    const examples = [];
+
+    priorityList.slice(0, 6).forEach(key => {
+      const def = EXERCISE_LIB.strength[key];
+      if (!def) return;
+      const reqEquip = def.equipment;
+      if (!reqEquip || reqEquip === "none") return;
+      const hasIt = avail.includes(reqEquip);
+      if (!hasIt && def.altEquip) {
+        const altKey = Object.values(def.altEquip)[0];
+        const altDef = EXERCISE_LIB.strength[altKey] || EXERCISE_LIB.noEquip[altKey];
+        if (altDef) {
+          examples.push(`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px">
+            <span style="color:#C0392B;font-weight:700">${def.title}</span>
+            <span style="color:#aaa">→</span>
+            <span style="color:#1A6B3C;font-weight:700">${altDef.title || altKey}</span>
+            <span class="small muted">(no ${reqEquip.replace(/_/g," ")} available)</span>
+          </div>`);
+        }
+      }
+    });
+
+    return examples.slice(0, 4).join("") || "";
+  }
+
 
   // WAVE 1 FEATURES — R9 Priority Implementation
   // ══════════════════════════════════════════════════════════════════════════
@@ -3032,6 +4163,7 @@
       renderADAnalytics();
       renderWearable();
       renderAISuggestions();
+      renderEquipmentSetup();
       renderPRTracker();
       renderBadges();
       checkAndAwardBadges();
