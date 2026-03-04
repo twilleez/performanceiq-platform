@@ -1697,7 +1697,7 @@
     localStorage.removeItem("piq_local_state_v2");
     // reload page to reflect clean slate
     toast("Local state reset — reloading");
-    setTimeout(() => location.reload(), 700);
+    setTimeout(() => { if (typeof location !== "undefined") location.reload(); }, 700);
   }
 
   function runQAGrade() {
@@ -2796,7 +2796,8 @@
       const tokens = Object.entries(state.parentPortal.tokens);
       const linkRows = tokens.map(([tok, rec]) => {
         const expired = rec.expires && new Date(rec.expires) < new Date();
-        const url = `${location.origin}${location.pathname}?portal=${tok}`;
+        const base = (typeof location !== "undefined") ? location.origin + location.pathname : window.location?.href || "";
+        const url = `${base}?portal=${tok}`;
         return `
           <div style="padding:10px 0;border-bottom:1px solid var(--line,#e8e8e8)">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2836,7 +2837,8 @@
         const expiry = parseInt($("portalExpiry")?.value) || 0;
         if (!name) { toast("Enter athlete name"); return; }
         const tok = generatePortalToken("athlete_" + Math.random().toString(36).slice(2,6), name, expiry);
-        const url = `${location.origin}${location.pathname}?portal=${tok}`;
+        const base = (typeof location !== "undefined") ? location.origin + location.pathname : window.location?.href || "";
+        const url = `${base}?portal=${tok}`;
         navigator.clipboard?.writeText(url).then(() => toast("Link copied to clipboard!")).catch(() => toast("Link generated — copy from active links"));
         renderParentPortal();
       });
@@ -2872,6 +2874,7 @@
 
   // Auto-open portal from URL param on load
   (function checkPortalParam() {
+    if (typeof location === "undefined") return;
     const params = new URLSearchParams(location.search);
     const tok = params.get("portal");
     if (!tok) return;
@@ -3061,7 +3064,7 @@
     };
     state.reportLinks.links.unshift(link);
     persist();
-    return `${location.origin}${location.pathname}?report=${token}`;
+    const _loc = (typeof location !== 'undefined') ? location.origin + location.pathname : ''; return `${_loc}?report=${token}`;
   }
 
   function renderReportLinks() {
