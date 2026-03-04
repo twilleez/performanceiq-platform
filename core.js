@@ -852,10 +852,11 @@
   // ══════════════════════════════════════════════════════════════════════════
   function generateWorkoutFor(sport = "basketball", sessionType = "practice", injuries = [], opts = {}) {
     // ── Read athlete profile ───────────────────────────────────────────────
-    const level     = opts.level     || state.profile?.level         || "beginner";    // "beginner"|"intermediate"|"advanced"
-    const equipKey  = opts.equipKey  || state.profile?.equipmentProfile || "barbell";  // key into EQUIPMENT_PROFILES
-    const equipProfile = EQUIPMENT_PROFILES[equipKey] || EQUIPMENT_PROFILES.barbell;
-    const available = equipProfile.available;
+    const level          = opts.level            || state.profile?.level            || "intermediate";
+    const equipKey       = opts.equipKey         || state.profile?.equipmentProfile || "barbell";
+    const volMult        = opts.volumeMultiplier || 1.0;   // from plan (deload=0.6, peak=0.8, build=1.15)
+    const equipProfile   = EQUIPMENT_PROFILES[equipKey] || EQUIPMENT_PROFILES.barbell;
+    const available      = equipProfile.available;
 
     const template  = SESSION_TEMPLATES[sessionType] || SESSION_TEMPLATES.practice;
     const sportData = SPORT_MICROBLOCKS[sport]        || SPORT_MICROBLOCKS.basketball;
@@ -864,6 +865,8 @@
 
     // ── Load multipliers by level ──────────────────────────────────────────
     const loadMod = { beginner:{ sets:-1, intensity:"60–70% RPE 6–7" }, intermediate:{ sets:0, intensity:"70–80% RPE 7–8" }, advanced:{ sets:1, intensity:"80–90% RPE 8–9" } }[level] || {};
+    // Volume multiplier from plan phase (deload 0.6 → fewer sets, peak 1.15 → more)
+    const volSetBonus = volMult >= 1.1 ? 1 : volMult <= 0.65 ? -1 : 0;
 
     // ── Warm-up ────────────────────────────────────────────────────────────
     const wuItems = sportData.warmup || [
@@ -902,7 +905,7 @@
         const best = bestEquipVersion(key, EXERCISE_LIB.strength, available);
         if (!best) return;
         const ex  = applyInjuryAdjustments(best.key, injuries, EXERCISE_LIB.strength) || best.def;
-        const sets = Math.max(2, (ex.sets || 3) + (loadMod.sets || 0));
+        const sets = Math.max(2, (ex.sets || 3) + (loadMod.sets || 0) + volSetBonus);
         const reps = sessionType === "strength" && level === "advanced"
           ? Math.max(1, ex.reps - 2)   // heavier on dedicated strength day for advanced
           : ex.reps;
@@ -986,6 +989,8 @@
     ]);
     blocks.push({ id:`cd_${uid()}`, type:"cooldown", title:"Sport-Specific Cool-down", duration_min:8, items:cdItems });
 
+    // Scale block durations by plan volume multiplier
+    blocks.forEach(b => { b.duration_min = Math.round((b.duration_min || 10) * volMult); });
     return {
       id:           `sess_${uid()}`,
       sport,
@@ -997,6 +1002,7 @@
       sportEmoji:   sportData.emoji || "",
       injuries:     injuries || [],
       generated_at: nowISO(),
+      volMult,
       blocks,
       total_min:    blocks.reduce((s, b) => s + (b.duration_min || 0), 0),
     };
@@ -1212,171 +1218,65 @@
 
   // Render a single generated session into a container element as swappable exercise cards.
   // Each strength/conditioning item with a noEquipSub gets a "No equipment" swap button.
-  function renderSessionCards(gen, container) {
-    if (!container) return;
 
-    const blockRows = gen.blocks.map(b => {
-      const isStrengthOrCond = b.type === "strength" || b.type === "conditioning";
-      const itemsHTML = b.items.map((it, idx) => {
-        const hasSwap = isStrengthOrCond && it.noEquipSub && EXERCISE_LIB.noEquip[it.noEquipSub];
-        const swapBtn = hasSwap
-          ? `<button class="btn ghost btn-sm" data-block="${b.id}" data-item="${idx}" data-swap="${it.noEquipSub}" style="margin-top:6px;font-size:12px">No equipment →</button>`
-          : "";
-        // Show current PR inline on the card if this exercise is PR-trackable
-        const prData = it.prTrackable && it.key ? getPR(it.key) : null;
-        const prBadge = prData
-          ? `<div style="display:inline-flex;align-items:center;gap:4px;background:#f0b42920;border:1px solid #f0b42960;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;color:#a07800;margin-top:4px">
-               🏆 PR: ${formatPRValue(prData.value, prData.metric)}
-               <button data-log-pr-inline="${it.key}" data-ex-name="${it.name}" data-metric="${it.prMetric||prData.metric}" style="margin-left:6px;background:none;border:none;color:#a07800;cursor:pointer;font-size:10px;font-weight:700;padding:0">+ Log</button>
-             </div>`
-          : it.prTrackable && it.key
-            ? `<div style="display:inline-flex;align-items:center;gap:4px;background:#eee;border-radius:4px;padding:2px 7px;font-size:11px;color:#888;margin-top:4px">
-                 No PR yet <button data-log-pr-inline="${it.key}" data-ex-name="${it.name}" data-metric="${it.prMetric||'weight_lbs'}" style="margin-left:6px;background:none;border:none;color:#1B4F8A;cursor:pointer;font-size:10px;font-weight:700;padding:0">+ Log PR</button>
-               </div>`
-            : "";
-        return `
-          <div class="blockcard" id="excard-${b.id}-${idx}" style="margin:6px 0;padding:10px 12px">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-              <span style="font-weight:700">${it.name}</span>
-              <span class="small muted">${it.cue}${it.sets ? ` · ${it.sets}×${it.reps||"max"}` : ""}</span>
-            </div>
-            ${prBadge}
-            ${it.substitution ? `<div class="small muted" style="margin-top:3px">Injury sub: ${it.substitution.replace(/_/g," ")}</div>` : ""}
-            ${swapBtn}
-          </div>`;
-      }).join("");
-
-      return `
-        <div style="margin-bottom:14px">
-          <div class="small" style="font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">${b.title} — ${b.duration_min} min</div>
-          ${itemsHTML}
-        </div>`;
-    }).join("");
-
-    container.innerHTML = `
-      <div class="minihead" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
-        <span>${gen.sportEmoji||""} ${gen.sportLabel||gen.sport} — ${gen.sessionType.replace(/_/g," ").replace(/\b\w/g,l=>l.toUpperCase())} · ${gen.total_min} min</span>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${gen.level ? `<span style="font-size:10px;padding:2px 7px;border-radius:4px;font-weight:700;background:${{beginner:"#f0faf4",intermediate:"#eef4fc",advanced:"#fdf0ef"}[gen.level]||"#eee"};color:${{beginner:"#1A6B3C",intermediate:"#1B4F8A",advanced:"#C0392B"}[gen.level]||"#888"}">${{beginner:"🌱 Beginner",intermediate:"💪 Intermediate",advanced:"🔥 Advanced"}[gen.level]||gen.level}</span>` : ""}
-          ${gen.equipLabel ? `<span style="font-size:10px;padding:2px 7px;border-radius:4px;background:#f0f0f0;color:#555;font-weight:600">${(EQUIPMENT_PROFILES[gen.equipKey]?.emoji||"")+" "+gen.equipLabel}</span>` : ""}
-        </div>
-      </div>
-      ${blockRows}
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button class="btn" id="btnPushToday2">Push to Today</button>
-        <button class="btn ghost" id="btnStartNow">Start Now</button>
-      </div>
-    `;
-
-    // Wire inline PR log buttons via delegation
-    container.addEventListener("click", function handleInlinePR(e) {
-      const btn = e.target.closest("[data-log-pr-inline]");
-      if (!btn) return;
-      e.stopPropagation();
-      const key    = btn.getAttribute("data-log-pr-inline");
-      const name   = btn.getAttribute("data-ex-name") || key;
-      const metric = btn.getAttribute("data-metric") || "weight_lbs";
-      const metricLabel = { weight_lbs:"Weight (lbs)", reps:"Reps", time_sec:"Time (sec)", distance_m:"Distance (m)" }[metric] || metric;
-      const val = prompt(`Log PR for ${name}\n${metricLabel}:`);
-      if (!val || isNaN(parseFloat(val))) return;
-      const sets  = prompt("Sets completed:", "3") || "3";
-      const reps  = prompt("Reps per set:", "5") || "5";
-      const isNew = logPR(key, name, val, metric, sets, reps, "");
-      if (isNew) {
-        showPRCelebration(name, val, metric);
-        awardBadge(`pr_${key}`, `🏆 PR: ${name}`, `New PR — ${formatPRValue(parseFloat(val), metric)}`);
-      } else {
-        toast(`${name} logged — keep pushing for a new PR!`);
-      }
-      renderSessionCards(gen, container); // refresh cards with new PR
-    });
-
-    // Wire swap via event delegation on the container — survives innerHTML re-renders
-    // and avoids per-button addEventListener calls that get orphaned on re-render.
-    container.addEventListener("click", function handleSwap(e) {
-      const btn = e.target.closest("[data-swap]");
-      if (!btn) return;
-      e.stopPropagation(); // don't let click bubble to any parent card handler
-
-      const swapKey = btn.getAttribute("data-swap");
-      const blockId  = btn.getAttribute("data-block");
-      const itemIdx  = parseInt(btn.getAttribute("data-item"), 10);
-      const alt = EXERCISE_LIB.noEquip[swapKey];
-      if (!alt) return;
-
-      // Update the live session object so Push/Start carry the swapped exercise
-      const block = gen.blocks.find(b => b.id === blockId);
-      if (block && block.items[itemIdx]) {
-        block.items[itemIdx] = {
-          ...block.items[itemIdx],
-          name: alt.title,
-          cue: alt.cue,
-          noEquipSub: null,  // consumed — hide swap button after first tap
-          swapped: true
-        };
-      }
-
-      // Replace just that one card in the DOM — no full re-render needed
-      const card = document.getElementById(`excard-${blockId}-${itemIdx}`);
-      if (card) {
-        card.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-            <span style="font-weight:700">${alt.title}</span>
-            <span class="small muted">${alt.cue}</span>
-          </div>
-          <div class="small" style="color:var(--ok);margin-top:3px">✓ Swapped — no equipment needed</div>
-        `;
-      }
-    });
-
-    // Push / Start Now buttons
-    container.querySelector("#btnPushToday2")?.addEventListener("click", () => {
-      state.ui.todaySession = gen;
-      persist("Pushed to Today");
-      showView("home");
-      renderTodayBlock();
-    });
-    container.querySelector("#btnStartNow")?.addEventListener("click", () => {
-      state.ui.todaySession = gen;
-      persist("Starting session");
-      showView("home");
-      startToday(gen);
-    });
-  }
 
   function renderTrain() {
     const sport = state.profile?.sport || "basketball";
-    const role  = state.profile?.role  || "coach";
-    // All roles — coaches AND athletes — can generate workouts.
-    // Athletes generating for themselves is a supported primary use case.
-
-    const trainSub = $("trainSub");
-    if (trainSub) trainSub.textContent = `${role} · ${sport} · ${state.profile.preferred_session_type || "practice"}`;
-
-    const body = $("trainBody");
+    const body  = $("trainBody");
     if (!body) return;
 
-    const currentLevel = state.profile.level || "beginner";
+    // ── Check for active plan — drives session type + volume ──────────────
+    const ctx          = getPlanContext();   // null if no plan active
+    const currentLevel = state.profile.level || "intermediate";
     const currentEquip = state.profile.equipmentProfile || "barbell";
 
+    // If plan is active, use its session type + sport; otherwise use profile prefs
+    const planSessionType = ctx?.sessionType || state.profile.preferred_session_type || "practice";
+    const planSport       = ctx?.sport       || sport;
+
+    const trainSub = $("trainSub");
+    if (trainSub) {
+      trainSub.textContent = ctx
+        ? `Week ${ctx.weekNum} · ${ctx.phase} · ${ctx.sessionsPerWeek}×/week`
+        : `${state.profile.role || "coach"} · ${planSport} · ${planSessionType}`;
+    }
+
+    // ── Plan context banner ────────────────────────────────────────────────
+    const planBanner = ctx ? `
+      <div style="margin-bottom:14px;padding:12px 14px;border-radius:12px;background:var(--accent-dim);border:1px solid var(--accent-border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:800;font-size:13px">📅 Following your plan — Week ${ctx.weekNum}: ${ctx.phase}</div>
+          <div class="small muted">Today: <b>${ctx.sessionType.replace(/_/g,' ')}</b> · Volume ×${ctx.volMult} · ${ctx.sessionsPerWeek} sessions/week</div>
+        </div>
+        <button class="btn ghost" id="btnOverridePlan" style="font-size:12px">Override</button>
+      </div>` : "";
+
+    const levelMeta = {
+      beginner:     { color:"#1A6B3C", bg:"var(--green-dim)",  border:"var(--green-border)",  label:"🌱 Beginner",     note:"Foundation movements, lower volume, technique focus." },
+      intermediate: { color:"#1B4F8A", bg:"var(--blue-dim)",   border:"var(--blue-border)",   label:"💪 Intermediate", note:"Progressive overload, sport-specific strength." },
+      advanced:     { color:"#C0392B", bg:"var(--red-dim)",    border:"var(--red-border)",    label:"🔥 Advanced",     note:"Max strength methods, complex plyos, high load." },
+    };
+
     body.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px">
+      ${planBanner}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
         <div class="field">
           <label>Sport</label>
           <select id="trainSportSelect"></select>
         </div>
         <div class="field">
-          <label>Session Type</label>
+          <label>Session Type ${ctx ? '<span style="color:var(--accent);font-size:10px">▲ from plan</span>' : ""}</label>
           <select id="trainSessionType">
             <option value="practice">Practice</option>
             <option value="strength">Strength</option>
             <option value="speed">Speed</option>
+            <option value="conditioning">Conditioning</option>
             <option value="recovery">Recovery</option>
             <option value="competition_prep">Competition Prep</option>
           </select>
         </div>
         <div class="field">
-          <label>Athlete Level</label>
+          <label>Level</label>
           <select id="trainLevel">
             <option value="beginner">🌱 Beginner</option>
             <option value="intermediate">💪 Intermediate</option>
@@ -1390,27 +1290,24 @@
           </select>
         </div>
         <div style="display:flex;align-items:flex-end">
-          <button class="btn" id="btnGenTrain" style="width:100%">Generate</button>
+          <button class="btn primary" id="btnGenTrain" style="width:100%">Generate Workout</button>
         </div>
       </div>
       <div id="trainLevelInfo" style="margin-bottom:12px"></div>
       <div id="trainCardArea"></div>
     `;
 
-    // Populate sport select
+    // Sport select
     const trainSportSelect = $("trainSportSelect");
     if (trainSportSelect) {
       trainSportSelect.innerHTML = Object.keys(SPORT_MICROBLOCKS)
-        .map(s => { const sd = SPORT_MICROBLOCKS[s]||{}; return `<option value="${s}" ${s===sport?"selected":""}>${(sd.emoji||"")+" "+(sd.label||s)}</option>`; })
+        .map(s => { const sd = SPORT_MICROBLOCKS[s]||{}; return `<option value="${s}" ${s===planSport?"selected":""}>${(sd.emoji||"")+" "+(sd.label||s)}</option>`; })
         .join("");
-      trainSportSelect.addEventListener("change", () => {
-        state.profile.sport = trainSportSelect.value;
-        persist("Sport updated");
-      });
     }
 
+    // Pre-select session type from plan (or profile)
     const trainSessionType = $("trainSessionType");
-    if (trainSessionType) trainSessionType.value = state.profile.preferred_session_type || "practice";
+    if (trainSessionType) trainSessionType.value = planSessionType;
 
     const trainLevel = $("trainLevel");
     if (trainLevel) trainLevel.value = currentLevel;
@@ -1418,119 +1315,200 @@
     const trainEquip = $("trainEquip");
     if (trainEquip) trainEquip.value = currentEquip;
 
-    // Show level badge
-    const levelInfo = $("trainLevelInfo");
-    const levelMeta = {
-      beginner:     { color:"#1A6B3C", bg:"#f0faf4", border:"#b8e8cb", label:"🌱 Beginner", note:"Foundation exercises, lower volume, technique focus. Build the movement patterns before adding load." },
-      intermediate: { color:"#1B4F8A", bg:"#eef4fc", border:"#b4cef0", label:"💪 Intermediate", note:"Progressive overload, sport-specific strength, higher intensity. You have 6–18 months of consistent training." },
-      advanced:     { color:"#C0392B", bg:"#fdf0ef", border:"#f2b8b4", label:"🔥 Advanced", note:"Maximal strength methods, complex plyos, high weekly load. You've been training consistently for 2+ years." },
-    };
-    const lm = levelMeta[currentLevel] || levelMeta.beginner;
-    if (levelInfo) levelInfo.innerHTML = `<div style="background:${lm.bg};border:1px solid ${lm.border};border-radius:8px;padding:10px 14px;font-size:12px"><span style="font-weight:700;color:${lm.color}">${lm.label}</span> — ${lm.note}</div>`;
+    // Level badge
+    function updateLevelBadge(lv) {
+      const lm = levelMeta[lv] || levelMeta.intermediate;
+      const li = $("trainLevelInfo");
+      if (li) li.innerHTML = `<div style="background:${lm.bg};border:1px solid ${lm.border};border-radius:10px;padding:10px 14px;font-size:12px"><span style="font-weight:800;color:${lm.color}">${lm.label}</span> — ${lm.note}</div>`;
+    }
+    updateLevelBadge(currentLevel);
 
-    // Generate and render initial session
-    const opts = { level: currentLevel, equipKey: currentEquip };
-    const initialGen = generateWorkoutFor(sport, state.profile.preferred_session_type || "practice", state.profile.injuries || [], opts);
-    renderSessionCards(initialGen, $("trainCardArea"));
-
-    $("btnGenTrain")?.addEventListener("click", () => {
-      const s = $("trainSportSelect")?.value  || sport;
-      const t = $("trainSessionType")?.value   || "practice";
-      const lv = $("trainLevel")?.value        || "beginner";
-      const eq = $("trainEquip")?.value        || "barbell";
+    // Auto-generate on load using plan context (volume multiplier applied)
+    function doGenerate(overrideType) {
+      const s  = $("trainSportSelect")?.value || planSport;
+      const t  = overrideType || $("trainSessionType")?.value || planSessionType;
+      const lv = $("trainLevel")?.value  || currentLevel;
+      const eq = $("trainEquip")?.value  || currentEquip;
       state.profile.sport = s;
       state.profile.preferred_session_type = t;
       state.profile.level = lv;
       state.profile.equipmentProfile = eq;
-      persist("Profile updated");
-      const gen = generateWorkoutFor(s, t, state.profile.injuries || [], { level: lv, equipKey: eq });
+      persist(null);
+      // Apply plan volume multiplier to opts
+      const opts = { level: lv, equipKey: eq, volumeMultiplier: ctx?.volMult || 1.0 };
+      const gen = generateWorkoutFor(s, t, state.profile.injuries || [], opts);
       renderSessionCards(gen, $("trainCardArea"));
-      // Update level badge
-      const lm2 = levelMeta[lv] || levelMeta.beginner;
-      const li2 = $("trainLevelInfo");
-      if (li2) li2.innerHTML = `<div style="background:${lm2.bg};border:1px solid ${lm2.border};border-radius:8px;padding:10px 14px;font-size:12px"><span style="font-weight:700;color:${lm2.color}">${lm2.label}</span> — ${lm2.note}</div>`;
+      updateLevelBadge(lv);
+    }
+
+    doGenerate();  // auto-generate immediately on tab open
+
+    $("btnGenTrain")?.addEventListener("click", () => doGenerate());
+    $("trainLevel")?.addEventListener("change", () => updateLevelBadge($("trainLevel").value));
+    $("btnOverridePlan")?.addEventListener("click", () => {
+      // Remove plan lock for this render only
+      if (trainSessionType) trainSessionType.value = state.profile.preferred_session_type || "practice";
+      const overrideNote = document.createElement("div");
+      overrideNote.style.cssText = "font-size:12px;color:var(--warn);margin-bottom:8px";
+      overrideNote.textContent = "⚠ Plan overridden — session type unlocked";
+      const banner = body.querySelector(".plan-banner-override");
+      if (!banner) { overrideNote.className = "plan-banner-override"; body.prepend(overrideNote); }
     });
   }
 
   // ---------- Periodization UI + push helper ----------
+  // ── Helper: find current week + today's session type from active plan ─────
+  function getPlanContext() {
+    const plan = state.periodization?.plan;
+    if (!plan || !plan.weeks) return null;
+    const today = new Date().toISOString().slice(0,10);
+    for (let i = 0; i < plan.weeks.length; i++) {
+      const wk = plan.weeks[i];
+      const wkStart = new Date(wk.startDate);
+      const wkEnd   = new Date(wkStart); wkEnd.setDate(wkStart.getDate() + 7);
+      const todayD  = new Date(today);
+      if (todayD >= wkStart && todayD < wkEnd) {
+        // day within week (0=Mon…6=Sun)
+        const dayOfWeek = (todayD.getDay() + 6) % 7; // 0=Mon
+        const sessionIdx = dayOfWeek % (wk.sessions.length || 1);
+        const sess = wk.sessions[sessionIdx] || wk.sessions[0];
+        return {
+          weekNum:     wk.weekNumber,
+          phase:       wk.phase,
+          volMult:     wk.volumeMultiplier,
+          sessionType: sess?.sessionType || "practice",
+          sport:       plan.sport,
+          sessionsPerWeek: plan.sessionsPerWeek,
+          todaySession:    sess,
+        };
+      }
+    }
+    // Plan started but today is past end — return last week context
+    const last = plan.weeks[plan.weeks.length - 1];
+    return { weekNum: last.weekNumber, phase: last.phase, volMult: last.volumeMultiplier,
+             sessionType: last.sessions[0]?.sessionType || "practice",
+             sport: plan.sport, sessionsPerWeek: plan.sessionsPerWeek, todaySession: last.sessions[0] };
+  }
+
   function renderPeriodizationUI() {
-    // on Profile tab we show periodization controls and plan
     const profileBody = $("profileBody");
     if (!profileBody) return;
 
-    const plan = state.periodization && state.periodization.plan;
-    profileBody.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Periodization Wizard</div>
-        <div class="minibody">
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <div class="field" style="width:240px">
-              <label>Sport</label>
-              <select id="wizSport">
-                ${Object.keys(SPORT_MICROBLOCKS).map(s => `<option value="${s}" ${s===state.profile.sport?"selected":""}>${s}</option>`).join("")}
-              </select>
-            </div>
+    const plan = state.periodization?.plan;
+    const ctx  = getPlanContext();
 
-            <div class="field" style="width:180px">
-              <label>Start date</label>
-              <input id="wizStart" type="date" value="${(new Date()).toISOString().slice(0,10)}" />
-            </div>
-
-            <div class="field" style="width:180px">
-              <label>Sessions / week</label>
-              <select id="wizFreq">
-                <option value="2" ${state.periodization?.plan?.sessionsPerWeek === 2 ? "selected":""}>2</option>
-                <option value="3" ${state.periodization?.plan?.sessionsPerWeek === 3 ? "selected":""}>3</option>
-                <option value="4" ${state.periodization?.plan?.sessionsPerWeek === 4 ? "selected":""}>4</option>
-              </select>
-            </div>
-
-            <div style="display:flex;align-items:flex-end;gap:8px">
-              <button class="btn" id="btnGenPlan">Generate 12-week Plan</button>
-              <button class="btn ghost" id="btnClearPlan">Clear</button>
-            </div>
-          </div>
-
-          <div style="margin-top:12px" id="planPreview">
-            ${plan ? renderPlanPreviewHTML(plan) : `<div class="small muted">No plan yet. Generate a sport-specific 12-week plan.</div>`}
-          </div>
-
+    // Build plan status banner when active
+    const planStatus = ctx ? `
+      <div style="margin-top:10px;padding:12px;border-radius:12px;background:var(--accent-dim);border:1px solid var(--accent-border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:800;font-size:14px">📅 Week ${ctx.weekNum} — ${ctx.phase}</div>
+          <div class="small muted">Today: <b>${ctx.sessionType.replace(/_/g,' ')}</b> · ${ctx.sessionsPerWeek}×/week · Vol ×${ctx.volMult}</div>
         </div>
-      </div>
-    `;
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="btnLoadTodayPlan" style="font-size:13px">Load Today →</button>
+        </div>
+      </div>` : "";
+
+    // Render into profileBody — use a keyed div so we don't destroy siblings
+    let wizDiv = profileBody.querySelector(".piq-perio-wizard");
+    if (!wizDiv) {
+      wizDiv = document.createElement("div");
+      wizDiv.className = "piq-perio-wizard";
+      profileBody.prepend(wizDiv);
+    }
+
+    // Distribution presets keyed to sessionsPerWeek
+    const distPresets = {
+      2: { strength: 0.5, recovery: 0.5 },
+      3: { practice: 0.34, strength: 0.33, recovery: 0.33 },
+      4: { practice: 0.5,  strength: 0.25, speed: 0.15, recovery: 0.1 },
+      5: { practice: 0.4,  strength: 0.3,  speed: 0.2,  conditioning: 0.1 },
+    };
+
+    const curFreq = plan?.sessionsPerWeek || 3;
+    const sportOptions = Object.keys(SPORT_MICROBLOCKS).map(s => {
+      const sd = SPORT_MICROBLOCKS[s] || {};
+      return `<option value="${s}" ${s === (plan?.sport || state.profile.sport) ? "selected" : ""}>${(sd.emoji||"")} ${sd.label||s}</option>`;
+    }).join("");
+
+    wizDiv.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="margin-bottom:10px">📋 Training Plan Wizard</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div class="field" style="min-width:180px;flex:1">
+            <label>Sport</label>
+            <select id="wizSport">${sportOptions}</select>
+          </div>
+          <div class="field" style="width:150px">
+            <label>Start date</label>
+            <input id="wizStart" type="date" value="${(new Date()).toISOString().slice(0,10)}" />
+          </div>
+          <div class="field" style="width:130px">
+            <label>Sessions / week</label>
+            <select id="wizFreq">
+              <option value="2" ${curFreq===2?"selected":""}>2× / week</option>
+              <option value="3" ${curFreq===3?"selected":""}>3× / week</option>
+              <option value="4" ${curFreq===4?"selected":""}>4× / week</option>
+              <option value="5" ${curFreq===5?"selected":""}>5× / week</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn primary" id="btnGenPlan">Generate 12-Week Plan</button>
+            ${plan ? '<button class="btn ghost" id="btnClearPlan">Clear</button>' : ""}
+          </div>
+        </div>
+        ${planStatus}
+        <div style="margin-top:12px" id="planPreview">
+          ${plan ? renderPlanPreviewHTML(plan) : '<div class="small muted" style="padding:8px 0">No plan yet — generate one to unlock smart workout scheduling.</div>'}
+        </div>
+      </div>`;
 
     $("btnGenPlan")?.addEventListener("click", () => {
       const sport = $("wizSport")?.value || state.profile.sport || "basketball";
-      const start = $("wizStart")?.value || (new Date()).toISOString().slice(0,10);
-      const freq = parseInt($("wizFreq")?.value || 3, 10);
-      const plan = generate12WeekPlan({ sport, startDate: start, sessionsPerWeek: freq, sessionDistribution: { practice: 0.6, strength: 0.3, recovery: 0.1 }, injuries: state.profile.injuries || [] });
-      state.periodization.plan = plan;
+      const start = $("wizStart")?.value  || (new Date()).toISOString().slice(0,10);
+      const freq  = parseInt($("wizFreq")?.value || 3, 10);
+      const dist  = distPresets[freq] || distPresets[3];
+      const newPlan = generate12WeekPlan({ sport, startDate: start, sessionsPerWeek: freq, sessionDistribution: dist, injuries: state.profile.injuries || [] });
+      state.periodization = state.periodization || {};
+      state.periodization.plan = newPlan;
       state.periodization.updated_at = nowISO();
-      persist("Periodization plan generated");
+      state.profile.sport = sport;
+      persist("12-week plan generated");
       renderPeriodizationUI();
+      renderTrain(); // sync Train tab immediately
+      toast("📅 Plan generated — Train tab now follows your schedule", 3000);
     });
 
     $("btnClearPlan")?.addEventListener("click", () => {
       state.periodization.plan = null;
       persist("Plan cleared");
       renderPeriodizationUI();
+      renderTrain();
     });
 
-    // helper: push today's first session from plan to Today
-    // Add push buttons per week in preview HTML via delegation
+    $("btnLoadTodayPlan")?.addEventListener("click", () => {
+      if (ctx?.todaySession) {
+        state.ui.todaySession = ctx.todaySession;
+        persist("Loaded today from plan");
+        showView("home");
+        renderTodayBlock();
+        toast(`Loaded ${ctx.sessionType} from Week ${ctx.weekNum}`);
+      }
+    });
+
     setTimeout(() => {
       document.querySelectorAll("[data-push-week]").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          const idx = parseInt(btn.getAttribute("data-push-week"), 10);
+        btn.addEventListener("click", () => {
+          const idx  = parseInt(btn.getAttribute("data-push-week"), 10);
           const plan = state.periodization.plan;
-          if (!plan || !plan.weeks || !plan.weeks[idx]) { toast("Plan not found"); return; }
-          // pick first session of that week as today's session candidate
+          if (!plan?.weeks?.[idx]) { toast("Plan not found"); return; }
           const sess = plan.weeks[idx].sessions[0];
-          if (!sess) { toast("No session in selected week"); return; }
+          if (!sess) { toast("No session in week"); return; }
           state.ui.todaySession = sess;
           persist("Pushed plan session to Today");
           showView("home");
           renderTodayBlock();
+          toast(`Week ${plan.weeks[idx].weekNumber} session loaded`);
         });
       });
     }, 100);
@@ -1582,33 +1560,6 @@
     return state.insights;
   }
 
-  function renderInsights() {
-    computeInsights();
-    // quick render into profile area below periodization
-    const profileBody = $("profileBody");
-    if (!profileBody) return;
-    const weekly = (state.insights && state.insights.weekly) || [];
-    const rows = weekly.map(w => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><div>${w.week}</div><div>${w.minutes}m • load ${w.load}</div></div>`).join("");
-    const streak = computeStreak();
-    // append below existing periodization UI
-    const el = document.createElement("div");
-    el.style.marginTop = "12px";
-    el.innerHTML = `
-      <div class="mini">
-        <div class="minihead">Insights</div>
-        <div class="minibody">
-          <div><b>Recent weeks</b></div>
-          <div style="margin-top:8px">${rows || '<div class="small muted">No sessions logged yet</div>'}</div>
-          <div style="margin-top:8px"><b>Current streak</b> — ${streak} days</div>
-        </div>
-      </div>
-    `;
-    // remove existing insights appended earlier to avoid duplicates
-    const existing = profileBody.querySelector(".mini.insights");
-    if (existing) existing.remove();
-    if (el && el.classList) el.classList.add("insights");
-    profileBody.appendChild(el);
-  }
 
   function computeStreak() {
     // Sort sessions newest-first, skipping any with invalid timestamps.
@@ -1943,12 +1894,13 @@
   // ---------- Meal Plan Generation ----------
   // Generates a 1-day meal plan tailored to goal, activity level, and sport.
   // Works for ALL roles — athletes can generate their own plans.
+  // ── MEAL SYSTEM v2 ──────────────────────────────────────────────────────
+  // Templates by goal AND day type (training vs rest)
   const MEAL_TEMPLATES = {
-    // goal → { calories, macro split }
-    maintain:    { cal: 2400, proteinPct: 0.30, carbPct: 0.45, fatPct: 0.25 },
-    build:       { cal: 2800, proteinPct: 0.33, carbPct: 0.44, fatPct: 0.23 },
-    cut:         { cal: 1900, proteinPct: 0.38, carbPct: 0.37, fatPct: 0.25 },
-    performance: { cal: 3000, proteinPct: 0.28, carbPct: 0.50, fatPct: 0.22 },
+    maintain:    { trainCal: 2500, restCal: 2200, proteinPct: 0.30, carbPct: 0.45, fatPct: 0.25 },
+    build:       { trainCal: 2900, restCal: 2600, proteinPct: 0.33, carbPct: 0.44, fatPct: 0.23 },
+    cut:         { trainCal: 2000, restCal: 1750, proteinPct: 0.38, carbPct: 0.37, fatPct: 0.25 },
+    performance: { trainCal: 3100, restCal: 2700, proteinPct: 0.28, carbPct: 0.50, fatPct: 0.22 },
   };
 
   const MEAL_FOODS = {
@@ -1957,77 +1909,121 @@
       { name: "Greek yogurt parfait with granola",         protein: 20, carbs: 42, fat: 8,  cal: 320 },
       { name: "Scrambled eggs on whole-grain toast",       protein: 22, carbs: 30, fat: 14, cal: 330 },
       { name: "Protein smoothie (whey, banana, oat milk)", protein: 30, carbs: 50, fat: 6,  cal: 374 },
+      { name: "Avocado toast with 2 poached eggs",         protein: 18, carbs: 32, fat: 18, cal: 358 },
+      { name: "Overnight oats with chia & berries",        protein: 14, carbs: 60, fat: 8,  cal: 368 },
     ],
     lunch: [
       { name: "Grilled chicken rice bowl with veg",        protein: 42, carbs: 58, fat: 10, cal: 490 },
       { name: "Turkey & avocado wrap",                     protein: 35, carbs: 48, fat: 16, cal: 476 },
       { name: "Salmon quinoa salad",                       protein: 38, carbs: 44, fat: 14, cal: 458 },
       { name: "Lean beef stir-fry with brown rice",        protein: 40, carbs: 52, fat: 12, cal: 468 },
+      { name: "Tuna whole-grain sandwich & side salad",    protein: 36, carbs: 46, fat: 10, cal: 418 },
+      { name: "Chicken burrito bowl (black beans)",        protein: 44, carbs: 62, fat: 12, cal: 532 },
     ],
     snack: [
       { name: "Cottage cheese & pineapple",                protein: 18, carbs: 20, fat: 3,  cal: 179 },
       { name: "Apple with almond butter",                  protein: 5,  carbs: 28, fat: 9,  cal: 209 },
       { name: "Rice cakes with peanut butter",             protein: 7,  carbs: 22, fat: 8,  cal: 188 },
       { name: "Hard-boiled eggs & fruit",                  protein: 13, carbs: 18, fat: 7,  cal: 191 },
+      { name: "Mixed nuts & dried cranberries",            protein: 7,  carbs: 22, fat: 14, cal: 238 },
+      { name: "Edamame (1 cup, shelled)",                  protein: 17, carbs: 14, fat: 8,  cal: 196 },
     ],
     dinner: [
       { name: "Baked salmon, sweet potato & broccoli",     protein: 44, carbs: 48, fat: 16, cal: 512 },
       { name: "Chicken thigh, roasted veg & quinoa",       protein: 40, carbs: 44, fat: 14, cal: 474 },
       { name: "Lean beef tacos (corn tortillas)",          protein: 38, carbs: 50, fat: 16, cal: 492 },
       { name: "Tofu stir-fry with noodles",               protein: 28, carbs: 56, fat: 10, cal: 434 },
+      { name: "Shrimp & brown rice power bowl",            protein: 36, carbs: 50, fat: 8,  cal: 420 },
+      { name: "Bison burger, sweet fries, side salad",     protein: 42, carbs: 54, fat: 18, cal: 546 },
+      { name: "Turkey meatballs & zucchini noodles",       protein: 40, carbs: 28, fat: 14, cal: 394 },
     ],
     preworkout: [
       { name: "Banana & a handful of pretzels",            protein: 3,  carbs: 40, fat: 1,  cal: 181 },
       { name: "Dates & peanut butter",                     protein: 4,  carbs: 38, fat: 8,  cal: 236 },
+      { name: "White rice cake with honey",                protein: 2,  carbs: 34, fat: 0,  cal: 144 },
+      { name: "Sports drink & small banana",               protein: 1,  carbs: 44, fat: 0,  cal: 180 },
     ],
     postworkout: [
       { name: "Chocolate milk (500ml)",                    protein: 16, carbs: 56, fat: 9,  cal: 373 },
       { name: "Protein shake & banana",                    protein: 28, carbs: 34, fat: 3,  cal: 275 },
+      { name: "Greek yogurt & granola",                    protein: 22, carbs: 38, fat: 6,  cal: 294 },
+      { name: "Tuna on whole-grain crackers",              protein: 24, carbs: 28, fat: 4,  cal: 244 },
+    ],
+    restDay: [
+      { name: "Overnight oats, light portion",             protein: 10, carbs: 46, fat: 6,  cal: 278 },
+      { name: "Big mixed salad with grilled chicken",      protein: 34, carbs: 22, fat: 12, cal: 332 },
+      { name: "Veggie omelette (3 eggs)",                  protein: 22, carbs: 8,  fat: 16, cal: 264 },
+      { name: "Lean fish & steamed veg",                   protein: 38, carbs: 20, fat: 8,  cal: 308 },
     ],
   };
 
-  function generateMealPlan() {
+  function generateMealPlan(opts = {}) {
     const goal     = state.profile.goal     || "maintain";
     const activity = state.profile.activity || "med";
     const sport    = state.profile.sport    || "basketball";
+    const forDayOffset = opts.dayOffset || 0; // 0=today, 1=tomorrow, etc.
 
-    // Pick template — bump to performance for high-intensity sports
-    const highIntensitySports = ["basketball","football","track","volleyball"];
+    // Detect if this day is a training day based on active plan
+    const ctx = getPlanContext();
+    const isTrainingDay = ctx
+      ? (() => {
+          // day index within the plan week
+          const d = new Date(); d.setDate(d.getDate() + forDayOffset);
+          const dayOfWeek = (d.getDay() + 6) % 7; // 0=Mon
+          const spw = ctx.sessionsPerWeek || 3;
+          // training days are evenly spaced; e.g. 3×/week = Mon, Wed, Fri = 0,2,4
+          const trainingDays = Array.from({length:spw}, (_,i) => Math.round(i * 7 / spw));
+          return trainingDays.includes(dayOfWeek);
+        })()
+      : activity === "high";
+
+    // High-intensity sports bump to performance goal
+    const highIntensitySports = ["basketball","football","track","volleyball","wrestling","lacrosse"];
     const effectiveGoal = highIntensitySports.includes(sport) && goal === "maintain"
       ? "performance" : goal;
     const tmpl = MEAL_TEMPLATES[effectiveGoal] || MEAL_TEMPLATES.maintain;
 
-    // Activity multiplier on calories
-    const actMult = { low: 0.90, med: 1.00, high: 1.12 }[activity] || 1.00;
-    const targetCal = Math.round(tmpl.cal * actMult);
+    // Training day vs rest day calories
+    const baseCal   = isTrainingDay ? tmpl.trainCal : tmpl.restCal;
+    const actMult   = { low: 0.90, med: 1.00, high: 1.10 }[activity] || 1.00;
+    const targetCal = Math.round(baseCal * actMult);
 
-    // Pick one item per meal slot deterministically (seed on date so day-to-day varies)
-    function pick(arr) {
-      const seed = (new Date().getDate() + arr.length) % arr.length;
+    // Deterministic picks that vary by date + day offset
+    function pick(arr, extra = 0) {
+      if (!arr || !arr.length) return { name:"—", cal:0, protein:0, carbs:0, fat:0 };
+      const d = new Date(); d.setDate(d.getDate() + forDayOffset);
+      const seed = (d.getDate() + d.getMonth() * 3 + extra) % arr.length;
       return arr[seed];
     }
 
-    const meals = [
-      { slot: "Breakfast",     food: pick(MEAL_FOODS.breakfast) },
-      { slot: "Pre-Workout",   food: pick(MEAL_FOODS.preworkout) },
-      { slot: "Lunch",         food: pick(MEAL_FOODS.lunch) },
-      { slot: "Snack",         food: pick(MEAL_FOODS.snack) },
-      { slot: "Dinner",        food: pick(MEAL_FOODS.dinner) },
-      { slot: "Post-Workout",  food: pick(MEAL_FOODS.postworkout) },
+    const meals = isTrainingDay ? [
+      { slot: "Breakfast",     food: pick(MEAL_FOODS.breakfast, 0), icon: "🌅" },
+      { slot: "Pre-Workout",   food: pick(MEAL_FOODS.preworkout, 1), icon: "⚡" },
+      { slot: "Lunch",         food: pick(MEAL_FOODS.lunch, 2), icon: "☀️" },
+      { slot: "Snack",         food: pick(MEAL_FOODS.snack, 3), icon: "🍎" },
+      { slot: "Post-Workout",  food: pick(MEAL_FOODS.postworkout, 4), icon: "💪" },
+      { slot: "Dinner",        food: pick(MEAL_FOODS.dinner, 5), icon: "🌙" },
+    ] : [
+      { slot: "Breakfast",     food: pick(MEAL_FOODS.breakfast, 0), icon: "🌅" },
+      { slot: "Lunch",         food: pick(MEAL_FOODS.restDay, 1) || pick(MEAL_FOODS.lunch, 1), icon: "☀️" },
+      { slot: "Snack",         food: pick(MEAL_FOODS.snack, 2), icon: "🍎" },
+      { slot: "Dinner",        food: pick(MEAL_FOODS.restDay, 3) || pick(MEAL_FOODS.dinner, 3), icon: "🌙" },
     ];
 
     const totals = meals.reduce((acc, m) => ({
-      cal:     acc.cal     + m.food.cal,
-      protein: acc.protein + m.food.protein,
-      carbs:   acc.carbs   + m.food.carbs,
-      fat:     acc.fat     + m.food.fat,
+      cal:     acc.cal     + (m.food.cal     || 0),
+      protein: acc.protein + (m.food.protein || 0),
+      carbs:   acc.carbs   + (m.food.carbs   || 0),
+      fat:     acc.fat     + (m.food.fat     || 0),
     }), { cal:0, protein:0, carbs:0, fat:0 });
 
     return {
-      id: `meal_${Math.random().toString(36).slice(2,8)}`,
-      generated_at: nowISO(),
-      goal: effectiveGoal,
+      id:            `meal_${Math.random().toString(36).slice(2,8)}`,
+      generated_at:  nowISO(),
+      goal:          effectiveGoal,
       sport,
+      isTrainingDay,
+      dayOffset:     forDayOffset,
       targetCal,
       targetProtein: Math.round(targetCal * tmpl.proteinPct / 4),
       targetCarbs:   Math.round(targetCal * tmpl.carbPct   / 4),
@@ -2037,81 +2033,150 @@
     };
   }
 
+  // Generate a full week of meal plans (7 days)
+  function generateWeekMealPlan() {
+    return Array.from({length: 7}, (_, i) => generateMealPlan({ dayOffset: i }));
+  }
+
   function renderMealPlan() {
     const body = $("mealPlanBody");
-    if (!body) return; // element not present in this HTML build — skip silently
+    if (!body) return;
 
-    try {
-      // Use cached plan if available, else generate fresh
-      if (!state.ui.mealPlan) {
-        state.ui.mealPlan = generateMealPlan();
-      }
-      const plan = state.ui.mealPlan;
-      const t = plan.totals;
+    // Ensure state has mealPlanView (which day tab is selected)
+    state.ui.mealPlanDay = state.ui.mealPlanDay || 0;
 
-      const macroBar = (label, actual, target, color) => {
-        const pct = Math.min(100, Math.round((actual / target) * 100));
+    function buildAndRender(dayOffset) {
+      state.ui.mealPlanDay = dayOffset;
+      const plan = generateMealPlan({ dayOffset });
+
+      const macroBar = (label, actual, target, color, emoji) => {
+        const pct = target > 0 ? Math.min(100, Math.round((actual / target) * 100)) : 0;
         return `
-          <div style="margin-bottom:8px">
-            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-              <span class="small">${label}</span>
-              <span class="small muted">${actual}g / ${target}g</span>
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:700">${emoji} ${label}</span>
+              <span class="small muted">${actual}g / ${target}g <span style="color:${pct>=90?'var(--ok)':pct>=70?'var(--warn)':'var(--muted)'}">(${pct}%)</span></span>
             </div>
-            <div style="height:6px;background:var(--panel2,#e8e8e8);border-radius:3px;overflow:hidden">
-              <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
+            <div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .4s var(--easeOut)"></div>
             </div>
           </div>`;
       };
 
+      const dayNames = ["Today","Tomorrow","Wed","Thu","Fri","Sat","Sun"];
+      const daysOfWeek = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+      const d = new Date(); d.setDate(d.getDate() + dayOffset);
+      const dowIdx = (d.getDay() + 6) % 7;
+
+      // Day tabs — show 7 days
+      const dayTabs = Array.from({length:7},(_,i) => {
+        const di = new Date(); di.setDate(di.getDate() + i);
+        const isTraining = generateMealPlan({dayOffset:i}).isTrainingDay;
+        return `<button
+          onclick="window.__PIQ_MEAL_DAY(${i})"
+          style="padding:7px 12px;border-radius:10px;border:1px solid ${i===dayOffset?'var(--accent-border)':'var(--line)'};background:${i===dayOffset?'var(--accent-dim)':'transparent'};color:${i===dayOffset?'var(--accent)':'var(--muted)'};font-size:12px;font-weight:${i===dayOffset?'800':'500'};cursor:pointer;white-space:nowrap;position:relative">
+          ${i===0?'Today':i===1?'Tomorrow':daysOfWeek[dowIdx+i>6?dowIdx+i-7:dowIdx+i]}
+          ${isTraining?'<span style="position:absolute;top:3px;right:5px;width:5px;height:5px;border-radius:50%;background:var(--accent)"></span>':''}
+        </button>`;
+      }).join("");
+
       const mealRows = plan.meals.map(m => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line,#e8e8e8)">
-          <div>
-            <div class="small muted" style="text-transform:uppercase;letter-spacing:.06em;font-size:10px">${m.slot}</div>
-            <div style="font-weight:600;margin-top:2px">${m.food.name}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin-bottom:2px">${m.icon||""} ${m.slot}</div>
+            <div style="font-weight:700;font-size:15px;margin-bottom:2px">${m.food.name}</div>
+            <div class="small muted">${m.food.protein}g protein · ${m.food.carbs}g carbs · ${m.food.fat}g fat</div>
           </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-weight:700;font-size:15px">${m.food.cal} kcal</div>
-            <div class="small muted">P ${m.food.protein}g · C ${m.food.carbs}g · F ${m.food.fat}g</div>
+          <div style="text-align:right;flex-shrink:0;padding-left:12px">
+            <div style="font-family:var(--font-mono);font-size:18px;font-weight:800;color:var(--accent)">${m.food.cal}</div>
+            <div class="small muted">kcal</div>
           </div>
         </div>`).join("");
 
+      const t = plan.totals;
+      const dayTypeColor = plan.isTrainingDay ? "var(--accent)" : "var(--ok)";
+      const dayTypeLbl   = plan.isTrainingDay ? "🏋️ Training Day" : "😴 Rest Day";
+
       body.innerHTML = `
         <div class="mini">
-          <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
-            <span>Today's Meal Plan</span>
-            <button class="btn ghost" id="btnRegenMeal" style="font-size:12px">Regenerate</button>
-          </div>
-          <div class="minibody">
-            <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
-              <div style="text-align:center">
-                <div style="font-size:28px;font-weight:800;color:var(--accent,#0b3a7a)">${t.cal}</div>
-                <div class="small muted">Total kcal</div>
-              </div>
-              <div style="flex:1;min-width:180px">
-                ${macroBar("Protein", t.protein, plan.targetProtein, "#C0392B")}
-                ${macroBar("Carbs",   t.carbs,   plan.targetCarbs,   "#1A6B3C")}
-                ${macroBar("Fat",     t.fat,     plan.targetFat,     "#6B4C9A")}
-              </div>
+          <div class="row between" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <div class="minihead">🥗 Meal Plan</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="font-size:11px;font-weight:800;padding:3px 8px;border-radius:6px;background:${dayTypeColor === 'var(--accent)'?'var(--accent-dim)':'var(--green-dim)'};color:${dayTypeColor};border:1px solid ${dayTypeColor === 'var(--accent)'?'var(--accent-border)':'var(--green-border)'}">${dayTypeLbl}</span>
+              <button class="btn ghost" id="btnRegenMeal" style="font-size:12px;padding:6px 10px">↺ Refresh</button>
             </div>
-            <div class="small muted" style="margin-bottom:12px">Goal: <b>${plan.goal}</b> · Target: <b>${plan.targetCal} kcal</b> · Sport: <b>${plan.sport}</b></div>
-            ${mealRows}
           </div>
-        </div>
-      `;
 
-      // Regenerate button — generates a new plan and re-renders
-      $("btnRegenMeal")?.addEventListener("click", (e) => {
-        e.stopPropagation();
-        state.ui.mealPlan = generateMealPlan();
-        persist("Meal plan regenerated");
-        renderMealPlan();
+          <!-- Day tabs -->
+          <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none;margin-bottom:14px">
+            ${dayTabs}
+          </div>
+
+          <!-- Calorie summary -->
+          <div style="display:flex;gap:20px;align-items:center;padding:12px;border-radius:12px;background:var(--surface);margin-bottom:14px;flex-wrap:wrap">
+            <div style="text-align:center">
+              <div style="font-family:var(--font-mono);font-size:32px;font-weight:800;color:var(--accent)">${t.cal}</div>
+              <div class="small muted">kcal eaten</div>
+            </div>
+            <div style="width:1px;height:40px;background:var(--line)"></div>
+            <div style="text-align:center">
+              <div style="font-family:var(--font-mono);font-size:22px;font-weight:700">${plan.targetCal}</div>
+              <div class="small muted">target</div>
+            </div>
+            <div style="flex:1;min-width:180px">
+              ${macroBar("Protein", t.protein, plan.targetProtein, "var(--danger)",  "🥩")}
+              ${macroBar("Carbs",   t.carbs,   plan.targetCarbs,   "var(--ok)",      "🌾")}
+              ${macroBar("Fat",     t.fat,     plan.targetFat,     "var(--accent)",  "🥑")}
+            </div>
+          </div>
+
+          <!-- Nutrition settings row -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+            <div class="field" style="flex:1;min-width:120px">
+              <label>Goal</label>
+              <select id="mealGoalSelect">
+                <option value="maintain" ${state.profile.goal==="maintain"?"selected":""}>Maintain</option>
+                <option value="build"    ${state.profile.goal==="build"   ?"selected":""}>Build Muscle</option>
+                <option value="cut"      ${state.profile.goal==="cut"     ?"selected":""}>Cut Weight</option>
+                <option value="performance" ${state.profile.goal==="performance"?"selected":""}>Performance</option>
+              </select>
+            </div>
+            <div class="field" style="flex:1;min-width:120px">
+              <label>Activity</label>
+              <select id="mealActivitySelect">
+                <option value="low"  ${state.profile.activity==="low" ?"selected":""}>Low</option>
+                <option value="med"  ${state.profile.activity==="med" ?"selected":""}>Medium</option>
+                <option value="high" ${state.profile.activity==="high"?"selected":""}>High</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Meals list -->
+          <div>${mealRows}</div>
+
+          ${plan.isTrainingDay ? '' : '<div class="small muted" style="padding:10px 0 0;font-style:italic">Rest day — reduced carbs, lower calories. Prioritise sleep and recovery.</div>'}
+        </div>`;
+
+      // Bind settings
+      $("mealGoalSelect")?.addEventListener("change", () => {
+        state.profile.goal = $("mealGoalSelect").value;
+        persist(null); buildAndRender(state.ui.mealPlanDay);
       });
-    } catch (err) {
-      console.error("renderMealPlan error", err);
-      body.innerHTML = `<div class="mini"><div class="minihead">Meal Plan</div><div class="minibody small muted">Could not generate — check profile settings.</div></div>`;
+      $("mealActivitySelect")?.addEventListener("change", () => {
+        state.profile.activity = $("mealActivitySelect").value;
+        persist(null); buildAndRender(state.ui.mealPlanDay);
+      });
+      $("btnRegenMeal")?.addEventListener("click", () => {
+        buildAndRender(state.ui.mealPlanDay);
+        toast("Meal plan refreshed");
+      });
     }
-  }
 
+    // Expose day switcher globally so inline onclick works
+    window.__PIQ_MEAL_DAY = (d) => buildAndRender(d);
+
+    buildAndRender(state.ui.mealPlanDay || 0);
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -2171,98 +2236,6 @@
     return `${value}`;
   }
 
-  function renderPRTracker() {
-    const body = $("prTrackerBody");
-    if (!body) return;
-    initPRs();
-
-    // Build PR-trackable exercise list from the library
-    const trackable = [];
-    Object.entries(EXERCISE_LIB.strength).forEach(([key, ex]) => {
-      if (ex.prTrackable) trackable.push({ key, name:ex.title, metric:ex.prMetric, type:"strength" });
-    });
-    Object.entries(EXERCISE_LIB.plyo).forEach(([key, ex]) => {
-      if (ex.prTrackable) trackable.push({ key, name:ex.title, metric:ex.prMetric, type:"plyo" });
-    });
-    Object.entries(EXERCISE_LIB.conditioning).forEach(([key, ex]) => {
-      if (ex.prTrackable) trackable.push({ key, name:ex.title, metric:ex.prMetric, type:"conditioning" });
-    });
-
-    const prEntries = Object.keys(state.prs);
-    const metricLabel = { weight_lbs:"lbs", reps:"reps", time_sec:"sec (lower = better)", distance_m:"metres" };
-
-    const prRows = trackable.map(ex => {
-      const pr = getPR(ex.key);
-      const hist = getPRHistory(ex.key).slice(0, 3);
-      const histDots = hist.map((h,i) => `<span class="small muted" style="font-size:11px;margin-left:6px">${i===0?"(prev) ":""}${formatPRValue(h.value, ex.metric)}</span>`).join("");
-      return `
-        <div class="pr-row" style="padding:12px 0;border-bottom:1px solid var(--line,#e8e8e8)" data-key="${ex.key}">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <div>
-              <div style="font-weight:700;font-size:13px">${ex.name}</div>
-              <div class="small muted">${metricLabel[ex.metric] || ex.metric} · ${ex.type}</div>
-              ${hist.length > 1 ? `<div style="margin-top:3px">${histDots}</div>` : ""}
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              ${pr ? `<div style="text-align:right"><div style="font-size:20px;font-weight:800;color:#f0b429">🏆 ${formatPRValue(pr.value, pr.metric)}</div><div class="small muted">${pr.date}</div></div>` : `<div class="small muted" style="font-size:11px">No PR yet</div>`}
-              <button class="btn ghost" data-log-pr="${ex.key}" style="font-size:11px;flex-shrink:0">Log PR</button>
-            </div>
-          </div>
-          <div id="prForm_${ex.key}" hidden style="margin-top:10px;background:var(--panel,#f7f6f2);border-radius:8px;padding:12px">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-              <div class="field" style="flex:1;min-width:90px">
-                <label>${metricLabel[ex.metric]}</label>
-                <input type="number" id="prVal_${ex.key}" min="0" step="${ex.metric==="time_sec"?1:2.5}" placeholder="${ex.metric==="time_sec"?"sec":ex.metric==="distance_m"?"m":"lbs"}"/>
-              </div>
-              <div class="field" style="width:55px"><label>Sets</label><input type="number" id="prSets_${ex.key}" value="3" min="1" max="10"/></div>
-              <div class="field" style="width:55px"><label>Reps</label><input type="number" id="prReps_${ex.key}" value="5" min="1" max="30"/></div>
-              <div class="field" style="flex:1;min-width:100px"><label>Notes</label><input type="text" id="prNotes_${ex.key}" placeholder="optional"/></div>
-              <button class="btn" id="prSave_${ex.key}" style="flex-shrink:0">Save</button>
-            </div>
-          </div>
-        </div>`;
-    }).join("");
-
-    body.innerHTML = `
-      <div class="mini">
-        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
-          <span>Personal Records <span style="font-size:16px">🏆</span></span>
-          <span class="small muted">${prEntries.length} exercise${prEntries.length!==1?"s":""} tracked</span>
-        </div>
-        <div class="minibody">
-          <div class="small muted" style="margin-bottom:14px">Log your best performance for each exercise. We'll automatically detect and celebrate new PRs.</div>
-          ${prRows || `<div class="small muted">No trackable exercises yet. Generate a workout first.</div>`}
-        </div>
-      </div>
-    `;
-
-    // Wire log PR toggle + save
-    body.querySelectorAll("[data-log-pr]").forEach(btn => {
-      const key = btn.getAttribute("data-log-pr");
-      btn.addEventListener("click", () => {
-        const form = $(`prForm_${key}`);
-        if (form) form.hidden = !form.hidden;
-      });
-    });
-    trackable.forEach(ex => {
-      $(`prSave_${ex.key}`)?.addEventListener("click", () => {
-        const val   = $(`prVal_${ex.key}`)?.value;
-        const sets  = $(`prSets_${ex.key}`)?.value;
-        const reps  = $(`prReps_${ex.key}`)?.value;
-        const notes = $(`prNotes_${ex.key}`)?.value;
-        const isNew = logPR(ex.key, ex.name, val, ex.metric, sets, reps, notes);
-        if (isNew) {
-          showPRCelebration(ex.name, val, ex.metric);
-          // Also award a badge
-          awardBadge(`pr_${ex.key}`, `🏆 PR: ${ex.name}`, `New personal record — ${formatPRValue(parseFloat(val), ex.metric)}`);
-        } else {
-          toast(`${ex.name} logged — not a PR yet. Keep pushing!`);
-        }
-        renderPRTracker();
-        renderBadges(); // refresh badges panel
-      });
-    });
-  }
 
   function showPRCelebration(name, value, metric) {
     const overlay = document.createElement("div");
@@ -2354,29 +2327,7 @@
   }
 
   // Check and award all automatic badges based on current state
-  function checkAndAwardBadges() {
-    initBadges();
-    const sessions = state.sessions || [];
-    const streak   = computeStreak();
-    const sport    = state.profile?.sport || "basketball";
 
-    // Streak badges
-    STREAK_BADGES.forEach(b => {
-      if (streak >= b.threshold) awardBadge(b.id, b.title, b.desc, b.icon);
-    });
-
-    // Session count badges
-    SESSION_BADGES.forEach(b => {
-      if (sessions.length >= b.threshold) awardBadge(b.id, b.title, b.desc, b.icon);
-    });
-
-    // Sport-specific badges (10+ sessions in same sport)
-    const sportSessions = sessions.filter(s => s.sport === sport).length;
-    const sportBadgeList = SPORT_BADGES[sport] || [];
-    if (sportSessions >= 10) {
-      sportBadgeList.forEach(b => awardBadge(b.id, b.title, b.desc, b.icon));
-    }
-  }
 
 
   // ── Streak badge check on every session log ─────────────────────────────
