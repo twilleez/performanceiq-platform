@@ -1606,7 +1606,7 @@
     // remove existing insights appended earlier to avoid duplicates
     const existing = profileBody.querySelector(".mini.insights");
     if (existing) existing.remove();
-    el.classList.add("insights");
+    if (el && el.classList) el.classList.add("insights");
     profileBody.appendChild(el);
   }
 
@@ -1730,7 +1730,11 @@
     persist(null);
     ["home","team","train","profile"].forEach(v => {
       const el = $(`view-${v}`);
-      if (el) el.hidden = (v !== view);
+      if (!el) return;
+      const isActive = (v === view);
+      el.hidden = !isActive;
+      el.classList.toggle("active", isActive);
+      el.classList.toggle("is-active", isActive);
     });
     setActiveNav(view);
     renderAll();
