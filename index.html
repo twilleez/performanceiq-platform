@@ -53,6 +53,18 @@
     </div>
   </header>
 
+  <!-- ===================== Session Timer Bar ===================== -->
+  <div class="session-timer-bar" id="sessionTimerBar" aria-live="polite">
+    <div>
+      <div class="session-timer-label" id="sessionTimerLabel">Session running</div>
+      <div class="session-timer-display" id="sessionTimerDisplay">0:00</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="sessionTimerSport" class="pill" style="font-size:12px"></span>
+      <button class="btn ghost" id="btnEndSession" type="button" style="font-size:13px;padding:8px 12px">End + Log</button>
+    </div>
+  </div>
+
   <!-- ===================== Layout ===================== -->
   <main class="layout" id="mainContent">
 
@@ -200,10 +212,10 @@
 
   <!-- ===================== Mobile bottom nav ===================== -->
   <nav class="bottomnav" id="bottomNav" aria-label="Bottom navigation">
-    <button class="tab" data-view="home"    type="button" aria-current="page"><span class="tablbl">Home</span></button>
-    <button class="tab" data-view="team"    type="button"><span class="tablbl">Team</span></button>
-    <button class="tab" data-view="train"   type="button"><span class="tablbl">Train</span></button>
-    <button class="tab" data-view="profile" type="button"><span class="tablbl">Profile</span></button>
+    <button class="tab" data-view="home"    type="button" aria-current="page"><span class="tab-icon">🏠</span><span class="tablbl">Home</span></button>
+    <button class="tab" data-view="team"    type="button"><span class="tab-icon">👥</span><span class="tablbl">Team</span></button>
+    <button class="tab" data-view="train"   type="button"><span class="tab-icon">⚡</span><span class="tablbl">Train</span></button>
+    <button class="tab" data-view="profile" type="button"><span class="tab-icon">👤</span><span class="tablbl">Profile</span></button>
   </nav>
 
   <!-- ===================== FAB ===================== -->
@@ -212,7 +224,7 @@
   <div class="sheet" id="fabSheet" role="dialog" aria-modal="true" aria-labelledby="fabSheetTitle" aria-hidden="true" hidden>
     <div class="sheet-head">
       <div class="sheet-title" id="fabSheetTitle">Quick log</div>
-      <button class="btn ghost" id="btnCloseSheet" type="button">Close</button>
+      <button class="btn-close-drawer" id="btnCloseSheet" type="button" aria-label="Close">×</button>
     </div>
     <div class="sheet-body">
       <button class="btn"       id="fabLogWorkout"   type="button">Log workout</button>
@@ -229,7 +241,7 @@
         <div class="drawer-title" id="drawerTitle">Account</div>
         <div class="small muted">Preferences · appearance · data management</div>
       </div>
-      <button class="btn ghost" id="btnCloseDrawer" type="button">Close</button>
+      <button class="btn-close-drawer" id="btnCloseDrawer" type="button" aria-label="Close account">×</button>
     </div>
 
     <div class="drawer-body">
@@ -347,7 +359,7 @@
         <div class="drawer-title" id="helpDrawerTitle">Help</div>
         <div class="small muted">Searchable guidance</div>
       </div>
-      <button class="btn ghost" id="btnCloseHelp" type="button">Close</button>
+      <button class="btn-close-drawer" id="btnCloseHelp" type="button" aria-label="Close help">×</button>
     </div>
     <div class="drawer-body">
       <div class="field">
