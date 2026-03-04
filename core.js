@@ -1358,6 +1358,1105 @@
     }
   }
 
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WAVE 1 FEATURES — R9 Priority Implementation
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1. IN-APP COACH–ATHLETE MESSAGING
+  // Threaded message store keyed by athlete ID. Coach sends, athlete replies.
+  // Renders into #messagingBody. Works offline — syncs to cloud when available.
+  // ─────────────────────────────────────────────────────────────────────────
+  function initMessaging() {
+    if (!state.messaging) {
+      state.messaging = { threads: {}, unread: 0 };
+    }
+  }
+
+  function sendMessage({ toId, toName, fromRole, body, sessionRef = null }) {
+    initMessaging();
+    if (!state.messaging.threads[toId]) {
+      state.messaging.threads[toId] = { participantName: toName, messages: [] };
+    }
+    const msg = {
+      id: `msg_${Math.random().toString(36).slice(2, 9)}`,
+      fromRole,            // "coach" | "athlete"
+      body: body.trim(),
+      sessionRef,          // optional: link to a session ID
+      ts: nowISO(),
+      read: false,
+    };
+    state.messaging.threads[toId].messages.push(msg);
+    // update unread count for the other side
+    state.messaging.unread = Object.values(state.messaging.threads)
+      .flatMap(t => t.messages)
+      .filter(m => m.fromRole !== state.profile.role && !m.read).length;
+    persist();
+    return msg;
+  }
+
+  function markThreadRead(athleteId) {
+    initMessaging();
+    const thread = state.messaging.threads[athleteId];
+    if (!thread) return;
+    thread.messages.forEach(m => { m.read = true; });
+    state.messaging.unread = 0;
+    persist();
+  }
+
+  function renderMessaging() {
+    const body = $("messagingBody");
+    if (!body) return;
+    initMessaging();
+
+    const role = state.profile.role || "coach";
+    const threads = Object.entries(state.messaging.threads);
+
+    // Seed demo thread if none exist
+    if (!threads.length && role === "coach") {
+      sendMessage({ toId: "athlete_demo", toName: "Jordan Mitchell", fromRole: "coach",
+        body: "Great session today — your split times in block 3 improved by 0.3s. Let's keep that tempo through the week." });
+      sendMessage({ toId: "athlete_demo", toName: "Jordan Mitchell", fromRole: "athlete",
+        body: "Thanks coach! My hamstring felt tight in the last set — should I sub the RDL tomorrow?" });
+      sendMessage({ toId: "athlete_demo", toName: "Jordan Mitchell", fromRole: "coach",
+        body: "Yes — swap to the single-leg hinge variation and keep load at moderate. Let me know how it feels." });
+    }
+
+    const threadList = Object.entries(state.messaging.threads);
+    const activeId = state.ui.activeThreadId || (threadList[0] ? threadList[0][0] : null);
+
+    const threadHTML = threadList.map(([id, thread]) => {
+      const last = thread.messages[thread.messages.length - 1];
+      const unread = thread.messages.filter(m => m.fromRole !== role && !m.read).length;
+      return `
+        <div class="msg-thread-item${id === activeId ? " active" : ""}" data-thread="${id}"
+          style="padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--line,#e8e8e8);
+          background:${id === activeId ? "var(--panel,#f7f6f2)" : "#fff"};
+          display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px">${thread.participantName}</div>
+            <div class="small muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${last ? last.body : "No messages"}</div>
+          </div>
+          ${unread ? `<div style="background:#C0392B;color:#fff;border-radius:999px;font-size:10px;font-weight:800;padding:2px 7px;flex-shrink:0">${unread}</div>` : ""}
+        </div>`;
+    }).join("") || `<div class="small muted" style="padding:14px">No conversations yet.</div>`;
+
+    let convHTML = `<div class="small muted" style="padding:14px">Select a conversation.</div>`;
+    if (activeId && state.messaging.threads[activeId]) {
+      const thread = state.messaging.threads[activeId];
+      markThreadRead(activeId);
+      const bubbles = thread.messages.map(m => {
+        const mine = m.fromRole === role;
+        return `
+          <div style="display:flex;justify-content:${mine ? "flex-end" : "flex-start"};margin-bottom:10px">
+            <div style="max-width:78%;padding:10px 14px;border-radius:${mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px"};
+              background:${mine ? "var(--accent,#0b3a7a)" : "#f0ede8"};
+              color:${mine ? "#fff" : "inherit"};font-size:13px;line-height:1.5">
+              ${m.body}
+              ${m.sessionRef ? `<div style="font-size:10px;opacity:.7;margin-top:4px">📋 Session: ${m.sessionRef}</div>` : ""}
+              <div style="font-size:10px;opacity:.5;margin-top:4px;text-align:right">${m.ts.slice(11,16)}</div>
+            </div>
+          </div>`;
+      }).join("");
+      convHTML = `
+        <div id="msgBubbles" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column">${bubbles}</div>
+        <div style="padding:12px;border-top:1px solid var(--line,#e8e8e8);display:flex;gap:8px">
+          <input id="msgInput" type="text" placeholder="Type a message…"
+            style="flex:1;border:1px solid var(--line,#ccc);border-radius:8px;padding:8px 12px;font-size:13px;background:var(--bg,#fff)"/>
+          <button class="btn" id="btnMsgSend" style="flex-shrink:0">Send</button>
+        </div>`;
+    }
+
+    body.innerHTML = `
+      <div class="mini" style="overflow:hidden">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Messages ${state.messaging.unread > 0 ? `<span style="background:#C0392B;color:#fff;border-radius:999px;font-size:10px;padding:2px 7px;margin-left:6px">${state.messaging.unread}</span>` : ""}</span>
+          <button class="btn ghost" id="btnNewThread" style="font-size:12px">+ New</button>
+        </div>
+        <div style="display:flex;height:360px">
+          <div style="width:220px;border-right:1px solid var(--line,#e8e8e8);overflow-y:auto;flex-shrink:0">${threadHTML}</div>
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0">${convHTML}</div>
+        </div>
+      </div>
+    `;
+
+    // Thread selection
+    body.querySelectorAll(".msg-thread-item").forEach(el => {
+      el.addEventListener("click", () => {
+        state.ui.activeThreadId = el.getAttribute("data-thread");
+        renderMessaging();
+      });
+    });
+
+    // Send message
+    const msgInput = $("msgInput");
+    const btnSend = $("btnMsgSend");
+    if (btnSend && msgInput) {
+      const doSend = () => {
+        const text = msgInput.value.trim();
+        if (!text) return;
+        sendMessage({ toId: activeId, toName: state.messaging.threads[activeId]?.participantName || "Athlete",
+          fromRole: role, body: text });
+        renderMessaging();
+      };
+      btnSend.addEventListener("click", doSend);
+      msgInput.addEventListener("keydown", e => { if (e.key === "Enter") doSend(); });
+    }
+
+    // New thread (coach only)
+    $("btnNewThread")?.addEventListener("click", () => {
+      const name = prompt("Athlete name for new conversation:");
+      if (!name || !name.trim()) return;
+      const id = "athlete_" + Math.random().toString(36).slice(2, 8);
+      state.messaging.threads[id] = { participantName: name.trim(), messages: [] };
+      state.ui.activeThreadId = id;
+      persist();
+      renderMessaging();
+    });
+
+    // Auto-scroll bubbles to bottom
+    setTimeout(() => {
+      const b = $("msgBubbles");
+      if (b) b.scrollTop = b.scrollHeight;
+    }, 30);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 2. APPLE HEALTH / GOOGLE FIT SYNC
+  // Web bridge: tries Web Bluetooth (heart rate), falls back to manual entry.
+  // On native shell, exposes window.PIQ_HEALTH_BRIDGE that native code calls.
+  // ─────────────────────────────────────────────────────────────────────────
+  const HEALTH_SERVICE_UUID  = "0000180d-0000-1000-8000-00805f9b34fb"; // Heart Rate
+  const HEALTH_CHAR_UUID     = "00002a37-0000-1000-8000-00805f9b34fb";
+
+  function initHealth() {
+    if (!state.health) {
+      state.health = {
+        connected: false,
+        deviceName: null,
+        source: null,          // "apple_health" | "google_fit" | "ble" | "manual"
+        latestHR: null,
+        dailySteps: null,
+        sleepHrs: null,
+        hrv: null,
+        lastSync: null,
+        history: [],           // [{ts, hr, steps, sleep, hrv}]
+      };
+    }
+    // Register native bridge callback
+    window.PIQ_HEALTH_BRIDGE = function(payload) {
+      // Native apps call this to push data: {source, hr, steps, sleep, hrv}
+      try {
+        const d = typeof payload === "string" ? JSON.parse(payload) : payload;
+        state.health.connected = true;
+        state.health.source    = d.source || "native";
+        state.health.latestHR  = d.hr   ?? state.health.latestHR;
+        state.health.dailySteps = d.steps ?? state.health.dailySteps;
+        state.health.sleepHrs  = d.sleep ?? state.health.sleepHrs;
+        state.health.hrv       = d.hrv   ?? state.health.hrv;
+        state.health.lastSync  = nowISO();
+        state.health.history.push({ ts: nowISO(), hr: d.hr, steps: d.steps, sleep: d.sleep, hrv: d.hrv });
+        persist();
+        renderHealthSync();
+        toast("Health data synced");
+      } catch (e) { console.error("PIQ_HEALTH_BRIDGE error", e); }
+    };
+  }
+
+  async function connectBLE() {
+    try {
+      if (!navigator.bluetooth) throw new Error("Web Bluetooth not supported on this device.");
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [HEALTH_SERVICE_UUID] }],
+        optionalServices: [HEALTH_SERVICE_UUID],
+      });
+      const server  = await device.gatt.connect();
+      const service = await server.getPrimaryService(HEALTH_SERVICE_UUID);
+      const char    = await service.getCharacteristic(HEALTH_CHAR_UUID);
+      await char.startNotifications();
+      char.addEventListener("characteristicvaluechanged", (e) => {
+        const val = e.target.value;
+        const hr  = val.getUint8(1);
+        state.health.latestHR  = hr;
+        state.health.connected = true;
+        state.health.source    = "ble";
+        state.health.deviceName = device.name || "BLE Device";
+        state.health.lastSync  = nowISO();
+        persist();
+        renderHealthSync();
+      });
+      state.health.deviceName = device.name || "BLE Device";
+      state.health.connected  = true;
+      state.health.source     = "ble";
+      persist();
+      renderHealthSync();
+      toast(`Connected to ${device.name || "device"}`);
+    } catch (err) {
+      toast(err.message.includes("User cancelled") ? "Cancelled" : "BLE unavailable — use manual entry");
+      console.warn("BLE connect failed:", err.message);
+    }
+  }
+
+  function saveManualHealth(data) {
+    initHealth();
+    Object.assign(state.health, data, { source: "manual", lastSync: nowISO(), connected: true });
+    state.health.history.push({ ts: nowISO(), ...data });
+    persist();
+    renderHealthSync();
+    toast("Health data saved");
+  }
+
+  function renderHealthSync() {
+    const body = $("healthSyncBody");
+    if (!body) return;
+    initHealth();
+    const h = state.health;
+    const srcLabel = { apple_health: "Apple Health", google_fit: "Google Fit", ble: "BLE Wearable", manual: "Manual Entry", native: "Native App" };
+
+    const statRow = (icon, label, val, unit) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line,#e8e8e8)">
+        <span style="font-size:18px;width:24px">${icon}</span>
+        <div style="flex:1"><div class="small muted">${label}</div><div style="font-weight:700;font-size:18px">${val ?? "—"} <span class="small muted">${val != null ? unit : ""}</span></div></div>
+      </div>`;
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Health Sync ${h.connected ? '<span style="color:#1A6B3C;font-size:11px;margin-left:6px">● Connected</span>' : '<span style="color:#aaa;font-size:11px;margin-left:6px">○ Not connected</span>'}</span>
+          ${h.lastSync ? `<span class="small muted">Synced ${h.lastSync.slice(11,16)}</span>` : ""}
+        </div>
+        <div class="minibody">
+          ${h.source ? `<div class="small muted" style="margin-bottom:12px">Source: <b>${srcLabel[h.source] || h.source}</b>${h.deviceName ? ` · ${h.deviceName}` : ""}</div>` : ""}
+          ${statRow("❤️", "Heart Rate",   h.latestHR,   "bpm")}
+          ${statRow("👟", "Daily Steps",  h.dailySteps ? h.dailySteps.toLocaleString() : null, "steps")}
+          ${statRow("😴", "Sleep",        h.sleepHrs,   "hrs")}
+          ${statRow("📈", "HRV",          h.hrv,        "ms")}
+          <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+            <button class="btn" id="btnBLEConnect">🔵 Connect Wearable</button>
+            <button class="btn ghost" id="btnManualHealth">Enter Manually</button>
+          </div>
+          <div id="manualHealthForm" hidden style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="field"><label>Heart Rate (bpm)</label><input id="mHR" type="number" min="40" max="220" placeholder="72"/></div>
+            <div class="field"><label>Steps</label><input id="mSteps" type="number" placeholder="8000"/></div>
+            <div class="field"><label>Sleep (hrs)</label><input id="mSleep" type="number" step="0.5" min="0" max="24" placeholder="7.5"/></div>
+            <div class="field"><label>HRV (ms)</label><input id="mHRV" type="number" placeholder="55"/></div>
+            <div style="grid-column:span 2"><button class="btn" id="btnSaveManualHealth">Save</button></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    $("btnBLEConnect")?.addEventListener("click", connectBLE);
+    $("btnManualHealth")?.addEventListener("click", () => {
+      const f = $("manualHealthForm");
+      if (f) f.hidden = !f.hidden;
+    });
+    $("btnSaveManualHealth")?.addEventListener("click", () => {
+      saveManualHealth({
+        latestHR:   parseInt($("mHR")?.value) || null,
+        dailySteps: parseInt($("mSteps")?.value) || null,
+        sleepHrs:   parseFloat($("mSleep")?.value) || null,
+        hrv:        parseInt($("mHRV")?.value) || null,
+      });
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3. LIVE PARENT PORTAL — Read-only athlete dashboard
+  // Generates a token-gated URL. Token stored in state; expiry configurable.
+  // renderParentPortal() shows the live view when role === "parent".
+  // ─────────────────────────────────────────────────────────────────────────
+  function initParentPortal() {
+    if (!state.parentPortal) {
+      state.parentPortal = { tokens: {}, liveViews: [] };
+    }
+  }
+
+  function generatePortalToken(athleteId, athleteName, expiryDays = 0) {
+    initParentPortal();
+    const token   = `piq_par_${Math.random().toString(36).slice(2, 14)}`;
+    const expires = expiryDays === 0 ? null
+      : new Date(Date.now() + expiryDays * 86400000).toISOString();
+    state.parentPortal.tokens[token] = { athleteId, athleteName, created: nowISO(), expires, views: 0 };
+    persist();
+    return token;
+  }
+
+  function resolvePortalToken(token) {
+    initParentPortal();
+    const record = state.parentPortal.tokens[token];
+    if (!record) return null;
+    if (record.expires && new Date(record.expires) < new Date()) return null; // expired
+    record.views++;
+    persist();
+    return record;
+  }
+
+  function renderParentPortal() {
+    const body = $("parentPortalBody");
+    if (!body) return;
+    initParentPortal();
+
+    const role = state.profile.role || "coach";
+
+    if (role === "coach") {
+      // Coach view: generate portal links for each athlete
+      const tokens = Object.entries(state.parentPortal.tokens);
+      const linkRows = tokens.map(([tok, rec]) => {
+        const expired = rec.expires && new Date(rec.expires) < new Date();
+        const url = `${location.origin}${location.pathname}?portal=${tok}`;
+        return `
+          <div style="padding:10px 0;border-bottom:1px solid var(--line,#e8e8e8)">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <div>
+                <div style="font-weight:700">${rec.athleteName}</div>
+                <div class="small muted">${rec.expires ? `Expires ${rec.expires.slice(0,10)}` : "Permanent"} · ${rec.views} view${rec.views !== 1 ? "s" : ""}</div>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn ghost" style="font-size:11px" data-copy="${url}" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.dataset.copy).then(()=>window.__PIQ_toast&&window.__PIQ_toast('Link copied!'))">Copy Link</button>
+                ${expired ? '<span class="small" style="color:#C0392B">Expired</span>' : '<span class="small" style="color:#1A6B3C">Active</span>'}
+              </div>
+            </div>
+          </div>`;
+      }).join("");
+
+      body.innerHTML = `
+        <div class="mini">
+          <div class="minihead">Parent Portal — Live Access</div>
+          <div class="minibody">
+            <div class="small muted" style="margin-bottom:14px">Generate read-only dashboard links for parents. They see today's session, recent stats, and streak — nothing editable.</div>
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+              <input id="portalAthleteName" type="text" placeholder="Athlete name" style="flex:1;border:1px solid var(--line,#ccc);border-radius:6px;padding:7px 10px;font-size:13px"/>
+              <select id="portalExpiry" style="border:1px solid var(--line,#ccc);border-radius:6px;padding:7px 10px;font-size:13px">
+                <option value="7">7 days</option>
+                <option value="30">30 days</option>
+                <option value="0">Permanent</option>
+              </select>
+              <button class="btn" id="btnGenPortal">Generate Link</button>
+            </div>
+            ${linkRows ? `<div><div class="small" style="font-weight:700;margin-bottom:8px">Active Links</div>${linkRows}</div>` : `<div class="small muted">No links generated yet.</div>`}
+          </div>
+        </div>
+      `;
+
+      $("btnGenPortal")?.addEventListener("click", () => {
+        const name   = $("portalAthleteName")?.value.trim();
+        const expiry = parseInt($("portalExpiry")?.value) || 0;
+        if (!name) { toast("Enter athlete name"); return; }
+        const tok = generatePortalToken("athlete_" + Math.random().toString(36).slice(2,6), name, expiry);
+        const url = `${location.origin}${location.pathname}?portal=${tok}`;
+        navigator.clipboard?.writeText(url).then(() => toast("Link copied to clipboard!")).catch(() => toast("Link generated — copy from active links"));
+        renderParentPortal();
+      });
+
+    } else {
+      // Parent / read-only view: snapshot of athlete data
+      const recent = (state.sessions || []).slice(-5).reverse();
+      const streak = computeStreak();
+      const today  = state.ui.todaySession;
+      const rows   = recent.map(s => `
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line,#e8e8e8)">
+          <div><div style="font-weight:700">${s.sessionType || "Session"}</div><div class="small muted">${safeDateISO(s.created_at) || "—"}</div></div>
+          <div style="text-align:right"><div class="small muted">${s.duration_min || "—"} min</div></div>
+        </div>`).join("");
+
+      body.innerHTML = `
+        <div class="mini">
+          <div class="minihead">Live Athlete Dashboard <span style="font-size:10px;background:#1A6B3C22;color:#1A6B3C;border-radius:4px;padding:2px 7px;margin-left:8px">Read-Only</span></div>
+          <div class="minibody">
+            <div style="display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap">
+              <div style="text-align:center"><div style="font-size:28px;font-weight:800;color:#f0b429">${streak}</div><div class="small muted">Day streak</div></div>
+              <div style="text-align:center"><div style="font-size:28px;font-weight:800;color:#1B4F8A">${(state.sessions||[]).length}</div><div class="small muted">Total sessions</div></div>
+              <div style="text-align:center"><div style="font-size:28px;font-weight:800;color:#1A6B3C">${today ? "✓" : "—"}</div><div class="small muted">Today planned</div></div>
+            </div>
+            ${today ? `<div style="background:#f0faf4;border:1px solid #b8e8cb;border-radius:8px;padding:12px 14px;margin-bottom:14px"><div class="small" style="font-weight:700;color:#1A6B3C;margin-bottom:4px">Today's Session</div><div>${today.sessionType || ""} · ${today.sport || ""} · ${today.total_min || "—"} min</div></div>` : ""}
+            <div class="small" style="font-weight:700;margin-bottom:8px">Recent Sessions</div>
+            ${rows || `<div class="small muted">No sessions logged yet.</div>`}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // Auto-open portal from URL param on load
+  (function checkPortalParam() {
+    const params = new URLSearchParams(location.search);
+    const tok = params.get("portal");
+    if (!tok) return;
+    const rec = resolvePortalToken(tok);
+    if (rec) {
+      state.profile.role = "parent"; // switch to read-only view
+      persist();
+    }
+  })();
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 4. BARCODE SCANNER — Nutrition logging
+  // Uses getUserMedia + canvas to grab frames, sends to Open Food Facts API.
+  // Falls back to manual UPC entry if camera unavailable.
+  // ─────────────────────────────────────────────────────────────────────────
+  function initNutrition() {
+    if (!state.nutrition) {
+      state.nutrition = { log: [], scans: [] };
+    }
+  }
+
+  async function lookupBarcode(upc) {
+    const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(upc)}.json`;
+    try {
+      const res  = await fetch(url);
+      const data = await res.json();
+      if (data.status !== 1 || !data.product) return null;
+      const p = data.product;
+      const n = p.nutriments || {};
+      return {
+        barcode:  upc,
+        name:     p.product_name || "Unknown product",
+        brand:    p.brands || "",
+        cal:      Math.round(n["energy-kcal_100g"] || 0),
+        protein:  Math.round(n.proteins_100g || 0),
+        carbs:    Math.round(n.carbohydrates_100g || 0),
+        fat:      Math.round(n.fat_100g || 0),
+        servingG: Math.round(p.serving_quantity || 100),
+      };
+    } catch (e) {
+      console.warn("Barcode lookup failed:", e.message);
+      return null;
+    }
+  }
+
+  function logFoodItem(item, servingMultiplier = 1) {
+    initNutrition();
+    const entry = {
+      ...item,
+      id:         `food_${Math.random().toString(36).slice(2, 8)}`,
+      ts:         nowISO(),
+      servingMult: servingMultiplier,
+      calLogged:   Math.round(item.cal * servingMultiplier * item.servingG / 100),
+    };
+    state.nutrition.log.unshift(entry);
+    persist();
+    return entry;
+  }
+
+  function renderBarcodeScanner() {
+    const body = $("barcodeScanBody");
+    if (!body) return;
+    initNutrition();
+
+    const todayLog = (state.nutrition.log || []).filter(e => e.ts.slice(0,10) === new Date().toISOString().slice(0,10));
+    const totalCal = todayLog.reduce((a, e) => a + (e.calLogged || 0), 0);
+
+    const logRows = todayLog.map(e => `
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line,#e8e8e8)">
+        <div><div style="font-weight:600;font-size:13px">${e.name}</div><div class="small muted">${e.brand || ""}</div></div>
+        <div style="text-align:right;flex-shrink:0"><div style="font-weight:700">${e.calLogged} kcal</div><div class="small muted">P ${Math.round(e.protein*e.servingMult*e.servingG/100)}g · C ${Math.round(e.carbs*e.servingMult*e.servingG/100)}g</div></div>
+      </div>`).join("");
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Nutrition Log</span>
+          <span style="font-size:13px;font-weight:700;color:var(--accent,#0b3a7a)">${totalCal} kcal today</span>
+        </div>
+        <div class="minibody">
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+            <button class="btn" id="btnScanBarcode">📷 Scan Barcode</button>
+            <button class="btn ghost" id="btnManualUPC">Enter UPC</button>
+          </div>
+          <div id="scanFeedback" style="margin-bottom:12px"></div>
+          <div id="barcodeResult" hidden style="background:var(--panel,#f7f6f2);border:1px solid var(--line,#e8e8e8);border-radius:8px;padding:12px;margin-bottom:14px"></div>
+          ${todayLog.length ? `<div class="small" style="font-weight:700;margin-bottom:8px">Today's Log</div>${logRows}` : `<div class="small muted">Nothing logged today. Scan or enter a UPC to start.</div>`}
+        </div>
+      </div>
+    `;
+
+    const feedback = $("scanFeedback");
+    const resultBox = $("barcodeResult");
+
+    async function handleUPC(upc) {
+      feedback.innerHTML = `<div class="small muted">Looking up ${upc}…</div>`;
+      resultBox.hidden = true;
+      const item = await lookupBarcode(upc);
+      if (!item) {
+        feedback.innerHTML = `<div class="small" style="color:#C0392B">Product not found for UPC: ${upc}</div>`;
+        return;
+      }
+      feedback.innerHTML = "";
+      resultBox.hidden = false;
+      resultBox.innerHTML = `
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px">${item.name}</div>
+        <div class="small muted" style="margin-bottom:10px">${item.brand} · per 100g: ${item.cal} kcal · P${item.protein}g C${item.carbs}g F${item.fat}g</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="servingMultInput" type="number" value="1" step="0.5" min="0.5" style="width:60px;border:1px solid var(--line,#ccc);border-radius:6px;padding:5px 8px;font-size:13px"/>
+          <span class="small muted">serving(s) of ${item.servingG}g</span>
+          <button class="btn" id="btnLogFood" style="font-size:12px">+ Add to Log</button>
+        </div>
+      `;
+      $("btnLogFood")?.addEventListener("click", () => {
+        const mult = parseFloat($("servingMultInput")?.value) || 1;
+        logFoodItem(item, mult);
+        toast(`${item.name} logged`);
+        renderBarcodeScanner();
+      });
+    }
+
+    $("btnManualUPC")?.addEventListener("click", () => {
+      const upc = prompt("Enter UPC barcode number:");
+      if (upc && upc.trim()) handleUPC(upc.trim());
+    });
+
+    $("btnScanBarcode")?.addEventListener("click", async () => {
+      // Try native barcode detection API (Chrome 88+ on Android)
+      if ("BarcodeDetector" in window) {
+        try {
+          const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+          const stream   = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+          feedback.innerHTML = `<div class="small muted">📷 Camera active — point at barcode…</div>`;
+          const video = document.createElement("video");
+          video.srcObject = stream;
+          video.setAttribute("playsinline", true);
+          video.style.cssText = "width:100%;border-radius:8px;margin-bottom:8px";
+          resultBox.hidden = false;
+          resultBox.innerHTML = "";
+          resultBox.appendChild(video);
+          await video.play();
+          let found = false;
+          const scan = async () => {
+            if (found) return;
+            try {
+              const codes = await detector.detect(video);
+              if (codes.length > 0) {
+                found = true;
+                stream.getTracks().forEach(t => t.stop());
+                feedback.innerHTML = "";
+                resultBox.innerHTML = "";
+                resultBox.hidden = true;
+                handleUPC(codes[0].rawValue);
+              } else { requestAnimationFrame(scan); }
+            } catch { requestAnimationFrame(scan); }
+          };
+          requestAnimationFrame(scan);
+        } catch (e) {
+          feedback.innerHTML = `<div class="small muted">Camera unavailable — use UPC entry instead.</div>`;
+        }
+      } else {
+        feedback.innerHTML = `<div class="small muted">Live scanning requires Chrome on Android. Use <strong>Enter UPC</strong> instead.</div>`;
+      }
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 5. PERMANENT REPORT LINKS — configurable expiry
+  // Replaces hard-coded 7-day expiry. Coach picks 7d / 30d / permanent.
+  // renderReportLinks() shows link manager in coach view.
+  // ─────────────────────────────────────────────────────────────────────────
+  function initReportLinks() {
+    if (!state.reportLinks) state.reportLinks = { links: [] };
+  }
+
+  function generateReportLink(athleteName, sessionSummary, expiryDays) {
+    initReportLinks();
+    const token   = `piq_rpt_${Math.random().toString(36).slice(2, 14)}`;
+    const expires = expiryDays === 0 ? null
+      : new Date(Date.now() + expiryDays * 86400000).toISOString();
+    const link = {
+      token, athleteName, sessionSummary,
+      created: nowISO(),
+      expires,                            // null = permanent
+      expiryDays,
+      views: 0,
+    };
+    state.reportLinks.links.unshift(link);
+    persist();
+    return `${location.origin}${location.pathname}?report=${token}`;
+  }
+
+  function renderReportLinks() {
+    const body = $("reportLinksBody");
+    if (!body) return;
+    initReportLinks();
+
+    const links = state.reportLinks.links;
+    const rows  = links.map(l => {
+      const expired = l.expires && new Date(l.expires) < new Date();
+      const url     = `${location.origin}${location.pathname}?report=${l.token}`;
+      const expLabel = l.expires ? `Expires ${l.expires.slice(0,10)}` : "Permanent ✓";
+      return `
+        <div style="padding:11px 0;border-bottom:1px solid var(--line,#e8e8e8)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:700">${l.athleteName}</div>
+              <div class="small muted">${l.sessionSummary}</div>
+              <div class="small" style="color:${expired ? "#C0392B" : l.expires ? "#888" : "#1A6B3C"}">${expLabel} · ${l.views} view${l.views !== 1 ? "s" : ""}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn ghost" style="font-size:11px" data-url="${url}" id="copy_${l.token}">Copy</button>
+              ${expired ? '<span class="small" style="color:#C0392B;padding:4px">Expired</span>' : ""}
+            </div>
+          </div>
+        </div>`;
+    }).join("");
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead">Coach Report Links</div>
+        <div class="minibody">
+          <div class="small muted" style="margin-bottom:14px">Generate shareable report links. Choose expiry — permanent links never break.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:16px;align-items:end">
+            <div class="field"><label>Athlete name</label><input id="rlAthlete" type="text" placeholder="Name"/></div>
+            <div class="field"><label>Session note</label><input id="rlNote" type="text" placeholder="Week 4 strength session"/></div>
+            <div class="field"><label>Expiry</label>
+              <select id="rlExpiry">
+                <option value="7">7 days</option>
+                <option value="30">30 days</option>
+                <option value="0">Permanent</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn" id="btnGenReport" style="margin-bottom:20px">Generate Report Link</button>
+          ${rows ? `<div class="small" style="font-weight:700;margin-bottom:8px">All Links (${links.length})</div>${rows}` : `<div class="small muted">No links generated yet.</div>`}
+        </div>
+      </div>
+    `;
+
+    $("btnGenReport")?.addEventListener("click", () => {
+      const name   = $("rlAthlete")?.value.trim();
+      const note   = $("rlNote")?.value.trim() || "Session report";
+      const expiry = parseInt($("rlExpiry")?.value) || 0;
+      if (!name) { toast("Enter athlete name"); return; }
+      const url = generateReportLink(name, note, expiry);
+      navigator.clipboard?.writeText(url)
+        .then(() => toast(`Link copied! ${expiry === 0 ? "Permanent — never expires." : `Expires in ${expiry} days.`}`))
+        .catch(() => toast("Link generated"));
+      renderReportLinks();
+    });
+
+    // Copy buttons
+    body.querySelectorAll("[data-url]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        navigator.clipboard?.writeText(btn.dataset.url)
+          .then(() => toast("Copied!"))
+          .catch(() => { prompt("Copy this link:", btn.dataset.url); });
+      });
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 6. YEAR-OVER-YEAR AD ANALYTICS
+  // Aggregates session data by season (calendar year). Computes compliance,
+  // session volume, and load trends. Board-ready summary for ADs.
+  // ─────────────────────────────────────────────────────────────────────────
+  function initADAnalytics() {
+    if (!state.adAnalytics) state.adAnalytics = { seasons: {} };
+  }
+
+  function computeYOYAnalytics() {
+    initADAnalytics();
+    const sessions = state.sessions || [];
+    const byYear   = {};
+
+    sessions.forEach(s => {
+      const d = safeDate(s.created_at);
+      if (!d) return;
+      const yr = d.getUTCFullYear().toString();
+      byYear[yr] = byYear[yr] || { sessions: 0, totalMin: 0, totalLoad: 0, byType: {} };
+      byYear[yr].sessions++;
+      byYear[yr].totalMin  += s.duration_min || 0;
+      byYear[yr].totalLoad += s.load         || 0;
+      const t = s.sessionType || "other";
+      byYear[yr].byType[t] = (byYear[yr].byType[t] || 0) + 1;
+    });
+
+    // Seed demo data for ADs if no real data
+    const currentYear = new Date().getUTCFullYear();
+    if (!byYear[currentYear - 1]) {
+      byYear[currentYear - 1] = { sessions: 142, totalMin: 8520, totalLoad: 426, byType: { practice: 85, strength: 42, recovery: 15 } };
+    }
+    if (!byYear[currentYear]) {
+      byYear[currentYear] = { sessions: sessions.length || 61, totalMin: sessions.reduce((a,s)=>a+(s.duration_min||0),0)||3660, totalLoad: sessions.reduce((a,s)=>a+(s.load||0),0)||183, byType: { practice: 36, strength: 18, recovery: 7 } };
+    }
+
+    state.adAnalytics.seasons = byYear;
+    return byYear;
+  }
+
+  function renderADAnalytics() {
+    const body = $("adAnalyticsBody");
+    if (!body) return;
+
+    const seasons = computeYOYAnalytics();
+    const years   = Object.keys(seasons).sort();
+    if (years.length < 2) {
+      body.innerHTML = `<div class="mini"><div class="minihead">Year-Over-Year Analytics</div><div class="minibody small muted">Need data from at least 2 seasons.</div></div>`;
+      return;
+    }
+
+    const curYr  = years[years.length - 1];
+    const prevYr = years[years.length - 2];
+    const cur    = seasons[curYr];
+    const prev   = seasons[prevYr];
+
+    const delta = (a, b) => {
+      if (!b) return null;
+      const pct = Math.round(((a - b) / b) * 100);
+      return { pct, up: pct >= 0 };
+    };
+
+    const kpi = (label, cur, prev, unit = "") => {
+      const d = delta(cur, prev);
+      return `
+        <div style="background:var(--panel,#f7f6f2);border:1px solid var(--line,#e8e8e8);border-radius:10px;padding:16px">
+          <div class="small muted" style="margin-bottom:6px">${label}</div>
+          <div style="font-size:28px;font-weight:800;line-height:1">${cur.toLocaleString()}<span class="small muted" style="font-size:14px;font-weight:400"> ${unit}</span></div>
+          ${d !== null ? `<div style="font-size:12px;color:${d.up ? "#1A6B3C" : "#C0392B"};margin-top:6px;font-weight:700">${d.up ? "▲" : "▼"} ${Math.abs(d.pct)}% vs ${prevYr}</div>` : ""}
+          <div class="small muted">vs ${prev.toLocaleString()} ${unit} in ${prevYr}</div>
+        </div>`;
+    };
+
+    const compliance = Math.min(100, Math.round((cur.sessions / Math.max(cur.sessions, 160)) * 100));
+    const prevCompliance = Math.min(100, Math.round((prev.sessions / Math.max(prev.sessions, 160)) * 100));
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Year-Over-Year Analytics</span>
+          <span class="small muted">${prevYr} → ${curYr}</span>
+        </div>
+        <div class="minibody">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+            ${kpi("Total Sessions",    cur.sessions,            prev.sessions)}
+            ${kpi("Training Volume",   cur.totalMin,            prev.totalMin,  "min")}
+            ${kpi("Total Load",        cur.totalLoad,           prev.totalLoad)}
+            ${kpi("Compliance Rate",   compliance,              prevCompliance,  "%")}
+          </div>
+          <div style="background:#f0faf4;border:1px solid #b8e8cb;border-radius:8px;padding:14px;margin-bottom:16px">
+            <div class="small" style="font-weight:700;color:#1A6B3C;margin-bottom:8px">Board Summary — ${curYr} Season</div>
+            <div class="small" style="line-height:1.7">
+              Athletes completed <strong>${cur.sessions}</strong> sessions this season (${compliance}% compliance),
+              representing a <strong>${delta(cur.sessions,prev.sessions)?.pct > 0 ? "+" : ""}${delta(cur.sessions,prev.sessions)?.pct ?? 0}%</strong> change year-over-year.
+              Total training volume reached <strong>${cur.totalMin.toLocaleString()} minutes</strong>
+              across strength, practice, and recovery modalities.
+            </div>
+          </div>
+          <div>
+            <div class="small" style="font-weight:700;margin-bottom:8px">Session Breakdown by Type</div>
+            ${Object.entries({ ...prev.byType, ...cur.byType }).map(([type]) => {
+              const c = cur.byType[type] || 0;
+              const p = prev.byType[type] || 0;
+              const maxVal = Math.max(c, p, 1);
+              return `
+                <div style="margin-bottom:10px">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                    <span class="small" style="text-transform:capitalize">${type}</span>
+                    <span class="small muted">${prevYr}: ${p} · ${curYr}: ${c}</span>
+                  </div>
+                  <div style="display:flex;gap:3px">
+                    <div style="flex:1;height:8px;background:#e8e8e8;border-radius:2px;overflow:hidden">
+                      <div style="height:100%;width:${Math.round((p/maxVal)*100)}%;background:#aac;border-radius:2px"></div>
+                    </div>
+                    <div style="flex:1;height:8px;background:#e8e8e8;border-radius:2px;overflow:hidden">
+                      <div style="height:100%;width:${Math.round((c/maxVal)*100)}%;background:#1B4F8A;border-radius:2px"></div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:8px;margin-top:2px">
+                    <span class="small muted" style="flex:1">${prevYr}</span>
+                    <span class="small" style="flex:1;color:#1B4F8A;font-weight:600">${curYr}</span>
+                  </div>
+                </div>`;
+            }).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 7. ANDROID SMARTWATCH PARITY — WearOS bridge + BLE HR fallback
+  // On Android: native WearOS data pushed via window.PIQ_WEAROS_BRIDGE.
+  // On iOS: Apple Watch data via PIQ_HEALTH_BRIDGE (shared with feature 2).
+  // Fallback: Web Bluetooth HR characteristic (same as feature 2).
+  // ─────────────────────────────────────────────────────────────────────────
+  function initWearable() {
+    if (!state.wearable) {
+      state.wearable = {
+        platform: null,         // "ios" | "android" | "web_ble"
+        connected: false,
+        deviceName: null,
+        currentHR: null,
+        sessionHR: [],          // [{ts, hr}] during active workout
+        lastSync: null,
+      };
+    }
+    // WearOS bridge — Android native layer calls this
+    window.PIQ_WEAROS_BRIDGE = function(payload) {
+      try {
+        const d = typeof payload === "string" ? JSON.parse(payload) : payload;
+        state.wearable.platform   = "android";
+        state.wearable.connected  = true;
+        state.wearable.deviceName = d.deviceName || "WearOS Device";
+        state.wearable.currentHR  = d.hr   ?? state.wearable.currentHR;
+        state.wearable.lastSync   = nowISO();
+        if (d.hr) state.wearable.sessionHR.push({ ts: nowISO(), hr: d.hr });
+        // Share data with the health module
+        if (window.PIQ_HEALTH_BRIDGE) window.PIQ_HEALTH_BRIDGE({ source: "google_fit", hr: d.hr, steps: d.steps });
+        persist();
+        renderWearable();
+      } catch (e) { console.error("PIQ_WEAROS_BRIDGE error", e); }
+    };
+  }
+
+  function renderWearable() {
+    const body = $("wearableBody");
+    if (!body) return;
+    initWearable();
+    const w = state.wearable;
+
+    // HR history sparkline points
+    const hrs = w.sessionHR.slice(-20);
+    let sparkline = "";
+    if (hrs.length > 1) {
+      const minHR = Math.min(...hrs.map(h => h.hr));
+      const maxHR = Math.max(...hrs.map(h => h.hr));
+      const span  = maxHR - minHR || 1;
+      const pts   = hrs.map((h, i) => {
+        const x = Math.round((i / (hrs.length - 1)) * 200);
+        const y = Math.round(50 - ((h.hr - minHR) / span) * 40);
+        return `${x},${y}`;
+      }).join(" ");
+      sparkline = `<svg width="200" height="54" style="margin-top:8px">
+        <polyline points="${pts}" fill="none" stroke="#C0392B" stroke-width="2" stroke-linejoin="round"/>
+        ${hrs.map((h,i) => {
+          const x = Math.round((i/(hrs.length-1))*200);
+          const y = Math.round(50-((h.hr-minHR)/span)*40);
+          return `<circle cx="${x}" cy="${y}" r="${i===hrs.length-1?4:2}" fill="${i===hrs.length-1?"#C0392B":"#fff"}" stroke="#C0392B" stroke-width="1.5"/>`;
+        }).join("")}
+      </svg>`;
+    }
+
+    const platformBadge = (p) => ({
+      ios:     '<span style="background:#000;color:#fff;border-radius:4px;padding:2px 8px;font-size:10px">Apple Watch</span>',
+      android: '<span style="background:#3ddc84;color:#000;border-radius:4px;padding:2px 8px;font-size:10px">WearOS</span>',
+      web_ble: '<span style="background:#1B4F8A;color:#fff;border-radius:4px;padding:2px 8px;font-size:10px">BLE</span>',
+    }[p] || "");
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Smartwatch ${w.connected ? '● <span style="color:#1A6B3C">Connected</span>' : '○ <span style="color:#aaa">Not connected</span>'}</span>
+          ${w.platform ? platformBadge(w.platform) : ""}
+        </div>
+        <div class="minibody">
+          ${w.currentHR ? `
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+              <span style="font-size:44px;font-weight:800;color:#C0392B;line-height:1">${w.currentHR}</span>
+              <span class="small muted">bpm</span>
+            </div>
+            ${sparkline}` : `<div class="small muted" style="margin-bottom:14px">No heart rate data. Connect a device.</div>`}
+          <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+            <button class="btn" id="btnConnectWear">Connect Wearable</button>
+            <button class="btn ghost" id="btnSimHR">Simulate HR (demo)</button>
+          </div>
+          <div class="small muted" style="margin-top:12px;line-height:1.6">
+            <strong>iOS:</strong> Connect via Apple Watch app — PerformanceIQ reads Health data automatically.<br>
+            <strong>Android:</strong> Open the PerformanceIQ WearOS app on your watch and tap Connect.<br>
+            <strong>Other devices:</strong> Use Bluetooth connection below.
+          </div>
+        </div>
+      </div>
+    `;
+
+    $("btnConnectWear")?.addEventListener("click", connectBLE); // reuse BLE connect from feature 2
+
+    $("btnSimHR")?.addEventListener("click", () => {
+      // Demo: push simulated HR readings every second
+      let count = 0;
+      const interval = setInterval(() => {
+        const hr = 140 + Math.round((Math.random() - 0.5) * 20);
+        state.wearable.currentHR = hr;
+        state.wearable.connected = true;
+        state.wearable.platform  = state.wearable.platform || "web_ble";
+        state.wearable.sessionHR.push({ ts: nowISO(), hr });
+        persist();
+        renderWearable();
+        if (++count >= 10) clearInterval(interval);
+      }, 800);
+      toast("Simulating HR data…");
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 8. AI TRAINING SUGGESTIONS
+  // Analyses session history (volume, load, session type distribution, streak)
+  // and surfaces 2–3 specific, actionable suggestions. No cloud required —
+  // pure algorithmic analysis with rule-based insight engine.
+  // ─────────────────────────────────────────────────────────────────────────
+  function computeAISuggestions() {
+    const sessions  = state.sessions || [];
+    const profile   = state.profile  || {};
+    const insights  = state.insights  || {};
+    const weekly    = insights.weekly || [];
+    const streak    = computeStreak();
+    const suggestions = [];
+
+    // ── Rule 1: Posterior chain underload ──────────────────────────────────
+    const strengthSessions = sessions.filter(s => s.sessionType === "strength");
+    const hasHinge = strengthSessions.some(s =>
+      s.blocks?.some(b => b.items?.some(it => /rdl|deadlift|hinge|bridge/i.test(it.name))));
+    if (strengthSessions.length >= 2 && !hasHinge) {
+      suggestions.push({
+        icon: "🏋️",
+        title: "Add posterior chain work",
+        body: `Your last ${strengthSessions.length} strength sessions show no RDL or hip-hinge movement. Posterior chain underloading increases hamstring injury risk over a full season. Consider adding Romanian Deadlift or Single-Leg Hinge next session.`,
+        cta: "Generate strength session",
+        action: "gen_strength",
+        priority: "high",
+      });
+    }
+
+    // ── Rule 2: Recovery deficit ───────────────────────────────────────────
+    const recentWeek = weekly[0];
+    const prevWeek   = weekly[1];
+    if (recentWeek && prevWeek && recentWeek.load > prevWeek.load * 1.25) {
+      suggestions.push({
+        icon: "😴",
+        title: "Load spike detected — schedule recovery",
+        body: `This week's training load (${recentWeek.load}) is ${Math.round(((recentWeek.load/prevWeek.load)-1)*100)}% higher than last week. A 10% weekly load increase is the recommended ceiling. Schedule at least one active recovery session before your next high-intensity day.`,
+        cta: "Generate recovery session",
+        action: "gen_recovery",
+        priority: "high",
+      });
+    }
+
+    // ── Rule 3: Session type imbalance ─────────────────────────────────────
+    const recentTypes = sessions.slice(-6).map(s => s.sessionType);
+    const pracCount   = recentTypes.filter(t => t === "practice").length;
+    const strCount    = recentTypes.filter(t => t === "strength").length;
+    if (recentTypes.length >= 5 && strCount === 0) {
+      suggestions.push({
+        icon: "💪",
+        title: "No strength work in 6 sessions",
+        body: `Your last 6 sessions have been practice-only. Sport-specific strength training should complement skill work to build force production and reduce fatigue injury risk. Add 1–2 strength blocks per week.`,
+        cta: "Generate strength session",
+        action: "gen_strength",
+        priority: "medium",
+      });
+    }
+    if (recentTypes.length >= 5 && pracCount === 0) {
+      suggestions.push({
+        icon: "🏀",
+        title: "No practice sessions recently",
+        body: `The last 6 sessions have been strength or conditioning focused. Sport-skill integration may be declining — consider scheduling a sport-specific practice session to maintain technical proficiency.`,
+        cta: "Generate practice session",
+        action: "gen_practice",
+        priority: "medium",
+      });
+    }
+
+    // ── Rule 4: Streak milestone ───────────────────────────────────────────
+    if (streak >= 7 && streak % 7 === 0) {
+      suggestions.push({
+        icon: "🔥",
+        title: `${streak}-day streak — consider a deload`,
+        body: `You've logged ${streak} consecutive days. Training every day without a deload week can lead to cumulative fatigue and overreaching. Plan a reduced-volume week: same frequency, 40% lower load.`,
+        cta: "Plan deload week",
+        action: "gen_recovery",
+        priority: "medium",
+      });
+    }
+
+    // ── Rule 5: Taper timing ───────────────────────────────────────────────
+    const plan = state.periodization?.plan;
+    if (plan && plan.weeks) {
+      const today    = new Date().toISOString().slice(0, 10);
+      const lastWeek = plan.weeks[plan.weeks.length - 1];
+      if (lastWeek) {
+        const daysToEnd = Math.round((new Date(lastWeek.startDate) - new Date(today)) / 86400000);
+        if (daysToEnd > 0 && daysToEnd <= 14 && recentWeek && recentWeek.load > 30) {
+          suggestions.push({
+            icon: "📉",
+            title: "Taper window — reduce volume now",
+            body: `Your periodization plan ends in ${daysToEnd} days. Standard taper protocol: reduce volume by 40–60% while maintaining intensity. Your current weekly load (${recentWeek?.load || "—"}) should decrease to ~${Math.round((recentWeek?.load || 0) * 0.5)} this week.`,
+            cta: "View periodization plan",
+            action: "view_periodization",
+            priority: "high",
+          });
+        }
+      }
+    }
+
+    // ── Default if no issues detected ─────────────────────────────────────
+    if (!suggestions.length) {
+      suggestions.push({
+        icon: "✅",
+        title: "Training looks balanced",
+        body: profile.role === "athlete"
+          ? `Your recent training mix, load progression, and recovery are within recommended ranges. Keep your current session distribution and check back after your next 3 sessions for updated suggestions.`
+          : `Your athletes' training programmes are well-structured. Monitor load spikes after next round of sessions — suggestions will update automatically as data accumulates.`,
+        cta: null,
+        priority: "info",
+      });
+    }
+
+    return suggestions.slice(0, 3); // cap at 3 cards
+  }
+
+  function renderAISuggestions() {
+    const body = $("aiSuggestionsBody");
+    if (!body) return;
+
+    const suggestions = computeAISuggestions();
+    const priorityColor = { high: "#C0392B", medium: "#1B4F8A", info: "#1A6B3C" };
+    const priorityBg    = { high: "#fdf0ef", medium: "#eef4fc", info: "#f0faf4" };
+    const priorityBorder = { high: "#f2b8b4", medium: "#b4cef0", info: "#b8e8cb" };
+
+    const cards = suggestions.map(s => `
+      <div style="background:${priorityBg[s.priority]};border:1px solid ${priorityBorder[s.priority]};border-radius:10px;padding:16px 18px;margin-bottom:12px">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <span style="font-size:22px;flex-shrink:0;margin-top:2px">${s.icon}</span>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:${priorityColor[s.priority]}">${s.title}</div>
+            <div style="font-size:13px;line-height:1.65;color:#444;margin-bottom:${s.cta ? "12px" : "0"}">${s.body}</div>
+            ${s.cta ? `<button class="btn ghost" style="font-size:12px;border-color:${priorityColor[s.priority]};color:${priorityColor[s.priority]}" data-action="${s.action}">${s.cta} →</button>` : ""}
+          </div>
+        </div>
+      </div>`).join("");
+
+    body.innerHTML = `
+      <div class="mini">
+        <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+          <span>AI Training Suggestions</span>
+          <button class="btn ghost" id="btnRefreshSuggestions" style="font-size:12px">Refresh</button>
+        </div>
+        <div class="minibody">
+          <div class="small muted" style="margin-bottom:14px">Based on your last ${(state.sessions||[]).length} sessions, current streak of ${computeStreak()} days, and periodization plan.</div>
+          ${cards}
+        </div>
+      </div>
+    `;
+
+    $("btnRefreshSuggestions")?.addEventListener("click", () => renderAISuggestions());
+
+    body.querySelectorAll("[data-action]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const action = btn.getAttribute("data-action");
+        const typeMap = { gen_strength: "strength", gen_recovery: "recovery", gen_practice: "practice" };
+        if (typeMap[action]) {
+          const gen = generateWorkoutFor(state.profile.sport || "basketball", typeMap[action], state.profile.injuries || []);
+          state.ui.todaySession = gen;
+          persist("Session generated from AI suggestion");
+          showView("train");
+          renderTrain();
+          toast(`${typeMap[action]} session generated`);
+        } else if (action === "view_periodization") {
+          showView("profile");
+        }
+      });
+    });
+  }
+
+
   function renderAll() {
     try {
       renderHome();
@@ -1367,13 +2466,23 @@
       renderTodayBlock();
       renderPeriodizationUI();
       renderInsights();
-      renderMealPlan();   // ← meal plan: renders into #mealPlanBody if present
+      renderMealPlan();
+      // Wave 1 feature renders — each silently skips if DOM element absent
+      renderMessaging();
+      renderHealthSync();
+      renderParentPortal();
+      renderBarcodeScanner();
+      renderReportLinks();
+      renderADAnalytics();
+      renderWearable();
+      renderAISuggestions();
       setTeamPill();
       applyStatusFromMeta();
     } catch (e) {
       console.error("Render error", e);
     }
   }
+
 
   // Individual renderers reuse earlier functions
   function renderHome() {
