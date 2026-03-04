@@ -43,7 +43,7 @@
       sessions: [],
       periodization: { plan: null, updated_at: null },
       insights: { weekly: [], updated_at: null },
-      ui: { view: "home" }
+      ui: { view: "home", todaySession: null, mealPlan: null }
     };
     if (window.dataStore && window.dataStore.save) window.dataStore.save(state);
   }
@@ -599,39 +599,42 @@
       </div>
     `;
 
-    // Wire swap buttons — clicking replaces that exercise card in-place
-    container.querySelectorAll("[data-swap]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const swapKey = btn.getAttribute("data-swap");
-        const blockId  = btn.getAttribute("data-block");
-        const itemIdx  = parseInt(btn.getAttribute("data-item"), 10);
-        const alt = EXERCISE_LIB.noEquip[swapKey];
-        if (!alt) return;
+    // Wire swap via event delegation on the container — survives innerHTML re-renders
+    // and avoids per-button addEventListener calls that get orphaned on re-render.
+    container.addEventListener("click", function handleSwap(e) {
+      const btn = e.target.closest("[data-swap]");
+      if (!btn) return;
+      e.stopPropagation(); // don't let click bubble to any parent card handler
 
-        // Update the live session object so Push/Start carry the swap
-        const block = gen.blocks.find(b => b.id === blockId);
-        if (block && block.items[itemIdx]) {
-          block.items[itemIdx] = {
-            ...block.items[itemIdx],
-            name: alt.title,
-            cue: alt.cue,
-            noEquipSub: null,   // consumed — no further swap needed
-            swapped: true
-          };
-        }
+      const swapKey = btn.getAttribute("data-swap");
+      const blockId  = btn.getAttribute("data-block");
+      const itemIdx  = parseInt(btn.getAttribute("data-item"), 10);
+      const alt = EXERCISE_LIB.noEquip[swapKey];
+      if (!alt) return;
 
-        // Replace just that card in the DOM
-        const card = document.getElementById(`excard-${blockId}-${itemIdx}`);
-        if (card) {
-          card.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-              <span style="font-weight:700">${alt.title}</span>
-              <span class="small muted">${alt.cue}</span>
-            </div>
-            <div class="small" style="color:var(--ok);margin-top:3px">✓ Swapped — no equipment needed</div>
-          `;
-        }
-      });
+      // Update the live session object so Push/Start carry the swapped exercise
+      const block = gen.blocks.find(b => b.id === blockId);
+      if (block && block.items[itemIdx]) {
+        block.items[itemIdx] = {
+          ...block.items[itemIdx],
+          name: alt.title,
+          cue: alt.cue,
+          noEquipSub: null,  // consumed — hide swap button after first tap
+          swapped: true
+        };
+      }
+
+      // Replace just that one card in the DOM — no full re-render needed
+      const card = document.getElementById(`excard-${blockId}-${itemIdx}`);
+      if (card) {
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+            <span style="font-weight:700">${alt.title}</span>
+            <span class="small muted">${alt.cue}</span>
+          </div>
+          <div class="small" style="color:var(--ok);margin-top:3px">✓ Swapped — no equipment needed</div>
+        `;
+      }
     });
 
     // Push / Start Now buttons
@@ -652,6 +655,8 @@
   function renderTrain() {
     const sport = state.profile?.sport || "basketball";
     const role  = state.profile?.role  || "coach";
+    // All roles — coaches AND athletes — can generate workouts.
+    // Athletes generating for themselves is a supported primary use case.
 
     const trainSub = $("trainSub");
     if (trainSub) trainSub.textContent = `${role} · ${sport} · ${state.profile.preferred_session_type || "practice"}`;
@@ -1034,7 +1039,7 @@
     $("btnAccount")?.addEventListener("click", openDrawer);
     $("btnCloseDrawer")?.addEventListener("click", closeDrawer);
 
-    // Today button in topbar
+    // Today button — works for ALL roles (coach and athlete); both can generate workouts
     $("todayButton")?.addEventListener("click", () => {
       // Three-state flow: Generate -> Start -> Log handled by renderTodayBlock UI
       // If no today session: generate
@@ -1181,6 +1186,178 @@
   }
 
   // ---------- Render orchestration ----------
+  // ---------- Meal Plan Generation ----------
+  // Generates a 1-day meal plan tailored to goal, activity level, and sport.
+  // Works for ALL roles — athletes can generate their own plans.
+  const MEAL_TEMPLATES = {
+    // goal → { calories, macro split }
+    maintain:    { cal: 2400, proteinPct: 0.30, carbPct: 0.45, fatPct: 0.25 },
+    build:       { cal: 2800, proteinPct: 0.33, carbPct: 0.44, fatPct: 0.23 },
+    cut:         { cal: 1900, proteinPct: 0.38, carbPct: 0.37, fatPct: 0.25 },
+    performance: { cal: 3000, proteinPct: 0.28, carbPct: 0.50, fatPct: 0.22 },
+  };
+
+  const MEAL_FOODS = {
+    breakfast: [
+      { name: "Oatmeal with berries & honey",             protein: 9,  carbs: 55, fat: 6,  cal: 310 },
+      { name: "Greek yogurt parfait with granola",         protein: 20, carbs: 42, fat: 8,  cal: 320 },
+      { name: "Scrambled eggs on whole-grain toast",       protein: 22, carbs: 30, fat: 14, cal: 330 },
+      { name: "Protein smoothie (whey, banana, oat milk)", protein: 30, carbs: 50, fat: 6,  cal: 374 },
+    ],
+    lunch: [
+      { name: "Grilled chicken rice bowl with veg",        protein: 42, carbs: 58, fat: 10, cal: 490 },
+      { name: "Turkey & avocado wrap",                     protein: 35, carbs: 48, fat: 16, cal: 476 },
+      { name: "Salmon quinoa salad",                       protein: 38, carbs: 44, fat: 14, cal: 458 },
+      { name: "Lean beef stir-fry with brown rice",        protein: 40, carbs: 52, fat: 12, cal: 468 },
+    ],
+    snack: [
+      { name: "Cottage cheese & pineapple",                protein: 18, carbs: 20, fat: 3,  cal: 179 },
+      { name: "Apple with almond butter",                  protein: 5,  carbs: 28, fat: 9,  cal: 209 },
+      { name: "Rice cakes with peanut butter",             protein: 7,  carbs: 22, fat: 8,  cal: 188 },
+      { name: "Hard-boiled eggs & fruit",                  protein: 13, carbs: 18, fat: 7,  cal: 191 },
+    ],
+    dinner: [
+      { name: "Baked salmon, sweet potato & broccoli",     protein: 44, carbs: 48, fat: 16, cal: 512 },
+      { name: "Chicken thigh, roasted veg & quinoa",       protein: 40, carbs: 44, fat: 14, cal: 474 },
+      { name: "Lean beef tacos (corn tortillas)",          protein: 38, carbs: 50, fat: 16, cal: 492 },
+      { name: "Tofu stir-fry with noodles",               protein: 28, carbs: 56, fat: 10, cal: 434 },
+    ],
+    preworkout: [
+      { name: "Banana & a handful of pretzels",            protein: 3,  carbs: 40, fat: 1,  cal: 181 },
+      { name: "Dates & peanut butter",                     protein: 4,  carbs: 38, fat: 8,  cal: 236 },
+    ],
+    postworkout: [
+      { name: "Chocolate milk (500ml)",                    protein: 16, carbs: 56, fat: 9,  cal: 373 },
+      { name: "Protein shake & banana",                    protein: 28, carbs: 34, fat: 3,  cal: 275 },
+    ],
+  };
+
+  function generateMealPlan() {
+    const goal     = state.profile.goal     || "maintain";
+    const activity = state.profile.activity || "med";
+    const sport    = state.profile.sport    || "basketball";
+
+    // Pick template — bump to performance for high-intensity sports
+    const highIntensitySports = ["basketball","football","track","volleyball"];
+    const effectiveGoal = highIntensitySports.includes(sport) && goal === "maintain"
+      ? "performance" : goal;
+    const tmpl = MEAL_TEMPLATES[effectiveGoal] || MEAL_TEMPLATES.maintain;
+
+    // Activity multiplier on calories
+    const actMult = { low: 0.90, med: 1.00, high: 1.12 }[activity] || 1.00;
+    const targetCal = Math.round(tmpl.cal * actMult);
+
+    // Pick one item per meal slot deterministically (seed on date so day-to-day varies)
+    function pick(arr) {
+      const seed = (new Date().getDate() + arr.length) % arr.length;
+      return arr[seed];
+    }
+
+    const meals = [
+      { slot: "Breakfast",     food: pick(MEAL_FOODS.breakfast) },
+      { slot: "Pre-Workout",   food: pick(MEAL_FOODS.preworkout) },
+      { slot: "Lunch",         food: pick(MEAL_FOODS.lunch) },
+      { slot: "Snack",         food: pick(MEAL_FOODS.snack) },
+      { slot: "Dinner",        food: pick(MEAL_FOODS.dinner) },
+      { slot: "Post-Workout",  food: pick(MEAL_FOODS.postworkout) },
+    ];
+
+    const totals = meals.reduce((acc, m) => ({
+      cal:     acc.cal     + m.food.cal,
+      protein: acc.protein + m.food.protein,
+      carbs:   acc.carbs   + m.food.carbs,
+      fat:     acc.fat     + m.food.fat,
+    }), { cal:0, protein:0, carbs:0, fat:0 });
+
+    return {
+      id: `meal_${Math.random().toString(36).slice(2,8)}`,
+      generated_at: nowISO(),
+      goal: effectiveGoal,
+      sport,
+      targetCal,
+      targetProtein: Math.round(targetCal * tmpl.proteinPct / 4),
+      targetCarbs:   Math.round(targetCal * tmpl.carbPct   / 4),
+      targetFat:     Math.round(targetCal * tmpl.fatPct    / 9),
+      meals,
+      totals,
+    };
+  }
+
+  function renderMealPlan() {
+    const body = $("mealPlanBody");
+    if (!body) return; // element not present in this HTML build — skip silently
+
+    try {
+      // Use cached plan if available, else generate fresh
+      if (!state.ui.mealPlan) {
+        state.ui.mealPlan = generateMealPlan();
+      }
+      const plan = state.ui.mealPlan;
+      const t = plan.totals;
+
+      const macroBar = (label, actual, target, color) => {
+        const pct = Math.min(100, Math.round((actual / target) * 100));
+        return `
+          <div style="margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span class="small">${label}</span>
+              <span class="small muted">${actual}g / ${target}g</span>
+            </div>
+            <div style="height:6px;background:var(--panel2,#e8e8e8);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
+            </div>
+          </div>`;
+      };
+
+      const mealRows = plan.meals.map(m => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line,#e8e8e8)">
+          <div>
+            <div class="small muted" style="text-transform:uppercase;letter-spacing:.06em;font-size:10px">${m.slot}</div>
+            <div style="font-weight:600;margin-top:2px">${m.food.name}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-weight:700;font-size:15px">${m.food.cal} kcal</div>
+            <div class="small muted">P ${m.food.protein}g · C ${m.food.carbs}g · F ${m.food.fat}g</div>
+          </div>
+        </div>`).join("");
+
+      body.innerHTML = `
+        <div class="mini">
+          <div class="minihead" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Today's Meal Plan</span>
+            <button class="btn ghost" id="btnRegenMeal" style="font-size:12px">Regenerate</button>
+          </div>
+          <div class="minibody">
+            <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+              <div style="text-align:center">
+                <div style="font-size:28px;font-weight:800;color:var(--accent,#0b3a7a)">${t.cal}</div>
+                <div class="small muted">Total kcal</div>
+              </div>
+              <div style="flex:1;min-width:180px">
+                ${macroBar("Protein", t.protein, plan.targetProtein, "#C0392B")}
+                ${macroBar("Carbs",   t.carbs,   plan.targetCarbs,   "#1A6B3C")}
+                ${macroBar("Fat",     t.fat,     plan.targetFat,     "#6B4C9A")}
+              </div>
+            </div>
+            <div class="small muted" style="margin-bottom:12px">Goal: <b>${plan.goal}</b> · Target: <b>${plan.targetCal} kcal</b> · Sport: <b>${plan.sport}</b></div>
+            ${mealRows}
+          </div>
+        </div>
+      `;
+
+      // Regenerate button — generates a new plan and re-renders
+      $("btnRegenMeal")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        state.ui.mealPlan = generateMealPlan();
+        persist("Meal plan regenerated");
+        renderMealPlan();
+      });
+    } catch (err) {
+      console.error("renderMealPlan error", err);
+      body.innerHTML = `<div class="mini"><div class="minihead">Meal Plan</div><div class="minibody small muted">Could not generate — check profile settings.</div></div>`;
+    }
+  }
+
   function renderAll() {
     try {
       renderHome();
@@ -1190,6 +1367,7 @@
       renderTodayBlock();
       renderPeriodizationUI();
       renderInsights();
+      renderMealPlan();   // ← meal plan: renders into #mealPlanBody if present
       setTeamPill();
       applyStatusFromMeta();
     } catch (e) {
@@ -1250,6 +1428,7 @@
   window.__PIQ_DEBUG__ = {
     generateWorkoutFor,
     generate12WeekPlan,
+    generateMealPlan,
     computeInsights,
     getState: () => state,
     setState: (s) => { state = s; persist("State set via debug"); renderAll(); }
