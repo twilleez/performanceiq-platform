@@ -1,733 +1,389 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0f14" />
+  <meta name="description" content="PerformanceIQ — Offline-first team performance tracking" />
+  <meta name="color-scheme" content="dark light" />
   <title>PerformanceIQ</title>
-
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="favicon.ico">
-  <meta name="theme-color" content="#070b12">
-  <!-- Barlow Condensed: tight, athletic numerals for score/stat displays -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet">
-  <style>
-    /* ── Number display font ─────────────────────────────────── */
-    :root { --font-display: 'Barlow Condensed', system-ui, sans-serif; }
-    .stat-value,
-    .piq-score-big,
-    [class*="score-num"],
-    .num-display {
-      font-family: var(--font-display) !important;
-      font-weight: 900;
-      letter-spacing: -0.02em;
-    }
-
-    /* ── Athlete-mode UI overrides ───────────────────────────── */
-    body[data-role="athlete"] .coach-only   { display: none !important; }
-    body[data-role="athlete"] .athlete-only { display: block !important; }
-    body:not([data-role="athlete"]) .athlete-only { display: none !important; }
-
-    /* Athlete dashboard hero card */
-    .athlete-hero {
-      background: linear-gradient(135deg, rgba(37,99,235,.18) 0%, rgba(37,99,235,.04) 100%);
-      border: 1px solid rgba(37,99,235,.3);
-      border-radius: 20px;
-      padding: 28px 28px 22px;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 28px;
-    }
-    .athlete-hero-ring {
-      width: 90px; height: 90px;
-      border-radius: 50%;
-      background: conic-gradient(var(--accent) 0% var(--pct, 0%), rgba(255,255,255,.08) var(--pct, 0%) 100%);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      position: relative;
-    }
-    .athlete-hero-ring::after {
-      content: '';
-      position: absolute;
-      inset: 8px;
-      border-radius: 50%;
-      background: var(--surface, #0d1117);
-    }
-    .athlete-hero-score {
-      font-family: var(--font-display);
-      font-size: 36px;
-      font-weight: 900;
-      position: relative;
-      z-index: 1;
-      line-height: 1;
-    }
-    .athlete-hero-meta { flex: 1; min-width: 0; }
-    .athlete-hero-name { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
-    .athlete-hero-sub  { font-size: 13px; color: var(--muted, #64748b); margin-bottom: 10px; }
-    .athlete-stat-row  { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
-    .athlete-stat-pill {
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: 8px;
-      padding: 6px 12px;
-      font-size: 13px;
-    }
-    .athlete-stat-pill strong {
-      font-family: var(--font-display);
-      font-size: 18px;
-      font-weight: 900;
-      display: block;
-      line-height: 1.1;
-    }
-
-    /* Athlete training card */
-    .athlete-train-card {
-      background: rgba(255,255,255,.03);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 14px;
-      padding: 16px 18px;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .athlete-train-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--accent, #2563eb);
-      flex-shrink: 0;
-    }
-    .athlete-train-dot.low  { background: #10b981; }
-    .athlete-train-dot.med  { background: #f59e0b; }
-    .athlete-train-dot.high { background: #ef4444; }
-
-    /* Wellness athlete mode */
-    .athlete-readiness-banner {
-      border-radius: 14px;
-      padding: 18px 20px;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      border: 1px solid;
-    }
-    .athlete-readiness-banner.ready  { background:rgba(16,185,129,.1); border-color:rgba(16,185,129,.3); }
-    .athlete-readiness-banner.watch  { background:rgba(245,158,11,.1);  border-color:rgba(245,158,11,.3); }
-    .athlete-readiness-banner.risk   { background:rgba(239,68,68,.1);   border-color:rgba(239,68,68,.3); }
-    .athlete-readiness-score {
-      font-family: var(--font-display);
-      font-size: 48px;
-      font-weight: 900;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-  </style>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
 
-<!-- LOADING -->
-<div id="loadingScreen" style="
-  position:fixed;inset:0;z-index:9999;
-  display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(900px 600px at 50% -10%, rgba(37,99,235,0.08), transparent 55%), #070b12;
-  color:#eaf0ff;
-  pointer-events:auto;
-">
-  <div style="display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding:24px;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:12px;height:12px;border-radius:50%;background:#2563eb;box-shadow:0 0 0 6px rgba(37,99,235,0.18)"></div>
-      <div style="font-weight:900;letter-spacing:-.3px;font-size:18px">Performance<span style="color:#2563eb">IQ</span></div>
-    </div>
-    <div style="width:140px;height:3px;background:rgba(255,255,255,0.07);border-radius:2px;overflow:hidden">
-      <div style="height:100%;width:100%;background:#2563eb;border-radius:2px"></div>
-    </div>
-    <div style="font-size:12px;opacity:.78;letter-spacing:.03em">Loading dashboard…</div>
-  </div>
-</div>
-
-<!-- ONBOARDING -->
-<div class="ob-overlay hidden" id="onboardingModal" aria-modal="true" role="dialog">
-  <div class="ob-shell" role="document">
-    <div class="ob-header">
-      <div class="ob-brand">
-        <div class="ob-logo">Performance<span>IQ</span></div>
-        <div class="ob-badge">⚡ Setup · 60 sec</div>
-      </div>
-      <button class="ob-close" id="btnCloseOnboarding" aria-label="Close onboarding">✕</button>
-    </div>
-
-    <div class="ob-progress" aria-label="Setup progress">
-      <button type="button" class="ob-step" data-ob-step="1" aria-label="Step 1 Team">
-        <div class="ob-step-circle" data-ob-circle="1">1</div>
-        <div class="ob-step-label">Team</div>
-      </button>
-      <div class="ob-step-line line-idle"><div class="ob-step-line-fill"></div></div>
-      <button type="button" class="ob-step" data-ob-step="2" aria-label="Step 2 Roster">
-        <div class="ob-step-circle" data-ob-circle="2">2</div>
-        <div class="ob-step-label">Roster</div>
-      </button>
-      <div class="ob-step-line line-idle"><div class="ob-step-line-fill"></div></div>
-      <button type="button" class="ob-step" data-ob-step="3" aria-label="Step 3 Launch">
-        <div class="ob-step-circle" data-ob-circle="3">3</div>
-        <div class="ob-step-label">Launch</div>
-      </button>
-    </div>
-
-    <!-- Hidden canonical inputs -->
-    <input id="onboardTeamName"  class="ob-hidden-input" type="text" autocomplete="off" />
-    <select id="onboardSport"    class="ob-hidden-input">
-      <option value="basketball">basketball</option>
-      <option value="soccer">soccer</option>
-      <option value="football">football</option>
-      <option value="baseball">baseball</option>
-      <option value="volleyball">volleyball</option>
-      <option value="track">track</option>
-    </select>
-    <select id="onboardSeason" class="ob-hidden-input">
-      <option value="Pre-Season">Pre-Season</option>
-      <option value="In-Season">In-Season</option>
-      <option value="Post-Season">Post-Season</option>
-      <option value="Off-Season">Off-Season</option>
-    </select>
-
-    <!-- STEP 1 -->
-    <section class="ob-card" id="onboardStep1" style="display:none">
-      <div class="ob-card-header">
-        <div class="ob-step-tag">Step 1 — Team Identity</div>
-        <div class="ob-card-title">Name Your Squad</div>
-        <div class="ob-card-sub">This is how your team shows up everywhere</div>
-      </div>
-      <div class="ob-card-body">
-        <div class="ob-field">
-          <div class="ob-label">Team name</div>
-          <input id="onboardTeamNameVisible" class="ob-input" type="text" placeholder="e.g. Westview Varsity" autocomplete="off">
-        </div>
-        <div class="ob-field">
-          <div class="ob-label">Sport</div>
-          <div class="ob-chip-row" role="list">
-            <button type="button" class="ob-chip selected" data-onboard-sport="basketball">🏀 Basketball</button>
-            <button type="button" class="ob-chip" data-onboard-sport="soccer">⚽ Soccer</button>
-            <button type="button" class="ob-chip" data-onboard-sport="football">🏈 Football</button>
-            <button type="button" class="ob-chip" data-onboard-sport="baseball">⚾ Baseball</button>
-            <button type="button" class="ob-chip" data-onboard-sport="volleyball">🏐 Volleyball</button>
-          </div>
-        </div>
-        <div class="ob-field">
-          <div class="ob-label">Season phase</div>
-          <div class="ob-season-row">
-            <button type="button" class="ob-season selected" data-onboard-season="Pre-Season">
-              <div class="ob-season-ico">🌱</div><div class="ob-season-txt">Pre-Season</div>
-            </button>
-            <button type="button" class="ob-season" data-onboard-season="In-Season">
-              <div class="ob-season-ico">🔥</div><div class="ob-season-txt">In-Season</div>
-            </button>
-            <button type="button" class="ob-season" data-onboard-season="Post-Season">
-              <div class="ob-season-ico">🏆</div><div class="ob-season-txt">Post-Season</div>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="ob-divider"></div>
-      <div class="ob-card-footer">
-        <div class="ob-timer"><span class="ob-timer-dot"></span><span id="obCountdownText">Game in 3 days</span></div>
-        <div class="ob-actions">
-          <button type="button" class="ob-skip" id="btnSkipOnboarding">Skip</button>
-          <button type="button" class="ob-next" id="btnOnboardNext1">Next <span class="ob-arrow">→</span></button>
-        </div>
-      </div>
-    </section>
-
-    <!-- STEP 2 -->
-    <section class="ob-card" id="onboardStep2">
-      <div class="ob-card-header">
-        <div class="ob-step-tag">Step 2 — Roster</div>
-        <div class="ob-card-title">Add Your Athletes</div>
-        <div class="ob-card-sub">Build your roster — you can always add more later</div>
-      </div>
-      <div class="ob-card-body">
-        <div class="ob-field">
-          <div class="ob-label">Athlete name</div>
-          <div class="ob-row">
-            <input id="onboardAthleteName" class="ob-input" type="text" placeholder="Full name or jersey #…" autocomplete="off">
-            <button type="button" class="ob-add" id="btnOnboardAddAthlete">+ Add</button>
-          </div>
-        </div>
-        <div id="onboardRosterChips" class="ob-roster"></div>
-        <div class="ob-empty" id="onboardEmptyRoster">
-          <div class="ob-empty-ico">🏀</div>
-          <div class="ob-empty-title">No athletes yet</div>
-          <div class="ob-empty-sub">Add your first player above to get started</div>
-        </div>
-        <div class="ob-or"><span></span><em>OR</em><span></span></div>
-        <button type="button" class="ob-import" id="btnOnboardImport">📋 Import from CSV or Spreadsheet</button>
-      </div>
-      <div class="ob-divider"></div>
-      <div class="ob-card-footer">
-        <div class="ob-timer"><span class="ob-timer-dot"></span><span id="obCountdownText2">Game in 3 days</span></div>
-        <div class="ob-actions">
-          <button type="button" class="ob-skip" id="btnOnboardBack2">Back</button>
-          <button type="button" class="ob-next" id="btnOnboardNext2">Next <span class="ob-arrow">→</span></button>
-        </div>
-      </div>
-    </section>
-
-    <!-- STEP 3 -->
-    <section class="ob-card" id="onboardStep3" style="display:none">
-      <div class="ob-card-header">
-        <div class="ob-step-tag">Step 3 — Ready</div>
-        <div class="ob-card-title">You're All Set 🎯</div>
-        <div class="ob-card-sub">Take a quick tour or dive straight in</div>
-      </div>
-      <div class="ob-card-body">
-        <div class="ob-grid">
-          <div class="ob-mini"><div class="ob-mini-ico">📊</div><div class="ob-mini-title">Dashboard</div><div class="ob-mini-sub">Live overview</div></div>
-          <div class="ob-mini"><div class="ob-mini-ico">🏃</div><div class="ob-mini-title">Training</div><div class="ob-mini-sub">Workouts & drills</div></div>
-          <div class="ob-mini"><div class="ob-mini-ico">🧠</div><div class="ob-mini-title">Wellness</div><div class="ob-mini-sub">Readiness tracking</div></div>
-          <div class="ob-mini"><div class="ob-mini-ico">📅</div><div class="ob-mini-title">Schedule</div><div class="ob-mini-sub">Games & events</div></div>
-        </div>
-      </div>
-      <div class="ob-divider"></div>
-      <div class="ob-card-footer">
-        <button type="button" class="ob-skip" id="btnOnboardTour">Take Tour</button>
-        <button type="button" class="ob-next" id="btnFinishOnboarding">Launch Dashboard <span class="ob-arrow">→</span></button>
-      </div>
-    </section>
-
-    <div class="ob-motivation">
-      <span>⚡</span>
-      <div><strong>Game in 3 days</strong> — Your setup keeps your team sharp when it counts.</div>
-    </div>
-  </div>
-</div>
-
-<!-- TOPBAR -->
-<header class="topbar">
-  <div class="topbar-left">
-    <div class="brand-mark"><div class="brand-dot"></div></div>
-    <span class="brand-name">PerformanceIQ</span>
-  </div>
-  <div class="topbar-center">
-    <div class="pill live" id="pillOnline"><span class="pulse"></span><span id="pillOnlineText">Team Online</span></div>
-    <div class="pill" id="pillSeason">Pre-Season</div>
-    <div class="pill orange" id="pillGame" style="display:none">⚡ <span id="pillGameText"></span></div>
-  </div>
-  <div class="topbar-right">
-    <div class="search-wrap">
-      <span class="search-icon">🔍</span>
-      <input class="search-input" type="text" placeholder="Search athletes…" id="athleteSearch" aria-label="Search athletes" />
-    </div>
-    <button class="icon-btn" id="btnTheme" title="Toggle theme" aria-label="Toggle theme">🌙</button>
-    <button class="icon-btn" id="btnRefresh" title="Refresh data" aria-label="Refresh data">↺</button>
-    <button class="icon-btn" id="btnExport" title="Export report" aria-label="Export report">📤</button>
-  </div>
-</header>
-
-<div class="app-shell">
-  <nav class="sidebar" aria-label="Primary navigation">
-    <div class="sidebar-section">Main</div>
-
-    <button class="nav-btn" data-view="dashboard" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">⬡</i> Dashboard</button>
-    <button class="nav-btn" data-view="athletes"  data-roles="coach,admin,owner"><i class="nav-icon">◉</i> Athletes <span class="nav-badge" id="riskBadge" style="display:none" aria-label="Risk alerts">0</span></button>
-    <button class="nav-btn" data-view="train"     data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">▷</i> Train</button>
-    <button class="nav-btn" data-view="analytics" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">◈</i> Analytics</button>
-
-    <div class="sidebar-section">Manage</div>
-
-    <button class="nav-btn" data-view="schedule"  data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">📅</i> Schedule</button>
-    <button class="nav-btn" data-view="wellness"  data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">🌙</i> Wellness</button>
-    <button class="nav-btn" data-view="nutrition" data-roles="coach,athlete,admin,owner,viewer,parent"><i class="nav-icon">🥗</i> Nutrition</button>
-    <button class="nav-btn" data-view="settings"  data-roles="coach,athlete,admin,owner"><i class="nav-icon">⚙</i> Settings</button>
-
-    <div class="sidebar-bottom">
-      <div class="user-block" id="userBlock">
-        <div class="user-avatar" id="userAv">CD</div>
+  <!-- ===================== Splash ===================== -->
+  <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading PerformanceIQ">
+    <div class="splash-card">
+      <div class="brand">
+        <div class="logo-dot" aria-hidden="true"></div>
         <div>
-          <div class="user-name" id="userName">Coach</div>
-          <div class="user-role" id="userRole">PerformanceIQ</div>
+          <div class="brand-title">PerformanceIQ</div>
+          <div class="brand-sub">Offline-first · Team-ready</div>
         </div>
       </div>
+      <div class="splash-loading" aria-hidden="true">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+      </div>
+      <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace…</div>
     </div>
+  </div>
+
+  <!-- ===================== Topbar ===================== -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <div class="appmark" aria-label="PerformanceIQ">
+        <span class="appmark-dot" aria-hidden="true"></span>
+        <span class="appmark-title">PerformanceIQ</span>
+      </div>
+      <span class="pill" id="savePill" aria-live="polite">
+        <span class="dot" id="saveDot"></span>
+        <span id="saveText">Saved</span>
+      </span>
+      <span class="pill" id="teamPill">Team: —</span>
+      <span class="pill" id="cloudPill">Cloud: Local</span>
+      <button class="iconbtn" id="btnThemeToggle" type="button" aria-label="Toggle dark/light">☾</button>
+    </div>
+    <div class="topbar-right">
+      <button class="btn ghost" id="btnHelp"    type="button">Help</button>
+      <button class="btn"       id="btnAccount" type="button" aria-haspopup="dialog">Account</button>
+    </div>
+  </header>
+
+  <!-- ===================== Layout ===================== -->
+  <main class="layout" id="mainContent">
+
+    <!-- Desktop sidebar -->
+    <nav class="nav" role="navigation" aria-label="Primary navigation" id="desktopNav">
+      <button class="navbtn" data-view="home"    type="button" aria-current="page">Home</button>
+      <button class="navbtn" data-view="team"    type="button">Team</button>
+      <button class="navbtn" data-view="train"   type="button">Train</button>
+      <button class="navbtn" data-view="profile" type="button">Profile</button>
+    </nav>
+
+    <section class="content" aria-live="polite" aria-atomic="false">
+
+      <!-- ═══════════════════════════════════════════════
+           HOME
+      ═══════════════════════════════════════════════ -->
+      <section class="view" id="view-home" role="region" aria-label="Home" tabindex="-1">
+        <div class="card">
+          <div class="row between" style="gap:10px;flex-wrap:wrap">
+            <div>
+              <div class="card-title">Home</div>
+              <div class="small muted" id="homeSub">Welcome back.</div>
+            </div>
+            <div class="row gap wrap">
+              <button class="btn" id="todayButton" type="button">Generate → Start → Log</button>
+              <span class="pill" id="todayTimer" aria-live="polite">No timer running</span>
+              <button class="iconbtn" id="tipToday" type="button" aria-label="Help">?</button>
+            </div>
+          </div>
+
+          <div class="grid2" style="margin-top:12px">
+            <!-- Today block -->
+            <div class="mini">
+              <div class="row between">
+                <div class="minihead">Today</div>
+                <button class="iconbtn" id="tipQuick" type="button" aria-label="Help">?</button>
+              </div>
+              <div class="minibody" id="todayBlock" aria-live="polite">—</div>
+            </div>
+
+            <!-- Quick actions + PIQ score -->
+            <div class="mini">
+              <div class="minihead">Quick actions</div>
+              <div class="row gap wrap">
+                <button class="btn"       id="qaTrain" type="button">Open Train</button>
+                <button class="btn ghost" id="qaTeam"  type="button">Manage Team</button>
+              </div>
+              <div class="hr"></div>
+              <div class="minihead">PerformanceIQ Score</div>
+              <div class="minibody" id="piqScoreHome">—</div>
+              <div class="small muted" id="piqScoreNote" style="margin-top:6px">Score updates as you log.</div>
+            </div>
+          </div>
+
+          <!-- Streak + Badges shelf on Home -->
+          <div style="margin-top:16px" id="badgesBody"></div>
+
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════
+           TEAM
+      ═══════════════════════════════════════════════ -->
+      <section class="view" id="view-team" role="region" aria-label="Team" tabindex="-1" hidden>
+        <div class="card">
+          <div class="row between">
+            <div>
+              <div class="card-title">Team</div>
+              <div class="small muted">Roster, roles, join codes, and dashboards.</div>
+            </div>
+            <button class="iconbtn" id="tipTeam" type="button" aria-label="Help">?</button>
+          </div>
+          <div id="teamBody" style="margin-top:12px" aria-live="polite"></div>
+
+          <!-- Coach–Athlete Messaging -->
+          <div style="margin-top:16px" id="messagingBody"></div>
+
+          <!-- Parent Portal -->
+          <div style="margin-top:16px" id="parentPortalBody"></div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════
+           TRAIN
+      ═══════════════════════════════════════════════ -->
+      <section class="view" id="view-train" role="region" aria-label="Train" tabindex="-1" hidden>
+        <div class="card">
+          <div class="row between">
+            <div>
+              <div class="card-title">Train</div>
+              <div class="small muted" id="trainSub">Sport-specific workouts tailored to your level and equipment.</div>
+            </div>
+            <button class="iconbtn" id="tipTrain2" type="button" aria-label="Help">?</button>
+          </div>
+
+          <!-- Workout generator controls — rendered by renderTrain() -->
+          <div id="trainBody" style="margin-top:12px" aria-live="polite"></div>
+
+          <!-- AI Training Suggestions -->
+          <div style="margin-top:16px" id="aiSuggestionsBody"></div>
+
+          <!-- Year-over-Year Analytics -->
+          <div style="margin-top:16px" id="adAnalyticsBody"></div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════
+           PROFILE
+      ═══════════════════════════════════════════════ -->
+      <section class="view" id="view-profile" role="region" aria-label="Profile" tabindex="-1" hidden>
+        <div class="card">
+          <div class="row between">
+            <div>
+              <div class="card-title">Profile</div>
+              <div class="small muted">Setup, insights, nutrition, health, and more.</div>
+            </div>
+            <button class="iconbtn" id="tipProfile" type="button" aria-label="Help">?</button>
+          </div>
+
+          <!-- Periodization wizard + insights rendered here -->
+          <div id="profileBody" style="margin-top:12px" aria-live="polite"></div>
+
+          <!-- Personal Records -->
+          <div style="margin-top:16px" id="prTrackerBody"></div>
+
+          <!-- Meal Plan -->
+          <div style="margin-top:16px" id="mealPlanBody"></div>
+
+          <!-- Health Sync (Apple Health / Google Fit / BLE) -->
+          <div style="margin-top:16px" id="healthSyncBody"></div>
+
+          <!-- Smartwatch / WearOS -->
+          <div style="margin-top:16px" id="wearableBody"></div>
+
+          <!-- Barcode Scanner for nutrition -->
+          <div style="margin-top:16px" id="barcodeScanBody"></div>
+
+          <!-- Report links -->
+          <div style="margin-top:16px" id="reportLinksBody"></div>
+        </div>
+      </section>
+
+    </section>
+  </main>
+
+  <!-- ===================== Mobile bottom nav ===================== -->
+  <nav class="bottomnav" id="bottomNav" aria-label="Bottom navigation">
+    <button class="tab" data-view="home"    type="button" aria-current="page"><span class="tablbl">Home</span></button>
+    <button class="tab" data-view="team"    type="button"><span class="tablbl">Team</span></button>
+    <button class="tab" data-view="train"   type="button"><span class="tablbl">Train</span></button>
+    <button class="tab" data-view="profile" type="button"><span class="tablbl">Profile</span></button>
   </nav>
 
-  <main class="main-content" id="mainContent">
+  <!-- ===================== FAB ===================== -->
+  <button class="fab" id="fab" type="button" aria-label="Quick log">+</button>
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+  <div class="sheet" id="fabSheet" role="dialog" aria-modal="true" aria-labelledby="fabSheetTitle" aria-hidden="true" hidden>
+    <div class="sheet-head">
+      <div class="sheet-title" id="fabSheetTitle">Quick log</div>
+      <button class="btn ghost" id="btnCloseSheet" type="button">Close</button>
+    </div>
+    <div class="sheet-body">
+      <button class="btn"       id="fabLogWorkout"   type="button">Log workout</button>
+      <button class="btn ghost" id="fabLogNutrition" type="button">Log nutrition</button>
+      <button class="btn ghost" id="fabLogWellness"  type="button">Log wellness</button>
+    </div>
+  </div>
 
-    <!-- DASHBOARD -->
-    <section class="view active" id="view-dashboard">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow" id="dashEyebrow">Team Overview</div>
-          <div class="page-title" id="dashTitle">PerformanceIQ</div>
-          <div class="page-sub" id="dashSub">Basketball · Pre-Season</div>
-        </div>
-        <div class="page-actions">
-          <button class="btn ghost btn-sm coach-only" id="btnRefreshDash" aria-label="Refresh dashboard">↺ Refresh</button>
-          <button class="btn btn-sm coach-only" id="btnExportDash" aria-label="Export report">📤 Export</button>
-        </div>
+  <!-- ===================== Account Drawer ===================== -->
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <aside class="drawer" id="accountDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <div class="drawer-title" id="drawerTitle">Account</div>
+        <div class="small muted">Preferences · appearance · data management</div>
       </div>
+      <button class="btn ghost" id="btnCloseDrawer" type="button">Close</button>
+    </div>
 
-      <!-- Athlete personal dashboard (role=athlete) -->
-      <div id="dashAthleteMount" style="display:none"></div>
+    <div class="drawer-body">
 
-      <!-- Coach / admin team dashboard -->
-      <div id="dashCoachContent">
-
-      <!-- Stat cards -->
-      <div class="stat-grid">
-        <div class="stat-card good">
-          <div class="stat-header">
-            <div class="stat-label">Avg PerformanceIQ</div>
-            <div class="stat-icon good">📊</div>
-          </div>
-          <div class="stat-value good" id="statAvg">—</div>
-          <div class="stat-sub" id="statAvgSub">No athletes yet</div>
-        </div>
-        <div class="stat-card good">
-          <div class="stat-header">
-            <div class="stat-label">Athletes Ready</div>
-            <div class="stat-icon good">✅</div>
-          </div>
-          <div class="stat-value good" id="statReady">—</div>
-          <div class="stat-sub" id="statReadySub">Add athletes to begin</div>
-        </div>
-        <div class="stat-card danger">
-          <div class="stat-header">
-            <div class="stat-label">At Risk</div>
-            <div class="stat-icon danger">⚠️</div>
-          </div>
-          <div class="stat-value danger" id="statRisk">—</div>
-          <div class="stat-sub" id="statRiskSub">—</div>
-        </div>
-        <div class="stat-card info">
-          <div class="stat-header">
-            <div class="stat-label">Roster Size</div>
-            <div class="stat-icon info">🏃</div>
-          </div>
-          <div class="stat-value info" id="statRoster">0</div>
-          <div class="stat-sub">Total athletes</div>
-        </div>
-      </div>
-
-      <!-- Main grid: heatmap + readiness -->
-      <div class="grid-main">
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title">Training Load Heatmap — Last 14 Days</div>
-          </div>
-          <div style="padding:16px 20px" id="teamHeatmap"></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title">Roster Readiness</div>
-            <a href="#athletes" class="panel-link" id="viewAllAthletes">View All →</a>
-          </div>
-          <div class="roster-ring-wrap">
-            <div id="rosterRing"></div>
-            <div class="roster-legend" id="rosterMini"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Readiness table -->
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title">Athlete Readiness Board</div>
-        </div>
-        <div class="table-wrap">
-          <table class="readiness-table" aria-label="Athlete readiness board">
-            <thead>
-              <tr>
-                <th>Athlete</th>
-                <th>PerformanceIQ</th>
-                <th>ACWR</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="readinessTable"></tbody>
-          </table>
-        </div>
-      </div>
-      </div><!-- /dashCoachContent -->
-    </section>
-
-    <!-- ATHLETES -->
-    <section class="view" id="view-athletes">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow">Roster</div>
-          <div class="page-title">Athletes</div>
-          <div class="page-sub" id="athleteCountSub">0 athletes</div>
-        </div>
-        <div class="page-actions">
-          <input class="form-input" id="athleteFilterInput" type="text" placeholder="Filter athletes…" aria-label="Filter athletes" style="max-width:220px" />
-        </div>
-      </div>
-      <div id="athleteCardGrid" class="grid-3" style="align-items:start"></div>
-      <!-- Athlete detail panel (shown in place of grid) -->
-      <div id="athleteDetail" style="display:none">
-        <button class="btn ghost btn-sm" id="backToList" aria-label="Back to athlete list">← Back</button>
-        <div style="margin-top:16px">
-          <div class="page-title" id="detailHero">Athlete</div>
-          <div class="page-sub"  id="detailTier">—</div>
-          <div class="small-muted" id="detailScoreNote"></div>
-        </div>
-        <div class="grid-2" style="margin-top:18px">
-          <div class="panel">
-            <div class="panel-header"><div class="panel-title">Load</div></div>
-            <div style="padding:14px 16px" id="detailLoad">—</div>
-          </div>
-          <div class="panel">
-            <div class="panel-header"><div class="panel-title">Wellness</div></div>
-            <div style="padding:14px 16px" id="detailWellness">—</div>
-          </div>
-          <div class="panel">
-            <div class="panel-header"><div class="panel-title">Last Workout</div></div>
-            <div style="padding:14px 16px" id="detailWorkout">—</div>
-          </div>
-          <div class="panel">
-            <div class="panel-header"><div class="panel-title">Insight</div></div>
-            <div style="padding:14px 16px" id="detailInsight">—</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- TRAIN -->
-    <section class="view" id="view-train">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow">Session Builder</div>
-          <div class="page-title">Train</div>
-          <div class="page-sub">Generate &amp; log training sessions</div>
-        </div>
-      </div>
-
-      <!-- Athlete personal session log (role=athlete) -->
-      <div id="trainAthleteMount" style="display:none"></div>
-
-      <!-- Coach session builder -->
-      <div id="trainCoachBuilder">
-      <div class="grid-2">
-        <div class="panel">
-          <div class="panel-header"><div class="panel-title">Build Session</div></div>
-          <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
-            <div class="form-group">
-              <div class="form-label">Sport</div>
-              <select class="form-select" id="buildSport" aria-label="Sport">
-                <option value="basketball">Basketball</option>
-                <option value="football">Football</option>
-                <option value="soccer">Soccer</option>
-                <option value="baseball">Baseball</option>
-                <option value="volleyball">Volleyball</option>
-                <option value="track">Track</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <div class="form-label">Session Type</div>
-              <select class="form-select" id="buildType" aria-label="Session type">
-                <option value="practice">Practice</option>
-                <option value="strength">Strength</option>
-                <option value="speed">Speed</option>
-                <option value="conditioning">Conditioning</option>
-                <option value="recovery">Recovery</option>
-                <option value="competition">Competition Prep</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <div class="form-label">Duration (min)</div>
-              <input class="form-input" id="buildDuration" type="number" min="15" max="180" value="60" aria-label="Duration in minutes" />
-            </div>
-            <div class="form-group">
-              <div class="form-label">Intensity (RPE 1–10)</div>
-              <input class="form-input" id="buildIntensity" type="number" min="1" max="10" value="6" aria-label="Intensity RPE" />
-            </div>
-            <button class="btn" id="btnGenerate" type="button">⚡ Generate Session</button>
-          </div>
-        </div>
-
-        <div id="generatedSessionWrap" style="display:none">
-          <div class="panel">
-            <div class="panel-header"><div class="panel-title">Generated Session</div></div>
-            <div style="padding:16px" id="generatedSession"></div>
-            <div style="padding:0 16px 16px;display:flex;gap:10px">
-              <button class="btn" id="btnPushToday" type="button">📌 Push to Today</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      </div><!-- /trainCoachBuilder -->
-    </section>
-
-    <!-- ANALYTICS -->
-    <section class="view" id="view-analytics">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow">Performance Data</div>
-          <div class="page-title">Analytics</div>
-          <div class="page-sub" id="analyticsSub">Team analytics snapshot</div>
-        </div>
-        <div class="page-actions">
-          <button class="btn ghost btn-sm" id="btnExportAnalytics" aria-label="Export analytics">📄 Export</button>
-        </div>
-      </div>
-      <div id="analyticsBody"></div>
-    </section>
-
-    <!-- SCHEDULE -->
-    <section class="view" id="view-schedule">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow">Calendar</div>
-          <div class="page-title">Schedule</div>
-          <div class="page-sub">Events & periodization plan</div>
-        </div>
-      </div>
-      <div id="fullEventList"></div>
-    </section>
-
-    <!-- WELLNESS
-         FIX: wellnessMount and wellnessSub were referenced by wellness.js
-         but these IDs didn't exist in the original HTML — view was empty.
-    -->
-    <section class="view" id="view-wellness">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow">Daily Check-in</div>
-          <div class="page-title">Wellness</div>
-          <div class="page-sub" id="wellnessSub">Log daily wellness to drive PIQ and risk insights.</div>
-        </div>
-        <div class="page-actions">
-          <button class="btn" id="btnSaveWellness" type="button">💾 Save Wellness</button>
-        </div>
-      </div>
-      <div id="wellnessMount"></div>
-    </section>
-
-    <!-- NUTRITION
-         FIX: nutritionRoot was referenced by nutrition.js
-         but this ID didn't exist in the original HTML — view was empty.
-    -->
-    <section class="view" id="view-nutrition">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow">Fueling</div>
-          <div class="page-title">Nutrition</div>
-          <div class="page-sub">Track macros and meal targets</div>
-        </div>
-        <div class="page-actions">
-          <button class="btn ghost btn-sm" id="btnSaveNutrition" type="button">💾 Save</button>
-        </div>
-      </div>
-      <div id="nutritionRoot"></div>
-    </section>
-
-    <!-- SETTINGS -->
-    <section class="view" id="view-settings">
-      <div class="page-header">
-        <div>
-          <div class="page-eyebrow">Configuration</div>
-          <div class="page-title">Settings</div>
-          <div class="page-sub">Team configuration and data management</div>
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <div class="card card-body">
-          <div class="section-label">TEAM PROFILE</div>
-
-          <div class="form-group" style="margin-bottom:13px">
-            <div class="form-label">Role</div>
-            <select class="form-select" id="settingRole" aria-label="Role">
-              <option selected value="coach">Coach</option>
-              <option value="athlete">Athlete</option>
-              <option value="admin">Admin / AD</option>
-              <option value="parent">Parent</option>
+      <!-- Role, Sport & Athlete Setup -->
+      <div class="card subtle" role="group">
+        <div class="card-title">Role &amp; Sport</div>
+        <div class="grid2" style="margin-top:10px">
+          <div class="field">
+            <label for="roleSelect">Role</label>
+            <select id="roleSelect">
               <option value="owner">Owner</option>
+              <option value="coach">Coach</option>
+              <option value="athlete">Athlete</option>
+              <option value="parent">Parent</option>
               <option value="viewer">Viewer</option>
             </select>
           </div>
-
-          <!-- Shown only when role = athlete -->
-          <div class="form-group athlete-only" id="athleteProfileGroup" style="margin-bottom:13px;display:none">
-            <div class="form-label">Your Athlete Profile</div>
-            <select class="form-select" id="settingAthleteId" aria-label="Select your athlete profile">
-              <option value="">— Select your name —</option>
+          <div class="field">
+            <label for="sportSelect">Sport</label>
+            <!-- Populated dynamically by core.js from SPORT_MICROBLOCKS -->
+            <select id="sportSelect">
+              <option value="basketball">🏀 Basketball</option>
+              <option value="football">🏈 Football</option>
+              <option value="soccer">⚽ Soccer</option>
+              <option value="baseball">⚾ Baseball / Softball</option>
+              <option value="volleyball">🏐 Volleyball</option>
+              <option value="track">🏃 Track &amp; Field</option>
+              <option value="swimming">🏊 Swimming</option>
+              <option value="wrestling">🤼 Wrestling</option>
+              <option value="lacrosse">🥍 Lacrosse</option>
+              <option value="tennis">🎾 Tennis</option>
             </select>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">The athlete dashboard will show your personal stats.</div>
           </div>
-
-          <div class="form-group" style="margin-bottom:13px">
-            <div class="form-label">Team Name</div>
-            <input class="form-input" id="settingTeamName" type="text" value="Westview Varsity Basketball" aria-label="Team name" />
-          </div>
-
-          <div class="form-grid">
-            <div class="form-group">
-              <div class="form-label">Sport</div>
-              <select class="form-select" id="settingSport" aria-label="Sport">
-                <option selected value="basketball">Basketball</option>
-                <option value="football">Football</option>
-                <option value="soccer">Soccer</option>
-                <option value="baseball">Baseball</option>
-                <option value="volleyball">Volleyball</option>
-                <option value="track">Track</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <div class="form-label">Season Phase</div>
-              <select class="form-select" id="settingSeason" aria-label="Season phase">
-                <option selected>Pre-Season</option>
-                <option>In-Season</option>
-                <option>Post-Season</option>
-                <option>Off-Season</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <div class="form-label">Theme</div>
-              <select class="form-select" id="settingTheme" aria-label="Theme">
-                <option selected value="dark">Dark</option>
-                <option value="light">Light</option>
-              </select>
-            </div>
-          </div>
-
-          <button class="btn" id="btnSaveSettings" style="margin-top:16px" type="button">Save Changes</button>
         </div>
 
-        <div class="card card-body">
-          <div class="section-label">DATA MANAGEMENT</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn ghost btn-sm" id="btnExportData"     type="button">📤 Export JSON Backup</button>
-            <button class="btn ghost btn-sm" id="btnImportData"     type="button">📥 Import JSON</button>
-            <button class="btn ghost btn-sm" id="btnShowOnboarding" type="button">🔁 Re-run Onboarding</button>
-            <button class="btn danger btn-sm" id="btnResetData"     type="button">⚠ Reset to Demo Data</button>
-          </div>
-          <input accept="application/json" id="importFileInput" style="display:none" type="file" aria-label="Import JSON file" />
+        <div class="field" style="margin-top:10px">
+          <label for="preferredSessionSelect">Preferred session type</label>
+          <select id="preferredSessionSelect">
+            <option value="practice">Practice</option>
+            <option value="strength">Strength</option>
+            <option value="speed">Speed</option>
+            <option value="conditioning">Conditioning</option>
+            <option value="recovery">Recovery</option>
+            <option value="competition_prep">Competition Prep</option>
+          </select>
+        </div>
+
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn"       id="btnSaveProfile" type="button">Save</button>
+          <button class="btn ghost" id="btnRunTour"     type="button">Tour</button>
         </div>
       </div>
-    </section>
 
-  </main>
-</div>
+      <!-- Appearance -->
+      <div class="card subtle" style="margin-top:12px" role="group">
+        <div class="card-title">Appearance</div>
+        <div class="grid2" style="margin-top:10px">
+          <div class="field">
+            <label for="themeModeSelect">Mode</label>
+            <select id="themeModeSelect">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="themeSportSelect">Accent sport</label>
+            <select id="themeSportSelect">
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+              <option value="soccer">Soccer</option>
+              <option value="baseball">Baseball</option>
+              <option value="volleyball">Volleyball</option>
+              <option value="track">Track</option>
+            </select>
+          </div>
+        </div>
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn" id="btnSaveTheme" type="button">Save theme</button>
+        </div>
+      </div>
 
-<!-- Mobile Bottom Nav -->
-<nav aria-label="Mobile primary navigation" class="mobile-nav">
-  <button aria-label="Dashboard" class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="dashboard">🏠<span>Home</span></button>
-  <button aria-label="Athletes"  class="mnav-btn" data-roles="coach,admin,owner"                       data-view="athletes">🏃<span>Athletes</span></button>
-  <button aria-label="Train"     class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="train">⚡<span>Train</span></button>
-  <button aria-label="Analytics" class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="analytics">📊<span>Analytics</span></button>
-  <button aria-label="Schedule"  class="mnav-btn" data-roles="coach,athlete,admin,owner,viewer,parent" data-view="schedule">📅<span>Schedule</span></button>
-</nav>
+      <!-- Data Management -->
+      <div class="card subtle" style="margin-top:12px" role="group">
+        <div class="card-title">Data Management</div>
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn ghost" id="btnExport" type="button">Export JSON</button>
+          <label class="btn ghost" style="cursor:pointer">
+            Import JSON
+            <input id="fileImport" type="file" accept="application/json" style="display:none" />
+          </label>
+          <button class="btn danger" id="btnResetLocal" type="button">Reset local</button>
+        </div>
+        <div class="row gap wrap" style="margin-top:10px">
+          <button class="btn" id="btnRunGrade" type="button">Run QA Grade</button>
+        </div>
+        <div class="small muted" id="dataMsg"    style="margin-top:8px" aria-live="polite">—</div>
+        <pre  id="gradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px" aria-live="polite">—</pre>
+      </div>
 
-<div class="toast-container" id="toastContainer" role="status" aria-live="polite"></div>
+      <!-- Cloud -->
+      <div class="card subtle" style="margin-top:12px" role="group">
+        <div class="card-title">Cloud (optional)</div>
+        <div class="small muted">Offline-first build. Cloud sync is a later phase.</div>
+      </div>
 
-<!-- MAIN APP ENTRY
-     FIX: original had both app.js and boot.js loaded; boot.js imports app.js,
-     so only boot.js needs the script tag. Removed duplicate app.js tag.
--->
-<script type="module" src="./js/boot.js?v=20260303b"></script>
+    </div>
+  </aside>
+
+  <!-- ===================== Help Drawer ===================== -->
+  <div class="drawer-backdrop" id="helpBackdrop" hidden></div>
+  <aside class="drawer drawer-help" id="helpDrawer" role="dialog" aria-modal="true" aria-labelledby="helpDrawerTitle" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <div class="drawer-title" id="helpDrawerTitle">Help</div>
+        <div class="small muted">Searchable guidance</div>
+      </div>
+      <button class="btn ghost" id="btnCloseHelp" type="button">Close</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field">
+        <label for="helpSearch">Search</label>
+        <input id="helpSearch" type="search" placeholder="Try: today, session types, risk, nutrition…" autocomplete="off" />
+      </div>
+      <div id="helpResults" style="margin-top:10px" aria-live="polite"></div>
+    </div>
+  </aside>
+
+  <!-- ===================== Toasts ===================== -->
+  <div class="toast"    id="toast"    hidden role="status"  aria-live="polite"    aria-atomic="true"></div>
+  <div                  id="undoToast" hidden role="status" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- ===================== Scripts ===================== -->
+  <script src="./dataStore.js"></script>
+  <script src="./nutritionEngine.js"></script>
+  <script src="./periodizationEngine.js"></script>
+  <script src="./core.js"></script>
+
+  <script>
+    (function () {
+      var splash = document.getElementById("splash");
+      var splashText = document.getElementById("splashText");
+      function hide() {
+        if (!splash) return;
+        splash.setAttribute("aria-hidden", "true");
+        splash.classList.add("hidden");
+        setTimeout(function () { splash.style.display = "none"; }, 300);
+      }
+      setTimeout(function () {
+        if (splashText) splashText.textContent = "Ready.";
+        hide();
+      }, 650);
+      setTimeout(hide, 2000);
+    })();
+  </script>
 
 </body>
 </html>
