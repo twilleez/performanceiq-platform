@@ -1,399 +1,324 @@
-<!doctype html>
-<html lang="en" data-theme="dark">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b0f14" />
-  <meta name="description" content="PerformanceIQ — Offline-first team performance tracking" />
-  <meta name="color-scheme" content="dark light" />
-  <link rel="icon" href="data:,">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F5C842">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PIQ">
   <title>PerformanceIQ</title>
-  <link rel="stylesheet" href="./styles.css" />
+
+  <!-- [FIX 3] Typography system: Bebas Neue + Barlow Condensed + DM Sans + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- [FIX 6] PWA Manifest -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+
+  <!-- App stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- [FIX 2] OneSignal Push SDK — replace appId with yours -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({ appId: "YOUR_ONESIGNAL_APP_ID" });
+    });
+  </script>
 </head>
 
-<body>
+<body data-role="athlete" data-sport="basketball">
 
-  <!-- ===================== Splash ===================== -->
-  <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading PerformanceIQ">
-    <div class="splash-card">
-      <div class="brand">
-        <div class="logo-dot" aria-hidden="true"></div>
-        <div>
-          <div class="brand-title">PerformanceIQ</div>
-          <div class="brand-sub">Offline-first · Team-ready</div>
-        </div>
-      </div>
-      <div class="splash-loading" aria-hidden="true">
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
-      </div>
-      <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace…</div>
-    </div>
+  <!-- ═══════════════════════════════════════════════════════════
+       LOADING SCREEN
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="loading-screen" style="
+    position:fixed;inset:0;z-index:9999;
+    background:var(--void);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px
+  ">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:0.08em;color:var(--gold)">PERFORMANCEIQ</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.1em">PREPARING YOUR WORKSPACE…</div>
+    <div class="spinner" style="width:24px;height:24px;border:3px solid var(--void-4);border-top-color:var(--gold);border-radius:50%;margin-top:8px"></div>
   </div>
 
-  <!-- ===================== Topbar ===================== -->
-  <header class="topbar" role="banner">
-    <div class="topbar-left">
-      <div class="appmark" aria-label="PerformanceIQ">
-        <span class="appmark-dot" aria-hidden="true"></span>
-        <span class="appmark-title">PerformanceIQ</span>
-      </div>
-      <span class="pill" id="savePill" aria-live="polite">
-        <span class="dot" id="saveDot"></span>
+  <!-- ═══════════════════════════════════════════════════════════
+       APP SHELL
+  ═══════════════════════════════════════════════════════════ -->
+  <div id="app">
+
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-brand">PERFORMANCEIQ</div>
+
+      <div class="save-pill" id="save-pill" title="Save">
+        <div class="save-dot" id="saveDot"></div>
         <span id="saveText">Saved</span>
-      </span>
-      <span class="pill" id="teamPill">Team: —</span>
-      <span class="pill" id="cloudPill">Cloud: Local</span>
-      <button class="iconbtn" id="btnThemeToggle" type="button" aria-label="Toggle dark/light">☾</button>
-    </div>
-    <div class="topbar-right">
-      <button class="btn ghost" id="btnHelp"    type="button">Help</button>
-      <button class="btn"       id="btnAccount" type="button" aria-haspopup="dialog">Account</button>
-    </div>
-  </header>
+      </div>
 
-  <!-- ===================== Session Timer Bar ===================== -->
-  <div class="session-timer-bar" id="sessionTimerBar" aria-live="polite">
-    <div>
-      <div class="session-timer-label" id="sessionTimerLabel">Session running</div>
-      <div class="session-timer-display" id="sessionTimerDisplay">0:00</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <span id="sessionTimerSport" class="pill" style="font-size:12px"></span>
-      <button class="btn ghost" id="btnEndSession" type="button" style="font-size:13px;padding:8px 12px">End + Log</button>
-    </div>
-  </div>
+      <button id="btn-account" class="btn btn-secondary btn-sm" style="margin-left:8px">Account</button>
+      <button id="btn-help"    class="btn btn-secondary btn-sm">Help</button>
+    </header>
 
-  <!-- ===================== Layout ===================== -->
-  <main class="layout" id="mainContent">
+    <!-- MAIN CONTENT -->
+    <main class="main" style="padding-bottom:80px">
 
-    <!-- Desktop sidebar -->
-    <nav class="nav" role="navigation" aria-label="Primary navigation" id="desktopNav">
-      <button class="navbtn" data-view="home"    type="button" aria-current="page">Home</button>
-      <button class="navbtn" data-view="team"    type="button">Team</button>
-      <button class="navbtn" data-view="train"   type="button">Train</button>
-      <button class="navbtn" data-view="profile" type="button">Profile</button>
+      <!-- ───────────── HOME VIEW ───────────── -->
+      <section id="view-home" class="view fade-up">
+
+        <!-- [FIX 1] PIQ Score Ring — always shows a value -->
+        <div id="piq-ring-wrap" class="piq-ring-wrap" title="Tap to see score breakdown">
+          <div class="piq-ring" id="piq-ring" style="--piq-pct:5">
+            <span class="piq-ring-num" id="piq-ring-num">?</span>
+          </div>
+          <div class="piq-ring-label">PERFORMANCEIQ SCORE</div>
+          <div class="piq-ring-tap-hint" id="piq-ring-tap-hint">TAP TO GET YOUR SCORE</div>
+        </div>
+
+        <!-- Streak badge -->
+        <div style="display:flex;justify-content:center;margin-bottom:16px">
+          <div class="streak-badge">🔥 <span id="streak-display">0</span>d STREAK</div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="quick-actions">
+          <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=train]').click()">
+            <div class="quick-btn-icon">⚡</div>Open Train
+          </button>
+          <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=team]').click()">
+            <div class="quick-btn-icon">👥</div>Manage Team
+          </button>
+          <button class="quick-btn" onclick="window.openStatCardGenerator?.('manual')">
+            <div class="quick-btn-icon">📤</div>Share Card
+          </button>
+          <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=messages]').click()">
+            <div class="quick-btn-icon">💬</div>Messages
+          </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Nav cards -->
+        <div class="card" onclick="document.querySelector('.nav-btn[data-view=team]').click()" style="cursor:pointer">
+          <div class="card-label">TEAM</div>
+          <div class="card-title">Roster, roles, join codes, and dashboards</div>
+        </div>
+        <div class="card" onclick="document.querySelector('.nav-btn[data-view=train]').click()" style="cursor:pointer">
+          <div class="card-label">TRAIN</div>
+          <div class="card-title">Sport-specific workouts tailored to your level</div>
+        </div>
+        <div class="card" onclick="document.querySelector('.nav-btn[data-view=profile]').click()" style="cursor:pointer">
+          <div class="card-label">PROFILE</div>
+          <div class="card-title">Setup, insights, nutrition, health, and more</div>
+        </div>
+      </section>
+
+      <!-- ───────────── TEAM VIEW ───────────── -->
+      <section id="view-team" class="view" hidden>
+        <div class="section-head">
+          <div class="section-title">TEAM</div>
+          <button class="btn btn-primary btn-sm">+ Add Athlete</button>
+        </div>
+        <div class="empty-state">
+          <div class="empty-state-icon">👥</div>
+          <div class="empty-state-title">NO ROSTER YET</div>
+          <div class="empty-state-sub">Add athletes or share your join code to get started</div>
+        </div>
+      </section>
+
+      <!-- ───────────── TRAIN VIEW ───────────── -->
+      <section id="view-train" class="view" hidden>
+        <div class="section-head">
+          <div class="section-title">TRAIN</div>
+        </div>
+        <div class="card">
+          <div class="card-label">GENERATE WORKOUT</div>
+          <div class="card-title">Sport-specific, level-matched sessions</div>
+          <button class="btn btn-primary btn-full mt-12" id="btn-gen-workout">Generate Workout →</button>
+        </div>
+        <div id="workout-output"></div>
+      </section>
+
+      <!-- ───────────── MESSAGES VIEW ───────────── -->
+      <!-- [FIX 5] In-app messaging -->
+      <section id="view-messages" class="view" hidden>
+        <!-- Rendered by renderMessagingView() in core.js -->
+        <div class="section-head">
+          <div class="section-title">MESSAGES</div>
+        </div>
+        <div class="empty-state">
+          <div class="empty-state-icon">💬</div>
+          <div class="empty-state-title">LOADING…</div>
+        </div>
+      </section>
+
+      <!-- ───────────── PROFILE VIEW ───────────── -->
+      <section id="view-profile" class="view" hidden>
+        <div class="section-title" style="margin-bottom:16px">PROFILE</div>
+        <div class="card">
+          <div class="card-label">ACCOUNT</div>
+          <div class="card-title">Settings & Preferences</div>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
+            <div>
+              <label>Your Name</label>
+              <input type="text" id="name-input" placeholder="Full name">
+            </div>
+            <div>
+              <label>Role</label>
+              <select id="role-select">
+                <option value="athlete">Athlete</option>
+                <option value="coach">Coach</option>
+                <option value="parent">Parent</option>
+                <option value="owner">Owner / Admin</option>
+              </select>
+            </div>
+            <div>
+              <label>Sport</label>
+              <select id="sport-select">
+                <option value="basketball">🏀 Basketball</option>
+                <option value="football">🏈 Football</option>
+                <option value="soccer">⚽ Soccer</option>
+                <option value="baseball">⚾ Baseball / Softball</option>
+                <option value="volleyball">🏐 Volleyball</option>
+                <option value="track">🏃 Track & Field</option>
+                <option value="swimming">🏊 Swimming</option>
+                <option value="wrestling">🤼 Wrestling</option>
+                <option value="lacrosse">🥍 Lacrosse</option>
+                <option value="tennis">🎾 Tennis</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="btn-save-profile">Save Profile</button>
+          </div>
+        </div>
+
+        <!-- [FIX 4] Share stat card button -->
+        <div class="card" style="border-color:rgba(61,255,192,0.2)">
+          <div class="card-label">SHARE YOUR STATS</div>
+          <div class="card-title">Generate Your Stat Card</div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+            Export your PIQ Score card for Instagram, TikTok, or Stories.
+          </div>
+          <button class="btn btn-secondary btn-full" id="btn-share-card">📤 Generate Stat Card</button>
+        </div>
+
+        <div class="card">
+          <div class="card-label">DATA</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-sm" onclick="window.dataStore?.exportJSON?.()">Export JSON</button>
+            <button class="btn btn-secondary btn-sm" onclick="window.dataStore?.importJSON?.()">Import JSON</button>
+            <button class="btn btn-danger btn-sm" onclick="if(confirm('Reset all local data?'))window.dataStore?.reset?.()">Reset</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- BOTTOM NAV -->
+    <nav class="nav">
+      <button class="nav-btn active" data-view="home">
+        <div class="nav-btn-icon">🏠</div>Home
+      </button>
+      <button class="nav-btn" data-view="team">
+        <div class="nav-btn-icon">👥</div>Team
+      </button>
+      <button class="nav-btn" data-view="train">
+        <div class="nav-btn-icon">⚡</div>Train
+      </button>
+      <!-- [FIX 5] Messages tab with unread badge -->
+      <button class="nav-btn" data-view="messages" style="position:relative">
+        <div class="nav-btn-icon">💬</div>Messages
+        <div class="nav-badge" style="display:none"></div>
+      </button>
+      <button class="nav-btn" data-view="profile">
+        <div class="nav-btn-icon">👤</div>Profile
+      </button>
     </nav>
 
-    <section class="content" aria-live="polite" aria-atomic="false">
+  </div><!-- /app -->
 
-      <!-- ═══════════════════════════════════════════════
-           HOME
-      ═══════════════════════════════════════════════ -->
-      <section class="view active" id="view-home" role="region" aria-label="Home" tabindex="-1">
-        <div class="card">
-          <div class="row between" style="gap:10px;flex-wrap:wrap">
-            <div>
-              <div class="card-title">Home</div>
-              <div class="small muted" id="homeSub">Welcome back.</div>
-            </div>
-            <div class="row gap wrap">
-              <button class="btn" id="todayButton" type="button">Generate → Start → Log</button>
-              <span class="pill" id="todayTimer" aria-live="polite">No timer running</span>
-              <button class="iconbtn" id="tipToday" type="button" aria-label="Help">?</button>
-            </div>
-          </div>
+  <!-- QUICK LOG FAB -->
+  <button id="fab" style="
+    position:fixed;bottom:80px;right:16px;z-index:200;
+    width:52px;height:52px;border-radius:50%;
+    background:var(--gold);color:var(--void);border:none;
+    font-size:26px;cursor:pointer;
+    box-shadow:0 4px 20px rgba(245,200,66,0.4);
+    display:flex;align-items:center;justify-content:center;
+  ">+</button>
 
-          <div class="grid2" style="margin-top:12px">
-            <!-- Today block -->
-            <div class="mini">
-              <div class="row between">
-                <div class="minihead">Today</div>
-                <button class="iconbtn" id="tipQuick" type="button" aria-label="Help">?</button>
-              </div>
-              <div class="minibody" id="todayBlock" aria-live="polite">—</div>
-            </div>
-
-            <!-- Quick actions + PIQ score -->
-            <div class="mini">
-              <div class="minihead">Quick actions</div>
-              <div class="row gap wrap">
-                <button class="btn"       id="qaTrain" type="button">Open Train</button>
-                <button class="btn ghost" id="qaTeam"  type="button">Manage Team</button>
-              </div>
-              <div class="hr"></div>
-              <div class="minihead">PerformanceIQ Score</div>
-              <div class="minibody" id="piqScoreHome">—</div>
-              <div class="small muted" id="piqScoreNote" style="margin-top:6px">Score updates as you log.</div>
-            </div>
-          </div>
-
-          <!-- Streak + Badges shelf on Home -->
-          <div style="margin-top:16px" id="badgesBody"></div>
-
-        </div>
-      </section>
-
-      <!-- ═══════════════════════════════════════════════
-           TEAM
-      ═══════════════════════════════════════════════ -->
-      <section class="view" id="view-team" role="region" aria-label="Team" tabindex="-1" hidden>
-        <div class="card">
-          <div class="row between">
-            <div>
-              <div class="card-title">Team</div>
-              <div class="small muted">Roster, roles, join codes, and dashboards.</div>
-            </div>
-            <button class="iconbtn" id="tipTeam" type="button" aria-label="Help">?</button>
-          </div>
-          <div id="teamBody" style="margin-top:12px" aria-live="polite"></div>
-
-          <!-- Coach–Athlete Messaging -->
-          <div style="margin-top:16px" id="messagingBody"></div>
-
-          <!-- Parent Portal -->
-          <div style="margin-top:16px" id="parentPortalBody"></div>
-        </div>
-      </section>
-
-      <!-- ═══════════════════════════════════════════════
-           TRAIN
-      ═══════════════════════════════════════════════ -->
-      <section class="view" id="view-train" role="region" aria-label="Train" tabindex="-1" hidden>
-        <div class="card">
-          <div class="row between">
-            <div>
-              <div class="card-title">Train</div>
-              <div class="small muted" id="trainSub">Sport-specific workouts tailored to your level and equipment.</div>
-            </div>
-            <button class="iconbtn" id="tipTrain2" type="button" aria-label="Help">?</button>
-          </div>
-
-          <!-- Workout generator controls — rendered by renderTrain() -->
-          <div id="trainBody" style="margin-top:12px" aria-live="polite"></div>
-
-          <!-- AI Training Suggestions -->
-          <div style="margin-top:16px" id="aiSuggestionsBody"></div>
-
-          <!-- Year-over-Year Analytics -->
-          <div style="margin-top:16px" id="adAnalyticsBody"></div>
-        </div>
-      </section>
-
-      <!-- ═══════════════════════════════════════════════
-           PROFILE
-      ═══════════════════════════════════════════════ -->
-      <section class="view" id="view-profile" role="region" aria-label="Profile" tabindex="-1" hidden>
-        <div class="card">
-          <div class="row between">
-            <div>
-              <div class="card-title">Profile</div>
-              <div class="small muted">Setup, insights, nutrition, health, and more.</div>
-            </div>
-            <button class="iconbtn" id="tipProfile" type="button" aria-label="Help">?</button>
-          </div>
-
-          <!-- Periodization wizard + insights rendered here -->
-          <div id="profileBody" style="margin-top:12px" aria-live="polite"></div>
-
-          <!-- Personal Records -->
-          <div style="margin-top:16px" id="prTrackerBody"></div>
-
-          <!-- Meal Plan -->
-          <div style="margin-top:16px" id="mealPlanBody"></div>
-
-          <!-- Health Sync (Apple Health / Google Fit / BLE) -->
-          <div style="margin-top:16px" id="healthSyncBody"></div>
-
-          <!-- Smartwatch / WearOS -->
-          <div style="margin-top:16px" id="wearableBody"></div>
-
-          <!-- Barcode Scanner for nutrition -->
-          <div style="margin-top:16px" id="barcodeScanBody"></div>
-
-          <!-- Report links -->
-          <div style="margin-top:16px" id="reportLinksBody"></div>
-        </div>
-      </section>
-
-    </section>
-  </main>
-
-  <!-- ===================== Mobile bottom nav ===================== -->
-  <nav class="bottomnav" id="bottomNav" aria-label="Bottom navigation">
-    <button class="tab" data-view="home"    type="button" aria-current="page"><span class="tab-icon">🏠</span><span class="tablbl">Home</span></button>
-    <button class="tab" data-view="team"    type="button"><span class="tab-icon">👥</span><span class="tablbl">Team</span></button>
-    <button class="tab" data-view="train"   type="button"><span class="tab-icon">⚡</span><span class="tablbl">Train</span></button>
-    <button class="tab" data-view="profile" type="button"><span class="tab-icon">👤</span><span class="tablbl">Profile</span></button>
-  </nav>
-
-  <!-- ===================== FAB ===================== -->
-  <button class="fab" id="fab" type="button" aria-label="Quick log">+</button>
-  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
-  <div class="sheet" id="fabSheet" role="dialog" aria-modal="true" aria-labelledby="fabSheetTitle" aria-hidden="true" hidden>
-    <div class="sheet-head">
-      <div class="sheet-title" id="fabSheetTitle">Quick log</div>
-      <button class="btn-close-drawer" id="btnCloseSheet" type="button" aria-label="Close">×</button>
-    </div>
-    <div class="sheet-body">
-      <button class="btn"       id="fabLogWorkout"   type="button">Log workout</button>
-      <button class="btn ghost" id="fabLogNutrition" type="button">Log nutrition</button>
-      <button class="btn ghost" id="fabLogWellness"  type="button">Log wellness</button>
+  <!-- DRAWERS -->
+  <div id="drawer-quick-log" class="modal-backdrop" hidden onclick="if(event.target===this)this.hidden=true">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">QUICK LOG</div>
+        <button class="modal-close" onclick="this.closest('.modal-backdrop').hidden=true">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-secondary btn-full" data-quick-log="workout">⚡ Log Workout</button>
+        <button class="btn btn-secondary btn-full" data-quick-log="nutrition">🥗 Log Nutrition</button>
+        <button class="btn btn-secondary btn-full" data-quick-log="wellness">❤️ Log Wellness</button>
+      </div>
     </div>
   </div>
 
-  <!-- ===================== Account Drawer ===================== -->
-  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
-  <aside class="drawer" id="accountDrawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
-    <div class="drawer-head">
-      <div>
-        <div class="drawer-title" id="drawerTitle">Account</div>
-        <div class="small muted">Preferences · appearance · data management</div>
+  <div id="drawer-account" class="modal-backdrop" hidden onclick="if(event.target===this)this.hidden=true">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">ACCOUNT</div>
+        <button class="modal-close" onclick="this.closest('.modal-backdrop').hidden=true">✕</button>
       </div>
-      <button class="btn-close-drawer" id="btnCloseDrawer" type="button" aria-label="Close account">×</button>
+      <p style="color:var(--text-secondary);font-size:14px">Manage your profile, role, and sport in the Profile tab.</p>
     </div>
+  </div>
 
-    <div class="drawer-body">
-
-      <!-- Role, Sport & Athlete Setup -->
-      <div class="card subtle" role="group">
-        <div class="card-title">Role &amp; Sport</div>
-        <div class="grid2" style="margin-top:10px">
-          <div class="field">
-            <label for="roleSelect">Role</label>
-            <select id="roleSelect">
-              <option value="owner">Owner</option>
-              <option value="coach">Coach</option>
-              <option value="athlete">Athlete</option>
-              <option value="parent">Parent</option>
-              <option value="viewer">Viewer</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="sportSelect">Sport</label>
-            <!-- Populated dynamically by core.js from SPORT_MICROBLOCKS -->
-            <select id="sportSelect">
-              <option value="basketball">🏀 Basketball</option>
-              <option value="football">🏈 Football</option>
-              <option value="soccer">⚽ Soccer</option>
-              <option value="baseball">⚾ Baseball / Softball</option>
-              <option value="volleyball">🏐 Volleyball</option>
-              <option value="track">🏃 Track &amp; Field</option>
-              <option value="swimming">🏊 Swimming</option>
-              <option value="wrestling">🤼 Wrestling</option>
-              <option value="lacrosse">🥍 Lacrosse</option>
-              <option value="tennis">🎾 Tennis</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="field" style="margin-top:10px">
-          <label for="preferredSessionSelect">Preferred session type</label>
-          <select id="preferredSessionSelect">
-            <option value="practice">Practice</option>
-            <option value="strength">Strength</option>
-            <option value="speed">Speed</option>
-            <option value="conditioning">Conditioning</option>
-            <option value="recovery">Recovery</option>
-            <option value="competition_prep">Competition Prep</option>
-          </select>
-        </div>
-
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn"       id="btnSaveProfile" type="button">Save</button>
-          <button class="btn ghost" id="btnRunTour"     type="button">Tour</button>
-        </div>
+  <div id="drawer-help" class="modal-backdrop" hidden onclick="if(event.target===this)this.hidden=true">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">HELP</div>
+        <button class="modal-close" onclick="this.closest('.modal-backdrop').hidden=true">✕</button>
       </div>
-
-      <!-- Appearance -->
-      <div class="card subtle" style="margin-top:12px" role="group">
-        <div class="card-title">Appearance</div>
-        <div class="grid2" style="margin-top:10px">
-          <div class="field">
-            <label for="themeModeSelect">Mode</label>
-            <select id="themeModeSelect">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="themeSportSelect">Accent sport</label>
-            <select id="themeSportSelect">
-              <option value="basketball">Basketball</option>
-              <option value="football">Football</option>
-              <option value="soccer">Soccer</option>
-              <option value="baseball">Baseball</option>
-              <option value="volleyball">Volleyball</option>
-              <option value="track">Track</option>
-            </select>
-          </div>
-        </div>
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn" id="btnSaveTheme" type="button">Save theme</button>
-        </div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:14px;color:var(--text-secondary)">
+        <div><strong style="color:var(--gold)">PIQ Score</strong> — Tap the ring to see your 5-pillar breakdown or take the baseline assessment.</div>
+        <div><strong style="color:var(--mint)">Messages</strong> — Chat with your coach, team, or parents inside the app. No GroupMe needed.</div>
+        <div><strong style="color:var(--blue)">Stat Cards</strong> — Share your score on Instagram or TikTok from Profile tab.</div>
+        <div><strong style="color:var(--text-primary)">Notifications</strong> — Enable push to get streak alerts, score updates, and coach messages.</div>
       </div>
-
-      <!-- Data Management -->
-      <div class="card subtle" style="margin-top:12px" role="group">
-        <div class="card-title">Data Management</div>
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn ghost" id="btnExport" type="button">Export JSON</button>
-          <label class="btn ghost" style="cursor:pointer">
-            Import JSON
-            <input id="fileImport" type="file" accept="application/json" style="display:none" />
-          </label>
-          <button class="btn danger" id="btnResetLocal" type="button">Reset local</button>
-        </div>
-        <div class="row gap wrap" style="margin-top:10px">
-          <button class="btn" id="btnRunGrade" type="button">Run QA Grade</button>
-        </div>
-        <div class="small muted" id="dataMsg"    style="margin-top:8px" aria-live="polite">—</div>
-        <pre  id="gradeReport" class="small muted" style="white-space:pre-wrap;margin-top:8px" aria-live="polite">—</pre>
-      </div>
-
-      <!-- Cloud -->
-      <div class="card subtle" style="margin-top:12px" role="group">
-        <div class="card-title">Cloud (optional)</div>
-        <div class="small muted">Offline-first build. Cloud sync is a later phase.</div>
-      </div>
-
     </div>
-  </aside>
+  </div>
 
-  <!-- ===================== Help Drawer ===================== -->
-  <div class="drawer-backdrop" id="helpBackdrop" hidden></div>
-  <aside class="drawer drawer-help" id="helpDrawer" role="dialog" aria-modal="true" aria-labelledby="helpDrawerTitle" aria-hidden="true">
-    <div class="drawer-head">
-      <div>
-        <div class="drawer-title" id="helpDrawerTitle">Help</div>
-        <div class="small muted">Searchable guidance</div>
-      </div>
-      <button class="btn-close-drawer" id="btnCloseHelp" type="button" aria-label="Close help">×</button>
-    </div>
-    <div class="drawer-body">
-      <div class="field">
-        <label for="helpSearch">Search</label>
-        <input id="helpSearch" type="search" placeholder="Try: today, session types, risk, nutrition…" autocomplete="off" />
-      </div>
-      <div id="helpResults" style="margin-top:10px" aria-live="polite"></div>
-    </div>
-  </aside>
+  <!-- TOAST -->
+  <div id="toast" hidden></div>
 
-  <!-- ===================== Toasts ===================== -->
-  <div class="toast"    id="toast"    hidden role="status"  aria-live="polite"    aria-atomic="true"></div>
-  <div                  id="undoToast" hidden role="status" aria-live="assertive" aria-atomic="true"></div>
+  <!-- SCRIPTS -->
+  <script src="boot.js" type="module"></script>
+  <script src="dataStore.js" type="module"></script>
+  <script src="analyticsEngine.js" type="module"></script>
+  <script src="performanceEngine.js" type="module"></script>
+  <script src="nutritionEngine.js" type="module"></script>
+  <script src="periodizationEngine.js" type="module"></script>
+  <script src="authStore.js" type="module"></script>
+  <script src="core.js"></script>
 
-  <!-- ===================== Scripts ===================== -->
-  <script src="./dataStore.js"></script>
-  <script src="./core.js"></script>
-
+  <!-- [FIX 6] Service Worker Registration -->
   <script>
-    (function () {
-      var splash = document.getElementById("splash");
-      var splashText = document.getElementById("splashText");
-      function hide() {
-        if (!splash) return;
-        splash.setAttribute("aria-hidden", "true");
-        splash.classList.add("hidden");
-        setTimeout(function () { splash.style.display = "none"; }, 300);
-      }
-      setTimeout(function () {
-        if (splashText) splashText.textContent = "Ready.";
-        hide();
-      }, 650);
-      setTimeout(hide, 2000);
-    })();
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(() => console.log('SW registered'))
+          .catch(() => {});
+      });
+    }
+    // Hide loading screen after app boots
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const ls = document.getElementById('loading-screen');
+        if (ls) { ls.style.opacity = '0'; ls.style.transition = 'opacity 0.3s'; setTimeout(() => ls.remove(), 300); }
+      }, 400);
+    });
   </script>
 
 </body>
