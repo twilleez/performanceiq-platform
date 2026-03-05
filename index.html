@@ -10,20 +10,21 @@
   <meta name="apple-mobile-web-app-title" content="PIQ">
   <title>PerformanceIQ</title>
 
-  <!-- [FIX 3] Typography system: Bebas Neue + Barlow Condensed + DM Sans + JetBrains Mono -->
+  <!-- Typography system -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 
-  <!-- [FIX 6] PWA Manifest -->
+  <!-- PWA Manifest -->
   <link rel="manifest" href="./manifest.webmanifest">
+  <!-- FIXED: favicon P was #1B2A4A (invisible), now #F5C842 (gold) -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230D1117'/><text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' font-size='18' font-family='sans-serif' font-weight='900' fill='%23F5C842'>P</text></svg>">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
 
   <!-- App stylesheet -->
   <link rel="stylesheet" href="styles.css">
 
-  <!-- [FIX 2] OneSignal Push SDK — uncomment and replace appId when ready -->
+  <!-- OneSignal Push SDK — uncomment and replace appId when ready -->
   <!--
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script>
@@ -37,62 +38,27 @@
 
 <body data-role="athlete" data-sport="basketball">
 
-  <!-- ═══════════════════════════════════════════════════════════
-       CRITICAL: Unregister any broken service workers on load.
-       Old sw.js tried to cache files that don't exist (boot.js,
-       dataStore.js, analyticsEngine.js, etc.) which caused the
-       SW install to fail — leaving a stale/broken SW intercepting
-       all requests and serving blank pages.
-  ═══════════════════════════════════════════════════════════ -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(registrations) {
-        for (var reg of registrations) {
-          // Force the old SW to update to the new fixed version
-          reg.update();
-        }
-      });
-      // Also clear old caches that may have broken entries
-      if ('caches' in window) {
-        caches.keys().then(function(names) {
-          for (var name of names) {
-            if (name !== 'piq-v4.1') {
-              caches.delete(name);
-            }
-          }
-        });
-      }
-    }
-  </script>
-
-  <!-- ═══════════════════════════════════════════════════════════
-       LOADING SCREEN
-  ═══════════════════════════════════════════════════════════ -->
+  <!-- LOADING SCREEN -->
   <div id="loading-screen" style="
     position:fixed;inset:0;z-index:9999;
-    background:#0D1117;
+    background:var(--void);
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px
   ">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:0.08em;color:#F5C842">PERFORMANCEIQ</div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4A5568;letter-spacing:0.1em">PREPARING YOUR WORKSPACE…</div>
-    <div style="width:24px;height:24px;border:3px solid #2A3347;border-top-color:#F5C842;border-radius:50%;animation:spin 0.8s linear infinite;margin-top:8px"></div>
-    <style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:0.08em;color:var(--gold)">PERFORMANCEIQ</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.1em">PREPARING YOUR WORKSPACE…</div>
+    <div class="spinner" style="width:24px;height:24px;border:3px solid var(--void-4);border-top-color:var(--gold);border-radius:50%;margin-top:8px"></div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════
-       APP SHELL
-  ═══════════════════════════════════════════════════════════ -->
+  <!-- APP SHELL -->
   <div id="app">
 
     <!-- HEADER -->
     <header class="header">
       <div class="header-brand">PERFORMANCEIQ</div>
-
       <div class="save-pill" id="save-pill" title="Save">
         <div class="save-dot" id="saveDot"></div>
         <span id="saveText">Saved</span>
       </div>
-
       <button id="btn-account" class="btn btn-secondary btn-sm" style="margin-left:8px">Account</button>
       <button id="btn-help"    class="btn btn-secondary btn-sm">Help</button>
     </header>
@@ -100,10 +66,8 @@
     <!-- MAIN CONTENT -->
     <main class="main" style="padding-bottom:80px">
 
-      <!-- ───────────── HOME VIEW ───────────── -->
+      <!-- HOME VIEW -->
       <section id="view-home" class="view fade-up">
-
-        <!-- [FIX 1] PIQ Score Ring — always shows a value -->
         <div id="piq-ring-wrap" class="piq-ring-wrap" title="Tap to see score breakdown">
           <div class="piq-ring" id="piq-ring" style="--piq-pct:5">
             <span class="piq-ring-num" id="piq-ring-num">?</span>
@@ -112,12 +76,10 @@
           <div class="piq-ring-tap-hint" id="piq-ring-tap-hint">TAP TO GET YOUR SCORE</div>
         </div>
 
-        <!-- Streak badge -->
         <div style="display:flex;justify-content:center;margin-bottom:16px">
           <div class="streak-badge">🔥 <span id="streak-display">0</span>d STREAK</div>
         </div>
 
-        <!-- Quick actions -->
         <div class="quick-actions">
           <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=train]').click()">
             <div class="quick-btn-icon">⚡</div>Open Train
@@ -135,7 +97,6 @@
 
         <div class="divider"></div>
 
-        <!-- Nav cards -->
         <div class="card" onclick="document.querySelector('.nav-btn[data-view=team]').click()" style="cursor:pointer">
           <div class="card-label">TEAM</div>
           <div class="card-title">Roster, roles, join codes, and dashboards</div>
@@ -150,7 +111,7 @@
         </div>
       </section>
 
-      <!-- ───────────── TEAM VIEW ───────────── -->
+      <!-- TEAM VIEW -->
       <section id="view-team" class="view" hidden>
         <div class="section-head">
           <div class="section-title">TEAM</div>
@@ -163,7 +124,7 @@
         </div>
       </section>
 
-      <!-- ───────────── TRAIN VIEW ───────────── -->
+      <!-- TRAIN VIEW -->
       <section id="view-train" class="view" hidden>
         <div class="section-head">
           <div class="section-title">TRAIN</div>
@@ -176,7 +137,7 @@
         <div id="workout-output"></div>
       </section>
 
-      <!-- ───────────── MESSAGES VIEW ───────────── -->
+      <!-- MESSAGES VIEW -->
       <section id="view-messages" class="view" hidden>
         <div class="section-head">
           <div class="section-title">MESSAGES</div>
@@ -187,7 +148,7 @@
         </div>
       </section>
 
-      <!-- ───────────── PROFILE VIEW ───────────── -->
+      <!-- PROFILE VIEW -->
       <section id="view-profile" class="view" hidden>
         <div class="section-title" style="margin-bottom:16px">PROFILE</div>
         <div class="card">
@@ -226,7 +187,6 @@
           </div>
         </div>
 
-        <!-- [FIX 4] Share stat card button -->
         <div class="card" style="border-color:rgba(61,255,192,0.2)">
           <div class="card-label">SHARE YOUR STATS</div>
           <div class="card-title">Generate Your Stat Card</div>
@@ -268,7 +228,7 @@
       </button>
     </nav>
 
-  </div><!-- /app -->
+  </div>
 
   <!-- QUICK LOG FAB -->
   <button id="fab" style="
@@ -323,32 +283,23 @@
   <!-- TOAST -->
   <div id="toast" hidden></div>
 
-  <!-- SCRIPTS — ONLY core.js, no other script files needed -->
+  <!-- SCRIPTS — only core.js (self-contained, no external dependencies) -->
   <script src="core.js"></script>
 
-  <!-- Service Worker Registration + Loading Screen Fade -->
+  <!-- Service Worker Registration -->
   <script>
-    // Register the FIXED service worker
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
+      window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-          .then(function(reg) {
-            console.log('[PIQ] SW registered, scope:', reg.scope);
-          })
-          .catch(function(err) {
-            console.warn('[PIQ] SW registration failed:', err);
-          });
+          .then(reg => console.log('[PIQ] SW registered, scope:', reg.scope))
+          .catch(err => console.warn('[PIQ] SW failed:', err));
       });
     }
     // Hide loading screen after app boots
-    window.addEventListener('load', function() {
-      setTimeout(function() {
-        var ls = document.getElementById('loading-screen');
-        if (ls) {
-          ls.style.opacity = '0';
-          ls.style.transition = 'opacity 0.3s';
-          setTimeout(function() { ls.remove(); }, 300);
-        }
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const ls = document.getElementById('loading-screen');
+        if (ls) { ls.style.opacity = '0'; ls.style.transition = 'opacity 0.3s'; setTimeout(() => ls.remove(), 300); }
       }, 400);
     });
   </script>
