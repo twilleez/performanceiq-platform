@@ -248,6 +248,8 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
   background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
   display: flex; align-items: flex-end; justify-content: center;
 }
+/* CRITICAL: hidden attribute must override display:flex or drawers never close */
+.modal-backdrop[hidden] { display: none !important; }
 .modal-backdrop.center-modal { align-items: center; }
 .modal {
   background: var(--void-2); border: 1px solid var(--void-4);
