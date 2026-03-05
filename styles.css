@@ -22,8 +22,8 @@
   --void-4: #2A3347;
 
   /* Brand accents */
-  --gold:   #F5C842;
-  --gold-dim: #C49E32;
+  --gold:   #1B2A4A;
+  --gold-dim: #142038;
   --mint:   #3DFFC0;
   --mint-dim: #2ACC99;
   --red:    #FF4D6D;
@@ -43,7 +43,7 @@
   --soccer:     #3DFFC0;
   --track:      #FF4D6D;
   --swimming:   #B47FFF;
-  --volleyball: #F5C842;
+  --volleyball: #1B2A4A;
   --baseball:   #FF6B6B;
   --lacrosse:   #52D9FF;
   --tennis:     #A8FF3E;
@@ -351,7 +351,7 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 /* [FIX 6] PWA install prompt */
 .install-banner {
   background: linear-gradient(135deg, var(--void-3) 0%, rgba(245,200,66,0.08) 100%);
-  border: 1px solid rgba(245,200,66,0.25);
+  border: 1px solid rgba(27,42,74,0.5);
   border-radius: var(--radius); padding: 16px;
   margin-bottom: 12px;
   display: flex; align-items: center; gap: 12px;
@@ -537,7 +537,7 @@ body[data-sport="wrestling"]  { --sport-accent: var(--wrestling);  }
 /* ── STREAK BADGE ──────────────────────────────────────────── */
 .streak-badge {
   display: inline-flex; align-items: center; gap: 8px;
-  background: rgba(245,200,66,0.1); border: 1px solid rgba(245,200,66,0.25);
+  background: rgba(245,200,66,0.1); border: 1px solid rgba(27,42,74,0.5);
   border-radius: 20px; padding: 6px 16px;
   font-family: var(--font-mono); font-size: 14px; font-weight: 700;
   color: var(--gold);
@@ -572,7 +572,7 @@ body[data-sport="wrestling"]  { --sport-accent: var(--wrestling);  }
   font-family: var(--font-mono); font-size: 10px;
   letter-spacing: 0.1em; text-transform: uppercase;
 }
-.chip-gold  { background: rgba(245,200,66,0.12); color: var(--gold); border: 1px solid rgba(245,200,66,0.25); }
+.chip-gold  { background: rgba(27,42,74,0.25); color: var(--gold); border: 1px solid rgba(27,42,74,0.5); }
 .chip-mint  { background: rgba(61,255,192,0.1);  color: var(--mint); border: 1px solid rgba(61,255,192,0.2); }
 .chip-red   { background: rgba(255,77,109,0.1);  color: var(--red);  border: 1px solid rgba(255,77,109,0.2); }
 .chip-blue  { background: rgba(77,159,255,0.1);  color: var(--blue); border: 1px solid rgba(77,159,255,0.2); }
