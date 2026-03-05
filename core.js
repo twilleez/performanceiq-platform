@@ -653,13 +653,24 @@
   }
 
   // ─── DRAWER ─────────────────────────────────────────────────
-  function openDrawer(id) { const d = $(id); if (d) d.hidden = false; }
-  function closeDrawer(id) { const d = $(id); if (d) d.hidden = true; }
+  function openDrawer(id) { const d = $(id); if (d) { d.hidden = false; d.removeAttribute('hidden'); } }
+  function closeDrawer(id) { const d = $(id); if (d) { d.hidden = true; d.setAttribute('hidden', ''); } }
+
+  // Single Escape key handler for all drawers
+  const DRAWER_IDS = ['drawer-account', 'drawer-help', 'drawer-quick-log'];
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      DRAWER_IDS.forEach(id => closeDrawer(id));
+      // Also close any dynamic modals
+      document.querySelectorAll('.modal-backdrop:not([hidden])').forEach(el => {
+        if (!DRAWER_IDS.includes(el.id)) el.remove();
+      });
+    }
+  });
 
   function bindDrawer(btnId, drawerId) {
     const btn = $(btnId);
     if (btn) btn.addEventListener('click', () => openDrawer(drawerId));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(drawerId); });
   }
 
   function bindSavePill() {
@@ -725,6 +736,150 @@
   async function pushToCloud() { const cfg = loadCloudCfg(); if (!cfg) { toast(syncMsg); return; } toast('☁️ Syncing…'); }
   async function pullFromCloud() { const cfg = loadCloudCfg(); if (!cfg) { toast(syncMsg); return; } toast('☁️ Pulling…'); }
 
+  // ─── DATA EXPORT / IMPORT / RESET ────────────────────────────
+  window.dataStore.exportJSON = function() {
+    const data = JSON.stringify(state, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'performanceiq-backup.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('📥 Data exported!');
+  };
+
+  window.dataStore.importJSON = function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const imported = JSON.parse(ev.target.result);
+          Object.assign(state, imported);
+          save();
+          toast('✅ Data imported! Reloading…');
+          setTimeout(() => location.reload(), 800);
+        } catch (err) {
+          toast('❌ Invalid JSON file');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  window.dataStore.reset = function() {
+    try { localStorage.removeItem(PIQ_KEY); } catch {}
+    toast('🗑️ Data cleared. Reloading…');
+    setTimeout(() => location.reload(), 800);
+  };
+
+  // ─── WORKOUT GENERATOR ───────────────────────────────────────
+  const WORKOUT_LIBRARY = {
+    basketball: {
+      warmup: ['High knees 2×30s', 'Lateral shuffles 2×20s', 'Arm circles 1×20'],
+      main: [
+        { name: 'Defensive slides', sets: 3, reps: '30s each direction', type: 'speed' },
+        { name: 'Box jumps', sets: 4, reps: 8, type: 'strength' },
+        { name: 'Sprint suicides', sets: 5, reps: '1 full court', type: 'conditioning' },
+        { name: 'Dumbbell lunges', sets: 3, reps: '12 each leg', type: 'strength' },
+        { name: 'Ball handling drills', sets: 3, reps: '60s', type: 'skill' },
+        { name: 'Free throw shooting', sets: 1, reps: '25 shots', type: 'skill' },
+      ],
+      cooldown: ['Static hamstring stretch 30s each', 'Quad stretch 30s each', 'Deep breathing 1 min']
+    },
+    football: {
+      warmup: ['Jog 400m', 'High knees 2×30s', 'Butt kicks 2×30s'],
+      main: [
+        { name: 'Power cleans', sets: 4, reps: 5, type: 'strength' },
+        { name: '40-yard dash', sets: 6, reps: 1, type: 'speed' },
+        { name: 'Sled pushes', sets: 4, reps: '20 yards', type: 'strength' },
+        { name: 'Cone agility drill', sets: 4, reps: 1, type: 'speed' },
+        { name: 'Bench press', sets: 4, reps: 8, type: 'strength' },
+        { name: 'Tire flips', sets: 3, reps: 6, type: 'strength' },
+      ],
+      cooldown: ['Foam roll quads 60s', 'Hip flexor stretch 30s each', 'Shoulder stretch 30s each']
+    }
+  };
+
+  // Generic fallback for any sport
+  const GENERIC_WORKOUT = {
+    warmup: ['Light jog 3 min', 'Dynamic stretches 2 min', 'Sport-specific movement prep'],
+    main: [
+      { name: 'Bodyweight squats', sets: 3, reps: 15, type: 'strength' },
+      { name: 'Push-ups', sets: 3, reps: 12, type: 'strength' },
+      { name: 'Plank hold', sets: 3, reps: '45s', type: 'strength' },
+      { name: 'Interval sprints', sets: 5, reps: '30s on / 30s off', type: 'conditioning' },
+      { name: 'Lateral bounds', sets: 3, reps: 10, type: 'speed' },
+      { name: 'Burpees', sets: 3, reps: 10, type: 'conditioning' },
+    ],
+    cooldown: ['Walk 2 min', 'Full body stretch routine 3 min', 'Deep breathing 1 min']
+  };
+
+  function generateWorkout() {
+    const sport = (state.sport || 'basketball').toLowerCase();
+    const template = WORKOUT_LIBRARY[sport] || GENERIC_WORKOUT;
+    
+    // Pick 3-4 random main exercises
+    const shuffled = [...template.main].sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, 4);
+    const totalTime = 25 + selected.length * 6; // rough estimate
+
+    const exerciseHtml = selected.map((ex, i) => `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--void-3);border-radius:var(--radius-sm);margin-bottom:8px">
+        <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--sport-accent);min-width:28px">${i + 1}</div>
+        <div style="flex:1">
+          <div style="font-family:var(--font-sub);font-size:16px;font-weight:700">${ex.name}</div>
+          <div style="font-size:12px;color:var(--text-secondary)">${ex.sets} sets × ${ex.reps} reps</div>
+        </div>
+        <span class="chip chip-${ex.type === 'strength' ? 'gold' : ex.type === 'speed' ? 'mint' : 'blue'}">${ex.type}</span>
+      </div>`).join('');
+
+    const html = `
+      <div class="card" style="border-color:rgba(61,255,192,0.2);margin-top:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-label">TODAY'S WORKOUT — ${sport.toUpperCase()}</div>
+          <div class="chip chip-mint">~${totalTime} MIN</div>
+        </div>
+        
+        <div style="margin-bottom:12px">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.1em;margin-bottom:6px">WARM-UP</div>
+          <div style="font-size:13px;color:var(--text-secondary)">${template.warmup.join(' → ')}</div>
+        </div>
+        
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.1em;margin-bottom:8px">MAIN CIRCUIT</div>
+        ${exerciseHtml}
+        
+        <div style="margin-top:12px">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.1em;margin-bottom:6px">COOL-DOWN</div>
+          <div style="font-size:13px;color:var(--text-secondary)">${template.cooldown.join(' → ')}</div>
+        </div>
+        
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-primary flex-1" onclick="window.piqOnWorkoutComplete({type:'${selected[0].type}'});this.closest('.card').style.borderColor='var(--mint)';this.textContent='✅ Logged!';this.disabled=true">
+            Log as Complete
+          </button>
+          <button class="btn btn-secondary" onclick="window.__piqGenWorkout()">
+            🔄 New
+          </button>
+        </div>
+      </div>`;
+
+    const output = document.getElementById('workout-output');
+    if (output) output.innerHTML = html;
+  }
+
+  window.__piqGenWorkout = function() { generateWorkout(); };
+
+  function bindWorkoutGenerator() {
+    const btn = document.getElementById('btn-gen-workout');
+    if (btn) btn.addEventListener('click', () => generateWorkout());
+  }
+
   // ─── WORKOUT COMPLETE HANDLER ────────────────────────────────
   window.piqOnWorkoutComplete = function(sessionData) {
     state.lastLogDate = new Date().toISOString();
@@ -758,6 +913,7 @@
     bindQuickLog();
     bindSavePill();
     bindSettings();
+    bindWorkoutGenerator();
     initMessaging();
     render('home');
     setTimeout(() => initPushNotifications(), 2000);
