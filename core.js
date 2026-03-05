@@ -13,6 +13,35 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // ─── DATA STORE (self-contained localStorage fallback) ───────
+  const PIQ_KEY = 'piq_state_v4';
+  const DEFAULT_STATE = {
+    role: 'athlete',
+    sport: 'basketball',
+    athleteName: 'Athlete',
+    streak: 0,
+    lastLogDate: null,
+    piqScore: null,
+    piqPillars: null,
+    msgThreads: [],
+    pushEnabled: false,
+    appInstalled: false,
+    baselineDone: false,
+  };
+  if (!window.dataStore) {
+    window.dataStore = {
+      load: () => {
+        try {
+          const raw = localStorage.getItem(PIQ_KEY);
+          return raw ? Object.assign({}, DEFAULT_STATE, JSON.parse(raw)) : Object.assign({}, DEFAULT_STATE);
+        } catch { return Object.assign({}, DEFAULT_STATE); }
+      },
+      save: (s) => {
+        try { localStorage.setItem(PIQ_KEY, JSON.stringify(s)); } catch {}
+      }
+    };
+  }
+
   // ─── STATE ──────────────────────────────────────────────────
   let state = window.dataStore.load();
 
@@ -891,10 +920,26 @@
     // (captured in beforeinstallprompt handler above)
   }
 
+  function safeBoot() {
+    try { boot(); } catch (err) {
+      console.error('[PIQ] Boot error:', err);
+      // Surface error visually so it's never a silent black screen
+      document.body.insertAdjacentHTML('afterbegin',
+        `<div style="position:fixed;inset:0;background:#0D1117;display:flex;align-items:center;justify-content:center;z-index:99999;padding:24px">
+          <div style="background:#1E2535;border:1px solid #FF4D6D;border-radius:12px;padding:24px;max-width:400px;color:#F0F4FF;font-family:sans-serif">
+            <div style="color:#FF4D6D;font-weight:700;margin-bottom:8px">⚠ Boot Error</div>
+            <div style="font-size:13px;opacity:0.8">${err.message}</div>
+            <button onclick="location.reload()" style="margin-top:16px;background:#F5C842;color:#0D1117;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:700">Reload</button>
+          </div>
+        </div>`
+      );
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
+    document.addEventListener('DOMContentLoaded', safeBoot);
   } else {
-    boot();
+    safeBoot();
   }
 
 })();
