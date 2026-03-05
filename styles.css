@@ -1,13 +1,8 @@
 /* ============================================================
-   PerformanceIQ — styles.css v3.0
-   SIX FIXES APPLIED:
-   [FIX 3] Full typography system: Bebas Neue, Barlow Condensed, DM Sans, JetBrains Mono
-   [FIX 3] Complete color system with sport accent variables
-   [FIX 1] Score explainer modal styles
-   [FIX 2] Push notification permission banner styles
-   [FIX 4] Stat card generator overlay styles
-   [FIX 5] Messaging panel styles
-   [FIX 6] PWA install prompt banner styles
+   PerformanceIQ — styles.css v3.1 (FIXED)
+   CRITICAL FIX: --gold was #1B2A4A (dark navy) — now #F5C842 (actual gold)
+   This single bug made ALL primary buttons, CTAs, score displays,
+   streak badges, and install banners invisible (dark-on-dark).
    ============================================================ */
 
 /* ── GOOGLE FONTS ──────────────────────────────────────────── */
@@ -21,9 +16,9 @@
   --void-3: #1E2535;
   --void-4: #2A3347;
 
-  /* Brand accents */
-  --gold:   #1B2A4A;
-  --gold-dim: #142038;
+  /* Brand accents — FIXED: gold is now ACTUAL GOLD */
+  --gold:     #F5C842;
+  --gold-dim: #D4A930;
   --mint:   #3DFFC0;
   --mint-dim: #2ACC99;
   --red:    #FF4D6D;
@@ -37,13 +32,13 @@
   --text-dim:       #4A5568;
 
   /* Sport Accents — dynamically applied via JS on sport select */
-  --sport-accent: var(--gold); /* default: Champion Gold */
+  --sport-accent: #F5C842; /* default: Champion Gold */
   --football:   #FF8C42;
   --basketball: #4D9FFF;
   --soccer:     #3DFFC0;
   --track:      #FF4D6D;
   --swimming:   #B47FFF;
-  --volleyball: #1B2A4A;
+  --volleyball: #F5C842;
   --baseball:   #FF6B6B;
   --lacrosse:   #52D9FF;
   --tennis:     #A8FF3E;
@@ -84,13 +79,11 @@ body {
 }
 
 /* ── TYPOGRAPHY ────────────────────────────────────────────── */
-/* [FIX 3] Sport-grade type hierarchy */
 h1, h2, h3, .display { font-family: var(--font-display); letter-spacing: 0.02em; line-height: 1; }
 h4, h5, .sub-head    { font-family: var(--font-sub); font-weight: 700; letter-spacing: 0.01em; }
 p, label, .body-text  { font-family: var(--font-body); }
 code, .mono, .stat-value, .score-num, .piq-score { font-family: var(--font-mono) !important; }
 
-/* Score numbers always mono bold */
 .stat-value, .score-num, .piq-score {
   font-family: var(--font-mono) !important;
   font-weight: 700;
@@ -163,7 +156,6 @@ code, .mono, .stat-value, .score-num, .piq-score { font-family: var(--font-mono)
 }
 
 /* ── BUTTONS ───────────────────────────────────────────────── */
-/* [FIX 3] All primary CTAs → Champion Gold */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
   gap: 6px; padding: 10px 20px;
@@ -198,6 +190,7 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 .save-pill {
   display: flex; align-items: center; gap: 6px;
   font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+  cursor: pointer;
 }
 .save-dot {
   width: 7px; height: 7px; border-radius: 50%;
@@ -216,7 +209,6 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 #toast[hidden] { opacity: 0; pointer-events: none; }
 
 /* ── PIQ SCORE RING ────────────────────────────────────────── */
-/* [FIX 1] Score ring — always shows a value, never "—" */
 .piq-ring-wrap {
   display: flex; flex-direction: column; align-items: center;
   gap: 8px; padding: 20px 0 12px;
@@ -252,10 +244,10 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 }
 
 /* ── SCORE EXPLAINER MODAL ─────────────────────────────────── */
-/* [FIX 1] Score explainer: pillars, baseline, next action */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 500;
   background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex; align-items: flex-end; justify-content: center;
 }
 .modal-backdrop.center-modal { align-items: center; }
@@ -303,7 +295,6 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 }
 
 /* ── BASELINE ASSESSMENT ───────────────────────────────────── */
-/* [FIX 1] Onboarding assessment to eliminate "—" */
 .baseline-step {
   text-align: center; padding: 12px 0;
 }
@@ -330,7 +321,6 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 }
 
 /* ── PUSH NOTIFICATION BANNER ──────────────────────────────── */
-/* [FIX 2] Permission request UI */
 .push-banner {
   background: var(--void-3);
   border: 1px solid rgba(61,255,192,0.2);
@@ -348,10 +338,9 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 }
 
 /* ── INSTALL BANNER ────────────────────────────────────────── */
-/* [FIX 6] PWA install prompt */
 .install-banner {
   background: linear-gradient(135deg, var(--void-3) 0%, rgba(245,200,66,0.08) 100%);
-  border: 1px solid rgba(27,42,74,0.5);
+  border: 1px solid rgba(245,200,66,0.3);
   border-radius: var(--radius); padding: 16px;
   margin-bottom: 12px;
   display: flex; align-items: center; gap: 12px;
@@ -366,10 +355,10 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 .install-banner-actions { display: flex; gap: 8px; margin-top: 10px; }
 
 /* ── STAT CARD GENERATOR ───────────────────────────────────── */
-/* [FIX 4] Shareable card UI */
 .stat-card-overlay {
   position: fixed; inset: 0; z-index: 600;
   background: rgba(0,0,0,0.85); backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; padding: 20px; gap: 16px;
 }
@@ -425,7 +414,6 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 .stat-card-actions { display: flex; gap: 10px; width: 100%; max-width: 340px; }
 
 /* ── MESSAGING PANEL ───────────────────────────────────────── */
-/* [FIX 5] In-app messaging */
 #msg-panel {
   position: fixed; inset: 0; z-index: 400;
   background: var(--void-2);
@@ -455,8 +443,8 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
   justify-content: center; font-size: 18px; flex-shrink: 0;
 }
 .msg-thread-name { font-family: var(--font-sub); font-size: 16px; font-weight: 700; }
-.msg-thread-preview { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-.msg-thread-meta { margin-left: auto; text-align: right; }
+.msg-thread-preview { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-thread-meta { margin-left: auto; text-align: right; flex-shrink: 0; }
 .msg-thread-time { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
 .msg-unread { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); margin-left: auto; }
 
@@ -496,7 +484,6 @@ label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; displ
 }
 
 /* ── ROLE-BASED THEMING ────────────────────────────────────── */
-/* [FIX 3] Role accent application */
 body[data-role="athlete"] { --role-accent: var(--gold); }
 body[data-role="coach"]   { --role-accent: var(--mint); }
 body[data-role="parent"]  { --role-accent: var(--blue); }
@@ -537,7 +524,7 @@ body[data-sport="wrestling"]  { --sport-accent: var(--wrestling);  }
 /* ── STREAK BADGE ──────────────────────────────────────────── */
 .streak-badge {
   display: inline-flex; align-items: center; gap: 8px;
-  background: rgba(245,200,66,0.1); border: 1px solid rgba(27,42,74,0.5);
+  background: rgba(245,200,66,0.12); border: 1px solid rgba(245,200,66,0.3);
   border-radius: 20px; padding: 6px 16px;
   font-family: var(--font-mono); font-size: 14px; font-weight: 700;
   color: var(--gold);
@@ -572,7 +559,7 @@ body[data-sport="wrestling"]  { --sport-accent: var(--wrestling);  }
   font-family: var(--font-mono); font-size: 10px;
   letter-spacing: 0.1em; text-transform: uppercase;
 }
-.chip-gold  { background: rgba(27,42,74,0.25); color: var(--gold); border: 1px solid rgba(27,42,74,0.5); }
+.chip-gold  { background: rgba(245,200,66,0.15); color: var(--gold); border: 1px solid rgba(245,200,66,0.3); }
 .chip-mint  { background: rgba(61,255,192,0.1);  color: var(--mint); border: 1px solid rgba(61,255,192,0.2); }
 .chip-red   { background: rgba(255,77,109,0.1);  color: var(--red);  border: 1px solid rgba(255,77,109,0.2); }
 .chip-blue  { background: rgba(77,159,255,0.1);  color: var(--blue); border: 1px solid rgba(77,159,255,0.2); }
@@ -625,6 +612,15 @@ body[data-role="parent"] {
 
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spinner { animation: spin 0.8s linear infinite; display: inline-block; }
+
+/* ── REDUCED MOTION ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
 
 /* ── UTILITY ───────────────────────────────────────────────── */
 .hidden  { display: none !important; }
