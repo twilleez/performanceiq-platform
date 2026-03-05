@@ -84,7 +84,7 @@
           <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=train]').click()">
             <div class="quick-btn-icon">⚡</div>Open Train
           </button>
-          <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=team]').click()">
+          <button class="quick-btn" data-team-only onclick="document.querySelector('.nav-btn[data-view=team]').click()">
             <div class="quick-btn-icon">👥</div>Manage Team
           </button>
           <button class="quick-btn" onclick="window.openStatCardGenerator?.('manual')">
@@ -97,7 +97,13 @@
 
         <div class="divider"></div>
 
-        <div class="card" onclick="document.querySelector('.nav-btn[data-view=team]').click()" style="cursor:pointer">
+        <!-- Weekly overview placeholder -->
+        <div class="card" id="home-weekly-overview">
+          <div class="card-label">THIS WEEK</div>
+          <div class="card-title" id="home-week-summary">Set up your training to see your weekly plan</div>
+        </div>
+
+        <div class="card" data-team-only onclick="document.querySelector('.nav-btn[data-view=team]').click()" style="cursor:pointer">
           <div class="card-label">TEAM</div>
           <div class="card-title">Roster, roles, join codes, and dashboards</div>
         </div>
@@ -111,8 +117,8 @@
         </div>
       </section>
 
-      <!-- TEAM VIEW -->
-      <section id="view-team" class="view" hidden>
+      <!-- TEAM VIEW (hidden for solo athletes) -->
+      <section id="view-team" class="view" hidden data-team-only>
         <div class="section-head">
           <div class="section-title">TEAM</div>
           <button class="btn btn-primary btn-sm">+ Add Athlete</button>
