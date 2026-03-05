@@ -298,20 +298,13 @@
   <div id="toast" hidden></div>
 
   <!-- SCRIPTS -->
-  <script src="boot.js" type="module"></script>
-  <script src="dataStore.js" type="module"></script>
-  <script src="analyticsEngine.js" type="module"></script>
-  <script src="performanceEngine.js" type="module"></script>
-  <script src="nutritionEngine.js" type="module"></script>
-  <script src="periodizationEngine.js" type="module"></script>
-  <script src="authStore.js" type="module"></script>
   <script src="core.js"></script>
 
   <!-- [FIX 6] Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
+        navigator.serviceWorker.register('./sw.js')
           .then(() => console.log('SW registered'))
           .catch(() => {});
       });
