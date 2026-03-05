@@ -1,4 +1,8 @@
-// core.js — PerformanceIQ v4.0
+// core.js — PerformanceIQ v4.1 (FIXED)
+// FIXES APPLIED:
+// - Exposed openStatCardGenerator to window (Share Card button needs it)
+// - Fixed SW registration path from '/sw.js' to './sw.js'
+// - Added name-input binding in bindSettings
 // SIX CRITICAL FIXES:
 // [FIX 1] Score Explainer — baseline assessment + 5-pillar breakdown, no more "—"
 // [FIX 2] Push Notifications — OneSignal integration + Web Push API
@@ -95,12 +99,8 @@
     const role  = (state.role  || 'athlete').toLowerCase();
     document.body.dataset.sport = SPORT_MAP[sport] || 'basketball';
     document.body.dataset.role  = role;
-
-    // Apply sport accent CSS var directly for dynamic ring percentages
     const accent = SPORT_COLORS[SPORT_MAP[sport]] || '#F5C842';
     document.documentElement.style.setProperty('--sport-accent', accent);
-
-    // Update header brand color
     const brand = document.querySelector('.header-brand');
     if (brand) brand.textContent = 'PERFORMANCEIQ';
   }
@@ -114,12 +114,12 @@
     const pillars = state.piqPillars;
     if (!pillars) return null;
     const raw = Object.entries(PILLAR_WEIGHTS).reduce((sum, [k, w]) => sum + (pillars[k] || 0) * w, 0);
-    return Math.round(raw * 10); // 0–1000 scale
+    return Math.round(raw * 10);
   }
 
   function getPIQScoreDisplay() {
     const score = computePIQScore();
-    if (!score || score === 0) return null; // triggers baseline assessment
+    if (!score || score === 0) return null;
     return score;
   }
 
@@ -150,7 +150,6 @@
   function openScoreExplainer() {
     const score   = computePIQScore();
     const pillars = state.piqPillars || { speed: 60, strength: 60, endurance: 60, consistency: 60, nutrition: 60 };
-
     const pillarRows = [
       { key: 'speed',       label: 'Speed',       weight: '20%', color: 'var(--mint)' },
       { key: 'strength',    label: 'Strength',     weight: '20%', color: 'var(--gold)' },
@@ -174,20 +173,11 @@
             <div class="modal-title">${score ? score + ' PIQ' : 'YOUR SCORE'}</div>
             <button class="modal-close" onclick="document.getElementById('score-modal-bg').remove()">✕</button>
           </div>
-          ${score ? `<div style="text-align:center;margin-bottom:16px">
-            <span class="chip chip-gold">${getPIQScoreLabel(score)}</span>
-          </div>` : ''}
-          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px">
-            SCORE BREAKDOWN — 5 PILLARS
-          </div>
+          ${score ? `<div style="text-align:center;margin-bottom:16px"><span class="chip chip-gold">${getPIQScoreLabel(score)}</span></div>` : ''}
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:12px">SCORE BREAKDOWN — 5 PILLARS</div>
           <div class="score-pillar-list">${pillarRows}</div>
-          <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);line-height:1.6">
-            Your PerformanceIQ Score measures Speed, Strength, Endurance, Consistency, and Nutrition.
-            Every workout and nutrition log moves your score. Top 10% = Elite.
-          </div>
-          <div class="score-cta-box mt-16" onclick="document.getElementById('score-modal-bg').remove()">
-            ${getScoreCTA(state.piqPillars)}
-          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--text-secondary);line-height:1.6">Your PerformanceIQ Score measures Speed, Strength, Endurance, Consistency, and Nutrition. Every workout and nutrition log moves your score. Top 10% = Elite.</div>
+          <div class="score-cta-box mt-16" onclick="document.getElementById('score-modal-bg').remove()">${getScoreCTA(state.piqPillars)}</div>
         </div>
       </div>`;
     document.body.insertAdjacentHTML('beforeend', html);
@@ -218,10 +208,8 @@
     const scaleButtons = Array.from({ length: 10 }, (_, i) => i + 1).map(n =>
       `<button class="baseline-btn" onclick="window.__piqBaselineAnswer(${n})">${n}</button>`
     ).join('');
-
     const existing = document.getElementById('baseline-modal-bg');
     if (existing) existing.remove();
-
     const html = `
       <div class="modal-backdrop" id="baseline-modal-bg">
         <div class="modal">
@@ -231,9 +219,7 @@
             <div class="baseline-question">${q.text}</div>
             <div class="baseline-scale">${scaleButtons}</div>
           </div>
-          <div style="margin-top:16px;font-size:12px;color:var(--text-dim);text-align:center">
-            This sets your opening PerformanceIQ Score. It improves as you log.
-          </div>
+          <div style="margin-top:16px;font-size:12px;color:var(--text-dim);text-align:center">This sets your opening PerformanceIQ Score. It improves as you log.</div>
         </div>
       </div>`;
     document.body.insertAdjacentHTML('beforeend', html);
@@ -241,11 +227,9 @@
 
   window.__piqBaselineAnswer = function(val) {
     const q = BASELINE_QUESTIONS[baselineStep];
-    baselineAnswers[q.key] = val * 10; // normalize to 0–100
+    baselineAnswers[q.key] = val * 10;
     baselineStep++;
-
     if (baselineStep >= BASELINE_QUESTIONS.length) {
-      // Done — save and compute score
       state.piqPillars = baselineAnswers;
       save();
       const score = computePIQScore();
@@ -262,12 +246,10 @@
     const scoreEl = document.getElementById('piq-ring-num');
     const ringEl  = document.getElementById('piq-ring');
     if (!scoreEl || !ringEl) return;
-
     const score = getPIQScoreDisplay();
     if (!score) {
       scoreEl.textContent = '?';
       ringEl.style.setProperty('--piq-pct', 5);
-      // Show baseline prompt
       const hintEl = document.getElementById('piq-ring-tap-hint');
       if (hintEl) hintEl.textContent = 'TAP TO GET YOUR SCORE';
     } else {
@@ -284,36 +266,25 @@
     const wrap = document.getElementById('piq-ring-wrap');
     if (!wrap) return;
     wrap.addEventListener('click', () => {
-      if (!state.piqPillars) {
-        openBaselineAssessment();
-      } else {
-        openScoreExplainer();
-      }
+      if (!state.piqPillars) openBaselineAssessment();
+      else openScoreExplainer();
     });
   }
 
   // ─────────────────────────────────────────────────────────────
   // [FIX 2] PUSH NOTIFICATIONS
   // ─────────────────────────────────────────────────────────────
-  const ONESIGNAL_APP_ID = 'YOUR_ONESIGNAL_APP_ID'; // Replace with actual ID
+  const ONESIGNAL_APP_ID = 'YOUR_ONESIGNAL_APP_ID';
 
   function initPushNotifications() {
-    // Check if already asked
     if (state.pushAsked) return;
     if (!('Notification' in window)) return;
-    if (Notification.permission === 'granted') {
-      state.pushGranted = true;
-      save();
-      return;
-    }
-
-    // Show custom banner first (better UX than raw browser prompt)
+    if (Notification.permission === 'granted') { state.pushGranted = true; save(); return; }
     showPushBanner();
   }
 
   function showPushBanner() {
     if (document.getElementById('push-banner')) return;
-
     const html = `
       <div class="push-banner fade-up" id="push-banner">
         <div class="push-banner-icon">🔔</div>
@@ -324,7 +295,6 @@
         <button class="btn btn-sm chip-mint" onclick="window.__piqRequestPush()" style="white-space:nowrap;background:var(--mint);color:var(--void);font-family:var(--font-sub);font-weight:700;border:none;border-radius:6px;padding:8px 14px;cursor:pointer">Enable</button>
         <button class="push-banner-dismiss" onclick="window.__piqDismissPush()">✕</button>
       </div>`;
-
     const main = document.querySelector('.main') || document.body;
     main.insertAdjacentHTML('afterbegin', html);
   }
@@ -333,24 +303,18 @@
     document.getElementById('push-banner')?.remove();
     state.pushAsked = true;
     save();
-
     try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
         state.pushGranted = true;
         save();
         toast('🔔 Notifications enabled!');
-
-        // Register OneSignal if available
         if (window.OneSignal) {
-          window.OneSignal.push(() => {
-            window.OneSignal.init({ appId: ONESIGNAL_APP_ID });
-          });
+          window.OneSignal.push(() => { window.OneSignal.init({ appId: ONESIGNAL_APP_ID }); });
         }
-
-        // Register service worker for web push
+        // FIX: Use relative path for GitHub Pages
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+          navigator.serviceWorker.register('./sw.js').catch(() => {});
         }
       }
     } catch (e) { console.warn('Push permission failed:', e); }
@@ -362,35 +326,24 @@
     save();
   };
 
-  // Notification trigger helpers (called from data events)
-  window.piqNotify = function(title, body, url = '/') {
+  window.piqNotify = function(title, body, url = './') {
     if (!state.pushGranted) return;
     if (Notification.permission !== 'granted') return;
     try {
-      const n = new Notification(title, {
-        body,
-        icon: '/icons/icon-192.png',
-        badge: '/icons/icon-72.png',
-        data: { url }
-      });
+      const n = new Notification(title, { body, icon: './icons/icon-192.png', badge: './icons/icon-72.png', data: { url } });
       n.onclick = () => { window.focus(); n.close(); };
     } catch (e) {}
   };
 
-  // Streak check — run on load, fires notification if no log today
   function checkStreakNotification() {
     const lastLog = state.lastLogDate;
     if (!lastLog) return;
     const today = new Date().toDateString();
     const last  = new Date(lastLog).toDateString();
-    if (last === today) return; // already logged
-
+    if (last === today) return;
     const streak = state.streak || 0;
     if (streak >= 3) {
-      window.piqNotify(
-        '🔥 Your streak is on the line',
-        `Log today to keep your ${streak}-day streak alive — and protect your PIQ Score.`
-      );
+      window.piqNotify('🔥 Your streak is on the line', `Log today to keep your ${streak}-day streak alive — and protect your PIQ Score.`);
     }
   }
 
@@ -405,12 +358,10 @@
     const position= state.position || '';
     const streak  = state.streak || 0;
     const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--sport-accent').trim() || '#F5C842';
-
     const percentile = score >= 900 ? 'Top 1%' : score >= 800 ? 'Top 10%' : score >= 650 ? 'Top 25%' : score >= 500 ? 'Top 50%' : 'Top 75%';
     const weekSessions = (state.sessions || []).filter(s => {
       const d = new Date(s.date || s.timestamp);
-      const now = new Date();
-      return (now - d) < 7 * 24 * 60 * 60 * 1000;
+      return (new Date() - d) < 7 * 24 * 60 * 60 * 1000;
     }).length;
 
     const html = `
@@ -423,61 +374,40 @@
             <div class="stat-card-score">${score}</div>
             <div class="stat-card-percentile">PerformanceIQ Score · ${percentile}</div>
             <div class="stat-card-stats">
-              <div>
-                <div class="stat-card-stat-val">+${Math.round(score * 0.03)}</div>
-                <div class="stat-card-stat-lbl">pts this week</div>
-              </div>
-              <div>
-                <div class="stat-card-stat-val">${streak}d</div>
-                <div class="stat-card-stat-lbl">streak</div>
-              </div>
-              <div>
-                <div class="stat-card-stat-val">${weekSessions}/${weekSessions + 1}</div>
-                <div class="stat-card-stat-lbl">workouts</div>
-              </div>
+              <div><div class="stat-card-stat-val">+${Math.round(score * 0.03)}</div><div class="stat-card-stat-lbl">pts this week</div></div>
+              <div><div class="stat-card-stat-val">${streak}d</div><div class="stat-card-stat-lbl">streak</div></div>
+              <div><div class="stat-card-stat-val">${weekSessions}/${weekSessions + 1}</div><div class="stat-card-stat-lbl">workouts</div></div>
             </div>
           </div>
           <div class="stat-card-bar" style="background:linear-gradient(90deg,var(--gold),${accentColor})"></div>
         </div>
-
         <div class="stat-card-actions">
-          <button class="btn btn-primary flex-1" onclick="window.__piqShareCard()">
-            📤 Share
-          </button>
-          <button class="btn btn-secondary" onclick="document.getElementById('stat-card-overlay').remove()">
-            Close
-          </button>
+          <button class="btn btn-primary flex-1" onclick="window.__piqShareCard()">📤 Share</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('stat-card-overlay').remove()">Close</button>
         </div>
         ${trigger !== 'manual' ? `<div style="font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:0.1em">${trigger.toUpperCase()} — TAP TO SHARE</div>` : ''}
       </div>`;
-
     document.body.insertAdjacentHTML('beforeend', html);
   }
+
+  // ── EXPOSE openStatCardGenerator to window for HTML onclick ──
+  window.openStatCardGenerator = openStatCardGenerator;
 
   window.__piqShareCard = async function() {
     const card = document.getElementById('stat-card-el');
     if (!card) return;
-
-    // Try native Web Share API first
     if (navigator.share) {
       try {
-        // Generate canvas PNG
         const canvas = await cardToCanvas(card);
         if (canvas) {
           canvas.toBlob(async (blob) => {
             const file = new File([blob], 'piq-score.png', { type: 'image/png' });
-            await navigator.share({
-              title: 'My PerformanceIQ Score',
-              text: `Check out my PIQ Score! 💪`,
-              files: [file]
-            });
+            await navigator.share({ title: 'My PerformanceIQ Score', text: 'Check out my PIQ Score! 💪', files: [file] });
           });
           return;
         }
       } catch (e) {}
     }
-
-    // Fallback: canvas download
     const canvas = await cardToCanvas(card);
     if (canvas) {
       const a = document.createElement('a');
@@ -493,11 +423,7 @@
   async function cardToCanvas(card) {
     if (!card) return null;
     try {
-      // Use html2canvas if available, else basic canvas
-      if (window.html2canvas) {
-        return await window.html2canvas(card, { backgroundColor: '#0D1117', scale: 2 });
-      }
-      // Fallback: basic canvas with text
+      if (window.html2canvas) return await window.html2canvas(card, { backgroundColor: '#0D1117', scale: 2 });
       const canvas = document.createElement('canvas');
       canvas.width = 680; canvas.height = 400;
       const ctx = canvas.getContext('2d');
@@ -512,7 +438,6 @@
       ctx.fillStyle = '#8899BB';
       ctx.font = '18px sans-serif';
       ctx.fillText('PerformanceIQ Score', 40, 220);
-      // Bottom bar
       const grad = ctx.createLinearGradient(0, 390, canvas.width, 390);
       grad.addColorStop(0, '#F5C842');
       grad.addColorStop(1, getComputedStyle(document.documentElement).getPropertyValue('--sport-accent').trim());
@@ -530,17 +455,10 @@
     return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   }
 
-  // Auto-trigger stat card on milestone events
   function checkStatCardTrigger(eventType, data = {}) {
     const triggers = {
-      'workout-complete': () => {
-        const score = computePIQScore();
-        if (score && score % 50 < 5) openStatCardGenerator('SCORE MILESTONE');
-      },
-      'streak-milestone': () => {
-        const milestones = [7, 14, 30, 60, 100];
-        if (milestones.includes(state.streak)) openStatCardGenerator(`${state.streak}-DAY STREAK`);
-      },
+      'workout-complete': () => { const score = computePIQScore(); if (score && score % 50 < 5) openStatCardGenerator('SCORE MILESTONE'); },
+      'streak-milestone': () => { const milestones = [7, 14, 30, 60, 100]; if (milestones.includes(state.streak)) openStatCardGenerator(`${state.streak}-DAY STREAK`); },
       'achievement': () => openStatCardGenerator('ACHIEVEMENT UNLOCKED')
     };
     if (triggers[eventType]) triggers[eventType]();
@@ -549,35 +467,21 @@
   // ─────────────────────────────────────────────────────────────
   // [FIX 5] IN-APP MESSAGING
   // ─────────────────────────────────────────────────────────────
-  let msgThreads = []; // Populated from Supabase Realtime in production
+  let msgThreads = [];
   let activeThread = null;
 
   function initMessaging() {
-    // Seed demo threads for UI demo; replace with Supabase subscription
     if (!state.msgThreads) {
       state.msgThreads = [
-        {
-          id: 'thread-team-1',
-          type: 'team',
-          name: 'Team Broadcast',
-          avatar: '📢',
-          members: [],
+        { id: 'thread-team-1', type: 'team', name: 'Team Broadcast', avatar: '📢', members: [],
           messages: [
             { from: 'Coach Thompson', me: false, text: 'Speed Circuit Week 4 is now assigned. Complete by Friday.', time: '2:14 PM', date: new Date().toDateString() },
             { from: 'You', me: true, text: 'On it! Will film my sprint too.', time: '3:22 PM', date: new Date().toDateString() }
-          ],
-          unread: 0
-        },
-        {
-          id: 'thread-dm-coach',
-          type: 'dm',
-          name: 'Coach Thompson',
-          avatar: '📋',
+          ], unread: 0 },
+        { id: 'thread-dm-coach', type: 'dm', name: 'Coach Thompson', avatar: '📋',
           messages: [
             { from: 'Coach Thompson', me: false, text: 'Great work this week. Your speed pillar jumped 8 points.', time: 'Yesterday', date: '' }
-          ],
-          unread: 1
-        }
+          ], unread: 1 }
       ];
       save();
     }
@@ -594,8 +498,6 @@
   function renderMessagingView() {
     const container = document.getElementById('view-messages');
     if (!container) return;
-
-    // Thread list
     const threadItems = msgThreads.map(t => `
       <div class="msg-thread-item" onclick="window.__piqOpenThread('${t.id}')">
         <div class="msg-thread-avatar">${t.avatar || '💬'}</div>
@@ -608,7 +510,6 @@
           ${t.unread > 0 ? `<div class="msg-unread"></div>` : ''}
         </div>
       </div>`).join('');
-
     container.innerHTML = `
       <div class="section-head">
         <div class="section-title">MESSAGES</div>
@@ -632,13 +533,11 @@
   function showThreadPanel(thread) {
     const existing = document.getElementById('msg-panel');
     if (existing) existing.remove();
-
     const messages = (thread.messages || []).map(m => `
       <div class="msg-bubble ${m.me ? 'me' : 'other'}">
         <div class="msg-bubble-text">${m.text}</div>
         <div class="msg-bubble-meta">${m.me ? '' : m.from + ' · '}${m.time}</div>
       </div>`).join('');
-
     const html = `
       <div id="msg-panel">
         <div class="msg-header">
@@ -650,20 +549,14 @@
         </div>
         <div class="msg-chat-area" id="msg-chat-area">${messages}</div>
         <div class="msg-input-bar">
-          <textarea class="msg-input-field" id="msg-input" placeholder="Message…" rows="1" 
+          <textarea class="msg-input-field" id="msg-input" placeholder="Message…" rows="1"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();window.__piqSendMessage()}"
           ></textarea>
           <button class="msg-send-btn" onclick="window.__piqSendMessage()">↑</button>
         </div>
       </div>`;
-
     document.body.insertAdjacentHTML('beforeend', html);
-
-    // Scroll to bottom
-    setTimeout(() => {
-      const area = document.getElementById('msg-chat-area');
-      if (area) area.scrollTop = area.scrollHeight;
-    }, 50);
+    setTimeout(() => { const area = document.getElementById('msg-chat-area'); if (area) area.scrollTop = area.scrollHeight; }, 50);
   }
 
   window.__piqSendMessage = function() {
@@ -671,38 +564,18 @@
     if (!input || !activeThread) return;
     const text = input.value.trim();
     if (!text) return;
-
-    const msg = {
-      from: state.name || 'You',
-      me: true,
-      text,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      date: new Date().toDateString()
-    };
-
+    const msg = { from: state.name || 'You', me: true, text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), date: new Date().toDateString() };
     activeThread.messages.push(msg);
     save();
     input.value = '';
-
-    // Re-render the message in the panel
     const area = document.getElementById('msg-chat-area');
     if (area) {
-      area.insertAdjacentHTML('beforeend', `
-        <div class="msg-bubble me">
-          <div class="msg-bubble-text">${text}</div>
-          <div class="msg-bubble-meta">${msg.time}</div>
-        </div>`);
+      area.insertAdjacentHTML('beforeend', `<div class="msg-bubble me"><div class="msg-bubble-text">${text}</div><div class="msg-bubble-meta">${msg.time}</div></div>`);
       area.scrollTop = area.scrollHeight;
     }
-
-    // Trigger push notification to other party (server-side in production)
-    // window.piqNotify('New message from ' + (state.name || 'you'), text);
   };
 
-  window.__piqNewMessage = function() {
-    toast('💬 New thread creation — connect Supabase to enable real-time DMs');
-  };
-
+  window.__piqNewMessage = function() { toast('💬 New thread creation — connect Supabase to enable real-time DMs'); };
   window.__piqRenderMessages = function() { renderMessagingView(); };
 
   // ─────────────────────────────────────────────────────────────
@@ -748,10 +621,7 @@
     const { outcome } = await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
     document.getElementById('install-banner')?.remove();
-    if (outcome === 'accepted') {
-      state.appInstalled = true;
-      save();
-    }
+    if (outcome === 'accepted') { state.appInstalled = true; save(); }
   };
 
   window.__piqDismissInstall = function() {
@@ -766,17 +636,18 @@
   function renderDashboard() {
     updateScoreRing();
     applyDesignSystem();
+    // Update streak display
+    const streakEl = document.getElementById('streak-display');
+    if (streakEl) streakEl.textContent = state.streak || 0;
   }
 
   function render(view) {
     document.querySelectorAll('.view').forEach(v => v.hidden = true);
     const el = document.getElementById('view-' + view);
     if (el) el.hidden = false;
-
     document.querySelectorAll('.nav-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === view);
     });
-
     if (view === 'home') renderDashboard();
     if (view === 'messages') renderMessagingView();
   }
@@ -788,33 +659,24 @@
   function bindDrawer(btnId, drawerId) {
     const btn = $(btnId);
     if (btn) btn.addEventListener('click', () => openDrawer(drawerId));
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeDrawer(drawerId);
-    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(drawerId); });
   }
 
-  // ─── SAVE PILL BINDINGS ─────────────────────────────────────
   function bindSavePill() {
     const pill = document.getElementById('save-pill');
-    if (pill) pill.addEventListener('click', () => {
-      save();
-      toast('✅ Saved');
-    });
+    if (pill) pill.addEventListener('click', () => { save(); toast('✅ Saved'); });
   }
 
-  // ─── NAV BINDINGS ────────────────────────────────────────────
   function bindNav() {
     document.querySelectorAll('.nav-btn').forEach(btn => {
       btn.addEventListener('click', () => render(btn.dataset.view));
     });
   }
 
-  // ─── QUICK LOG FAB ───────────────────────────────────────────
   function bindQuickLog() {
     const fab = document.getElementById('fab');
     if (fab) fab.addEventListener('click', () => openDrawer('drawer-quick-log'));
-    const opts = document.querySelectorAll('[data-quick-log]');
-    opts.forEach(opt => {
+    document.querySelectorAll('[data-quick-log]').forEach(opt => {
       opt.addEventListener('click', () => {
         closeDrawer('drawer-quick-log');
         const type = opt.dataset.quickLog;
@@ -825,68 +687,57 @@
     });
   }
 
-  // ─── SETTINGS ────────────────────────────────────────────────
   function bindSettings() {
     const roleSelect = document.getElementById('role-select');
     if (roleSelect) {
       roleSelect.value = state.role || 'athlete';
-      roleSelect.addEventListener('change', () => {
-        state.role = roleSelect.value;
-        applyDesignSystem();
-        save();
-      });
+      roleSelect.addEventListener('change', () => { state.role = roleSelect.value; applyDesignSystem(); save(); });
     }
     const sportSelect = document.getElementById('sport-select');
     if (sportSelect) {
       sportSelect.value = state.sport || 'basketball';
-      sportSelect.addEventListener('change', () => {
-        state.sport = sportSelect.value;
-        applyDesignSystem();
-        updateScoreRing();
-        save();
-        toast('🎨 Sport accent updated!');
-      });
+      sportSelect.addEventListener('change', () => { state.sport = sportSelect.value; applyDesignSystem(); updateScoreRing(); save(); toast('🎨 Sport accent updated!'); });
     }
-
-    // Share stat card button (manual trigger)
     const shareBtn = document.getElementById('btn-share-card');
     if (shareBtn) shareBtn.addEventListener('click', () => openStatCardGenerator('manual'));
+
+    // FIX: Bind name input
+    const nameInput = document.getElementById('name-input');
+    if (nameInput) {
+      nameInput.value = state.name || '';
+      nameInput.addEventListener('input', () => { state.name = nameInput.value; });
+    }
+
+    // Save profile button
+    const saveProfileBtn = document.getElementById('btn-save-profile');
+    if (saveProfileBtn) {
+      saveProfileBtn.addEventListener('click', () => {
+        const nameInput = document.getElementById('name-input');
+        if (nameInput) state.name = nameInput.value;
+        save();
+        toast('✅ Profile saved!');
+      });
+    }
   }
 
   // ─── CLOUD SYNC ──────────────────────────────────────────────
   const syncMsg = 'Cloud sync requires Supabase configuration.';
-  async function pushToCloud() {
-    const cfg = loadCloudCfg();
-    if (!cfg) { toast(syncMsg); return; }
-    // Supabase upsert logic
-    toast('☁️ Syncing…');
-  }
-
-  async function pullFromCloud() {
-    const cfg = loadCloudCfg();
-    if (!cfg) { toast(syncMsg); return; }
-    toast('☁️ Pulling…');
-  }
+  async function pushToCloud() { const cfg = loadCloudCfg(); if (!cfg) { toast(syncMsg); return; } toast('☁️ Syncing…'); }
+  async function pullFromCloud() { const cfg = loadCloudCfg(); if (!cfg) { toast(syncMsg); return; } toast('☁️ Pulling…'); }
 
   // ─── WORKOUT COMPLETE HANDLER ────────────────────────────────
   window.piqOnWorkoutComplete = function(sessionData) {
-    // Update last log date for streak tracking
     state.lastLogDate = new Date().toISOString();
     state.streak = (state.streak || 0) + 1;
-
-    // Update pillars
     if (!state.piqPillars) state.piqPillars = { speed: 60, strength: 60, endurance: 60, consistency: 60, nutrition: 60 };
     state.piqPillars.consistency = Math.min(100, (state.piqPillars.consistency || 60) + 2);
     if (sessionData?.type === 'strength') state.piqPillars.strength = Math.min(100, (state.piqPillars.strength || 60) + 3);
     if (sessionData?.type === 'speed')    state.piqPillars.speed    = Math.min(100, (state.piqPillars.speed    || 60) + 3);
     if (sessionData?.type === 'conditioning') state.piqPillars.endurance = Math.min(100, (state.piqPillars.endurance || 60) + 3);
-
     save();
     updateScoreRing();
     checkStatCardTrigger('workout-complete');
     checkStatCardTrigger('streak-milestone');
-
-    // Notify coach (production: Supabase edge function)
     window.piqNotify('Workout logged ✓', `${sessionData?.type || 'Session'} complete. PIQ Score updated.`);
   };
 
@@ -909,21 +760,13 @@
     bindSettings();
     initMessaging();
     render('home');
-
-    // Init push after short delay (better UX)
     setTimeout(() => initPushNotifications(), 2000);
-
-    // Check streak and show notifications
     setTimeout(() => checkStreakNotification(), 3000);
-
-    // Show install prompt if applicable
-    // (captured in beforeinstallprompt handler above)
   }
 
   function safeBoot() {
     try { boot(); } catch (err) {
       console.error('[PIQ] Boot error:', err);
-      // Surface error visually so it's never a silent black screen
       document.body.insertAdjacentHTML('afterbegin',
         `<div style="position:fixed;inset:0;background:#0D1117;display:flex;align-items:center;justify-content:center;z-index:99999;padding:24px">
           <div style="background:#1E2535;border:1px solid #FF4D6D;border-radius:12px;padding:24px;max-width:400px;color:#F0F4FF;font-family:sans-serif">
