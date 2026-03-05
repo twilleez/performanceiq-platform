@@ -241,11 +241,11 @@
   ">+</button>
 
   <!-- DRAWERS -->
-  <div id="drawer-quick-log" class="modal-backdrop" hidden onclick="if(event.target===this)this.hidden=true">
+  <div id="drawer-quick-log" class="modal-backdrop" hidden onclick="if(event.target===this)this.setAttribute('hidden','\)">
     <div class="modal">
       <div class="modal-header">
         <div class="modal-title">QUICK LOG</div>
-        <button class="modal-close" onclick="this.closest('.modal-backdrop').hidden=true">✕</button>
+        <button class="modal-close" onclick="var p=this.closest('.modal-backdrop');p.hidden=true;p.setAttribute('hidden','')">✕</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
         <button class="btn btn-secondary btn-full" data-quick-log="workout">⚡ Log Workout</button>
@@ -255,21 +255,21 @@
     </div>
   </div>
 
-  <div id="drawer-account" class="modal-backdrop" hidden onclick="if(event.target===this)this.hidden=true">
+  <div id="drawer-account" class="modal-backdrop" hidden onclick="if(event.target===this)this.setAttribute('hidden','\)">
     <div class="modal">
       <div class="modal-header">
         <div class="modal-title">ACCOUNT</div>
-        <button class="modal-close" onclick="this.closest('.modal-backdrop').hidden=true">✕</button>
+        <button class="modal-close" onclick="var p=this.closest('.modal-backdrop');p.hidden=true;p.setAttribute('hidden','')">✕</button>
       </div>
       <p style="color:var(--text-secondary);font-size:14px">Manage your profile, role, and sport in the Profile tab.</p>
     </div>
   </div>
 
-  <div id="drawer-help" class="modal-backdrop" hidden onclick="if(event.target===this)this.hidden=true">
+  <div id="drawer-help" class="modal-backdrop" hidden onclick="if(event.target===this)this.setAttribute('hidden','\)">
     <div class="modal">
       <div class="modal-header">
         <div class="modal-title">HELP</div>
-        <button class="modal-close" onclick="this.closest('.modal-backdrop').hidden=true">✕</button>
+        <button class="modal-close" onclick="var p=this.closest('.modal-backdrop');p.hidden=true;p.setAttribute('hidden','')">✕</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:12px;font-size:14px;color:var(--text-secondary)">
         <div><strong style="color:var(--gold)">PIQ Score</strong> — Tap the ring to see your 5-pillar breakdown or take the baseline assessment.</div>
