@@ -1,0 +1,60 @@
+/* ================================================================
+   eliteTraining.css — PerformanceIQ Elite Training Engine styles
+   Additive styles only; safe to layer over existing styles.css
+   ================================================================ */
+
+.session-bar-center{display:flex;align-items:center;gap:8px}
+.rest-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);font-size:12px}
+.rest-pill.is-active{border-color:rgba(0,212,170,.45);box-shadow:0 0 0 3px rgba(0,212,170,.12)}
+
+.train-progress{display:grid;grid-template-columns:1.5fr .7fr .7fr .7fr;gap:12px}
+@media (max-width: 860px){.train-progress{grid-template-columns:1fr 1fr}}
+.metric-card{padding:14px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+.metric-value{font-size:28px;font-weight:800;line-height:1}
+.metric-label{font-size:12px;color:rgba(255,255,255,.7);margin-top:6px}
+.progress-bar{height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}
+.progress-bar > div{height:100%;background:linear-gradient(90deg, rgba(0,212,170,.95), rgba(74,144,226,.75));width:0%}
+.score-badge{display:inline-flex;align-items:center;justify-content:center;min-width:74px;padding:8px 12px;border-radius:999px;background:rgba(0,212,170,.12);border:1px solid rgba(0,212,170,.25);font-weight:800}
+
+.elite-session-wrap{display:flex;flex-direction:column;gap:12px}
+.block-card{padding:14px;border-radius:20px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
+.block-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.block-title{font-size:16px;font-weight:800}
+.block-meta{font-size:12px;color:rgba(255,255,255,.65)}
+.exercise-list{display:flex;flex-direction:column;gap:10px}
+.exercise-card{padding:14px;border-radius:18px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:10px}
+.exercise-card.is-complete{border-color:rgba(0,212,170,.45);box-shadow:0 0 0 3px rgba(0,212,170,.12)}
+.exercise-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.exercise-name{font-size:15px;font-weight:800}
+.exercise-prescription{font-size:12px;color:rgba(255,255,255,.72);margin-top:3px}
+.exercise-cue{font-size:12px;color:rgba(255,255,255,.68)}
+.exercise-actions{display:flex;flex-wrap:wrap;gap:8px}
+.exercise-progress{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.set-dot{width:10px;height:10px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:transparent}
+.set-dot.done{background:#00d4aa;border-color:#00d4aa}
+.exercise-status{font-size:12px;color:rgba(255,255,255,.68)}
+.exercise-chip{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);font-size:11px}
+
+.swap-option{appearance:none;width:100%;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:inherit;text-align:left;display:flex;flex-direction:column;gap:4px;cursor:pointer}
+.swap-option + .swap-option{margin-top:8px}
+.swap-option:hover{border-color:rgba(0,212,170,.3);background:rgba(0,212,170,.08)}
+
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width: 720px){.detail-grid{grid-template-columns:1fr}}
+.detail-card{padding:12px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+.detail-card h4{margin:0 0 8px;font-size:13px}
+.detail-card ul{margin:0;padding-left:18px}
+.detail-card li{margin:0 0 6px;color:rgba(255,255,255,.78);font-size:12px}
+
+.summary-card{padding:14px;border-radius:18px;background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.22)}
+.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width: 760px){.summary-grid{grid-template-columns:1fr 1fr}}
+.summary-stat{padding:10px;border-radius:14px;background:rgba(0,0,0,.14);border:1px solid rgba(255,255,255,.08)}
+.summary-stat strong{display:block;font-size:20px}
+.summary-stat span{font-size:12px;color:rgba(255,255,255,.7)}
+
+#progressMetrics .stat-card.score{border-color:rgba(0,212,170,.35);box-shadow:0 0 0 3px rgba(0,212,170,.08)}
+#todayBlock .session-preview{display:flex;flex-direction:column;gap:8px}
+#todayBlock .session-title{font-weight:800}
+#todayBlock .session-blocks{padding-left:18px;margin:0}
+#todayBlock .session-meta{font-size:12px;color:rgba(255,255,255,.68)}
