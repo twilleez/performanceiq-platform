@@ -1,134 +1,520 @@
-// dataStore.js — v3.0.0  (PerformanceIQ — fully compatible with core.js v4)
-(function () {
-  "use strict";
-  if (window.dataStore) return;
+/* ================================================================
+   dataStore.js — PerformanceIQ v7 Data Layer
+   Offline-first state management with IndexedDB + localStorage
+   ================================================================ */
 
-  const KEY     = "piq_v3";          // new key — clean break from old schema
-  const KEY_OLD = "piq_local_state_v2"; // migrate from old key if present
-  const VERSION = "3.0.0";
+(function() {
+  'use strict';
 
-  function nowISO() { return new Date().toISOString(); }
-  function safeParse(json, fb) { try { return JSON.parse(json); } catch { return fb; } }
-  function isObj(x)  { return !!x && typeof x === "object" && !Array.isArray(x); }
-  function arr(v)    { return Array.isArray(v) ? v : []; }
-  function obj(v)    { return isObj(v) ? v : {}; }
+  // ─── DEFAULT STATE (v7 Extended) ─────────────────────────────────
+  const DEFAULT_STATE = {
+    
+    // ─── PROFILE ───────────────────────────────────────────────────
+    profile: {
+      // Identity
+      name: '',
+      email: '',
+      
+      // Role & Team (Phase 1)
+      role: 'athlete',
+      team_mode: 'solo',
+      team_code: '',
+      
+      // Sport & Position (Phase 2)
+      sport: 'basketball',
+      position: null,
+      
+      // Training Profile (Phase 3 - Progressive)
+      equipment: ['bodyweight'],
+      experience: null,
+      level: 'intermediate',  // Legacy alias for experience
+      goal: null,
+      frequency: null,
+      preferred_session_type: 'practice',
+      
+      // Physical
+      weight_lbs: 160,
+      height_in: 70,
+      age: null,
+      gender: null,
+      
+      // Injuries
+      injuries: [],
+      
+      // Account (Phase 4)
+      account_created: false,
+      meal_plan_enabled: false,
+      dietary_restrictions: [],
+      meal_preferences: [],
+      
+      // Preferences
+      activity: 'med',
+    },
 
-  function baseState() {
-    return {
-      meta:          { version:VERSION, updated_at:nowISO() },
-      profile: {
-        role:                 "coach",
-        sport:                "basketball",
-        preferred_session_type: "practice",
-        injuries:             [],
-        weight_lbs:           160,
-        goal:                 "maintain",
-        activity:             "med",
-        level:                "intermediate",   // beginner | intermediate | advanced
-        equipmentProfile:     "barbell",        // key into EQUIPMENT_PROFILES
-        equipment:            [],               // individual equip checkboxes (Wave2)
+    // ─── ONBOARDING STATE ──────────────────────────────────────────
+    onboarding: {
+      completed: false,
+      current_step: 'welcome',
+      
+      // Progressive disclosure flags
+      progressive: {
+        equipment_captured: false,
+        experience_captured: false,
+        goal_captured: false,
+        frequency_captured: false,
       },
-      team:          { teams:[], active_team_id:null },
-      sessions:      [],                        // unified session log
-      periodization: { plan:null, updated_at:null },
-      insights:      { weekly:[], updated_at:null },
-      ui:            { view:"home", todaySession:null, mealPlan:null },
-      prs:           {},
-      badges:        {},
-      messaging:     { threads:{}, unread:0 },
-      health:        { connected:false, source:"", latestHR:null, dailySteps:null, sleepHrs:null, hrv:null, lastSync:null, history:[] },
-      parentPortal:  { tokens:{} },
-      nutrition:     { log:[], scans:[] },
-      reportLinks:   { links:[] },
-      adAnalytics:   { seasons:{} },
-      wearable:      { platform:"", connected:false, deviceName:"", currentHR:null, sessionHR:[], lastSync:null },
-    };
+      
+      // Session tracking
+      first_session_logged: false,
+      streak_count: 0,
+      last_session_date: null,
+      
+      // Prompts shown
+      account_prompt_shown: false,
+      meal_plan_prompt_shown: false,
+    },
+
+    // ─── UI STATE ──────────────────────────────────────────────────
+    ui: {
+      currentView: 'home',
+      todaySession: null,
+      activeSession: null,
+      sessionStartTime: null,
+      theme: 'dark',
+      sidebarOpen: false,
+    },
+
+    // ─── TEAM STATE ────────────────────────────────────────────────
+    team: {
+      active_team_id: null,
+      teams: [],
+      invites: [],
+      announcements: [],
+    },
+
+    // ─── SESSIONS & TRAINING ───────────────────────────────────────
+    sessions: [],
+    
+    // ─── PERSONAL RECORDS ──────────────────────────────────────────
+    prs: [],
+    
+    // ─── ACHIEVEMENTS ──────────────────────────────────────────────
+    badges: [],
+    
+    // ─── WELLNESS DATA ─────────────────────────────────────────────
+    wellness: {
+      checkins: [],
+      sleep: [],
+      hrv: [],
+    },
+    
+    // ─── NUTRITION ─────────────────────────────────────────────────
+    nutrition: {
+      meals: [],
+      water: [],
+    },
+    
+    // ─── PERIODIZATION ─────────────────────────────────────────────
+    periodization: {
+      current_phase: 'general',
+      week_of_phase: 1,
+      plan: null,
+    },
+    
+    // ─── INSIGHTS/ANALYTICS ────────────────────────────────────────
+    insights: {
+      weekly_volume: [],
+      acwr_history: [],
+    },
+    
+    // ─── MESSAGING ─────────────────────────────────────────────────
+    messaging: {
+      threads: [],
+      unread_count: 0,
+    },
+    
+    // ─── WEARABLE SYNC ─────────────────────────────────────────────
+    wearable: {
+      connected: false,
+      provider: null,
+      last_sync: null,
+    },
+    
+    // ─── META ──────────────────────────────────────────────────────
+    _version: '7.0.0',
+    _created: null,
+    _updated: null,
+  };
+
+  // ─── STATE ───────────────────────────────────────────────────────
+  let state = null;
+  let db = null;
+  const DB_NAME = 'PerformanceIQ';
+  const DB_VERSION = 2;
+  const STORE_NAME = 'appState';
+  const LS_KEY = 'piq_state';
+
+  // ─── INDEXEDDB SETUP ─────────────────────────────────────────────
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) {
+        console.warn('[dataStore] IndexedDB not available, using localStorage');
+        resolve(null);
+        return;
+      }
+
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = () => {
+        console.warn('[dataStore] IndexedDB error:', request.error);
+        resolve(null);
+      };
+
+      request.onsuccess = () => {
+        db = request.result;
+        resolve(db);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const database = event.target.result;
+        if (!database.objectStoreNames.contains(STORE_NAME)) {
+          database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        }
+      };
+    });
   }
 
-  // Merge saved data onto baseState so new keys always exist
-  function normalize(saved) {
-    const base  = baseState();
-    if (!isObj(saved)) return base;
-
-    const s = Object.assign({}, base, saved);
-
-    // Deep-merge objects that need it
-    s.meta          = Object.assign({}, base.meta,          obj(saved.meta));
-    s.profile       = Object.assign({}, base.profile,       obj(saved.profile));
-    s.team          = Object.assign({}, base.team,          obj(saved.team));
-    s.periodization = Object.assign({}, base.periodization, obj(saved.periodization));
-    s.insights      = Object.assign({}, base.insights,      obj(saved.insights));
-    s.ui            = Object.assign({}, base.ui,            obj(saved.ui));
-    s.health        = Object.assign({}, base.health,        obj(saved.health));
-    s.parentPortal  = Object.assign({}, base.parentPortal,  obj(saved.parentPortal));
-    s.messaging     = Object.assign({}, base.messaging,     obj(saved.messaging));
-    s.wearable      = Object.assign({}, base.wearable,      obj(saved.wearable));
-    s.adAnalytics   = Object.assign({}, base.adAnalytics,   obj(saved.adAnalytics));
-    s.nutrition     = Object.assign({}, base.nutrition,     obj(saved.nutrition));
-    s.reportLinks   = Object.assign({}, base.reportLinks,   obj(saved.reportLinks));
-    s.prs           = obj(saved.prs);
-    s.badges        = obj(saved.badges);
-
-    // Arrays
-    s.team.teams       = arr(s.team.teams);
-    s.sessions         = arr(saved.sessions || saved.training_sessions); // migrate old key
-    s.health.history   = arr(s.health.history);
-    s.wearable.sessionHR = arr(s.wearable.sessionHR);
-    s.nutrition.log    = arr(s.nutrition?.log);
-    s.nutrition.scans  = arr(s.nutrition?.scans);
-    s.reportLinks.links = arr(s.reportLinks?.links);
-    s.profile.injuries  = arr(s.profile.injuries);
-    s.profile.equipment = arr(s.profile.equipment);
-    s.insights.weekly   = arr(s.insights.weekly);
-
-    // Stamp version
-    s.meta.version    = VERSION;
-    s.meta.updated_at = s.meta.updated_at || nowISO();
-
-    return s;
-  }
-
-  function readRaw() {
+  // ─── LOAD STATE ──────────────────────────────────────────────────
+  async function loadState() {
     try {
-      return localStorage.getItem(KEY)
-          || localStorage.getItem(KEY_OLD)   // migrate old key
-          || null;
-    } catch { return null; }
+      // Try IndexedDB first
+      if (db) {
+        const stored = await new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, 'readonly');
+          const store = tx.objectStore(STORE_NAME);
+          const request = store.get('main');
+          request.onsuccess = () => resolve(request.result?.data);
+          request.onerror = () => reject(request.error);
+        });
+        
+        if (stored) {
+          state = mergeWithDefaults(stored);
+          console.log('[dataStore] Loaded from IndexedDB');
+          return state;
+        }
+      }
+
+      // Fallback to localStorage
+      const lsData = localStorage.getItem(LS_KEY);
+      if (lsData) {
+        state = mergeWithDefaults(JSON.parse(lsData));
+        console.log('[dataStore] Loaded from localStorage');
+        return state;
+      }
+
+      // Initialize with defaults
+      state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      state._created = new Date().toISOString();
+      state._updated = state._created;
+      console.log('[dataStore] Initialized with defaults');
+      return state;
+
+    } catch (err) {
+      console.error('[dataStore] Load error:', err);
+      state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      state._created = new Date().toISOString();
+      return state;
+    }
   }
 
-  function writeRaw(data) {
+  // ─── SAVE STATE ──────────────────────────────────────────────────
+  async function saveState(reason = '') {
+    if (!state) return;
+    
+    state._updated = new Date().toISOString();
+
     try {
-      localStorage.setItem(KEY, JSON.stringify(data));
+      // Save to IndexedDB
+      if (db) {
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const request = store.put({ id: 'main', data: state });
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      }
+
+      // Always save to localStorage as backup
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+      
+      if (reason) {
+        console.log('[dataStore] Saved:', reason);
+      }
+
+    } catch (err) {
+      console.error('[dataStore] Save error:', err);
+      // Fallback to localStorage only
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+      } catch (lsErr) {
+        console.error('[dataStore] localStorage fallback failed:', lsErr);
+      }
+    }
+  }
+
+  // ─── MERGE WITH DEFAULTS ─────────────────────────────────────────
+  function mergeWithDefaults(stored) {
+    const merged = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    
+    // Deep merge stored data
+    deepMerge(merged, stored);
+    
+    return merged;
+  }
+
+  function deepMerge(target, source) {
+    if (!source) return target;
+    
+    for (const key of Object.keys(source)) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        if (!target[key]) target[key] = {};
+        deepMerge(target[key], source[key]);
+      } else {
+        target[key] = source[key];
+      }
+    }
+    
+    return target;
+  }
+
+  // ─── STATE ACCESSORS ─────────────────────────────────────────────
+  function getState() {
+    return state;
+  }
+
+  function setState(newState) {
+    state = newState;
+    return state;
+  }
+
+  function updateProfile(updates) {
+    if (!state) return;
+    state.profile = { ...state.profile, ...updates };
+    saveState('Profile updated');
+    return state.profile;
+  }
+
+  function updateOnboarding(updates) {
+    if (!state) return;
+    state.onboarding = { ...state.onboarding, ...updates };
+    saveState('Onboarding updated');
+    return state.onboarding;
+  }
+
+  function updateUI(updates) {
+    if (!state) return;
+    state.ui = { ...state.ui, ...updates };
+    // Don't persist UI state changes (they're ephemeral)
+    return state.ui;
+  }
+
+  // ─── SESSION MANAGEMENT ──────────────────────────────────────────
+  function addSession(session) {
+    if (!state) return;
+    state.sessions = state.sessions || [];
+    state.sessions.push({
+      ...session,
+      id: generateId(),
+      logged_at: new Date().toISOString(),
+    });
+    saveState('Session added');
+    return state.sessions;
+  }
+
+  function getSessions(limit = 50) {
+    if (!state) return [];
+    return (state.sessions || [])
+      .slice(-limit)
+      .sort((a, b) => new Date(b.logged_at) - new Date(a.logged_at));
+  }
+
+  // ─── PR MANAGEMENT ───────────────────────────────────────────────
+  function addPR(pr) {
+    if (!state) return;
+    state.prs = state.prs || [];
+    state.prs.push({
+      ...pr,
+      id: generateId(),
+      set_at: new Date().toISOString(),
+    });
+    saveState('PR added');
+    return state.prs;
+  }
+
+  function getPRs(exercise = null) {
+    if (!state) return [];
+    const prs = state.prs || [];
+    if (exercise) {
+      return prs.filter(pr => pr.exercise === exercise);
+    }
+    return prs;
+  }
+
+  // ─── BADGE MANAGEMENT ────────────────────────────────────────────
+  function hasBadge(badgeId) {
+    if (!state) return false;
+    return (state.badges || []).some(b => b.id === badgeId);
+  }
+
+  function awardBadge(badgeId, label = '') {
+    if (!state || hasBadge(badgeId)) return false;
+    state.badges = state.badges || [];
+    state.badges.push({
+      id: badgeId,
+      label,
+      awarded_at: new Date().toISOString(),
+    });
+    saveState('Badge awarded');
+    return true;
+  }
+
+  // ─── WELLNESS MANAGEMENT ─────────────────────────────────────────
+  function addWellnessCheckin(checkin) {
+    if (!state) return;
+    if (!state.wellness) state.wellness = { checkins: [] };
+    state.wellness.checkins = state.wellness.checkins || [];
+    state.wellness.checkins.push({
+      ...checkin,
+      id: generateId(),
+      recorded_at: new Date().toISOString(),
+    });
+    saveState('Wellness checkin added');
+    return state.wellness.checkins;
+  }
+
+  function getLatestWellness() {
+    if (!state?.wellness?.checkins?.length) return null;
+    return state.wellness.checkins[state.wellness.checkins.length - 1];
+  }
+
+  // ─── STREAK TRACKING ─────────────────────────────────────────────
+  function updateStreak() {
+    if (!state) return 0;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const lastDate = state.onboarding?.last_session_date;
+    
+    if (!state.onboarding) state.onboarding = {};
+    
+    if (lastDate === today) {
+      return state.onboarding.streak_count || 0;
+    }
+    
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    if (lastDate === yesterday) {
+      state.onboarding.streak_count = (state.onboarding.streak_count || 0) + 1;
+    } else {
+      state.onboarding.streak_count = 1;
+    }
+    
+    state.onboarding.last_session_date = today;
+    saveState('Streak updated');
+    
+    return state.onboarding.streak_count;
+  }
+
+  // ─── EXPORT/IMPORT ───────────────────────────────────────────────
+  function exportData() {
+    return JSON.stringify(state, null, 2);
+  }
+
+  function importData(jsonString) {
+    try {
+      const imported = JSON.parse(jsonString);
+      state = mergeWithDefaults(imported);
+      saveState('Data imported');
       return true;
-    } catch (e) {
-      console.warn("[dataStore] write failed:", e);
+    } catch (err) {
+      console.error('[dataStore] Import failed:', err);
       return false;
     }
   }
 
-  function load() {
-    const raw = readRaw();
-    if (!raw) return baseState();
-    return normalize(safeParse(raw, null));
+  function resetAll() {
+    state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    state._created = new Date().toISOString();
+    state._updated = state._created;
+    saveState('Reset to defaults');
+    return state;
   }
 
-  function save(state) {
-    const s = normalize(state);
-    s.meta.updated_at = nowISO();
-    return writeRaw(s);
+  // ─── HELPERS ─────────────────────────────────────────────────────
+  function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
-  function exportJSON() {
-    return JSON.stringify(load(), null, 2);
+  // ─── INITIALIZATION ──────────────────────────────────────────────
+  async function init() {
+    console.log('[dataStore] Initializing...');
+    await openDB();
+    await loadState();
+    console.log('[dataStore] Ready');
+    return state;
   }
 
-  function importJSON(text) {
-    if (typeof text !== "string" || !text.trim()) throw new Error("Empty file");
-    const parsed = safeParse(text, null);
-    if (!isObj(parsed)) throw new Error("Expected JSON object");
-    if (!save(parsed)) throw new Error("Storage write failed");
-    return true;
+  // ─── EXPOSE API ──────────────────────────────────────────────────
+  window.dataStore = {
+    // Core
+    init,
+    loadState,
+    saveState,
+    getState,
+    setState,
+    
+    // Profile
+    updateProfile,
+    updateOnboarding,
+    updateUI,
+    
+    // Sessions
+    addSession,
+    getSessions,
+    
+    // PRs
+    addPR,
+    getPRs,
+    
+    // Badges
+    hasBadge,
+    awardBadge,
+    
+    // Wellness
+    addWellnessCheckin,
+    getLatestWellness,
+    
+    // Streaks
+    updateStreak,
+    
+    // Import/Export
+    exportData,
+    importData,
+    resetAll,
+    
+    // Direct state access (use sparingly)
+    get state() { return state; },
+    set state(s) { state = s; },
+    
+    // Constants
+    DEFAULT_STATE,
+  };
+
+  // Auto-init
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 
-  window.dataStore = { load, save, exportJSON, importJSON };
 })();
