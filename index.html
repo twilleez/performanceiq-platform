@@ -1,314 +1,546 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#F5C842">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="PIQ">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0f14" />
+  <meta name="description" content="PerformanceIQ — Offline-first team performance tracking" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
   <title>PerformanceIQ</title>
 
-  <!-- Typography system -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="./manifest.webmanifest">
-  <!-- FIXED: favicon P was #1B2A4A (invisible), now #F5C842 (gold) -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230D1117'/><text x='50%' y='54%' dominant-baseline='middle' text-anchor='middle' font-size='18' font-family='sans-serif' font-weight='900' fill='%23F5C842'>P</text></svg>">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
-
-  <!-- App stylesheet -->
-  <link rel="stylesheet" href="styles.css">
-
-  <!-- OneSignal Push SDK — uncomment and replace appId when ready -->
-  <!--
-  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-  <script>
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(async function(OneSignal) {
-      await OneSignal.init({ appId: "YOUR_ONESIGNAL_APP_ID" });
-    });
-  </script>
-  -->
+  <link rel="icon" href="./icon-192.png" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="manifest" href="./manifest.json" />
+  
+  <!-- Core Styles -->
+  <link rel="stylesheet" href="./styles.css" />
+  <!-- Onboarding Styles (v7) -->
+  <link rel="stylesheet" href="./onboarding.css" />
+  
+  <!-- Preload fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
 </head>
 
-<body data-role="athlete" data-sport="basketball">
+<body data-role="coach">
+  <!-- ===================== Splash ===================== -->
+  <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading PerformanceIQ">
+    <div class="splash-card">
+      <div class="brand">
+        <div class="logo-dot" aria-hidden="true"></div>
+        <div>
+          <div class="brand-title">PerformanceIQ</div>
+          <div class="brand-sub">Offline-first • Team-ready</div>
+        </div>
+      </div>
 
-  <!-- LOADING SCREEN -->
-  <div id="loading-screen" style="
-    position:fixed;inset:0;z-index:9999;
-    background:var(--void);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px
-  ">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;letter-spacing:0.08em;color:var(--gold)">PERFORMANCEIQ</div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.1em">PREPARING YOUR WORKSPACE…</div>
-    <div class="spinner" style="width:24px;height:24px;border:3px solid var(--void-4);border-top-color:var(--gold);border-radius:50%;margin-top:8px"></div>
+      <div class="splash-loading" aria-hidden="true">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+      </div>
+      <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace…</div>
+    </div>
   </div>
 
-  <!-- APP SHELL -->
-  <div id="app">
+  <!-- ===================== Topbar ===================== -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <div class="appmark" aria-label="PerformanceIQ">
+        <span class="appmark-dot" aria-hidden="true"></span>
+        <span class="appmark-title">PerformanceIQ</span>
+      </div>
 
-    <!-- HEADER -->
-    <header class="header">
-      <div class="header-brand">PERFORMANCEIQ</div>
-      <div class="save-pill" id="save-pill" title="Save">
-        <div class="save-dot" id="saveDot"></div>
+      <span class="pill" id="savePill" title="Save status" aria-live="polite">
+        <span class="dot" id="saveDot" aria-hidden="true"></span>
         <span id="saveText">Saved</span>
+      </span>
+
+      <span class="pill" id="teamPill" title="Active team" aria-live="polite">Team: —</span>
+      <span class="pill" id="cloudPill" title="Cloud status" aria-live="polite">Cloud: Local</span>
+    </div>
+
+    <div class="topbar-right">
+      <button class="topbar-btn" id="todayButton" title="Today's session" aria-label="Today's session">
+        <span>Today</span>
+      </button>
+      <button class="topbar-btn icon" id="btnHelp" title="Help (Ctrl+K)" aria-label="Help">?</button>
+      <button class="topbar-btn icon" id="btnAccount" title="Account" aria-label="Account settings">👤</button>
+    </div>
+  </header>
+
+  <!-- ===================== Session Timer Bar ===================== -->
+  <div class="session-bar" id="sessionBar" hidden>
+    <div class="session-bar-left">
+      <span class="session-bar-sport" id="sessionSport">Basketball</span>
+      <span class="session-bar-timer mono" id="sessionTimer">00:00</span>
+    </div>
+    <div class="session-bar-right">
+      <button class="btn ghost small" id="btnEndSession">End</button>
+      <button class="btn small" id="btnLogSession">Log</button>
+    </div>
+  </div>
+
+  <!-- ===================== Main Content ===================== -->
+  <main id="main-content" class="main-content">
+    
+    <!-- ═══════ Home View ═══════ -->
+    <section id="homeView" class="view active" role="region" aria-label="Dashboard">
+      <div class="view-header">
+        <h1 class="view-title">Dashboard</h1>
+        <p class="view-sub" id="homeSub">Coach view • Basketball</p>
       </div>
-      <button id="btn-account" class="btn btn-secondary btn-sm" style="margin-left:8px">Account</button>
-      <button id="btn-help"    class="btn btn-secondary btn-sm">Help</button>
-    </header>
-
-    <!-- MAIN CONTENT -->
-    <main class="main" style="padding-bottom:80px">
-
-      <!-- HOME VIEW -->
-      <section id="view-home" class="view fade-up">
-        <div id="piq-ring-wrap" class="piq-ring-wrap" title="Tap to see score breakdown">
-          <div class="piq-ring" id="piq-ring" style="--piq-pct:5">
-            <span class="piq-ring-num" id="piq-ring-num">?</span>
+      
+      <div class="view-body" id="homeBody">
+        <!-- Today's Session Card -->
+        <div class="card" id="todayCard">
+          <div class="card-title">Today's Session</div>
+          <div id="todayBlock">
+            <p class="muted">No session generated yet.</p>
+            <button class="btn" id="btnGenerateToday">Generate Workout</button>
           </div>
-          <div class="piq-ring-label">PERFORMANCEIQ SCORE</div>
-          <div class="piq-ring-tap-hint" id="piq-ring-tap-hint">TAP TO GET YOUR SCORE</div>
         </div>
-
-        <div style="display:flex;justify-content:center;margin-bottom:16px">
-          <div class="streak-badge">🔥 <span id="streak-display">0</span>d STREAK</div>
-        </div>
-
-        <div class="quick-actions">
-          <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=train]').click()">
-            <div class="quick-btn-icon">⚡</div>Open Train
-          </button>
-          <button class="quick-btn" data-team-only onclick="document.querySelector('.nav-btn[data-view=team]').click()">
-            <div class="quick-btn-icon">👥</div>Manage Team
-          </button>
-          <button class="quick-btn" onclick="window.openStatCardGenerator?.('manual')">
-            <div class="quick-btn-icon">📤</div>Share Card
-          </button>
-          <button class="quick-btn" onclick="document.querySelector('.nav-btn[data-view=messages]').click()">
-            <div class="quick-btn-icon">💬</div>Messages
-          </button>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Weekly overview placeholder -->
-        <div class="card" id="home-weekly-overview">
-          <div class="card-label">THIS WEEK</div>
-          <div class="card-title" id="home-week-summary">Set up your training to see your weekly plan</div>
-        </div>
-
-        <div class="card" data-team-only onclick="document.querySelector('.nav-btn[data-view=team]').click()" style="cursor:pointer">
-          <div class="card-label">TEAM</div>
-          <div class="card-title">Roster, roles, join codes, and dashboards</div>
-        </div>
-        <div class="card" onclick="document.querySelector('.nav-btn[data-view=train]').click()" style="cursor:pointer">
-          <div class="card-label">TRAIN</div>
-          <div class="card-title">Sport-specific workouts tailored to your level</div>
-        </div>
-        <div class="card" onclick="document.querySelector('.nav-btn[data-view=profile]').click()" style="cursor:pointer">
-          <div class="card-label">PROFILE</div>
-          <div class="card-title">Setup, insights, nutrition, health, and more</div>
-        </div>
-      </section>
-
-      <!-- TEAM VIEW (hidden for solo athletes) -->
-      <section id="view-team" class="view" hidden data-team-only>
-        <div class="section-head">
-          <div class="section-title">TEAM</div>
-          <button class="btn btn-primary btn-sm">+ Add Athlete</button>
-        </div>
-        <div class="empty-state">
-          <div class="empty-state-icon">👥</div>
-          <div class="empty-state-title">NO ROSTER YET</div>
-          <div class="empty-state-sub">Add athletes or share your join code to get started</div>
-        </div>
-      </section>
-
-      <!-- TRAIN VIEW -->
-      <section id="view-train" class="view" hidden>
-        <div class="section-head">
-          <div class="section-title">TRAIN</div>
-        </div>
+        
+        <!-- Weekly Overview -->
         <div class="card">
-          <div class="card-label">GENERATE WORKOUT</div>
-          <div class="card-title">Sport-specific, level-matched sessions</div>
-          <button class="btn btn-primary btn-full mt-12" id="btn-gen-workout">Generate Workout →</button>
+          <div class="card-title">This Week</div>
+          <div class="week-scroll" id="weekOverview">
+            <!-- Populated by JS -->
+          </div>
         </div>
-        <div id="workout-output"></div>
-      </section>
-
-      <!-- MESSAGES VIEW -->
-      <section id="view-messages" class="view" hidden>
-        <div class="section-head">
-          <div class="section-title">MESSAGES</div>
-        </div>
-        <div class="empty-state">
-          <div class="empty-state-icon">💬</div>
-          <div class="empty-state-title">LOADING…</div>
-        </div>
-      </section>
-
-      <!-- PROFILE VIEW -->
-      <section id="view-profile" class="view" hidden>
-        <div class="section-title" style="margin-bottom:16px">PROFILE</div>
+        
+        <!-- Progress Metrics -->
         <div class="card">
-          <div class="card-label">ACCOUNT</div>
-          <div class="card-title">Settings & Preferences</div>
-          <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px">
-            <div>
-              <label>Your Name</label>
-              <input type="text" id="name-input" placeholder="Full name">
+          <div class="card-title">Progress</div>
+          <div class="grid3" id="progressMetrics">
+            <div class="stat-card">
+              <div class="stat-value" id="statVolume">0</div>
+              <div class="stat-label">Weekly Volume</div>
             </div>
-            <div>
-              <label>Role</label>
-              <select id="role-select">
-                <option value="athlete">Athlete</option>
+            <div class="stat-card">
+              <div class="stat-value" id="statStreak">0</div>
+              <div class="stat-label">Day Streak</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="statSessions">0</div>
+              <div class="stat-label">Sessions</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Team Section (Coach/Team only) -->
+        <div class="card team-only" id="teamSection">
+          <div class="card-title">Team</div>
+          <div id="teamDashboard">
+            <!-- Team calendar, announcements, etc. -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════ Train View ═══════ -->
+    <section id="trainView" class="view" role="region" aria-label="Training">
+      <div class="view-header">
+        <h1 class="view-title">Train</h1>
+        <p class="view-sub" id="trainSub">Build and run workouts</p>
+      </div>
+      
+      <div class="view-body" id="trainBody">
+        <!-- Session builder controls -->
+        <div class="card">
+          <div class="grid2">
+            <div class="field">
+              <label for="trainSportSelect">Sport</label>
+              <select id="trainSportSelect"></select>
+            </div>
+            <div class="field">
+              <label for="trainSessionType">Session Type</label>
+              <select id="trainSessionType">
+                <option value="practice">Practice</option>
+                <option value="strength">Strength</option>
+                <option value="speed">Speed</option>
+                <option value="conditioning">Conditioning</option>
+                <option value="recovery">Recovery</option>
+                <option value="competition_prep">Competition Prep</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn" id="btnGenTrain" style="margin-top:12px">Generate Session</button>
+        </div>
+        
+        <!-- Session cards area -->
+        <div id="trainCardArea">
+          <!-- Exercise cards rendered here -->
+        </div>
+        
+        <!-- Session actions -->
+        <div class="card" id="sessionActions" hidden>
+          <div class="row gap">
+            <button class="btn" id="btnStartSession">Start Session</button>
+            <button class="btn ghost" id="btnPushToToday">Push to Today</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════ Wellness View ═══════ -->
+    <section id="wellnessView" class="view" role="region" aria-label="Wellness">
+      <div class="view-header">
+        <h1 class="view-title">Wellness</h1>
+        <p class="view-sub" id="wellnessSub">Recovery & readiness</p>
+      </div>
+      
+      <div class="view-body" id="wellnessBody">
+        <!-- Readiness Score -->
+        <div class="card">
+          <div class="card-title">Today's Readiness</div>
+          <div class="readiness-ring" id="readinessRing">
+            <div class="ring-value">85</div>
+            <div class="ring-label">Ready to train</div>
+          </div>
+        </div>
+        
+        <!-- Wellness Inputs -->
+        <div class="card">
+          <div class="card-title">Daily Check-in</div>
+          <div class="wellness-inputs" id="wellnessInputs">
+            <div class="field">
+              <label>Sleep Quality</label>
+              <input type="range" min="1" max="10" value="7" id="sleepInput" />
+            </div>
+            <div class="field">
+              <label>Energy Level</label>
+              <input type="range" min="1" max="10" value="7" id="energyInput" />
+            </div>
+            <div class="field">
+              <label>Muscle Soreness</label>
+              <input type="range" min="1" max="10" value="3" id="sorenessInput" />
+            </div>
+            <div class="field">
+              <label>Stress Level</label>
+              <input type="range" min="1" max="10" value="4" id="stressInput" />
+            </div>
+          </div>
+          <button class="btn" id="btnSaveWellness" style="margin-top:12px">Save Check-in</button>
+        </div>
+        
+        <!-- ACWR Gauge -->
+        <div class="card">
+          <div class="card-title">Training Load (ACWR)</div>
+          <div class="acwr-gauge" id="acwrGauge">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════ Nutrition View ═══════ -->
+    <section id="nutritionView" class="view" role="region" aria-label="Nutrition">
+      <div class="view-header">
+        <h1 class="view-title">Nutrition</h1>
+        <p class="view-sub" id="nutritionSub">Fuel your performance</p>
+      </div>
+      
+      <div class="view-body" id="nutritionBody">
+        <!-- Macro targets -->
+        <div class="card">
+          <div class="card-title">Today's Targets</div>
+          <div id="macroTargets">
+            <!-- Rendered by nutritionEngine -->
+          </div>
+        </div>
+        
+        <!-- Meal plan section (if enabled) -->
+        <div class="card" id="mealPlanSection" hidden>
+          <div class="card-title">Meal Plan</div>
+          <div id="mealPlanContent">
+            <!-- Rendered if meal_plan_enabled -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════ Team View ═══════ -->
+    <section id="teamView" class="view" role="region" aria-label="Team Management">
+      <div class="view-header">
+        <h1 class="view-title">Team</h1>
+        <p class="view-sub" id="teamSub">Manage your athletes</p>
+      </div>
+      
+      <div class="view-body" id="teamBody">
+        <!-- Team content rendered by JS -->
+      </div>
+    </section>
+
+    <!-- ═══════ Insights View ═══════ -->
+    <section id="insightsView" class="view" role="region" aria-label="Insights">
+      <div class="view-header">
+        <h1 class="view-title">Insights</h1>
+        <p class="view-sub" id="insightsSub">Analytics & trends</p>
+      </div>
+      
+      <div class="view-body" id="insightsBody">
+        <!-- PR Tracker -->
+        <div class="card">
+          <div class="card-title">Personal Records</div>
+          <div id="prTracker">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+        
+        <!-- Training history -->
+        <div class="card">
+          <div class="card-title">Training History</div>
+          <div id="trainingHistory">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════ Account View ═══════ -->
+    <section id="accountView" class="view" role="region" aria-label="Account Settings">
+      <div class="view-header">
+        <h1 class="view-title">Settings</h1>
+        <p class="view-sub">Profile & preferences</p>
+      </div>
+      
+      <div class="view-body" id="accountBody">
+        <!-- Profile Card -->
+        <div class="card">
+          <div class="card-title">Profile</div>
+          <div class="grid2">
+            <div class="field">
+              <label for="roleSelect">Role</label>
+              <select id="roleSelect">
                 <option value="coach">Coach</option>
+                <option value="athlete">Athlete</option>
                 <option value="parent">Parent</option>
-                <option value="owner">Owner / Admin</option>
+                <option value="viewer">Viewer</option>
               </select>
             </div>
-            <div>
-              <label>Sport</label>
-              <select id="sport-select">
-                <option value="basketball">🏀 Basketball</option>
-                <option value="football">🏈 Football</option>
-                <option value="soccer">⚽ Soccer</option>
-                <option value="baseball">⚾ Baseball / Softball</option>
-                <option value="volleyball">🏐 Volleyball</option>
-                <option value="track">🏃 Track & Field</option>
-                <option value="swimming">🏊 Swimming</option>
-                <option value="wrestling">🤼 Wrestling</option>
-                <option value="lacrosse">🥍 Lacrosse</option>
-                <option value="tennis">🎾 Tennis</option>
+            <div class="field">
+              <label for="sportSelect">Sport</label>
+              <select id="sportSelect">
+                <!-- Populated by JS -->
               </select>
             </div>
-            <button class="btn btn-primary" id="btn-save-profile">Save Profile</button>
+          </div>
+          
+          <div class="field" style="margin-top:10px">
+            <label for="positionSelect">Position</label>
+            <select id="positionSelect">
+              <option value="">No position</option>
+              <!-- Populated by JS based on sport -->
+            </select>
+          </div>
+          
+          <div class="row gap" style="margin-top:12px">
+            <button class="btn" id="btnSaveProfile">Save</button>
+            <button class="btn ghost" id="btnRunTour">Tour</button>
           </div>
         </div>
-
-        <div class="card" style="border-color:rgba(61,255,192,0.2)">
-          <div class="card-label">SHARE YOUR STATS</div>
-          <div class="card-title">Generate Your Stat Card</div>
-          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
-            Export your PIQ Score card for Instagram, TikTok, or Stories.
+        
+        <!-- Training Profile Card (v7) -->
+        <div class="card" style="margin-top:12px">
+          <div class="card-title">Training Profile</div>
+          
+          <div class="grid2">
+            <div class="field">
+              <label for="experienceSelect">Experience</label>
+              <select id="experienceSelect">
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="goalSelect">Primary Goal</label>
+              <select id="goalSelect">
+                <option value="">Select goal...</option>
+                <option value="strength">Strength</option>
+                <option value="speed">Speed</option>
+                <option value="endurance">Endurance</option>
+                <option value="muscle_gain">Muscle Gain</option>
+                <option value="athleticism">Overall Athleticism</option>
+              </select>
+            </div>
           </div>
-          <button class="btn btn-secondary btn-full" id="btn-share-card">📤 Generate Stat Card</button>
-        </div>
-
-        <div class="card">
-          <div class="card-label">DATA</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn btn-secondary btn-sm" onclick="window.dataStore?.exportJSON?.()">Export JSON</button>
-            <button class="btn btn-secondary btn-sm" onclick="window.dataStore?.importJSON?.()">Import JSON</button>
-            <button class="btn btn-danger btn-sm" onclick="if(confirm('Reset all local data?'))window.dataStore?.reset?.()">Reset</button>
+          
+          <div class="field" style="margin-top:10px">
+            <label>Training Days/Week</label>
+            <div class="btn-group" id="frequencyBtns">
+              <button class="btn ghost" data-freq="2">2</button>
+              <button class="btn ghost" data-freq="3">3</button>
+              <button class="btn" data-freq="4">4</button>
+              <button class="btn ghost" data-freq="5">5</button>
+              <button class="btn ghost" data-freq="6">6</button>
+            </div>
+          </div>
+          
+          <div class="field" style="margin-top:10px">
+            <label>Equipment Access</label>
+            <button class="btn ghost" id="btnEditEquipment">Edit Equipment</button>
           </div>
         </div>
-      </section>
-
-    </main>
-
-    <!-- BOTTOM NAV -->
-    <nav class="nav">
-      <button class="nav-btn active" data-view="home">
-        <div class="nav-btn-icon">🏠</div>Home
-      </button>
-      <button class="nav-btn" data-view="team">
-        <div class="nav-btn-icon">👥</div>Team
-      </button>
-      <button class="nav-btn" data-view="train">
-        <div class="nav-btn-icon">⚡</div>Train
-      </button>
-      <button class="nav-btn" data-view="messages" style="position:relative">
-        <div class="nav-btn-icon">💬</div>Messages
-        <div class="nav-badge" style="display:none"></div>
-      </button>
-      <button class="nav-btn" data-view="profile">
-        <div class="nav-btn-icon">👤</div>Profile
-      </button>
-    </nav>
-
-  </div>
-
-  <!-- QUICK LOG FAB -->
-  <button id="fab" style="
-    position:fixed;bottom:80px;right:16px;z-index:200;
-    width:52px;height:52px;border-radius:50%;
-    background:var(--gold);color:var(--void);border:none;
-    font-size:26px;cursor:pointer;
-    box-shadow:0 4px 20px rgba(245,200,66,0.4);
-    display:flex;align-items:center;justify-content:center;
-  ">+</button>
-
-  <!-- DRAWERS -->
-  <div id="drawer-quick-log" class="modal-backdrop" hidden onclick="if(event.target===this)this.setAttribute('hidden','\)">
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-title">QUICK LOG</div>
-        <button class="modal-close" onclick="var p=this.closest('.modal-backdrop');p.hidden=true;p.setAttribute('hidden','')">✕</button>
+        
+        <!-- Appearance Card -->
+        <div class="card" style="margin-top:12px">
+          <div class="card-title">Appearance</div>
+          <div class="field">
+            <label>Theme</label>
+            <div class="btn-group" id="themeBtns">
+              <button class="btn" data-theme="dark">Dark</button>
+              <button class="btn ghost" data-theme="light">Light</button>
+              <button class="btn ghost" data-theme="auto">Auto</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Data Card -->
+        <div class="card" style="margin-top:12px">
+          <div class="card-title">Data</div>
+          <div class="row gap wrap">
+            <button class="btn ghost" id="btnExport">Export</button>
+            <button class="btn ghost" id="btnImport">Import</button>
+            <button class="btn ghost danger" id="btnReset">Reset All</button>
+          </div>
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="btn btn-secondary btn-full" data-quick-log="workout">⚡ Log Workout</button>
-        <button class="btn btn-secondary btn-full" data-quick-log="nutrition">🥗 Log Nutrition</button>
-        <button class="btn btn-secondary btn-full" data-quick-log="wellness">❤️ Log Wellness</button>
-      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================== Bottom Navigation ===================== -->
+  <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
+    <button class="nav-tab active" data-view="home" aria-current="page">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Home</span>
+    </button>
+    <button class="nav-tab" data-view="train">
+      <span class="nav-icon">💪</span>
+      <span class="nav-label">Train</span>
+    </button>
+    <button class="nav-tab" data-view="wellness">
+      <span class="nav-icon">❤️</span>
+      <span class="nav-label">Wellness</span>
+    </button>
+    <button class="nav-tab" data-view="nutrition">
+      <span class="nav-icon">🥗</span>
+      <span class="nav-label">Nutrition</span>
+    </button>
+    <button class="nav-tab coach-only" data-view="team">
+      <span class="nav-icon">👥</span>
+      <span class="nav-label">Team</span>
+    </button>
+    <button class="nav-tab" data-view="insights">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Insights</span>
+    </button>
+  </nav>
+
+  <!-- ===================== FAB ===================== -->
+  <button class="fab" id="fab" aria-label="Quick actions">+</button>
+
+  <!-- ===================== FAB Sheet ===================== -->
+  <div class="sheet-backdrop" id="fabBackdrop" hidden></div>
+  <div class="sheet" id="fabSheet" aria-hidden="true">
+    <div class="sheet-handle"></div>
+    <div class="sheet-body">
+      <button class="sheet-action" id="fabNewSession">🏋️ New Session</button>
+      <button class="sheet-action" id="fabLogWorkout">📝 Log Workout</button>
+      <button class="sheet-action" id="fabAddPR">🏆 Add PR</button>
+      <button class="sheet-action coach-only" id="fabTeamAnnounce">📢 Team Announcement</button>
     </div>
   </div>
 
-  <div id="drawer-account" class="modal-backdrop" hidden onclick="if(event.target===this)this.setAttribute('hidden','\)">
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-title">ACCOUNT</div>
-        <button class="modal-close" onclick="var p=this.closest('.modal-backdrop');p.hidden=true;p.setAttribute('hidden','')">✕</button>
+  <!-- ===================== Account Drawer ===================== -->
+  <div class="drawer-backdrop" id="accountBackdrop" hidden></div>
+  <aside class="drawer drawer-account" id="accountDrawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <div class="drawer-title">Account</div>
+        <div class="small muted">Settings & profile</div>
       </div>
-      <p style="color:var(--text-secondary);font-size:14px">Manage your profile, role, and sport in the Profile tab.</p>
+      <button class="btn-close-drawer" id="btnCloseAccount" aria-label="Close">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <!-- Drawer content populated by JS -->
+    </div>
+  </aside>
+
+  <!-- ===================== Help Drawer ===================== -->
+  <div class="drawer-backdrop" id="helpBackdrop" hidden></div>
+  <aside class="drawer drawer-help" id="helpDrawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <div class="drawer-title">Help</div>
+        <div class="small muted">Searchable guidance (Ctrl/⌘+K)</div>
+      </div>
+      <button class="btn-close-drawer" id="btnCloseHelp" aria-label="Close">&times;</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field">
+        <label for="helpSearch">Search</label>
+        <input id="helpSearch" type="text" placeholder="Try: session, injury, report..." />
+      </div>
+      <div id="helpResults" style="margin-top:10px"></div>
+    </div>
+  </aside>
+
+  <!-- ===================== RPE Modal ===================== -->
+  <div class="modal-backdrop" id="rpeBackdrop" hidden></div>
+  <div class="modal" id="rpeModal" aria-hidden="true">
+    <div class="modal-header">
+      <h3 class="modal-title">Session Complete!</h3>
+      <button class="btn-close-modal" id="btnCloseRpe" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted">How hard was that session?</p>
+      <div class="rpe-slider">
+        <input type="range" min="1" max="10" value="7" id="rpeInput" />
+        <div class="rpe-labels">
+          <span>Easy</span>
+          <span id="rpeValue">7</span>
+          <span>Max</span>
+        </div>
+      </div>
+      <p class="small muted" id="rpeDesc">Hard effort — good stimulus</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="btnSaveRpe">Save & Finish</button>
     </div>
   </div>
 
-  <div id="drawer-help" class="modal-backdrop" hidden onclick="if(event.target===this)this.setAttribute('hidden','\)">
-    <div class="modal">
-      <div class="modal-header">
-        <div class="modal-title">HELP</div>
-        <button class="modal-close" onclick="var p=this.closest('.modal-backdrop');p.hidden=true;p.setAttribute('hidden','')">✕</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:12px;font-size:14px;color:var(--text-secondary)">
-        <div><strong style="color:var(--gold)">PIQ Score</strong> — Tap the ring to see your 5-pillar breakdown or take the baseline assessment.</div>
-        <div><strong style="color:var(--mint)">Messages</strong> — Chat with your coach, team, or parents inside the app. No GroupMe needed.</div>
-        <div><strong style="color:var(--blue)">Stat Cards</strong> — Share your score on Instagram or TikTok from Profile tab.</div>
-        <div><strong style="color:var(--text-primary)">Notifications</strong> — Enable push to get streak alerts, score updates, and coach messages.</div>
-      </div>
-    </div>
-  </div>
+  <!-- ===================== Toast ===================== -->
+  <div class="toast" id="toast" hidden></div>
 
-  <!-- TOAST -->
-  <div id="toast" hidden></div>
-
-  <!-- SCRIPTS — only core.js (self-contained, no external dependencies) -->
-  <script src="core.js"></script>
-
-  <!-- Service Worker Registration -->
+  <!-- ===================== Scripts ===================== -->
+  <!-- Data layer -->
+  <script src="./dataStore.js"></script>
+  
+  <!-- v7 Onboarding System -->
+  <script src="./onboarding.js"></script>
+  <script src="./progressivePrompts.js"></script>
+  
+  <!-- Engines -->
+  <script src="./nutritionEngine.js"></script>
+  <script src="./periodizationEngine.js"></script>
+  
+  <!-- Core app -->
+  <script src="./core.js"></script>
+  
+  <!-- Service worker registration -->
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('[PIQ] SW registered, scope:', reg.scope))
-          .catch(err => console.warn('[PIQ] SW failed:', err));
-      });
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('[SW] Registered:', reg.scope))
+        .catch(err => console.warn('[SW] Registration failed:', err));
     }
-    // Hide loading screen after app boots
-    window.addEventListener('load', () => {
-      setTimeout(() => {
-        const ls = document.getElementById('loading-screen');
-        if (ls) { ls.style.opacity = '0'; ls.style.transition = 'opacity 0.3s'; setTimeout(() => ls.remove(), 300); }
-      }, 400);
-    });
   </script>
-
 </body>
 </html>
