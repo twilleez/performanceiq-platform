@@ -1,0 +1,978 @@
+/* ================================================================
+   onboarding.css — PerformanceIQ v7 Onboarding System
+   Progressive disclosure onboarding with dark theme
+   ================================================================ */
+
+/* ─── ONBOARDING TOKENS ─────────────────────────────────────────── */
+:root {
+  --ob-bg: #0b0f14;
+  --ob-surface: #141a22;
+  --ob-surface-hover: #1c242e;
+  --ob-surface-active: #243040;
+  --ob-border: #2a3544;
+  --ob-text: #f0f2f5;
+  --ob-text-muted: #8b95a5;
+  --ob-accent: #3b82f6;
+  --ob-accent-glow: rgba(59, 130, 246, 0.25);
+  --ob-success: #22c55e;
+  --ob-warning: #f59e0b;
+  --ob-error: #ef4444;
+  --ob-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  --ob-radius: 12px;
+  --ob-radius-sm: 8px;
+  --ob-radius-lg: 16px;
+  --ob-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --ob-shadow-glow: 0 0 32px var(--ob-accent-glow);
+  --ob-transition: cubic-bezier(0.32, 0.72, 0, 1);
+  --ob-font-display: 'Barlow Condensed', sans-serif;
+  --ob-font-body: system-ui, -apple-system, sans-serif;
+}
+
+/* ─── ONBOARDING CONTAINER ──────────────────────────────────────── */
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--ob-bg);
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  transition: opacity 0.4s var(--ob-transition);
+}
+
+.onboarding.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.onboarding.exit {
+  animation: ob-exit 0.5s var(--ob-transition) forwards;
+}
+
+@keyframes ob-exit {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.02); }
+}
+
+/* ─── PROGRESS BAR ──────────────────────────────────────────────── */
+.ob-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--ob-border);
+  z-index: 10;
+}
+
+.ob-progress-bar {
+  height: 100%;
+  background: var(--ob-gradient);
+  transition: width 0.4s var(--ob-transition);
+  border-radius: 0 2px 2px 0;
+}
+
+/* ─── SCREEN CONTAINER ──────────────────────────────────────────── */
+.ob-screen {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  padding: 48px 24px 24px;
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.ob-screen.active {
+  display: flex;
+  animation: ob-slide-in 0.4s var(--ob-transition) forwards;
+}
+
+.ob-screen.exit {
+  animation: ob-slide-out 0.3s var(--ob-transition) forwards;
+}
+
+@keyframes ob-slide-in {
+  0% { opacity: 0; transform: translateX(20px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ob-slide-out {
+  0% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(-20px); }
+}
+
+/* ─── WELCOME SCREEN ────────────────────────────────────────────── */
+.ob-welcome {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding-bottom: 80px;
+}
+
+.ob-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 48px;
+}
+
+.ob-logo-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ob-gradient);
+  box-shadow: var(--ob-shadow-glow);
+  animation: ob-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ob-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+.ob-logo-text {
+  font-family: var(--ob-font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ob-text);
+  letter-spacing: 0.02em;
+}
+
+.ob-headline {
+  font-family: var(--ob-font-display);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--ob-text);
+  line-height: 1.2;
+  margin: 0 0 16px;
+  max-width: 320px;
+}
+
+.ob-subtext {
+  font-size: 16px;
+  color: var(--ob-text-muted);
+  line-height: 1.5;
+  margin: 0 0 48px;
+  max-width: 280px;
+}
+
+/* ─── SCREEN HEADER ─────────────────────────────────────────────── */
+.ob-header {
+  margin-bottom: 32px;
+}
+
+.ob-title {
+  font-family: var(--ob-font-display);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ob-text);
+  margin: 0 0 8px;
+}
+
+.ob-subtitle {
+  font-size: 14px;
+  color: var(--ob-text-muted);
+  margin: 0;
+}
+
+/* ─── ROLE CARDS ────────────────────────────────────────────────── */
+.ob-role-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.ob-role-card {
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius);
+  padding: 20px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.ob-role-card:hover {
+  background: var(--ob-surface-hover);
+  border-color: var(--ob-text-muted);
+}
+
+.ob-role-card.selected {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-role-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.ob-role-label {
+  font-family: var(--ob-font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ob-text);
+  margin-bottom: 4px;
+}
+
+.ob-role-desc {
+  font-size: 12px;
+  color: var(--ob-text-muted);
+  line-height: 1.4;
+}
+
+/* ─── TEAM/SOLO TOGGLE ──────────────────────────────────────────── */
+.ob-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--ob-surface);
+  border-radius: var(--ob-radius);
+  margin-bottom: 16px;
+}
+
+.ob-toggle-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ob-text-muted);
+  transition: color 0.2s;
+}
+
+.ob-toggle-option.active {
+  color: var(--ob-text);
+}
+
+.ob-toggle-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--ob-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.ob-toggle-option.active .ob-toggle-radio {
+  border-color: var(--ob-accent);
+}
+
+.ob-toggle-option.active .ob-toggle-radio::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ob-accent);
+}
+
+/* ─── TEAM CODE INPUT ───────────────────────────────────────────── */
+.ob-team-input {
+  margin-bottom: 24px;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: all 0.3s var(--ob-transition);
+}
+
+.ob-team-input.visible {
+  max-height: 80px;
+  opacity: 1;
+}
+
+.ob-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  color: var(--ob-text);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.ob-input::placeholder {
+  color: var(--ob-text-muted);
+}
+
+.ob-input:focus {
+  border-color: var(--ob-accent);
+}
+
+/* ─── SPORT GRID ────────────────────────────────────────────────── */
+.ob-search {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-bottom: 16px;
+}
+
+.ob-search-input {
+  width: 100%;
+  padding: 12px 16px 12px 44px;
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  color: var(--ob-text);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.ob-search-input:focus {
+  border-color: var(--ob-accent);
+}
+
+.ob-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ob-text-muted);
+  font-size: 18px;
+  pointer-events: none;
+}
+
+.ob-sport-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 100px;
+  align-content: start;
+}
+
+.ob-sport-card {
+  aspect-ratio: 1;
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ob-sport-card:hover {
+  background: var(--ob-surface-hover);
+  border-color: var(--ob-text-muted);
+}
+
+.ob-sport-card.selected {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-sport-card.hidden {
+  display: none;
+}
+
+.ob-sport-icon {
+  font-size: 28px;
+}
+
+.ob-sport-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ob-text);
+  text-align: center;
+}
+
+/* ─── POSITION GRID ─────────────────────────────────────────────── */
+.ob-position-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.ob-position-card {
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.ob-position-card:hover {
+  background: var(--ob-surface-hover);
+  border-color: var(--ob-text-muted);
+}
+
+.ob-position-card.selected {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-position-card.full-width {
+  grid-column: 1 / -1;
+}
+
+.ob-position-abbrev {
+  font-family: var(--ob-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ob-accent);
+  margin-bottom: 4px;
+}
+
+.ob-position-label {
+  font-size: 13px;
+  color: var(--ob-text);
+}
+
+/* ─── BUTTONS ───────────────────────────────────────────────────── */
+.ob-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 24px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0));
+  background: linear-gradient(transparent, var(--ob-bg) 30%);
+  z-index: 10;
+}
+
+.ob-footer-inner {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.ob-btn {
+  width: 100%;
+  padding: 16px 24px;
+  font-family: var(--ob-font-display);
+  font-size: 18px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--ob-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+}
+
+.ob-btn-primary {
+  background: var(--ob-gradient);
+  color: #fff;
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 32px var(--ob-accent-glow);
+}
+
+.ob-btn-primary:active {
+  transform: translateY(0);
+}
+
+.ob-btn-primary:disabled {
+  background: var(--ob-border);
+  color: var(--ob-text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.ob-btn-ghost {
+  background: transparent;
+  color: var(--ob-text-muted);
+  border: 2px solid var(--ob-border);
+}
+
+.ob-btn-ghost:hover {
+  border-color: var(--ob-text-muted);
+  color: var(--ob-text);
+}
+
+/* ─── PROGRESSIVE MODALS ────────────────────────────────────────── */
+.ob-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.ob-modal-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ob-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.95);
+  width: calc(100% - 48px);
+  max-width: 420px;
+  max-height: calc(100vh - 120px);
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-border);
+  border-radius: var(--ob-radius-lg);
+  overflow: hidden;
+  z-index: 10001;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s var(--ob-transition);
+}
+
+.ob-modal.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.ob-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--ob-border);
+}
+
+.ob-modal-title {
+  font-family: var(--ob-font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ob-text);
+  margin: 0;
+}
+
+.ob-modal-close {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--ob-text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.ob-modal-close:hover {
+  background: var(--ob-surface-hover);
+  color: var(--ob-text);
+}
+
+.ob-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+}
+
+.ob-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--ob-border);
+}
+
+/* ─── BOTTOM SHEET ──────────────────────────────────────────────── */
+.ob-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--ob-surface);
+  border-top: 1px solid var(--ob-border);
+  border-radius: var(--ob-radius-lg) var(--ob-radius-lg) 0 0;
+  z-index: 10001;
+  transform: translateY(100%);
+  transition: transform 0.4s var(--ob-transition);
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+.ob-sheet.visible {
+  transform: translateY(0);
+}
+
+.ob-sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--ob-border);
+  border-radius: 2px;
+  margin: 12px auto;
+}
+
+.ob-sheet-body {
+  padding: 0 24px 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
+  overflow-y: auto;
+  max-height: calc(85vh - 48px);
+}
+
+/* ─── CHECKBOX LIST ─────────────────────────────────────────────── */
+.ob-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.ob-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--ob-bg);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ob-checkbox-item:hover {
+  border-color: var(--ob-text-muted);
+}
+
+.ob-checkbox-item.checked {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+}
+
+.ob-checkbox {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ob-border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.ob-checkbox-item.checked .ob-checkbox {
+  background: var(--ob-accent);
+  border-color: var(--ob-accent);
+}
+
+.ob-checkbox-item.checked .ob-checkbox::after {
+  content: '✓';
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ob-checkbox-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.ob-checkbox-label {
+  font-size: 14px;
+  color: var(--ob-text);
+  flex: 1;
+}
+
+/* ─── PRESET BUTTONS ────────────────────────────────────────────── */
+.ob-preset-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.ob-preset-btn {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--ob-bg);
+  border: 1px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  color: var(--ob-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ob-preset-btn:hover {
+  border-color: var(--ob-accent);
+  color: var(--ob-accent);
+}
+
+/* ─── EXPERIENCE CARDS ──────────────────────────────────────────── */
+.ob-experience-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ob-experience-card {
+  background: var(--ob-bg);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ob-experience-card:hover {
+  border-color: var(--ob-text-muted);
+}
+
+.ob-experience-card.selected {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-experience-label {
+  font-family: var(--ob-font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ob-text);
+  margin-bottom: 4px;
+}
+
+.ob-experience-desc {
+  font-size: 13px;
+  color: var(--ob-text-muted);
+  line-height: 1.4;
+}
+
+/* ─── GOAL CARDS ────────────────────────────────────────────────── */
+.ob-goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ob-goal-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--ob-bg);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ob-goal-card:hover {
+  border-color: var(--ob-text-muted);
+}
+
+.ob-goal-card.selected {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-goal-icon {
+  font-size: 24px;
+}
+
+.ob-goal-content {
+  flex: 1;
+}
+
+.ob-goal-label {
+  font-family: var(--ob-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ob-text);
+  margin-bottom: 2px;
+}
+
+.ob-goal-desc {
+  font-size: 12px;
+  color: var(--ob-text-muted);
+}
+
+/* ─── FREQUENCY SELECTOR ────────────────────────────────────────── */
+.ob-frequency-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ob-frequency-btn {
+  flex: 1;
+  aspect-ratio: 1;
+  background: var(--ob-bg);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ob-frequency-btn:hover {
+  border-color: var(--ob-text-muted);
+}
+
+.ob-frequency-btn.selected {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-frequency-num {
+  font-family: var(--ob-font-display);
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--ob-text);
+}
+
+.ob-frequency-label {
+  font-size: 10px;
+  color: var(--ob-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ob-frequency-desc {
+  text-align: center;
+  font-size: 13px;
+  color: var(--ob-text-muted);
+  padding: 12px;
+  background: var(--ob-bg);
+  border-radius: var(--ob-radius-sm);
+  line-height: 1.4;
+}
+
+/* ─── TOAST PROMPT ──────────────────────────────────────────────── */
+.ob-toast-prompt {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-border);
+  border-radius: var(--ob-radius);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--ob-shadow);
+  z-index: 9000;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.4s var(--ob-transition);
+}
+
+.ob-toast-prompt.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.ob-toast-text {
+  font-size: 14px;
+  color: var(--ob-text);
+}
+
+.ob-toast-btn {
+  padding: 8px 14px;
+  background: var(--ob-accent);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ─── MOBILE REFINEMENTS ────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .ob-sport-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .ob-role-grid {
+    gap: 10px;
+  }
+  
+  .ob-role-card {
+    padding: 16px 12px;
+  }
+  
+  .ob-role-icon {
+    font-size: 28px;
+  }
+  
+  .ob-role-label {
+    font-size: 16px;
+  }
+  
+  .ob-headline {
+    font-size: 28px;
+  }
+  
+  .ob-frequency-num {
+    font-size: 24px;
+  }
+}
+
+/* ─── ACCESSIBILITY ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .ob-screen,
+  .ob-modal,
+  .ob-sheet,
+  .ob-toast-prompt,
+  .onboarding {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.ob-role-card:focus-visible,
+.ob-sport-card:focus-visible,
+.ob-position-card:focus-visible,
+.ob-checkbox-item:focus-visible,
+.ob-experience-card:focus-visible,
+.ob-goal-card:focus-visible,
+.ob-frequency-btn:focus-visible {
+  outline: 2px solid var(--ob-accent);
+  outline-offset: 2px;
+}
+
+/* ─── SKIP LINK ─────────────────────────────────────────────────── */
+.ob-skip-link {
+  position: absolute;
+  top: -100px;
+  left: 16px;
+  padding: 12px 16px;
+  background: var(--ob-accent);
+  color: #fff;
+  border-radius: 6px;
+  font-weight: 600;
+  z-index: 10002;
+  transition: top 0.2s;
+}
+
+.ob-skip-link:focus {
+  top: 16px;
+}
