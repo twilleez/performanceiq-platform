@@ -976,3 +976,259 @@
 .ob-skip-link:focus {
   top: 16px;
 }
+
+/* ─── v8 onboarding additions ─────────────────────────────────── */
+.ob-step-text {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  font-size: 12px;
+  color: var(--ob-text-muted);
+  z-index: 11;
+}
+
+.ob-two-col,
+.ob-check-grid,
+.ob-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ob-frequency-grid .ob-feature-card strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.ob-feature-card,
+.ob-check-card,
+.ob-select-row,
+.ob-toggle-card {
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius);
+  color: var(--ob-text);
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ob-feature-card,
+.ob-check-card {
+  min-height: 106px;
+}
+
+.ob-feature-card:hover,
+.ob-check-card:hover,
+.ob-select-row:hover,
+.ob-toggle-card:hover,
+.ob-chip:hover {
+  background: var(--ob-surface-hover);
+  border-color: var(--ob-text-muted);
+}
+
+.ob-feature-card.selected,
+.ob-check-card.selected,
+.ob-select-row.selected,
+.ob-toggle-card.selected,
+.ob-chip.selected {
+  background: var(--ob-surface-active);
+  border-color: var(--ob-accent);
+  box-shadow: var(--ob-shadow-glow);
+}
+
+.ob-feature-card strong,
+.ob-check-card strong,
+.ob-select-row strong,
+.ob-toggle-card strong {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.ob-feature-card span,
+.ob-check-card span,
+.ob-select-row span,
+.ob-toggle-card span,
+.ob-helper-text,
+.ob-position-desc,
+.ob-day-meta,
+.ob-summary-card span {
+  font-size: 13px;
+  color: var(--ob-text-muted);
+  line-height: 1.4;
+}
+
+.ob-feature-icon,
+.ob-check-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+
+.ob-chip-row,
+.ob-popular-row,
+.ob-social-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ob-popular-row {
+  margin-bottom: 14px;
+}
+
+.ob-chip {
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: 999px;
+  color: var(--ob-text);
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ob-check-grid {
+  margin-top: 8px;
+}
+
+.ob-stack-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.ob-select-row {
+  min-height: 74px;
+}
+
+.ob-conditional {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: all 0.25s var(--ob-transition);
+}
+
+.ob-conditional.visible {
+  max-height: 420px;
+  opacity: 1;
+  margin-top: 10px;
+}
+
+.ob-field,
+.ob-field-label {
+  display: block;
+}
+
+.ob-field {
+  margin-bottom: 12px;
+}
+
+.ob-field-label {
+  font-size: 13px;
+  color: var(--ob-text-muted);
+  margin-bottom: 8px;
+}
+
+.ob-inline-primary {
+  margin-top: 4px;
+}
+
+.ob-helper-text {
+  margin-top: 8px;
+}
+
+.ob-footer-split {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+}
+
+.ob-position-grid-wide {
+  grid-template-columns: 1fr 1fr;
+}
+
+.ob-position-desc {
+  margin-top: 6px;
+}
+
+.ob-day-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+}
+
+.ob-day-card {
+  min-width: 180px;
+  background: var(--ob-surface);
+  border: 2px solid var(--ob-border);
+  border-radius: var(--ob-radius);
+  padding: 16px;
+  scroll-snap-align: start;
+}
+
+.ob-day-card.rest {
+  opacity: 0.8;
+}
+
+.ob-day-name {
+  font-family: var(--ob-font-display);
+  font-size: 18px;
+  margin-bottom: 8px;
+  color: var(--ob-text);
+}
+
+.ob-day-session {
+  font-size: 14px;
+  color: var(--ob-text);
+  margin-bottom: 6px;
+}
+
+.ob-summary-grid {
+  margin-top: 16px;
+}
+
+.ob-summary-card {
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-border);
+  border-radius: var(--ob-radius-sm);
+  padding: 14px;
+}
+
+.ob-summary-card strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ob-text);
+}
+
+@media (max-width: 640px) {
+  .ob-two-col,
+  .ob-check-grid,
+  .ob-summary-grid,
+  .ob-position-grid-wide,
+  .ob-footer-split,
+  .ob-social-row {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .ob-step-text {
+    right: 14px;
+  }
+
+  .ob-screen {
+    max-width: 560px;
+  }
+
+  .ob-sport-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
