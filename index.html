@@ -19,7 +19,6 @@
   <link rel="stylesheet" href="./styles.css" />
   <!-- Onboarding Styles (v7) -->
   <link rel="stylesheet" href="./onboarding.css" />
-  <link rel="stylesheet" href="./eliteTraining.css" />
   
   <!-- Preload fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -80,9 +79,6 @@
       <span class="session-bar-sport" id="sessionSport">Basketball</span>
       <span class="session-bar-timer mono" id="sessionTimer">00:00</span>
     </div>
-    <div class="session-bar-center">
-      <div class="rest-pill" id="sessionRest"><span>Rest</span><strong>Ready</strong></div>
-    </div>
     <div class="session-bar-right">
       <button class="btn ghost small" id="btnEndSession">End</button>
       <button class="btn small" id="btnLogSession">Log</button>
@@ -132,10 +128,6 @@
             <div class="stat-card">
               <div class="stat-value" id="statSessions">0</div>
               <div class="stat-label">Sessions</div>
-            </div>
-            <div class="stat-card score">
-              <div class="stat-value" id="statScore">0</div>
-              <div class="stat-label">PerformanceIQ Score</div>
             </div>
           </div>
         </div>
@@ -524,51 +516,6 @@
     </div>
   </div>
 
-
-
-  <!-- ===================== Exercise Detail Modal ===================== -->
-  <div class="modal-backdrop" id="exerciseDetailBackdrop" hidden></div>
-  <div class="modal" id="exerciseDetailModal" aria-hidden="true">
-    <div class="modal-header">
-      <h3 class="modal-title" id="exerciseDetailTitle">Exercise Detail</h3>
-      <button class="btn-close-modal" id="btnCloseExercise" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p class="muted" id="exerciseDetailSub">Sets • reps • rest</p>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h4>Coaching cues</h4>
-          <ul id="exerciseDetailCues"></ul>
-        </div>
-        <div class="detail-card">
-          <h4>Common mistakes</h4>
-          <ul id="exerciseDetailMistakes"></ul>
-        </div>
-        <div class="detail-card">
-          <h4>Progressions</h4>
-          <ul id="exerciseDetailProg"></ul>
-        </div>
-        <div class="detail-card">
-          <h4>Regressions</h4>
-          <ul id="exerciseDetailReg"></ul>
-        </div>
-      </div>
-      <p class="small muted" style="margin-top:10px">Equipment: <span id="exerciseDetailEquip">bodyweight</span></p>
-    </div>
-  </div>
-
-  <!-- ===================== Swap Modal ===================== -->
-  <div class="modal-backdrop" id="swapBackdrop" hidden></div>
-  <div class="modal" id="swapModal" aria-hidden="true">
-    <div class="modal-header">
-      <h3 class="modal-title" id="swapTitle">Choose an alternative</h3>
-      <button class="btn-close-modal" id="btnCloseSwap" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div id="swapList"></div>
-    </div>
-  </div>
-
   <!-- ===================== Toast ===================== -->
   <div class="toast" id="toast" hidden></div>
 
@@ -583,8 +530,6 @@
   <!-- Engines -->
   <script src="./nutritionEngine.js"></script>
   <script src="./periodizationEngine.js"></script>
-  <script src="./exerciseLibrary.js"></script>
-  <script src="./eliteTrainingEngine.js"></script>
   
   <!-- Core app -->
   <script src="./core.js"></script>
