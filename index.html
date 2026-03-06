@@ -1,601 +1,76 @@
-<!doctype html>
-<html lang="en" data-theme="dark">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0f14" />
-  <meta name="description" content="PerformanceIQ — Offline-first team performance tracking" />
-  <meta name="color-scheme" content="dark light" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PerformanceIQ</title>
-
-  <link rel="icon" href="./icon-192.png" />
-  <link rel="apple-touch-icon" href="./icon-192.png" />
-  <link rel="manifest" href="./manifest.json" />
-  
-  <!-- Core Styles -->
-  <link rel="stylesheet" href="./styles.css" />
-  <!-- Onboarding Styles (v7) -->
-  <link rel="stylesheet" href="./onboarding.css" />
-  <link rel="stylesheet" href="./eliteTraining.css" />
-  
-  <!-- Preload fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
+<body data-role="athlete" data-athlete-id="1">
 
-<body data-role="coach">
-  <!-- ===================== Splash ===================== -->
-  <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading PerformanceIQ">
-    <div class="splash-card">
-      <div class="brand">
-        <div class="logo-dot" aria-hidden="true"></div>
-        <div>
-          <div class="brand-title">PerformanceIQ</div>
-          <div class="brand-sub">Offline-first • Team-ready</div>
-        </div>
-      </div>
-
-      <div class="splash-loading" aria-hidden="true">
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
-      </div>
-      <div id="splashText" class="muted small" style="margin-top:10px">Preparing your workspace…</div>
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-mark">PIQ</span>
+      <span class="logo-text">PerformanceIQ</span>
     </div>
-  </div>
-
-  <!-- ===================== Topbar ===================== -->
-  <header class="topbar" role="banner">
-    <div class="topbar-left">
-      <div class="appmark" aria-label="PerformanceIQ">
-        <span class="appmark-dot" aria-hidden="true"></span>
-        <span class="appmark-title">PerformanceIQ</span>
-      </div>
-
-      <span class="pill" id="savePill" title="Save status" aria-live="polite">
-        <span class="dot" id="saveDot" aria-hidden="true"></span>
-        <span id="saveText">Saved</span>
-      </span>
-
-      <span class="pill" id="teamPill" title="Active team" aria-live="polite">Team: —</span>
-      <span class="pill" id="cloudPill" title="Cloud status" aria-live="polite">Cloud: Local</span>
+    <div class="nav-links">
+      <a href="#dashboard" class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a href="#train" class="nav-item" data-view="train">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        <span>Train</span>
+      </a>
+      <a href="#wellness" class="nav-item" data-view="wellness">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z"/></svg>
+        <span>Wellness</span>
+      </a>
+      <a href="#team" class="nav-item" data-view="team" data-coach-only>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        <span>Team</span>
+      </a>
+      <a href="#athletes" class="nav-item" data-view="athletes" data-coach-only>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+        <span>Athletes</span>
+      </a>
+      <a href="#analytics" class="nav-item" data-view="analytics">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+        <span>Analytics</span>
+      </a>
     </div>
-
-    <div class="topbar-right">
-      <button class="topbar-btn" id="todayButton" title="Today's session" aria-label="Today's session">
-        <span>Today</span>
-      </button>
-      <button class="topbar-btn icon" id="btnHelp" title="Help (Ctrl+K)" aria-label="Help">?</button>
-      <button class="topbar-btn icon" id="btnAccount" title="Account" aria-label="Account settings">👤</button>
+    <div class="sidebar-footer">
+      <div class="role-switcher">
+        <button class="role-btn active" data-role="athlete">Athlete</button>
+        <button class="role-btn" data-role="coach">Coach</button>
+      </div>
+      <div class="user-profile">
+        <div class="avatar">JD</div>
+        <div class="user-info">
+          <span class="user-name">Jordan Davis</span>
+          <span class="user-role">Forward · Basketball</span>
+        </div>
+      </div>
     </div>
-  </header>
-
-  <!-- ===================== Session Timer Bar ===================== -->
-  <div class="session-bar" id="sessionBar" hidden>
-    <div class="session-bar-left">
-      <span class="session-bar-sport" id="sessionSport">Basketball</span>
-      <span class="session-bar-timer mono" id="sessionTimer">00:00</span>
-    </div>
-    <div class="session-bar-center">
-      <div class="rest-pill" id="sessionRest"><span>Rest</span><strong>Ready</strong></div>
-    </div>
-    <div class="session-bar-right">
-      <button class="btn ghost small" id="btnEndSession">End</button>
-      <button class="btn small" id="btnLogSession">Log</button>
-    </div>
-  </div>
-
-  <!-- ===================== Main Content ===================== -->
-  <main id="main-content" class="main-content">
-    
-    <!-- ═══════ Home View ═══════ -->
-    <section id="homeView" class="view active" role="region" aria-label="Dashboard">
-      <div class="view-header">
-        <h1 class="view-title">Dashboard</h1>
-        <p class="view-sub" id="homeSub">Coach view • Basketball</p>
-      </div>
-      
-      <div class="view-body" id="homeBody">
-        <!-- Today's Session Card -->
-        <div class="card" id="todayCard">
-          <div class="card-title">Today's Session</div>
-          <div id="todayBlock">
-            <p class="muted">No session generated yet.</p>
-            <button class="btn" id="btnGenerateToday">Generate Workout</button>
-          </div>
-        </div>
-        
-        <!-- Weekly Overview -->
-        <div class="card">
-          <div class="card-title">This Week</div>
-          <div class="week-scroll" id="weekOverview">
-            <!-- Populated by JS -->
-          </div>
-        </div>
-        
-        <!-- Progress Metrics -->
-        <div class="card">
-          <div class="card-title">Progress</div>
-          <div class="grid3" id="progressMetrics">
-            <div class="stat-card">
-              <div class="stat-value" id="statVolume">0</div>
-              <div class="stat-label">Weekly Volume</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value" id="statStreak">0</div>
-              <div class="stat-label">Day Streak</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value" id="statSessions">0</div>
-              <div class="stat-label">Sessions</div>
-            </div>
-            <div class="stat-card score">
-              <div class="stat-value" id="statScore">0</div>
-              <div class="stat-label">PerformanceIQ Score</div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Team Section (Coach/Team only) -->
-        <div class="card team-only" id="teamSection">
-          <div class="card-title">Team</div>
-          <div id="teamDashboard">
-            <!-- Team calendar, announcements, etc. -->
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════ Train View ═══════ -->
-    <section id="trainView" class="view" role="region" aria-label="Training">
-      <div class="view-header">
-        <h1 class="view-title">Train</h1>
-        <p class="view-sub" id="trainSub">Build and run workouts</p>
-      </div>
-      
-      <div class="view-body" id="trainBody">
-        <!-- Session builder controls -->
-        <div class="card">
-          <div class="grid2">
-            <div class="field">
-              <label for="trainSportSelect">Sport</label>
-              <select id="trainSportSelect"></select>
-            </div>
-            <div class="field">
-              <label for="trainSessionType">Session Type</label>
-              <select id="trainSessionType">
-                <option value="practice">Practice</option>
-                <option value="strength">Strength</option>
-                <option value="speed">Speed</option>
-                <option value="conditioning">Conditioning</option>
-                <option value="recovery">Recovery</option>
-                <option value="competition_prep">Competition Prep</option>
-              </select>
-            </div>
-          </div>
-          <button class="btn" id="btnGenTrain" style="margin-top:12px">Generate Session</button>
-        </div>
-        
-        <!-- Session cards area -->
-        <div id="trainCardArea">
-          <!-- Exercise cards rendered here -->
-        </div>
-        
-        <!-- Session actions -->
-        <div class="card" id="sessionActions" hidden>
-          <div class="row gap">
-            <button class="btn" id="btnStartSession">Start Session</button>
-            <button class="btn ghost" id="btnPushToToday">Push to Today</button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════ Wellness View ═══════ -->
-    <section id="wellnessView" class="view" role="region" aria-label="Wellness">
-      <div class="view-header">
-        <h1 class="view-title">Wellness</h1>
-        <p class="view-sub" id="wellnessSub">Recovery & readiness</p>
-      </div>
-      
-      <div class="view-body" id="wellnessBody">
-        <!-- Readiness Score -->
-        <div class="card">
-          <div class="card-title">Today's Readiness</div>
-          <div class="readiness-ring" id="readinessRing">
-            <div class="ring-value">85</div>
-            <div class="ring-label">Ready to train</div>
-          </div>
-        </div>
-        
-        <!-- Wellness Inputs -->
-        <div class="card">
-          <div class="card-title">Daily Check-in</div>
-          <div class="wellness-inputs" id="wellnessInputs">
-            <div class="field">
-              <label>Sleep Quality</label>
-              <input type="range" min="1" max="10" value="7" id="sleepInput" />
-            </div>
-            <div class="field">
-              <label>Energy Level</label>
-              <input type="range" min="1" max="10" value="7" id="energyInput" />
-            </div>
-            <div class="field">
-              <label>Muscle Soreness</label>
-              <input type="range" min="1" max="10" value="3" id="sorenessInput" />
-            </div>
-            <div class="field">
-              <label>Stress Level</label>
-              <input type="range" min="1" max="10" value="4" id="stressInput" />
-            </div>
-          </div>
-          <button class="btn" id="btnSaveWellness" style="margin-top:12px">Save Check-in</button>
-        </div>
-        
-        <!-- ACWR Gauge -->
-        <div class="card">
-          <div class="card-title">Training Load (ACWR)</div>
-          <div class="acwr-gauge" id="acwrGauge">
-            <!-- Rendered by JS -->
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════ Nutrition View ═══════ -->
-    <section id="nutritionView" class="view" role="region" aria-label="Nutrition">
-      <div class="view-header">
-        <h1 class="view-title">Nutrition</h1>
-        <p class="view-sub" id="nutritionSub">Fuel your performance</p>
-      </div>
-      
-      <div class="view-body" id="nutritionBody">
-        <!-- Macro targets -->
-        <div class="card">
-          <div class="card-title">Today's Targets</div>
-          <div id="macroTargets">
-            <!-- Rendered by nutritionEngine -->
-          </div>
-        </div>
-        
-        <!-- Meal plan section (if enabled) -->
-        <div class="card" id="mealPlanSection" hidden>
-          <div class="card-title">Meal Plan</div>
-          <div id="mealPlanContent">
-            <!-- Rendered if meal_plan_enabled -->
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════ Team View ═══════ -->
-    <section id="teamView" class="view" role="region" aria-label="Team Management">
-      <div class="view-header">
-        <h1 class="view-title">Team</h1>
-        <p class="view-sub" id="teamSub">Manage your athletes</p>
-      </div>
-      
-      <div class="view-body" id="teamBody">
-        <!-- Team content rendered by JS -->
-      </div>
-    </section>
-
-    <!-- ═══════ Insights View ═══════ -->
-    <section id="insightsView" class="view" role="region" aria-label="Insights">
-      <div class="view-header">
-        <h1 class="view-title">Insights</h1>
-        <p class="view-sub" id="insightsSub">Analytics & trends</p>
-      </div>
-      
-      <div class="view-body" id="insightsBody">
-        <!-- PR Tracker -->
-        <div class="card">
-          <div class="card-title">Personal Records</div>
-          <div id="prTracker">
-            <!-- Rendered by JS -->
-          </div>
-        </div>
-        
-        <!-- Training history -->
-        <div class="card">
-          <div class="card-title">Training History</div>
-          <div id="trainingHistory">
-            <!-- Rendered by JS -->
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ═══════ Account View ═══════ -->
-    <section id="accountView" class="view" role="region" aria-label="Account Settings">
-      <div class="view-header">
-        <h1 class="view-title">Settings</h1>
-        <p class="view-sub">Profile & preferences</p>
-      </div>
-      
-      <div class="view-body" id="accountBody">
-        <!-- Profile Card -->
-        <div class="card">
-          <div class="card-title">Profile</div>
-          <div class="grid2">
-            <div class="field">
-              <label for="roleSelect">Role</label>
-              <select id="roleSelect">
-                <option value="coach">Coach</option>
-                <option value="athlete">Athlete</option>
-                <option value="parent">Parent</option>
-                <option value="viewer">Viewer</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="sportSelect">Sport</label>
-              <select id="sportSelect">
-                <!-- Populated by JS -->
-              </select>
-            </div>
-          </div>
-          
-          <div class="field" style="margin-top:10px">
-            <label for="positionSelect">Position</label>
-            <select id="positionSelect">
-              <option value="">No position</option>
-              <!-- Populated by JS based on sport -->
-            </select>
-          </div>
-          
-          <div class="row gap" style="margin-top:12px">
-            <button class="btn" id="btnSaveProfile">Save</button>
-            <button class="btn ghost" id="btnRunTour">Tour</button>
-          </div>
-        </div>
-        
-        <!-- Training Profile Card (v7) -->
-        <div class="card" style="margin-top:12px">
-          <div class="card-title">Training Profile</div>
-          
-          <div class="grid2">
-            <div class="field">
-              <label for="experienceSelect">Experience</label>
-              <select id="experienceSelect">
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="goalSelect">Primary Goal</label>
-              <select id="goalSelect">
-                <option value="">Select goal...</option>
-                <option value="strength">Strength</option>
-                <option value="speed">Speed</option>
-                <option value="endurance">Endurance</option>
-                <option value="muscle_gain">Muscle Gain</option>
-                <option value="athleticism">Overall Athleticism</option>
-              </select>
-            </div>
-          </div>
-          
-          <div class="field" style="margin-top:10px">
-            <label>Training Days/Week</label>
-            <div class="btn-group" id="frequencyBtns">
-              <button class="btn ghost" data-freq="2">2</button>
-              <button class="btn ghost" data-freq="3">3</button>
-              <button class="btn" data-freq="4">4</button>
-              <button class="btn ghost" data-freq="5">5</button>
-              <button class="btn ghost" data-freq="6">6</button>
-            </div>
-          </div>
-          
-          <div class="field" style="margin-top:10px">
-            <label>Equipment Access</label>
-            <button class="btn ghost" id="btnEditEquipment">Edit Equipment</button>
-          </div>
-        </div>
-        
-        <!-- Appearance Card -->
-        <div class="card" style="margin-top:12px">
-          <div class="card-title">Appearance</div>
-          <div class="field">
-            <label>Theme</label>
-            <div class="btn-group" id="themeBtns">
-              <button class="btn" data-theme="dark">Dark</button>
-              <button class="btn ghost" data-theme="light">Light</button>
-              <button class="btn ghost" data-theme="auto">Auto</button>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Data Card -->
-        <div class="card" style="margin-top:12px">
-          <div class="card-title">Data</div>
-          <div class="row gap wrap">
-            <button class="btn ghost" id="btnExport">Export</button>
-            <button class="btn ghost" id="btnImport">Import</button>
-            <button class="btn ghost danger" id="btnReset">Reset All</button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ===================== Bottom Navigation ===================== -->
-  <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
-    <button class="nav-tab active" data-view="home" aria-current="page">
-      <span class="nav-icon">🏠</span>
-      <span class="nav-label">Home</span>
-    </button>
-    <button class="nav-tab" data-view="train">
-      <span class="nav-icon">💪</span>
-      <span class="nav-label">Train</span>
-    </button>
-    <button class="nav-tab" data-view="wellness">
-      <span class="nav-icon">❤️</span>
-      <span class="nav-label">Wellness</span>
-    </button>
-    <button class="nav-tab" data-view="nutrition">
-      <span class="nav-icon">🥗</span>
-      <span class="nav-label">Nutrition</span>
-    </button>
-    <button class="nav-tab coach-only" data-view="team">
-      <span class="nav-icon">👥</span>
-      <span class="nav-label">Team</span>
-    </button>
-    <button class="nav-tab" data-view="insights">
-      <span class="nav-icon">📊</span>
-      <span class="nav-label">Insights</span>
-    </button>
   </nav>
 
-  <!-- ===================== FAB ===================== -->
-  <button class="fab" id="fab" aria-label="Quick actions">+</button>
+  <header id="topbar">
+    <button id="menu-toggle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span class="topbar-title">PerformanceIQ</span>
+    <div class="topbar-piq" id="topbar-piq-score"></div>
+  </header>
 
-  <!-- ===================== FAB Sheet ===================== -->
-  <div class="sheet-backdrop" id="fabBackdrop" hidden></div>
-  <div class="sheet" id="fabSheet" aria-hidden="true">
-    <div class="sheet-handle"></div>
-    <div class="sheet-body">
-      <button class="sheet-action" id="fabNewSession">🏋️ New Session</button>
-      <button class="sheet-action" id="fabLogWorkout">📝 Log Workout</button>
-      <button class="sheet-action" id="fabAddPR">🏆 Add PR</button>
-      <button class="sheet-action coach-only" id="fabTeamAnnounce">📢 Team Announcement</button>
-    </div>
-  </div>
+  <main id="main-content">
+    <div id="view-container"></div>
+  </main>
 
-  <!-- ===================== Account Drawer ===================== -->
-  <div class="drawer-backdrop" id="accountBackdrop" hidden></div>
-  <aside class="drawer drawer-account" id="accountDrawer" aria-hidden="true">
-    <div class="drawer-head">
-      <div>
-        <div class="drawer-title">Account</div>
-        <div class="small muted">Settings & profile</div>
-      </div>
-      <button class="btn-close-drawer" id="btnCloseAccount" aria-label="Close">&times;</button>
-    </div>
-    <div class="drawer-body">
-      <!-- Drawer content populated by JS -->
-    </div>
-  </aside>
+  <div id="nav-overlay"></div>
 
-  <!-- ===================== Help Drawer ===================== -->
-  <div class="drawer-backdrop" id="helpBackdrop" hidden></div>
-  <aside class="drawer drawer-help" id="helpDrawer" aria-hidden="true">
-    <div class="drawer-head">
-      <div>
-        <div class="drawer-title">Help</div>
-        <div class="small muted">Searchable guidance (Ctrl/⌘+K)</div>
-      </div>
-      <button class="btn-close-drawer" id="btnCloseHelp" aria-label="Close">&times;</button>
-    </div>
-    <div class="drawer-body">
-      <div class="field">
-        <label for="helpSearch">Search</label>
-        <input id="helpSearch" type="text" placeholder="Try: session, injury, report..." />
-      </div>
-      <div id="helpResults" style="margin-top:10px"></div>
-    </div>
-  </aside>
-
-  <!-- ===================== RPE Modal ===================== -->
-  <div class="modal-backdrop" id="rpeBackdrop" hidden></div>
-  <div class="modal" id="rpeModal" aria-hidden="true">
-    <div class="modal-header">
-      <h3 class="modal-title">Session Complete!</h3>
-      <button class="btn-close-modal" id="btnCloseRpe" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p class="muted">How hard was that session?</p>
-      <div class="rpe-slider">
-        <input type="range" min="1" max="10" value="7" id="rpeInput" />
-        <div class="rpe-labels">
-          <span>Easy</span>
-          <span id="rpeValue">7</span>
-          <span>Max</span>
-        </div>
-      </div>
-      <p class="small muted" id="rpeDesc">Hard effort — good stimulus</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" id="btnSaveRpe">Save & Finish</button>
-    </div>
-  </div>
-
-
-
-  <!-- ===================== Exercise Detail Modal ===================== -->
-  <div class="modal-backdrop" id="exerciseDetailBackdrop" hidden></div>
-  <div class="modal" id="exerciseDetailModal" aria-hidden="true">
-    <div class="modal-header">
-      <h3 class="modal-title" id="exerciseDetailTitle">Exercise Detail</h3>
-      <button class="btn-close-modal" id="btnCloseExercise" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p class="muted" id="exerciseDetailSub">Sets • reps • rest</p>
-      <div class="detail-grid">
-        <div class="detail-card">
-          <h4>Coaching cues</h4>
-          <ul id="exerciseDetailCues"></ul>
-        </div>
-        <div class="detail-card">
-          <h4>Common mistakes</h4>
-          <ul id="exerciseDetailMistakes"></ul>
-        </div>
-        <div class="detail-card">
-          <h4>Progressions</h4>
-          <ul id="exerciseDetailProg"></ul>
-        </div>
-        <div class="detail-card">
-          <h4>Regressions</h4>
-          <ul id="exerciseDetailReg"></ul>
-        </div>
-      </div>
-      <p class="small muted" style="margin-top:10px">Equipment: <span id="exerciseDetailEquip">bodyweight</span></p>
-    </div>
-  </div>
-
-  <!-- ===================== Swap Modal ===================== -->
-  <div class="modal-backdrop" id="swapBackdrop" hidden></div>
-  <div class="modal" id="swapModal" aria-hidden="true">
-    <div class="modal-header">
-      <h3 class="modal-title" id="swapTitle">Choose an alternative</h3>
-      <button class="btn-close-modal" id="btnCloseSwap" aria-label="Close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div id="swapList"></div>
-    </div>
-  </div>
-
-  <!-- ===================== Toast ===================== -->
-  <div class="toast" id="toast" hidden></div>
-
-  <!-- ===================== Scripts ===================== -->
-  <!-- Data layer -->
-  <script src="./dataStore.js"></script>
-  
-  <!-- v7 Onboarding System -->
-  <script src="./onboarding.js"></script>
-  <script src="./progressivePrompts.js"></script>
-  
-  <!-- Engines -->
-  <script src="./nutritionEngine.js"></script>
-  <script src="./periodizationEngine.js"></script>
-  <script src="./exerciseLibrary.js"></script>
-  <script src="./eliteTrainingEngine.js"></script>
-  
-  <!-- Core app -->
-  <script src="./core.js"></script>
-  
-  <!-- Service worker registration -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('[SW] Registered:', reg.scope))
-        .catch(err => console.warn('[SW] Registration failed:', err));
-    }
-  </script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
