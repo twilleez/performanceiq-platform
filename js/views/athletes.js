@@ -1,237 +1,78 @@
-// /js/views/athletes.js
-// FIX BUG-6: Back button re-added on every render → memory leak + multi-fire.
-//            Fixed with module-level _backBound guard.
-// IMPROVEMENT IMP-4: Added ACWR display on athlete cards with color coding.
-// IMPROVEMENT: Improved empty state + no-results messaging.
-// IMPROVEMENT: Color-coded PIQ and risk in detail view.
+// js/views/athletes.js — Athlete roster with PADM stage info
 
-import { ATHLETES } from "../state/state.js";
-import { toast } from "../services/toast.js";
-import { computePIQ } from "../features/piqScore.js";
-import { computeACWR } from "../features/acwr.js";
-import { computeRisk } from "../features/riskDetection.js";
+import { state, getReadinessLevel } from '../state/state.js';
 
-function $(id) { return document.getElementById(id); }
+export function renderAthletes() {
+  const athletes = state.team.athletes;
 
-// FIX BUG-6: module-level flag prevents re-binding back button
-let _backBound = false;
-
-function latestWellness(a) {
-  const w = a?.history?.wellness;
-  if (!Array.isArray(w) || !w.length) return null;
-  return w[w.length - 1];
-}
-
-function latestSessions(a) {
-  const s = a?.history?.sessions;
-  return Array.isArray(s) ? s : [];
-}
-
-function acwrBadge(acwr) {
-  if (acwr == null) return { text: "—", cls: "" };
-  const v = Number(acwr);
-  if (v > 1.5) return { text: acwr.toFixed(2), cls: "danger" };
-  if (v > 1.3) return { text: acwr.toFixed(2), cls: "warn" };
-  if (v < 0.5) return { text: acwr.toFixed(2), cls: "warn" };
-  return { text: acwr.toFixed(2), cls: "ok" };
-}
-
-function piqColorClass(score) {
-  if (score >= 70) return "ok-text";
-  if (score >= 50) return "warn-text";
-  return "danger-text";
-}
-
-function riskChipForAthlete(a) {
-  const r = computeRisk(a);
-  const cls =
-    r.colorClass === "risk" ? "chip danger" :
-    r.colorClass === "watch" ? "chip warn" :
-    r.colorClass === "nodata" ? "chip" : "chip ok";
-  return { label: r.label, cls, risk: r };
-}
-
-export function renderAthletesView(filterText = "") {
-  const grid = $("athleteCardGrid");
-  const countSub = $("athleteCountSub");
-  const detail = $("athleteDetail");
-
-  if (!grid) return;
-
-  detail && (detail.style.display = "none");
-  grid.style.display = "";
-
-  const q = String(filterText || "").trim().toLowerCase();
-  const list = ATHLETES.filter(a => !q || String(a.name).toLowerCase().includes(q));
-
-  if (countSub) countSub.textContent = `${list.length} athlete${list.length === 1 ? "" : "s"}`;
-  grid.innerHTML = "";
-
-  // Empty roster state
-  if (!ATHLETES.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.innerHTML = `
-      <div class="empty-title">No athletes yet</div>
-      <div class="empty-sub">Add athletes via onboarding or import a JSON backup to get started.</div>
-      <div class="empty-actions" style="display:flex;gap:8px;margin-top:12px">
-        <button class="btn" id="emptyImportBtn" type="button">📥 Import roster</button>
-        <button class="btn ghost" id="emptyOnboardBtn" type="button">✨ Run setup</button>
-      </div>
-    `;
-    grid.appendChild(empty);
-    empty.querySelector("#emptyImportBtn")
-      ?.addEventListener("click", () => document.getElementById("importFileInput")?.click());
-    empty.querySelector("#emptyOnboardBtn")
-      ?.addEventListener("click", () => {
-        try { window.dispatchEvent(new Event("piq:showOnboarding")); } catch {}
-      });
-    return;
-  }
-
-  // No-results state after filter
-  if (!list.length && q) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.innerHTML = `
-      <div class="empty-title">No results for "${q}"</div>
-      <div class="empty-sub">Try a different name or clear the search.</div>
-    `;
-    grid.appendChild(empty);
-    return;
-  }
-
-  // Render athlete cards
-  list.forEach((a) => {
-    const w = latestWellness(a);
-    const piq = computePIQ({
-      sleep: w?.sleep, soreness: w?.soreness, stress: w?.stress, mood: w?.mood, readiness: w?.readiness,
-    });
-    const r = riskChipForAthlete(a);
-    const acwr = computeACWR(latestSessions(a));
-    const ab = acwrBadge(acwr);
-    const piqCls = piqColorClass(piq.score);
-
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "athlete-card";
-    card.setAttribute("aria-label", `Open athlete ${a.name}`);
-    card.setAttribute("data-athlete-card-id", a.id);
-
-    card.innerHTML = `
-      <div class="athlete-top">
-        <div class="athlete-name">${a.name}</div>
-        <div class="${r.cls}" aria-label="Risk ${r.label}">${r.label}</div>
-      </div>
-      <div class="athlete-meta">${a.position || "—"} · ${a.year || "—"}</div>
-      <div class="athlete-score" style="display:flex;align-items:baseline;gap:10px;margin-top:10px">
+  return `
+    <div class="page-header">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;">
         <div>
-          <div class="score-num ${piqCls}">${piq.score}</div>
-          <div class="score-sub">PIQ score</div>
+          <h1 class="page-title">Athletes</h1>
+          <p class="page-subtitle">${athletes.length} athletes · ${state.team.name}</p>
         </div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="score-num ${ab.cls}-text" style="font-size:18px">${ab.text}</div>
-          <div class="score-sub">ACWR</div>
+        <button class="btn btn-primary btn-sm">+ Add Athlete</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+      ${athletes.map(a => renderAthleteCard(a)).join('')}
+    </div>
+  `;
+}
+
+function renderAthleteCard(athlete) {
+  const rl = getReadinessLevel(athlete.readiness);
+  const stage = assignStage(athlete);
+  const scoreColor = { green: 'var(--green)', yellow: 'var(--yellow)', orange: 'var(--orange)', red: 'var(--red)' }[rl.level];
+
+  return `
+    <div class="card" style="cursor:pointer;transition:border-color 0.15s ease;" onmouseenter="this.style.borderColor='var(--border-strong)'" onmouseleave="this.style.borderColor='var(--border-subtle)'">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:${athlete.color};display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;font-size:15px;color:#000;flex-shrink:0;">${athlete.initials}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:15px;font-weight:600;">${athlete.name}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${athlete.position}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="traffic-dot ${rl.level}"></div>
+          <span style="font-family:var(--font-display);font-weight:900;font-size:22px;color:${scoreColor};">${athlete.readiness}</span>
         </div>
       </div>
-    `;
 
-    card.addEventListener("click", () => openAthleteDetail(a.id));
-    grid.appendChild(card);
-  });
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+        <span class="dev-stage">${stage}</span>
+        <span class="phase-badge inseason">In-Season</span>
+      </div>
 
-  // FIX BUG-6: Only bind back button once using module-level flag
-  if (!_backBound) {
-    _backBound = true;
-    const back = $("backToList");
-    back?.addEventListener("click", () => {
-      if (detail) detail.style.display = "none";
-      grid.style.display = "";
-    });
-  }
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:var(--bg-elevated);border-radius:var(--radius-sm);padding:8px 10px;">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Sleep</div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:16px;">${athlete.wellness.sleep}<span style="font-size:11px;font-weight:400;color:var(--text-muted)">h</span></div>
+        </div>
+        <div style="background:var(--bg-elevated);border-radius:var(--radius-sm);padding:8px 10px;">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Soreness</div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:16px;color:${athlete.wellness.soreness > 6 ? 'var(--red)' : athlete.wellness.soreness > 4 ? 'var(--orange)' : 'var(--text-primary)'};">${athlete.wellness.soreness}<span style="font-size:11px;font-weight:400;color:var(--text-muted)">/10</span></div>
+        </div>
+        <div style="background:var(--bg-elevated);border-radius:var(--radius-sm);padding:8px 10px;">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Stress</div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:16px;color:${athlete.wellness.stress > 6 ? 'var(--red)' : 'var(--text-primary)'};">${athlete.wellness.stress}<span style="font-size:11px;font-weight:400;color:var(--text-muted)">/10</span></div>
+        </div>
+        <div style="background:var(--bg-elevated);border-radius:var(--radius-sm);padding:8px 10px;">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;">Energy</div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:16px;color:${athlete.wellness.energy >= 7 ? 'var(--green)' : 'var(--text-primary)'};">${athlete.wellness.energy}<span style="font-size:11px;font-weight:400;color:var(--text-muted)">/10</span></div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-export function openAthleteDetail(athleteId) {
-  const a = ATHLETES.find((x) => x.id === athleteId);
-  if (!a) return;
-
-  const grid = $("athleteCardGrid");
-  const detail = $("athleteDetail");
-  if (!grid || !detail) return;
-
-  grid.style.display = "none";
-  detail.style.display = "";
-
-  const hero = $("detailHero");
-  const tier = $("detailTier");
-  const note = $("detailScoreNote");
-  const loadEl = $("detailLoad");
-  const wellnessEl = $("detailWellness");
-  const workoutEl = $("detailWorkout");
-  const insightEl = $("detailInsight");
-
-  const w = latestWellness(a);
-  const piq = computePIQ({
-    sleep: w?.sleep, soreness: w?.soreness, stress: w?.stress, mood: w?.mood, readiness: w?.readiness,
-  });
-
-  const sessions = latestSessions(a);
-  const acwr = computeACWR(sessions);
-  const risk = computeRisk(a);
-  const ab = acwrBadge(acwr);
-
-  if (hero) hero.textContent = a.name;
-
-  if (tier) {
-    const riskColorMap = { risk: "danger-text", watch: "warn-text", ready: "ok-text", nodata: "muted" };
-    tier.className = riskColorMap[risk.colorClass] || "";
-    tier.textContent = `Risk: ${risk.label}`;
-  }
-
-  if (note) {
-    const piqCls = piqColorClass(piq.score);
-    note.innerHTML = `PIQ: <span class="${piqCls}" style="font-weight:800">${piq.score}</span> / 100 · See Analytics for full breakdown`;
-  }
-
-  if (loadEl) {
-    const acwrCls = ab.cls ? `${ab.cls}-text` : "";
-    loadEl.innerHTML = acwr == null
-      ? "ACWR: <span class='muted'>No session data</span>"
-      : `ACWR: <span class="${acwrCls}" style="font-weight:800">${acwr.toFixed(2)}</span>${acwr > 1.5 ? " ⚠ High load" : acwr > 1.3 ? " ↑ Elevated" : ""}`;
-  }
-
-  if (wellnessEl) {
-    wellnessEl.innerHTML = w
-      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-          <div>😴 Sleep: <strong>${w.sleep}/10</strong></div>
-          <div>💪 Soreness: <strong>${w.soreness}/10</strong></div>
-          <div>🧠 Stress: <strong>${w.stress}/10</strong></div>
-          <div>😊 Mood: <strong>${w.mood}/10</strong></div>
-          <div>⚡ Readiness: <strong>${w.readiness}/10</strong></div>
-        </div>`
-      : `<div class="muted" style="margin-top:4px">No wellness log yet. Use the Wellness view to log today's check-in.</div>`;
-  }
-
-  if (workoutEl) {
-    if (!sessions.length) {
-      workoutEl.innerHTML = `<span class="muted">No sessions logged yet.</span>`;
-    } else {
-      const last = sessions[sessions.length - 1];
-      workoutEl.textContent = `Last session: ${last.type || "Session"} on ${last.date || "—"} (load ${last.load ?? 0})`;
-    }
-  }
-
-  if (insightEl) {
-    const msg =
-      risk.colorClass === "risk" ? "⛔ Reduce training load and prioritize recovery. Consider rest day." :
-      risk.colorClass === "watch" ? "⚠ Monitor soreness/stress closely. Keep volume controlled." :
-      risk.colorClass === "ready" ? "✅ Cleared to train at full intensity. Keep progressing." :
-      "📊 Log wellness + sessions to unlock personalized insights.";
-    insightEl.innerHTML = `<span>${msg}</span>`;
-  }
+function assignStage(athlete) {
+  // Simple heuristic — in production this would come from athlete_profiles.development_stage
+  if (athlete.wellness.energy >= 8 && athlete.readiness >= 85) return 'Elite';
+  if (athlete.readiness >= 75) return 'Performance';
+  return 'Development';
 }
 
-export function bindAthletesViewEvents() {
-  const filter = document.getElementById("athleteFilterInput");
-  filter?.addEventListener("input", (e) => renderAthletesView(e.target.value || ""));
-}
+export function afterRenderAthletes() {}
