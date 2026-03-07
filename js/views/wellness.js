@@ -1,238 +1,191 @@
-// /js/views/wellness.js
-// FIX: wellnessMount was looked up with $('wellnessMount') but the element didn't exist
-//      in the original HTML. Now it exists in the updated index.html.
-// FIX: bindWellnessEvents was binding btnSaveWellness which also didn't exist — now it does.
-// IMPROVEMENT: Live PIQ preview updates as sliders move.
-// IMPROVEMENT: Added date display for most-recent entry.
+// js/views/wellness.js — Daily wellness log view
 
-import { STATE, ATHLETES, saveAthletes } from '../state/state.js';
-import { computePIQ } from '../features/piqScore.js';
-import { computeAthleteScoreV1 } from '../features/scoring.js';
-
-function todayKey() { return new Date().toISOString().slice(0, 10); }
-
-function ensureScoreSnapshotForToday(athlete) {
-  athlete.history = athlete.history || {};
-  athlete.history.score = Array.isArray(athlete.history.score) ? athlete.history.score : [];
-
-  const dk = todayKey();
-  if (athlete.history.score.some(s => s?.date === dk)) return;
-
-  const breakdown = computeAthleteScoreV1(athlete, { state: STATE });
-  athlete.history.score.push({
-    date:          dk,
-    total:         breakdown.total,
-    subscores:     breakdown.subscores,
-    injuryPenalty: breakdown.injuryPenalty,
-    created_at:    new Date().toISOString(),
-  });
-}
-
-function sliderRow(label, id, def, helpText = '') {
-  return `
-    <div class="form-row">
-      <label class="label" for="${id}">
-        ${label}
-        <span class="val" id="${id}Val">${def}</span>/10
-        ${helpText ? `<span class="small-muted" style="font-weight:400;margin-left:4px">${helpText}</span>` : ''}
-      </label>
-      <input type="range" min="0" max="10" step="1" value="${def}" id="${id}" aria-label="${label}" style="width:100%" />
-    </div>
-  `;
-}
-
-function getFormData(root) {
-  const num = id => Number(root.querySelector('#' + id)?.value || 0);
-  return {
-    athleteId: String(root.querySelector('#wellAthlete')?.value || ''),
-    sleep:     num('wellSleep'),
-    soreness:  num('wellSoreness'),
-    stress:    num('wellStress'),
-    mood:      num('wellMood'),
-    readiness: num('wellReady'),
-  };
-}
+import { state } from '../state/state.js';
+import { computeReadiness } from '../engine/readinessEngine.js';
 
 export function renderWellness() {
-  const host = document.getElementById('wellnessMount');
-  const sub  = document.getElementById('wellnessSub');
+  const w = state.wellness;
 
-  const isAthlete = STATE.role === 'athlete';
-  const linkedAthlete = isAthlete && STATE.athleteId
-    ? ATHLETES.find(x => x.id === STATE.athleteId)
-    : null;
-
-  if (sub) sub.textContent = isAthlete
-    ? `${linkedAthlete ? linkedAthlete.name + ' · ' : ''}Daily wellness check-in`
-    : 'Log daily wellness to drive PIQ and risk insights.';
-
-  if (!host) return;
-  host.innerHTML = '';
-
-  // ── Athlete readiness banner (role=athlete only) ───────────────────────
-  if (isAthlete && linkedAthlete) {
-    const w = linkedAthlete.history?.wellness;
-    const last = Array.isArray(w) && w.length ? w[w.length - 1] : null;
-    const piq  = last ? computePIQ(last).score : null;
-    const readClass = piq == null ? 'watch' : piq >= 80 ? 'ready' : piq >= 55 ? 'watch' : 'risk';
-    const readMsg   = piq == null
-      ? 'No check-in yet today.'
-      : piq >= 80 ? 'You\'re primed. Great day to push intensity.' 
-      : piq >= 55 ? 'Monitor how you feel during warm-up.'
-      : 'Take it easy today — recovery is training too.';
-
-    const banner = document.createElement('div');
-    banner.className = `athlete-readiness-banner ${readClass}`;
-    banner.innerHTML = `
-      <div class="athlete-readiness-score" style="color:${piq >= 80 ? '#10b981' : piq >= 55 ? '#f59e0b' : '#ef4444'}">${piq ?? '—'}</div>
-      <div>
-        <div style="font-weight:700;font-size:14px;margin-bottom:3px">Today's Readiness Score</div>
-        <div style="font-size:13px;color:var(--muted)">${readMsg}</div>
-        ${last ? `<div style="font-size:11px;color:var(--muted);margin-top:3px">Last: ${last.date || 'today'}</div>` : ''}
-      </div>`;
-    host.appendChild(banner);
-  }
-
-  if (!ATHLETES.length) {
-    host.innerHTML += `
-      <div class="empty-state">
-        <div class="empty-title">No athletes</div>
-        <div class="empty-sub">Add athletes first (Onboarding or Import).</div>
-      </div>`;
-    return;
-  }
-
-  const wrap = document.createElement('div');
-  wrap.className = 'form-card';
-  wrap.innerHTML = `
-    <div class="form-row">
-    <div class="form-row" ${STATE.role === 'athlete' && STATE.athleteId ? 'style="display:none"' : ''}>
-      <label class="label" for="wellAthlete">Athlete</label>
-      <select class="select" id="wellAthlete" aria-label="Select athlete"></select>
+  return `
+    <div class="page-header">
+      <h1 class="page-title">Wellness Log</h1>
+      <p class="page-subtitle">How are you feeling today? Your answers shape today's training plan.</p>
     </div>
 
-    ${sliderRow('Sleep quality',  'wellSleep',    8, '(higher = better)')}
-    ${sliderRow('Soreness',       'wellSoreness', 3, '(higher = more sore)')}
-    ${sliderRow('Stress',         'wellStress',   3, '(higher = more stressed)')}
-    ${sliderRow('Mood',           'wellMood',     7, '(higher = better)')}
-    ${sliderRow('Readiness',      'wellReady',    7, '(higher = more ready)')}
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;">
+      <!-- Log Form -->
+      <div class="card card-xl">
+        <p class="section-label" style="margin-bottom:20px;">Friday, March 6</p>
 
-    <div style="margin-top:12px;padding:12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)">
-      <div class="stat-label" style="margin-bottom:4px">PIQ Preview</div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div id="wellPIQNum" style="font-family:var(--font-display);font-size:32px;font-weight:900;color:var(--accent)">—</div>
-        <div id="wellPIQBar" style="flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden">
-          <div id="wellPIQFill" style="height:100%;border-radius:3px;background:var(--accent);width:0%;transition:width .3s"></div>
+        <!-- Sleep -->
+        <div class="wellness-item" style="margin-bottom:24px;">
+          <div class="wellness-row">
+            <span class="wellness-label">🌙 Sleep Duration</span>
+            <span class="wellness-val" id="val-sleep">${w.sleep_hours}h</span>
+          </div>
+          <input type="range" min="4" max="10" step="0.5" value="${w.sleep_hours}" id="slider-sleep" />
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">
+            <span>4h</span><span>6h</span><span>8h</span><span>10h</span>
+          </div>
+          <div id="why-sleep" class="alert alert-info" style="margin-top:8px;font-size:12px;">${getSleepWhy(w.sleep_hours)}</div>
         </div>
-        <div id="wellPIQLabel" style="font-size:12px;color:var(--muted);min-width:60px;text-align:right">—</div>
+
+        <!-- Soreness -->
+        <div class="wellness-item" style="margin-bottom:24px;">
+          <div class="wellness-row">
+            <span class="wellness-label">💪 Muscle Soreness</span>
+            <span class="wellness-val" id="val-soreness">${w.soreness}</span>
+          </div>
+          <input type="range" min="1" max="10" step="1" value="${w.soreness}" id="slider-soreness" />
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">
+            <span>1 Fresh</span><span style="flex:1"></span><span>10 Severe</span>
+          </div>
+          <div id="why-soreness" class="alert ${w.soreness > 6 ? 'alert-danger' : w.soreness > 4 ? 'alert-warning' : 'alert-success'}" style="margin-top:8px;font-size:12px;">${getSorenessWhy(w.soreness)}</div>
+        </div>
+
+        <!-- Stress -->
+        <div class="wellness-item" style="margin-bottom:24px;">
+          <div class="wellness-row">
+            <span class="wellness-label">🧠 Mental Stress</span>
+            <span class="wellness-val" id="val-stress">${w.stress}</span>
+          </div>
+          <input type="range" min="1" max="10" step="1" value="${w.stress}" id="slider-stress" />
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">
+            <span>1 Relaxed</span><span style="flex:1"></span><span>10 Maxed</span>
+          </div>
+          <div id="why-stress" class="alert ${w.stress > 6 ? 'alert-danger' : w.stress > 4 ? 'alert-warning' : 'alert-success'}" style="margin-top:8px;font-size:12px;">${getStressWhy(w.stress)}</div>
+        </div>
+
+        <!-- Energy -->
+        <div class="wellness-item" style="margin-bottom:24px;">
+          <div class="wellness-row">
+            <span class="wellness-label">⚡ Energy Level</span>
+            <span class="wellness-val" id="val-energy">${w.energy}</span>
+          </div>
+          <input type="range" min="1" max="10" step="1" value="${w.energy}" id="slider-energy" />
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">
+            <span>1 Drained</span><span style="flex:1"></span><span>10 Energized</span>
+          </div>
+        </div>
+
+        <!-- Mood -->
+        <div class="wellness-item" style="margin-bottom:32px;">
+          <div class="wellness-row">
+            <span class="wellness-label">😊 Mood / Motivation</span>
+            <span class="wellness-val" id="val-mood">${w.mood}</span>
+          </div>
+          <input type="range" min="1" max="10" step="1" value="${w.mood}" id="slider-mood" />
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">
+            <span>1 Low</span><span style="flex:1"></span><span>10 Motivated</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="save-wellness" style="width:100%;justify-content:center;">
+          Save Wellness Log
+        </button>
+        <div id="save-confirm" style="display:none;" class="alert alert-success" style="margin-top:12px;">
+          ✓ Wellness logged. Your session has been updated.
+        </div>
+      </div>
+
+      <!-- Live Preview -->
+      <div style="position:sticky;top:24px;">
+        <div class="card" id="readiness-preview">
+          ${renderReadinessPreview(w)}
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <p class="section-label" style="margin-bottom:12px;">Why This Matters</p>
+          <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+            <p style="margin-bottom:8px;">Your wellness log directly controls today's training intensity. High soreness or poor sleep shifts your session to a recovery focus — protecting you from injury and overtraining.</p>
+            <p>The algorithm uses your inputs to compute a <strong style="color:var(--text-primary)">Readiness Score</strong> that modifies load, reps, and session type automatically.</p>
+          </div>
+        </div>
       </div>
     </div>
-
-    <!-- Recent entries for selected athlete -->
-    <div id="wellHistory" style="margin-top:14px"></div>
   `;
-  host.appendChild(wrap);
-
-  const sel = wrap.querySelector('#wellAthlete');
-  ATHLETES.forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = a.name;
-    // Pre-select linked athlete profile when role=athlete
-    if (STATE.role === 'athlete' && STATE.athleteId && a.id === STATE.athleteId) opt.selected = true;
-    sel.appendChild(opt);
-  });
-
-  function bindSliderLabel(id) {
-    const r = wrap.querySelector('#' + id);
-    const v = wrap.querySelector('#' + id + 'Val');
-    if (!r || !v) return;
-    const sync = () => { v.textContent = r.value; };
-    r.addEventListener('input', sync);
-    sync();
-  }
-  ['wellSleep', 'wellSoreness', 'wellStress', 'wellMood', 'wellReady'].forEach(bindSliderLabel);
-
-  function updatePreview() {
-    const data = getFormData(wrap);
-    const piq  = computePIQ(data);
-    const numEl   = wrap.querySelector('#wellPIQNum');
-    const fillEl  = wrap.querySelector('#wellPIQFill');
-    const labelEl = wrap.querySelector('#wellPIQLabel');
-    if (numEl)   numEl.textContent   = piq.score;
-    if (fillEl)  fillEl.style.width  = piq.score + '%';
-    if (labelEl) labelEl.textContent = piq.score >= 80 ? '🟢 Ready' : piq.score >= 55 ? '🟡 Monitor' : '🔴 At Risk';
-  }
-
-  function renderHistory() {
-    const histEl = wrap.querySelector('#wellHistory');
-    if (!histEl) return;
-    const id = wrap.querySelector('#wellAthlete')?.value;
-    const a  = ATHLETES.find(x => x.id === id);
-    const entries = (a?.history?.wellness || []).slice(-5).reverse();
-    if (!entries.length) { histEl.innerHTML = ''; return; }
-
-    histEl.innerHTML = `
-      <div class="stat-label" style="margin-bottom:8px">Recent Entries</div>
-      ${entries.map(e => `
-        <div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:var(--muted)">
-          <span style="min-width:80px">${e.date || '—'}</span>
-          <span>Sleep ${e.sleep}/10</span>
-          <span>Sore ${e.soreness}/10</span>
-          <span>Stress ${e.stress}/10</span>
-          <span>Mood ${e.mood}/10</span>
-          <span>Ready ${e.readiness}/10</span>
-        </div>
-      `).join('')}
-    `;
-  }
-
-  wrap.querySelectorAll('input[type=range]').forEach(r => r.addEventListener('input', updatePreview));
-  sel.addEventListener('change', renderHistory);
-
-  updatePreview();
-  renderHistory();
 }
 
-let __wellnessBound = false;
+function renderReadinessPreview(w) {
+  const r = computeReadiness(w);
+  const levels = { green: 'var(--green)', yellow: 'var(--yellow)', orange: 'var(--orange)', red: 'var(--red)' };
+  const levelMap = { green: 'GO', yellow: 'MODERATE', orange: 'CAUTION', red: 'RECOVER' };
+  const levelEmoji = { green: '⚡', yellow: '⚠️', orange: '🔶', red: '🛑' };
 
-export function bindWellnessEvents() {
-  if (__wellnessBound) return;
-  __wellnessBound = true;
+  const rl = r.score >= 80 ? 'green' : r.score >= 65 ? 'yellow' : r.score >= 50 ? 'orange' : 'red';
 
-  document.getElementById('btnSaveWellness')?.addEventListener('click', () => {
-    const root = document.getElementById('wellnessMount');
-    if (!root) return;
+  return `
+    <p class="section-label" style="margin-bottom:12px;">Live Readiness Preview</p>
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="font-family:var(--font-display);font-weight:900;font-size:64px;line-height:1;color:${levels[rl]};" id="preview-score">${r.score}</div>
+      <div style="font-family:var(--font-display);font-weight:700;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:${levels[rl]};margin-top:4px;">${levelEmoji[rl]} ${levelMap[rl]}</div>
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:12px;" id="preview-why">${r.why}</div>
+    <div style="background:var(--bg-elevated);border-radius:var(--radius-sm);padding:10px 12px;">
+      <p style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Recommendation</p>
+      <p style="font-size:13px;color:var(--text-secondary);" id="preview-rec">${r.recommendation}</p>
+    </div>
+  `;
+}
 
-    const wrap = root.querySelector('.form-card') || root;
-    const data = getFormData(wrap);
+export function afterRenderWellness() {
+  const sliders = [
+    { id: 'slider-sleep',    val: 'val-sleep',    key: 'sleep_hours', format: v => `${v}h`, why: getSleepWhy,    whyId: 'why-sleep' },
+    { id: 'slider-soreness', val: 'val-soreness', key: 'soreness',    format: v => v,       why: getSorenessWhy, whyId: 'why-soreness' },
+    { id: 'slider-stress',   val: 'val-stress',   key: 'stress',      format: v => v,       why: getStressWhy,  whyId: 'why-stress' },
+    { id: 'slider-energy',   val: 'val-energy',   key: 'energy',      format: v => v,       why: null,          whyId: null },
+    { id: 'slider-mood',     val: 'val-mood',     key: 'mood',        format: v => v,       why: null,          whyId: null },
+  ];
 
-    if (!data.athleteId) { toast('Select an athlete'); return; }
+  sliders.forEach(({ id, val, key, format, why, whyId }) => {
+    const slider = document.getElementById(id);
+    if (!slider) return;
+    slider.addEventListener('input', () => {
+      const value = parseFloat(slider.value);
+      document.getElementById(val).textContent = format(value);
+      state.wellness[key] = value;
 
-    const a = ATHLETES.find(x => x.id === data.athleteId);
-    if (!a) { toast('Athlete not found'); return; }
+      // Update why copy
+      if (why && whyId) {
+        const el = document.getElementById(whyId);
+        if (el) el.textContent = why(value);
+      }
 
-    a.history = a.history || {};
-    a.history.wellness = Array.isArray(a.history.wellness) ? a.history.wellness : [];
-    a.history.wellness.push({
-      date:      todayKey(),
-      sleep:     data.sleep,
-      soreness:  data.soreness,
-      stress:    data.stress,
-      mood:      data.mood,
-      readiness: data.readiness,
-      created_at: new Date().toISOString(),
+      // Update live preview
+      const preview = document.getElementById('readiness-preview');
+      if (preview) preview.innerHTML = renderReadinessPreview(state.wellness);
     });
-
-    ensureScoreSnapshotForToday(a);
-    saveAthletes();
-
-    const piq  = computePIQ(data).score;
-    const perf = computeAthleteScoreV1(a, { state: STATE }).total;
-
-    toast(`Wellness saved ✓  PIQ ${piq} · PerformanceIQ ${perf}`);
-
-    // Re-render to show updated history
-    renderWellness();
   });
+
+  document.getElementById('save-wellness')?.addEventListener('click', () => {
+    state.wellness.logged = true;
+    const confirm = document.getElementById('save-confirm');
+    if (confirm) {
+      confirm.style.display = 'block';
+      setTimeout(() => { confirm.style.display = 'none'; }, 3000);
+    }
+  });
+}
+
+function getSleepWhy(hours) {
+  if (hours >= 8.5) return '💚 Excellent recovery sleep. Your CNS is well-rested.';
+  if (hours >= 7.5) return '✅ Good sleep quality. Minor fatigue is unlikely.';
+  if (hours >= 6.5) return '⚠️ Slightly under target. Expect a small readiness penalty.';
+  if (hours >= 5.5) return '🔶 Sub-optimal sleep. Load will be reduced today.';
+  return '🛑 Significant sleep deficit. Recovery session strongly recommended.';
+}
+
+function getSorenessWhy(soreness) {
+  if (soreness <= 2) return '💚 Muscles feel fresh — ready for a high-intensity session.';
+  if (soreness <= 4) return '✅ Normal DOMS. This is within the healthy training range.';
+  if (soreness <= 6) return '⚠️ Elevated soreness. Reduce heavy loading and avoid failure sets.';
+  if (soreness <= 8) return '🔶 High soreness — muscles need more recovery time. Active recovery only.';
+  return '🛑 Severe soreness detected. No training recommended today.';
+}
+
+function getStressWhy(stress) {
+  if (stress <= 2) return '💚 Low stress — your nervous system is ready to perform.';
+  if (stress <= 4) return '✅ Manageable stress load. Normal training is fine.';
+  if (stress <= 6) return '⚠️ Moderate stress will blunt training adaptations. Scale back if needed.';
+  if (stress <= 8) return '🔶 High stress elevates cortisol, reducing recovery. Lighter session today.';
+  return '🛑 Extreme stress load. Training under this state increases injury risk significantly.';
 }
