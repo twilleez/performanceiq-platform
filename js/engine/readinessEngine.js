@@ -1,34 +1,51 @@
 // js/engine/readinessEngine.js
-// Readiness scoring with full explainability layer — the #1 trust driver
+// Readiness scoring with full explainability layer
 
-/**
- * Compute readiness score from wellness inputs.
- * Returns score (0-100) + human-readable why + recommendation.
- */
-export function computeReadiness(wellness) {
-  const { sleep_hours, soreness, stress, energy, mood } = wellness;
+export function computeReadiness(wellness = {}) {
+  const {
+    sleep_hours = 7,
+    soreness = 5,
+    stress = 5,
+    energy = 5,
+    mood = 5,
+  } = wellness || {};
 
-  // ── Component scores ──
-  const sleepScore   = calcSleepScore(sleep_hours);
-  const sorenessScore = calcSorenessScore(soreness);
-  const stressScore  = calcStressScore(stress);
-  const energyScore  = calcEnergyScore(energy);
-  const moodScore    = calcMoodScore(mood);
+  const safeSleep = toNumber(sleep_hours, 7);
+  const safeSoreness = clamp(toNumber(soreness, 5), 1, 10);
+  const safeStress = clamp(toNumber(stress, 5), 1, 10);
+  const safeEnergy = clamp(toNumber(energy, 5), 1, 10);
+  const safeMood = clamp(toNumber(mood, 5), 1, 10);
 
-  // Weighted composite (out of 100)
+  const sleepScore = calcSleepScore(safeSleep);
+  const sorenessScore = calcSorenessScore(safeSoreness);
+  const stressScore = calcStressScore(safeStress);
+  const energyScore = calcEnergyScore(safeEnergy);
+  const moodScore = calcMoodScore(safeMood);
+
   const rawScore =
-    sleepScore   * 0.30 +
+    sleepScore * 0.30 +
     sorenessScore * 0.25 +
-    stressScore  * 0.20 +
-    energyScore  * 0.15 +
-    moodScore    * 0.10;
+    stressScore * 0.20 +
+    energyScore * 0.15 +
+    moodScore * 0.10;
 
-  const score = Math.round(Math.min(100, Math.max(0, rawScore)));
+  const score = Math.round(clamp(rawScore, 0, 100));
 
-  // ── Identify what drove the score ──
-  const factors = buildFactors({ sleep_hours, soreness, stress, energy, mood, sleepScore, sorenessScore, stressScore, energyScore, moodScore });
+  const factors = buildFactors({
+    sleep_hours: safeSleep,
+    soreness: safeSoreness,
+    stress: safeStress,
+    energy: safeEnergy,
+    mood: safeMood,
+    sleepScore,
+    sorenessScore,
+    stressScore,
+    energyScore,
+    moodScore,
+  });
+
   const { recommendation, intensity_mod } = getRecommendation(score, factors);
-  const why = buildWhyCopy(score, factors, sleep_hours, soreness, stress, energy);
+  const why = buildWhyCopy(score, factors, safeSleep, safeSoreness, safeStress, safeEnergy);
 
   return {
     score,
@@ -36,11 +53,9 @@ export function computeReadiness(wellness) {
     factors,
     why,
     recommendation,
-    intensity_mod,  // multiplier for session load (0.5–1.0)
+    intensity_mod,
   };
 }
-
-// ── Sub-scorers ──
 
 function calcSleepScore(hours) {
   if (hours >= 9.0) return 100;
@@ -54,12 +69,10 @@ function calcSleepScore(hours) {
 }
 
 function calcSorenessScore(soreness) {
-  // Inverted — high soreness = low score
   return Math.max(0, 100 - (soreness - 1) * 12);
 }
 
 function calcStressScore(stress) {
-  // Inverted
   return Math.max(0, 100 - (stress - 1) * 11);
 }
 
@@ -71,62 +84,60 @@ function calcMoodScore(mood) {
   return Math.round((mood / 10) * 100);
 }
 
-// ── Factor identification ──
-
 function buildFactors({ sleep_hours, soreness, stress, energy, mood, sleepScore, sorenessScore, stressScore, energyScore, moodScore }) {
   const factors = [];
 
-  if (sleepScore >= 85)     factors.push({ key: 'sleep', valence: 'positive', text: `strong sleep (${sleep_hours}h)` });
-  else if (sleepScore >= 60) factors.push({ key: 'sleep', valence: 'neutral',  text: `adequate sleep (${sleep_hours}h)` });
-  else                       factors.push({ key: 'sleep', valence: 'negative', text: `limited sleep (${sleep_hours}h)` });
+  if (sleepScore >= 85) factors.push({ key: 'sleep', valence: 'positive', text: `strong sleep (${sleep_hours}h)` });
+  else if (sleepScore >= 60) factors.push({ key: 'sleep', valence: 'neutral', text: `adequate sleep (${sleep_hours}h)` });
+  else factors.push({ key: 'sleep', valence: 'negative', text: `limited sleep (${sleep_hours}h)` });
 
-  if (sorenessScore >= 75)  factors.push({ key: 'soreness', valence: 'positive', text: 'muscles feel fresh' });
+  if (sorenessScore >= 75) factors.push({ key: 'soreness', valence: 'positive', text: 'muscles feel fresh' });
   else if (sorenessScore >= 50) factors.push({ key: 'soreness', valence: 'neutral', text: `moderate soreness (${soreness}/10)` });
-  else                       factors.push({ key: 'soreness', valence: 'negative', text: `elevated soreness (${soreness}/10)` });
+  else factors.push({ key: 'soreness', valence: 'negative', text: `elevated soreness (${soreness}/10)` });
 
-  if (stressScore >= 75)    factors.push({ key: 'stress', valence: 'positive', text: 'stress levels are low' });
+  if (stressScore >= 75) factors.push({ key: 'stress', valence: 'positive', text: 'stress levels are low' });
   else if (stressScore >= 50) factors.push({ key: 'stress', valence: 'neutral', text: `moderate stress (${stress}/10)` });
-  else                       factors.push({ key: 'stress', valence: 'negative', text: `high stress load (${stress}/10)` });
+  else factors.push({ key: 'stress', valence: 'negative', text: `high stress load (${stress}/10)` });
 
-  if (energyScore >= 70)    factors.push({ key: 'energy', valence: 'positive', text: `energy is high (${energy}/10)` });
+  if (energyScore >= 70) factors.push({ key: 'energy', valence: 'positive', text: `energy is high (${energy}/10)` });
   else if (energyScore >= 50) factors.push({ key: 'energy', valence: 'neutral', text: `moderate energy (${energy}/10)` });
-  else                       factors.push({ key: 'energy', valence: 'negative', text: `low energy (${energy}/10)` });
+  else factors.push({ key: 'energy', valence: 'negative', text: `low energy (${energy}/10)` });
+
+  if (moodScore >= 70) factors.push({ key: 'mood', valence: 'positive', text: `mood is good (${mood}/10)` });
+  else if (moodScore >= 50) factors.push({ key: 'mood', valence: 'neutral', text: `mood is fair (${mood}/10)` });
+  else factors.push({ key: 'mood', valence: 'negative', text: `mood is low (${mood}/10)` });
 
   return factors;
 }
 
-// ── Why copy generator ──
-
-function buildWhyCopy(score, factors, sleep_hours, soreness, stress, energy) {
-  const negatives = factors.filter(f => f.valence === 'negative');
-  const positives = factors.filter(f => f.valence === 'positive');
+function buildWhyCopy(score, factors) {
+  const negatives = factors.filter((f) => f.valence === 'negative');
+  const positives = factors.filter((f) => f.valence === 'positive');
 
   if (score >= 85) {
-    const pos = positives.slice(0, 2).map(f => f.text).join(' and ');
+    const pos = positives.slice(0, 2).map((f) => f.text).join(' and ');
     return `Your body is primed today — ${pos}. This is a great day to push intensity.`;
   }
 
   if (score >= 70) {
     if (negatives.length === 0) {
-      return `All markers are in a good range. A normal training session is appropriate.`;
+      return 'All markers are in a good range. A normal training session is appropriate.';
     }
-    const neg = negatives[0].text;
-    return `Most markers look good, but ${neg} is nudging your score down. Train normally and monitor how you feel.`;
+    return `Most markers look good, but ${negatives[0].text} is nudging your score down. Train normally and monitor how you feel.`;
   }
 
   if (score >= 55) {
-    const negs = negatives.slice(0, 2).map(f => f.text).join(' and ');
+    const negs = negatives.slice(0, 2).map((f) => f.text).join(' and ');
     return `Your score dropped due to ${negs}. Reduce intensity by 15–20% and avoid max-effort sets today.`;
   }
 
-  // Low score
-  const negs = negatives.map(f => f.text).join(', ');
+  const negs = negatives.length
+    ? negatives.map((f) => f.text).join(', ')
+    : 'multiple recovery markers';
   return `Recovery is incomplete — ${negs}. A full training session would increase injury risk. Stick to active recovery work.`;
 }
 
-// ── Recommendation ──
-
-function getRecommendation(score, factors) {
+function getRecommendation(score) {
   if (score >= 80) {
     return {
       recommendation: 'Full session. Target intensity is on point.',
@@ -151,26 +162,47 @@ function getRecommendation(score, factors) {
   };
 }
 
-// ── Recovery score (separate from readiness — focuses on bounce-back) ──
-export function computeRecoveryScore(wellness, prevWellness) {
-  if (!prevWellness) return 70; // default if no history
-  const sorenessImproved = prevWellness.soreness - wellness.soreness;
-  const energyImproved   = wellness.energy - prevWellness.energy;
-  const sleepOk          = wellness.sleep_hours >= 7.0;
+export function computeRecoveryScore(wellness = {}, prevWellness = null) {
+  if (!prevWellness) return 70;
+
+  const currentSoreness = clamp(toNumber(wellness.soreness, 5), 1, 10);
+  const previousSoreness = clamp(toNumber(prevWellness.soreness, 5), 1, 10);
+  const currentEnergy = clamp(toNumber(wellness.energy, 5), 1, 10);
+  const previousEnergy = clamp(toNumber(prevWellness.energy, 5), 1, 10);
+  const sleepHours = toNumber(wellness.sleep_hours, 7);
+
+  const sorenessImproved = previousSoreness - currentSoreness;
+  const energyImproved = currentEnergy - previousEnergy;
+  const sleepOk = sleepHours >= 7.0;
+
   let score = 60;
   score += sorenessImproved * 5;
   score += energyImproved * 4;
   if (sleepOk) score += 10;
-  return Math.min(100, Math.max(0, Math.round(score)));
+
+  return clamp(Math.round(score), 0, 100);
 }
 
-// ── Fatigue score ──
-export function computeFatigueScore(wellness) {
-  const { soreness, stress, energy, sleep_hours } = wellness;
+export function computeFatigueScore(wellness = {}) {
+  const soreness = clamp(toNumber(wellness.soreness, 5), 1, 10);
+  const stress = clamp(toNumber(wellness.stress, 5), 1, 10);
+  const energy = clamp(toNumber(wellness.energy, 5), 1, 10);
+  const sleep_hours = toNumber(wellness.sleep_hours, 7);
+
   const fatigueRaw =
     (soreness / 10) * 35 +
-    (stress / 10)   * 25 +
+    (stress / 10) * 25 +
     ((10 - energy) / 10) * 25 +
     (Math.max(0, 8 - sleep_hours) / 8) * 15;
-  return Math.min(100, Math.round(fatigueRaw));
+
+  return clamp(Math.round(fatigueRaw), 0, 100);
+}
+
+function toNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
