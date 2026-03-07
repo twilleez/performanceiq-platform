@@ -1,125 +1,102 @@
-// /js/state/state.js
-import { Storage } from '../services/storage.js';
-import { STORAGE_KEY_STATE, STORAGE_KEY_ATHLETES } from './keys.js';
+// js/state/state.js — Central application state
 
-function nowISO() { return new Date().toISOString(); }
-function isObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
+export const state = {
+  role: 'athlete',       // 'athlete' | 'coach'
+  athleteId: 1,
+  currentView: 'dashboard',
 
-const VERSION = '3.0.0';
-const ALLOWED_ROLES = new Set(['coach', 'athlete', 'admin']);
-
-function baseState() {
-  return {
-    meta: { updated_at: nowISO(), version: VERSION },
-    currentView: 'dashboard',
-    teamName: 'Coach Davis',
+  // Current athlete profile
+  athlete: {
+    id: 1,
+    name: 'Jordan Davis',
     sport: 'basketball',
-    season: 'Pre-Season',
-    theme: 'dark',
-    role: 'coach',
-    events: [],
+    position: 'Forward',
+    experience_level: 'performance',   // foundation|development|performance|elite|maintenance
+    development_stage: 'performance',
+    training_age: 4,                   // years
+    height_cm: 193,
+    weight_kg: 89,
+    goal: 'in-season performance',
+    season_phase: 'inseason',          // offseason|preseason|inseason|postseason
+  },
 
-    // FIX: profile was missing from baseState but referenced in nutrition.js
-    // Caused STATE.profile to be undefined → crash on STATE.profile.weight_lbs
-    profile: {
-      weight_lbs: 160,
-      goal: 'maintain',  // cut | maintain | gain
-      activity: 'med',   // low | med | high
-    },
+  // Today's wellness (from wellness log)
+  wellness: {
+    sleep_hours: 7.2,
+    soreness: 3,    // 1-10
+    stress: 4,      // 1-10
+    energy: 6,      // 1-10
+    mood: 7,        // 1-10
+    logged: true,
+  },
 
-    // Elite add-ons
-    periodization: { active: null },
-    nutrition: { targets: null, logs: [] },
-  };
+  // Today's readiness (computed by engine)
+  readiness: null,
+
+  // Today's training session
+  session: null,
+
+  // PIQ score history (last 14 days)
+  piqHistory: [
+    { date: '2026-02-21', score: 71 },
+    { date: '2026-02-22', score: 74 },
+    { date: '2026-02-23', score: 68 },
+    { date: '2026-02-24', score: 72 },
+    { date: '2026-02-25', score: 76 },
+    { date: '2026-02-26', score: 79 },
+    { date: '2026-02-27', score: 75 },
+    { date: '2026-02-28', score: 73 },
+    { date: '2026-03-01', score: 78 },
+    { date: '2026-03-02', score: 82 },
+    { date: '2026-03-03', score: 77 },
+    { date: '2026-03-04', score: 80 },
+    { date: '2026-03-05', score: 76 },
+    { date: '2026-03-06', score: 0 },  // today — computed
+  ],
+
+  // ACWR load data (7-day acute / 28-day chronic)
+  loadData: {
+    acute: 342,   // AU last 7 days
+    chronic: 290, // AU last 28 days avg/week
+    acwr: 1.18,
+  },
+
+  // Performance test results
+  performanceResults: [
+    { test: 'Vertical Jump', value: 28.5, unit: 'in', delta: +1.5, date: '2026-03-01' },
+    { test: '40-Yard Dash', value: 4.72, unit: 's', delta: -0.04, date: '2026-03-01' },
+    { test: 'Bench Press', value: 225, unit: 'lbs', delta: +10, date: '2026-02-15' },
+    { test: 'Squat 1RM', value: 315, unit: 'lbs', delta: +15, date: '2026-02-15' },
+  ],
+
+  // Team (coach view)
+  team: {
+    name: 'Varsity Basketball',
+    sport: 'basketball',
+    athletes: [
+      { id: 2, name: 'Marcus Webb',    initials: 'MW', position: 'PG',  readiness: 88, wellness: { sleep: 8.5, soreness: 2, stress: 2, energy: 9, mood: 8 }, color: '#4da6ff' },
+      { id: 3, name: 'Devon Carter',   initials: 'DC', position: 'SG',  readiness: 72, wellness: { sleep: 6.5, soreness: 5, stress: 6, energy: 5, mood: 5 }, color: '#f5c518' },
+      { id: 4, name: 'Jordan Davis',   initials: 'JD', position: 'SF',  readiness: 76, wellness: { sleep: 7.2, soreness: 3, stress: 4, energy: 6, mood: 7 }, color: '#00e5a0' },
+      { id: 5, name: 'Tyler Monroe',   initials: 'TM', position: 'PF',  readiness: 51, wellness: { sleep: 5.5, soreness: 8, stress: 7, energy: 3, mood: 4 }, color: '#ff7a35' },
+      { id: 6, name: 'Chris Evans',    initials: 'CE', position: 'C',   readiness: 90, wellness: { sleep: 9.0, soreness: 1, stress: 2, energy: 9, mood: 9 }, color: '#4da6ff' },
+      { id: 7, name: 'Antoine Silva',  initials: 'AS', position: 'PG',  readiness: 40, wellness: { sleep: 5.0, soreness: 9, stress: 8, energy: 2, mood: 3 }, color: '#ff3b3b' },
+      { id: 8, name: 'Jabari King',    initials: 'JK', position: 'SG',  readiness: 83, wellness: { sleep: 8.0, soreness: 3, stress: 3, energy: 8, mood: 8 }, color: '#00e5a0' },
+      { id: 9, name: 'Rafael Torres',  initials: 'RT', position: 'SF',  readiness: 65, wellness: { sleep: 6.8, soreness: 5, stress: 5, energy: 6, mood: 6 }, color: '#f5c518' },
+      { id: 10, name: 'Noah Patel',    initials: 'NP', position: 'PF',  readiness: 79, wellness: { sleep: 7.5, soreness: 3, stress: 3, energy: 7, mood: 7 }, color: '#4da6ff' },
+      { id: 11, name: 'Darnell Reed',  initials: 'DR', position: 'C',   readiness: 58, wellness: { sleep: 6.0, soreness: 6, stress: 5, energy: 5, mood: 5 }, color: '#f5c518' },
+    ],
+  },
+};
+
+export function getReadinessLevel(score) {
+  if (score >= 80) return { level: 'green',  label: 'GO',       emoji: '⚡' };
+  if (score >= 65) return { level: 'yellow', label: 'MODERATE', emoji: '⚠️' };
+  if (score >= 50) return { level: 'orange', label: 'CAUTION',  emoji: '🔶' };
+  return               { level: 'red',    label: 'RECOVER',  emoji: '🛑' };
 }
 
-export const STATE = baseState();
-export let ATHLETES = [];
-
-export function validateAthlete(a) {
-  if (!isObj(a)) return false;
-  if (typeof a.id !== 'string' || !a.id) return false;
-  if (typeof a.name !== 'string' || !a.name.trim()) return false;
-  return true;
-}
-
-export function validateBackupPayload(p) {
-  if (!isObj(p)) return { ok: false, reason: 'Backup is not an object' };
-  if (!Array.isArray(p.athletes)) return { ok: false, reason: 'Missing athletes[] array' };
-  const bad = p.athletes.find(a => !validateAthlete(a));
-  if (bad) return { ok: false, reason: 'One or more athlete records are invalid (missing id/name)' };
-  if (p.state && !isObj(p.state)) return { ok: false, reason: 'state must be an object if present' };
-  return { ok: true };
-}
-
-export function setAthletes(list) {
-  ATHLETES = Array.isArray(list) ? list.filter(validateAthlete) : [];
-}
-
-function migrateState(raw) { return raw; }
-
-function sanitizeState(raw) {
-  const base = baseState();
-  if (!isObj(raw)) return base;
-
-  const r = migrateState(raw);
-  const out = base;
-
-  if (isObj(r.meta)) {
-    const v = typeof r.meta.version === 'string' ? r.meta.version : VERSION;
-    out.meta = { updated_at: nowISO(), version: v };
-  }
-
-  if (typeof r.currentView === 'string' && r.currentView.trim()) out.currentView = r.currentView.trim();
-  if (typeof r.teamName === 'string' && r.teamName.trim()) out.teamName = r.teamName.trim();
-  if (typeof r.sport === 'string' && r.sport.trim()) out.sport = r.sport.trim().toLowerCase();
-  if (typeof r.season === 'string' && r.season.trim()) out.season = r.season.trim();
-  if (typeof r.theme === 'string' && r.theme.trim()) out.theme = r.theme.trim();
-
-  if (typeof r.role === 'string') {
-    const role = r.role.trim().toLowerCase();
-    if (ALLOWED_ROLES.has(role)) out.role = role;
-  }
-
-  if (Array.isArray(r.events)) out.events = r.events;
-
-  // FIX: safely merge profile
-  if (isObj(r.profile)) {
-    out.profile = {
-      weight_lbs: Number(r.profile.weight_lbs) > 0 ? Number(r.profile.weight_lbs) : base.profile.weight_lbs,
-      goal: ['cut', 'maintain', 'gain'].includes(r.profile.goal) ? r.profile.goal : base.profile.goal,
-      activity: ['low', 'med', 'high'].includes(r.profile.activity) ? r.profile.activity : base.profile.activity,
-    };
-  }
-
-  if (isObj(r.periodization)) {
-    out.periodization = { active: ('active' in r.periodization) ? r.periodization.active : null };
-  }
-
-  if (isObj(r.nutrition)) {
-    out.nutrition = {
-      targets: ('targets' in r.nutrition) ? r.nutrition.targets : null,
-      logs: Array.isArray(r.nutrition.logs) ? r.nutrition.logs : [],
-    };
-  }
-
-  return out;
-}
-
-export function loadState() {
-  const rawState = Storage.getJSON(STORAGE_KEY_STATE, null);
-  const clean = sanitizeState(rawState);
-  Object.assign(STATE, clean);
-
-  const rawAthletes = Storage.getJSON(STORAGE_KEY_ATHLETES, []);
-  setAthletes(rawAthletes);
-}
-
-export function saveState() {
-  STATE.meta = { updated_at: nowISO(), version: STATE.meta?.version || VERSION };
-  Storage.setJSON(STORAGE_KEY_STATE, STATE);
-}
-
-export function saveAthletes() {
-  Storage.setJSON(STORAGE_KEY_ATHLETES, ATHLETES);
+export function getACWRStatus(acwr) {
+  if (acwr > 1.5) return { cls: 'danger', label: 'Injury Risk' };
+  if (acwr >= 0.8) return { cls: 'optimal', label: 'Optimal Zone' };
+  return { cls: 'low', label: 'Undertrained' };
 }
