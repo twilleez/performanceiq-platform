@@ -1,6 +1,6 @@
 // js/app.js — Application entry point and router
 
-import { STATE, state } from './state/state.js';
+import { STATE, state, loadState, saveState } from './state/state.js';
 import { renderDashboard, afterRenderDashboard } from './views/dashboard.js';
 import { renderTrain, afterRenderTrain } from './views/train.js';
 import { renderWellness, afterRenderWellness } from './views/wellness.js';
@@ -14,10 +14,10 @@ const appState = STATE || state;
 
 const views = {
   dashboard: { render: renderDashboard, after: afterRenderDashboard },
-  train:     { render: renderTrain,     after: afterRenderTrain },
-  wellness:  { render: renderWellness,  after: afterRenderWellness },
-  team:      { render: renderTeam,      after: afterRenderTeam },
-  athletes:  { render: renderAthletes,  after: afterRenderAthletes },
+  train: { render: renderTrain, after: afterRenderTrain },
+  wellness: { render: renderWellness, after: afterRenderWellness },
+  team: { render: renderTeam, after: afterRenderTeam, coachOnly: true },
+  athletes: { render: renderAthletes, after: afterRenderAthletes, coachOnly: true },
   analytics: { render: renderAnalytics, after: afterRenderAnalytics },
 };
 
@@ -27,16 +27,32 @@ function normalizeHash(rawHash) {
   return noHash.startsWith('/') ? noHash.slice(1) : noHash;
 }
 
+function isCoachOnlyView(viewName) {
+  return !!views[viewName]?.coachOnly;
+}
+
+function canAccessView(viewName) {
+  if (!views[viewName]) return false;
+  if (!isCoachOnlyView(viewName)) return true;
+  return appState.role === 'coach';
+}
+
+function getSafeView(viewName) {
+  if (!views[viewName]) return 'dashboard';
+  if (!canAccessView(viewName)) return 'dashboard';
+  return viewName;
+}
+
 function navigateTo(viewName, options = {}) {
   const { updateHash = true } = options;
-  const v = views[viewName] || views.dashboard;
-  const resolvedView = views[viewName] ? viewName : 'dashboard';
+  const resolvedView = getSafeView(viewName);
+  const viewConfig = views[resolvedView];
 
   appState.currentView = resolvedView;
 
-  document.querySelectorAll('.nav-item, .nav-btn, .mnav-btn, [data-view]').forEach((item) => {
-    item.classList.toggle('active', item.dataset.view === resolvedView);
-  });
+  updateNavStates(resolvedView);
+  updateRoleUI();
+  updateCoachOnlyVisibility();
 
   const container = document.getElementById('view-container');
   if (!container) {
@@ -45,7 +61,7 @@ function navigateTo(viewName, options = {}) {
   }
 
   try {
-    const html = v.render();
+    const html = viewConfig.render();
     container.innerHTML = typeof html === 'string' ? html : '';
     container.scrollTop = 0;
     window.scrollTo(0, 0);
@@ -68,13 +84,15 @@ function navigateTo(viewName, options = {}) {
   }
 
   try {
-    if (typeof v.after === 'function') v.after();
+    if (typeof viewConfig.after === 'function') {
+      viewConfig.after();
+    }
   } catch (err) {
     console.error(`afterRender failed for view "${resolvedView}":`, err);
   }
 
   if (updateHash) {
-    const desiredHash = `#/${resolvedView}`;
+    const desiredHash = `#${resolvedView}`;
     if (window.location.hash !== desiredHash) {
       try {
         history.pushState(null, '', desiredHash);
@@ -84,7 +102,34 @@ function navigateTo(viewName, options = {}) {
     }
   }
 
+  try {
+    saveState();
+  } catch (err) {
+    console.error('saveState failed:', err);
+  }
+
   updateTopbarScore();
+}
+
+function updateNavStates(activeView) {
+  document.querySelectorAll('.nav-item, .nav-btn, .mnav-btn, [data-view]').forEach((item) => {
+    item.classList.toggle('active', item.dataset.view === activeView);
+  });
+}
+
+function updateRoleUI() {
+  document.body.setAttribute('data-role', appState.role || 'athlete');
+
+  document.querySelectorAll('.role-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.role === appState.role);
+  });
+}
+
+function updateCoachOnlyVisibility() {
+  document.querySelectorAll('[data-coach-only]').forEach((el) => {
+    const show = appState.role === 'coach';
+    el.style.display = show ? '' : 'none';
+  });
 }
 
 function updateTopbarScore() {
@@ -117,17 +162,13 @@ function initRoleSwitch() {
       if (!role) return;
 
       appState.role = role;
-      document.body.setAttribute('data-role', role);
 
-      document.querySelectorAll('.role-btn').forEach((b) => {
-        b.classList.toggle('active', b.dataset.role === role);
-      });
+      const requestedView = appState.currentView || 'dashboard';
+      const nextView = role === 'athlete' && isCoachOnlyView(requestedView)
+        ? 'dashboard'
+        : requestedView;
 
-      if (role === 'athlete' && (appState.currentView === 'team' || appState.currentView === 'athletes')) {
-        navigateTo('dashboard');
-      } else {
-        navigateTo(appState.currentView || 'dashboard');
-      }
+      navigateTo(nextView);
     });
   });
 }
@@ -138,12 +179,9 @@ function initNavigation() {
     if (!navItem) return;
 
     e.preventDefault();
-    const viewName = navItem.dataset.view;
 
-    if (!views[viewName]) {
-      console.warn(`Unknown view: ${viewName}`);
-      return;
-    }
+    const viewName = navItem.dataset.view;
+    if (!viewName) return;
 
     navigateTo(viewName);
     closeMobileNav();
@@ -151,7 +189,7 @@ function initNavigation() {
 
   window.addEventListener('hashchange', () => {
     const hashView = normalizeHash(window.location.hash);
-    navigateTo(views[hashView] ? hashView : 'dashboard', { updateHash: false });
+    navigateTo(hashView || 'dashboard', { updateHash: false });
   });
 }
 
@@ -174,9 +212,17 @@ function closeMobileNav() {
 }
 
 function init() {
+  try {
+    loadState();
+  } catch (err) {
+    console.error('loadState failed:', err);
+  }
+
   initNavigation();
   initRoleSwitch();
   initMobileNav();
+  updateRoleUI();
+  updateCoachOnlyVisibility();
 
   try {
     appState.readiness = computeReadiness(appState.wellness || {});
@@ -185,7 +231,7 @@ function init() {
   }
 
   const initialView = normalizeHash(window.location.hash);
-  navigateTo(views[initialView] ? initialView : 'dashboard', { updateHash: false });
+  navigateTo(initialView || appState.currentView || 'dashboard', { updateHash: false });
 }
 
 function escapeHtml(value) {
