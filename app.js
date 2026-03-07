@@ -1,15 +1,16 @@
 // js/app.js — Application entry point and router
 
-import { state } from './state/state.js';
+import { STATE, state } from './state/state.js';
 import { renderDashboard, afterRenderDashboard } from './views/dashboard.js';
 import { renderTrain, afterRenderTrain } from './views/train.js';
 import { renderWellness, afterRenderWellness } from './views/wellness.js';
 import { renderTeam, afterRenderTeam } from './views/team.js';
 import { renderAthletes, afterRenderAthletes } from './views/athletes.js';
 import { renderAnalytics, afterRenderAnalytics } from './views/analytics.js';
-import { computeReadiness } from './engine/readinessEngine.js';
+import { computeReadiness, computeFatigueScore } from './engine/readinessEngine.js';
 import { computePIQScore, computePerformanceScore } from './engine/scoringEngine.js';
-import { computeFatigueScore } from './engine/readinessEngine.js';
+
+const appState = STATE || state;
 
 const views = {
   dashboard: { render: renderDashboard, after: afterRenderDashboard },
@@ -20,85 +21,148 @@ const views = {
   analytics: { render: renderAnalytics, after: afterRenderAnalytics },
 };
 
-function navigateTo(viewName) {
-  const v = views[viewName];
-  if (!v) return;
+function normalizeHash(rawHash) {
+  const raw = String(rawHash || '').trim();
+  const noHash = raw.startsWith('#') ? raw.slice(1) : raw;
+  return noHash.startsWith('/') ? noHash.slice(1) : noHash;
+}
 
-  state.currentView = viewName;
+function navigateTo(viewName, options = {}) {
+  const { updateHash = true } = options;
+  const v = views[viewName] || views.dashboard;
+  const resolvedView = views[viewName] ? viewName : 'dashboard';
 
-  // Update nav active states
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.view === viewName);
+  appState.currentView = resolvedView;
+
+  document.querySelectorAll('.nav-item, .nav-btn, .mnav-btn, [data-view]').forEach((item) => {
+    item.classList.toggle('active', item.dataset.view === resolvedView);
   });
 
-  // Render view
   const container = document.getElementById('view-container');
-  container.innerHTML = v.render();
-  container.scrollTop = 0;
-  window.scrollTo(0, 0);
+  if (!container) {
+    console.error('Missing #view-container');
+    return;
+  }
 
-  // Run after-render hooks (event bindings, animations)
-  if (v.after) v.after();
+  try {
+    const html = v.render();
+    container.innerHTML = typeof html === 'string' ? html : '';
+    container.scrollTop = 0;
+    window.scrollTo(0, 0);
+  } catch (err) {
+    console.error(`Render failed for view "${resolvedView}":`, err);
+    container.innerHTML = `
+      <div class="card" style="margin:16px;">
+        <div class="card-header">
+          <span class="card-title">View Error</span>
+        </div>
+        <div style="font-size:14px;color:var(--text-muted);">
+          Failed to load <strong>${escapeHtml(resolvedView)}</strong>.
+        </div>
+        <pre style="margin-top:12px;white-space:pre-wrap;font-size:12px;color:var(--danger, #ff6b6b);">${escapeHtml(
+          err?.message || String(err)
+        )}</pre>
+      </div>
+    `;
+    return;
+  }
 
-  // Update topbar score
+  try {
+    if (typeof v.after === 'function') v.after();
+  } catch (err) {
+    console.error(`afterRender failed for view "${resolvedView}":`, err);
+  }
+
+  if (updateHash) {
+    const desiredHash = `#/${resolvedView}`;
+    if (window.location.hash !== desiredHash) {
+      try {
+        history.pushState(null, '', desiredHash);
+      } catch (err) {
+        console.error('Failed to update URL hash:', err);
+      }
+    }
+  }
+
   updateTopbarScore();
 }
 
 function updateTopbarScore() {
   const el = document.getElementById('topbar-piq-score');
   if (!el) return;
-  const readiness = computeReadiness(state.wellness);
-  const recovery = Math.max(0, 100 - computeFatigueScore(state.wellness));
-  const perf = computePerformanceScore(state.performanceResults);
-  const piq = computePIQScore({ readiness: readiness.score, compliance: 85, performance: perf, recovery, nutrition: 70 });
-  el.textContent = piq;
+
+  try {
+    const readiness = computeReadiness(appState.wellness || {});
+    const recovery = Math.max(0, 100 - computeFatigueScore(appState.wellness || {}));
+    const perf = computePerformanceScore(Array.isArray(appState.performanceResults) ? appState.performanceResults : []);
+    const piq = computePIQScore({
+      readiness: Number(readiness?.score) || 0,
+      compliance: 85,
+      performance: Number(perf) || 0,
+      recovery,
+      nutrition: 70,
+    });
+
+    el.textContent = Number.isFinite(Number(piq)) ? String(piq) : '—';
+  } catch (err) {
+    console.error('Failed to update topbar PIQ score:', err);
+    el.textContent = '—';
+  }
 }
 
 function initRoleSwitch() {
-  document.querySelectorAll('.role-btn').forEach(btn => {
+  document.querySelectorAll('.role-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const role = btn.dataset.role;
-      state.role = role;
-      document.body.setAttribute('data-role', role);
-      document.querySelectorAll('.role-btn').forEach(b => b.classList.toggle('active', b.dataset.role === role));
+      if (!role) return;
 
-      // If coach switches and is on a coach-only view, stay; if athlete switches away from coach view, redirect
-      if (role === 'athlete' && (state.currentView === 'team' || state.currentView === 'athletes')) {
+      appState.role = role;
+      document.body.setAttribute('data-role', role);
+
+      document.querySelectorAll('.role-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.role === role);
+      });
+
+      if (role === 'athlete' && (appState.currentView === 'team' || appState.currentView === 'athletes')) {
         navigateTo('dashboard');
       } else {
-        navigateTo(state.currentView);
+        navigateTo(appState.currentView || 'dashboard');
       }
     });
   });
 }
 
 function initNavigation() {
-  // Nav link clicks
   document.addEventListener('click', (e) => {
     const navItem = e.target.closest('[data-view]');
-    if (navItem) {
-      e.preventDefault();
-      const viewName = navItem.dataset.view;
-      navigateTo(viewName);
-      closeMobileNav();
+    if (!navItem) return;
+
+    e.preventDefault();
+    const viewName = navItem.dataset.view;
+
+    if (!views[viewName]) {
+      console.warn(`Unknown view: ${viewName}`);
+      return;
     }
+
+    navigateTo(viewName);
+    closeMobileNav();
   });
 
-  // Hash-based routing
   window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.slice(1);
-    if (views[hash]) navigateTo(hash);
+    const hashView = normalizeHash(window.location.hash);
+    navigateTo(views[hashView] ? hashView : 'dashboard', { updateHash: false });
   });
 }
 
 function initMobileNav() {
-  const toggle  = document.getElementById('menu-toggle');
+  const toggle = document.getElementById('menu-toggle');
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('nav-overlay');
 
   toggle?.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('active');
+    sidebar?.classList.toggle('open');
+    overlay?.classList.toggle('active');
   });
 
   overlay?.addEventListener('click', closeMobileNav);
@@ -109,18 +173,28 @@ function closeMobileNav() {
   document.getElementById('nav-overlay')?.classList.remove('active');
 }
 
-// ── Boot ──
 function init() {
   initNavigation();
   initRoleSwitch();
   initMobileNav();
 
-  // Pre-compute readiness
-  state.readiness = computeReadiness(state.wellness);
+  try {
+    appState.readiness = computeReadiness(appState.wellness || {});
+  } catch (err) {
+    console.error('Failed to pre-compute readiness:', err);
+  }
 
-  // Navigate to initial view
-  const hash = window.location.hash.slice(1);
-  navigateTo(views[hash] ? hash : 'dashboard');
+  const initialView = normalizeHash(window.location.hash);
+  navigateTo(views[initialView] ? initialView : 'dashboard', { updateHash: false });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 document.addEventListener('DOMContentLoaded', init);
