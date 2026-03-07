@@ -1,220 +1,193 @@
-// /js/views/analytics.js
-// FIX BUG-7: compare-controls was single-column; now 3-col grid.
-// IMP-2: Added empty state when no athletes exist.
-// IMP-3: Color-coded PerformanceIQ and PIQ scores.
-// IMP: Color-coded ACWR with risk badges.
-// IMP: Added "export hint" for no-data states.
+// js/views/analytics.js — Performance analytics and PIQ history
 
-import { STATE, ATHLETES } from "../state/state.js";
-import { computePIQ } from "../features/piqScore.js";
-import { computeACWR } from "../features/acwr.js";
-import { toast } from "../services/toast.js";
-import { computeAthleteScoreV1, explainScore } from "../features/scoring.js";
-
-function $(id) { return document.getElementById(id); }
-
-function latestWellness(a) {
-  const w = a?.history?.wellness;
-  if (!Array.isArray(w) || !w.length) return null;
-  return w[w.length - 1];
-}
-
-function scoreColorClass(score) {
-  if (score >= 70) return "ok-text";
-  if (score >= 50) return "warn-text";
-  return "danger-text";
-}
-
-function acwrBadgeHTML(acwr) {
-  if (acwr == null) return `<span class="muted">—</span>`;
-  const v = Number(acwr);
-  const txt = v.toFixed(2);
-  if (v > 1.5) return `<span class="danger-text" style="font-weight:700">${txt} ⚠</span>`;
-  if (v > 1.3) return `<span class="warn-text" style="font-weight:700">${txt} ↑</span>`;
-  if (v < 0.5) return `<span class="warn-text">${txt} ↓</span>`;
-  return `<span class="ok-text">${txt}</span>`;
-}
+import { state, getACWRStatus } from '../state/state.js';
+import { computePerformanceScore, normalizePerformance } from '../engine/scoringEngine.js';
 
 export function renderAnalytics() {
-  const sub = $("analyticsSub");
-  if (sub) sub.textContent = ATHLETES.length ? "Team analytics snapshot" : "Add athletes to see analytics";
+  const { cls: acwrCls, label: acwrLabel } = getACWRStatus(state.loadData.acwr);
+  const perfScore = computePerformanceScore(state.performanceResults);
 
-  const body = $("analyticsBody");
-  if (!body) return;
+  return `
+    <div class="page-header">
+      <h1 class="page-title">Analytics</h1>
+      <p class="page-subtitle">Performance tracking, load management, and PIQ score history</p>
+    </div>
 
-  body.innerHTML = "";
-
-  // IMP-2: Empty state when no athletes
-  if (!ATHLETES.length) {
-    body.innerHTML = `
-      <div class="empty-state" style="text-align:center;padding:48px 24px">
-        <div style="font-size:40px;margin-bottom:16px">📊</div>
-        <div class="empty-title">No athlete data yet</div>
-        <div class="empty-sub" style="max-width:360px;margin:8px auto 20px">
-          Add athletes via onboarding or import a backup to see performance analytics, ACWR trends, and PerformanceIQ scores.
-        </div>
-        <button class="btn" type="button" onclick="document.getElementById('importFileInput')?.click()">📥 Import Roster</button>
-      </div>
-    `;
-    return;
-  }
-
-  // FIX BUG-7: 3-col grid for athlete comparison selects
-  const picker = document.createElement("div");
-  picker.className = "compare-bar";
-  picker.innerHTML = `
-    <div class="compare-title">Compare athletes (2–3)</div>
-    <div class="compare-controls" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
-    <div class="compare-note">Showing PerformanceIQ breakdown. Leave selects empty to show all athletes.</div>
-  `;
-  const controls = picker.querySelector(".compare-controls");
-
-  const selects = [];
-  for (let i = 0; i < 3; i++) {
-    const sel = document.createElement("select");
-    sel.className = "select";
-    sel.setAttribute("aria-label", `Comparison athlete ${i + 1}`);
-
-    const empty = document.createElement("option");
-    empty.value = "";
-    empty.textContent = i < 2 ? "Select athlete…" : "Optional 3rd…";
-    sel.appendChild(empty);
-
-    ATHLETES.forEach((a) => {
-      const opt = document.createElement("option");
-      opt.value = a.id;
-      opt.textContent = a.name;
-      sel.appendChild(opt);
-    });
-
-    selects.push(sel);
-    controls.appendChild(sel);
-  }
-
-  body.appendChild(picker);
-
-  // Table
-  const tableWrap = document.createElement("div");
-  tableWrap.className = "table-wrap";
-  const table = document.createElement("table");
-  table.className = "table";
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>Athlete</th>
-        <th>PerformanceIQ</th>
-        <th>PIQ (wellness)</th>
-        <th>ACWR</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  `;
-  tableWrap.appendChild(table);
-  body.appendChild(tableWrap);
-
-  // Score breakdown panel
-  const breakdownPanel = document.createElement("div");
-  breakdownPanel.id = "analyticsBreakdown";
-  breakdownPanel.style.marginTop = "16px";
-  body.appendChild(breakdownPanel);
-
-  function renderBreakdown(a, perf) {
-    const subs = perf.subscores || {};
-    const subItems = [
-      { label: "Training Consistency", val: subs.trainingConsistency ?? 0, weight: "30%" },
-      { label: "Wellness (PIQ)", val: subs.wellnessPIQ ?? 0, weight: "25%" },
-      { label: "Load Balance", val: subs.loadBalance ?? 0, weight: "20%" },
-      { label: "Nutrition Adherence", val: subs.nutritionAdherence ?? 0, weight: "15%" },
-    ];
-    const barItems = subItems.map((item) => {
-      const cls = item.val >= 70 ? "var(--ok)" : item.val >= 50 ? "var(--warn)" : "var(--danger)";
-      return `
-        <div style="margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
-            <span>${item.label}</span>
-            <span style="font-weight:700;color:${cls}">${item.val}</span>
-          </div>
-          <div class="piq-bar" style="height:8px">
-            <div class="piq-fill" style="width:${item.val}%;background:${cls}"></div>
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">Weight: ${item.weight}</div>
-        </div>
-      `;
-    }).join("");
-
-    breakdownPanel.innerHTML = `
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title">${a.name} — Score Breakdown</div>
-          <div class="pill ${scoreColorClass(perf.total).replace("-text", "").trim()}">${perf.total}/100</div>
-        </div>
-        <div class="panel-body" style="padding:14px 20px">
-          ${barItems}
-          ${perf.injuryPenalty ? `<div class="piq-alert danger" style="margin-top:8px"><span class="piq-alert-icon">⚠</span><span>Injury penalty: -${perf.injuryPenalty} points</span></div>` : ""}
+    <!-- PIQ Score History -->
+    <div class="card card-xl" style="margin-bottom:20px;">
+      <div class="card-header">
+        <span class="card-title">PIQ Score — 14-Day History</span>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <span style="font-size:12px;color:var(--text-muted);">Trend: <span style="color:var(--green);">↑ +5 this week</span></span>
         </div>
       </div>
-    `;
-  }
+      <div style="height:180px;position:relative;margin-top:8px;">
+        ${renderPIQChart()}
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;">
+        <span style="font-size:10px;color:var(--text-muted);">Feb 21</span>
+        <span style="font-size:10px;color:var(--text-muted);">Today</span>
+      </div>
+    </div>
 
-  function renderSelected() {
-    const ids = selects.map((s) => s.value).filter(Boolean);
-    const unique = Array.from(new Set(ids)).slice(0, 3);
+    <!-- Load Management -->
+    <div class="grid-2" style="margin-bottom:20px;">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Workload (ACWR)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:20px;margin-bottom:16px;">
+          <div style="text-align:center;">
+            <div class="acwr-value ${acwrCls}" style="font-size:48px;">${state.loadData.acwr}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">${acwrLabel}</div>
+          </div>
+          <div style="flex:1;">
+            ${renderACWRZones(state.loadData.acwr)}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="background:var(--bg-elevated);border-radius:var(--radius-sm);padding:12px;">
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">7-Day Load</div>
+            <div style="font-family:var(--font-display);font-weight:900;font-size:24px;">${state.loadData.acute}<span style="font-size:12px;font-weight:400;color:var(--text-muted)"> AU</span></div>
+          </div>
+          <div style="background:var(--bg-elevated);border-radius:var(--radius-sm);padding:12px;">
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">28-Day Avg</div>
+            <div style="font-family:var(--font-display);font-weight:900;font-size:24px;">${state.loadData.chronic}<span style="font-size:12px;font-weight:400;color:var(--text-muted)"> AU</span></div>
+          </div>
+        </div>
+        <div class="alert alert-info" style="margin-top:12px;font-size:12px;">
+          ACWR in the optimal zone (0.8–1.3). Keep this ratio here to maximize adaptation while minimizing injury risk.
+        </div>
+      </div>
 
-    const chosen = unique.length
-      ? ATHLETES.filter((a) => unique.includes(a.id))
-      : ATHLETES.slice(0, 10);
+      <!-- Performance Test Summary -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Performance Tests</span>
+          <span style="font-family:var(--font-display);font-weight:900;font-size:20px;color:var(--accent);">${perfScore}</span>
+        </div>
+        ${state.performanceResults.map(r => renderTestRow(r)).join('')}
+        <div class="alert alert-info" style="margin-top:12px;font-size:12px;">
+          Performance score reflects test percentile ranking vs. sport norms. Retest in 2 weeks.
+        </div>
+      </div>
+    </div>
 
-    const tbody = table.querySelector("tbody");
-    tbody.innerHTML = "";
-
-    chosen.forEach((a) => {
-      const w = latestWellness(a) || {};
-      const piq = computePIQ({
-        sleep: w.sleep, soreness: w.soreness, stress: w.stress, mood: w.mood, readiness: w.readiness,
-      });
-      const acwr = computeACWR(a?.history?.sessions || []);
-      const perf = computeAthleteScoreV1(a, { state: STATE });
-
-      // IMP-3: Color-coded scores
-      const perfCls = scoreColorClass(perf.total);
-      const piqCls = scoreColorClass(piq.score);
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td style="font-weight:600">${a.name}</td>
-        <td>
-          <span class="pill tiny ${perfCls}" style="font-weight:800;font-size:15px">${perf.total ?? "—"}</span>
-        </td>
-        <td>
-          <span class="pill tiny ${piqCls}" style="font-weight:700">${piq.score ?? "—"}</span>
-        </td>
-        <td>${acwrBadgeHTML(acwr)}</td>
-        <td>
-          <button class="btn ghost btn-sm" type="button" 
-            aria-label="Show PerformanceIQ breakdown for ${a.name}">
-            Breakdown
-          </button>
-        </td>
-      `;
-
-      tr.querySelector("button")?.addEventListener("click", () => {
-        renderBreakdown(a, perf);
-        breakdownPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      });
-
-      tbody.appendChild(tr);
-    });
-
-    // Auto-show breakdown for first athlete when single athlete selected
-    if (chosen.length === 1) {
-      const perf = computeAthleteScoreV1(chosen[0], { state: STATE });
-      renderBreakdown(chosen[0], perf);
-    } else {
-      breakdownPanel.innerHTML = `<div class="compare-note" style="padding:10px 0">Select a single athlete or click Breakdown to see score detail.</div>`;
-    }
-  }
-
-  selects.forEach((s) => s.addEventListener("change", renderSelected));
-  renderSelected();
+    <!-- PIQ Component Breakdown Over Time -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">PIQ Score Components — Explained</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
+        ${renderPIQComponentCards()}
+      </div>
+    </div>
+  `;
 }
+
+function renderPIQChart() {
+  const history = state.piqHistory;
+  const n = history.length;
+  const w = 800, h = 160;
+  const pad = { left: 30, right: 10, top: 10, bottom: 10 };
+  const iw = w - pad.left - pad.right;
+  const ih = h - pad.top - pad.bottom;
+  const xStep = iw / (n - 1);
+  const minY = 50, maxY = 100;
+
+  const toX = i => pad.left + i * xStep;
+  const toY = v => pad.top + ih - ((v - minY) / (maxY - minY)) * ih;
+
+  const pathParts = history.map((d, i) => {
+    const x = toX(i).toFixed(1);
+    const y = toY(d.score).toFixed(1);
+    return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
+  });
+
+  const fillPath = [...pathParts, `L ${toX(n-1).toFixed(1)},${(pad.top + ih).toFixed(1)}`, `L ${pad.left.toFixed(1)},${(pad.top + ih).toFixed(1)}`, 'Z'].join(' ');
+  const linePath = pathParts.join(' ');
+
+  // Grid lines at 60, 70, 80, 90
+  const gridLines = [60, 70, 80, 90].map(v => {
+    const y = toY(v).toFixed(1);
+    return `<line x1="${pad.left}" y1="${y}" x2="${w - pad.right}" y2="${y}" stroke="var(--border-subtle)" stroke-width="1"/>
+            <text x="${(pad.left - 4).toFixed(0)}" y="${(parseFloat(y) + 4).toFixed(0)}" fill="var(--text-muted)" font-size="9" text-anchor="end" font-family="Barlow Condensed">${v}</text>`;
+  }).join('');
+
+  // Dot for today
+  const lastX = toX(n-1).toFixed(1);
+  const lastY = toY(history[n-1].score).toFixed(1);
+
+  return `
+    <svg width="100%" height="180" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="overflow:visible;">
+      <defs>
+        <linearGradient id="piqGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${gridLines}
+      <path d="${fillPath}" fill="url(#piqGrad)"/>
+      <path d="${linePath}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastX}" cy="${lastY}" r="5" fill="var(--accent)" filter="drop-shadow(0 0 6px rgba(0,229,160,0.6))"/>
+      <text x="${lastX}" y="${(parseFloat(lastY) - 10).toFixed(0)}" fill="var(--accent)" font-size="11" text-anchor="middle" font-family="Barlow Condensed" font-weight="700">${history[n-1].score}</text>
+    </svg>
+  `;
+}
+
+function renderACWRZones(acwr) {
+  const zones = [
+    { label: 'Undertrained', range: '< 0.8', min: 0, max: 0.8, color: 'var(--blue)' },
+    { label: 'Optimal', range: '0.8–1.3', min: 0.8, max: 1.3, color: 'var(--green)' },
+    { label: 'High Risk', range: '1.3–1.5', min: 1.3, max: 1.5, color: 'var(--orange)' },
+    { label: 'Danger', range: '> 1.5', min: 1.5, max: 2.0, color: 'var(--red)' },
+  ];
+
+  return zones.map(z => {
+    const active = acwr >= z.min && acwr < z.max;
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 0;${active ? 'opacity:1' : 'opacity:0.4'}">
+        <div style="width:8px;height:8px;border-radius:50%;background:${z.color};${active ? `box-shadow:0 0 6px ${z.color}` : ''}"></div>
+        <span style="font-size:12px;${active ? 'color:var(--text-primary);font-weight:600' : 'color:var(--text-muted)'};">${z.label}</span>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:auto;">${z.range}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderTestRow(r) {
+  const pct = normalizePerformance(r.test, r.value);
+  return `
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-size:13px;font-weight:500;">${r.test}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-family:var(--font-display);font-weight:700;font-size:16px;">${r.value} <span style="font-size:11px;font-weight:400;color:var(--text-muted);">${r.unit}</span></span>
+          <span class="stat-delta ${r.delta > 0 ? 'up' : 'down'}" style="font-size:11px;">${r.delta > 0 ? '+' : ''}${r.delta}</span>
+        </div>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill accent" style="width:${pct}%"></div></div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${pct}th percentile</div>
+    </div>
+  `;
+}
+
+function renderPIQComponentCards() {
+  const components = [
+    { label: 'Readiness', weight: '30%', icon: '⚡', desc: 'Wellness inputs: sleep, soreness, stress, energy, mood.' },
+    { label: 'Compliance', weight: '25%', icon: '✅', desc: 'Session completion rate over the last 7 days.' },
+    { label: 'Performance', weight: '20%', icon: '🏆', desc: 'Normalized performance test results vs. sport norms.' },
+    { label: 'Recovery', weight: '15%', icon: '💚', desc: 'Recovery score based on fatigue reduction trends.' },
+    { label: 'Nutrition', weight: '10%', icon: '🥗', desc: 'Target calorie and protein adherence score.' },
+  ];
+  return components.map(c => `
+    <div style="background:var(--bg-elevated);border-radius:var(--radius);padding:14px;text-align:center;">
+      <div style="font-size:24px;margin-bottom:8px;">${c.icon}</div>
+      <div style="font-family:var(--font-display);font-weight:700;font-size:14px;margin-bottom:2px;">${c.label}</div>
+      <div style="font-family:var(--font-display);font-weight:900;font-size:20px;color:var(--accent);margin-bottom:8px;">${c.weight}</div>
+      <div style="font-size:11px;color:var(--text-muted);line-height:1.4;">${c.desc}</div>
+    </div>
+  `).join('');
+}
+
+export function afterRenderAnalytics() {}
