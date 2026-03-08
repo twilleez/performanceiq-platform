@@ -8,6 +8,7 @@ const ASSETS = [
   "./index.html",
   "./styles.css",
   "./js/app.js",
+  "./js/boot.js",
   "./manifest.webmanifest",
 ];
 
