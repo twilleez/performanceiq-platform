@@ -1,4 +1,4 @@
-// js/app.js — Application entry point and router
+// js/app.js — Application entry point and router.  index.html clarifying the entry point is js/app.js.
 
 import { STATE, state, loadState, saveState } from './state/state.js';
 import { renderDashboard, afterRenderDashboard } from './views/dashboard.js';
