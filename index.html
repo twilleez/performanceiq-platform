@@ -72,5 +72,14 @@
   <div id="nav-overlay"></div>
 
   <script type="module" src="js/app.js"></script>
+
+  <!-- Add this service worker registration -->
+  <script type="module">
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(console.error);
+      });
+    }
+  </script>
 </body>
 </html>
