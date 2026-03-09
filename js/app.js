@@ -1,1 +1,61 @@
-import{initState,persist}from"./state/state.js";import{renderCoachDashboard,renderTeamAthletes,renderTeamWorkouts,renderTeamAnalytics,renderAnnouncements}from"./views/coach.js";const app=document.getElementById("app");const state=initState();function navButton(label,view){const active=state.ui.currentView===view;return`<button class="${active?"":"secondary"}" data-nav="${view}">${label}</button>`}function shell(content){return`<div class="app-shell"><aside class="sidebar"><div class="brand">PerformanceIQ</div><div class="subbrand">Phase 3 — Coach & Team System</div><div class="nav">${navButton("Coach Dashboard","coach_dashboard")}${navButton("Roster","team_athletes")}${navButton("Workouts","team_workouts")}${navButton("Analytics","team_analytics")}${navButton("Announcements","team_announcements")}</div></aside><main class="main">${content}</main></div>`}function render(){let content="";switch(state.ui.currentView){case"coach_dashboard":content=renderCoachDashboard(state);break;case"team_athletes":content=renderTeamAthletes(state);break;case"team_workouts":content=renderTeamWorkouts(state);break;case"team_analytics":content=renderTeamAnalytics(state);break;case"team_announcements":content=renderAnnouncements(state);break;default:content=renderCoachDashboard(state)}app.innerHTML=shell(content);bind();persist(state)}function addAnnouncement(title,message){state.team.announcements.unshift({id:`a-${Date.now()}`,title,message,date:new Date().toISOString().slice(0,10)})}function assignWorkout(athleteId,workoutId,title,dayType){if(!state.workouts[workoutId])state.workouts[workoutId]={id:workoutId,title,type:"individual",dayType};const athlete=state.team.athletes.find(a=>a.id===athleteId);if(athlete&&!athlete.assignedWorkouts.includes(workoutId))athlete.assignedWorkouts.push(workoutId)}function assignWorkoutToAll(workoutId,title,dayType){if(!state.workouts[workoutId])state.workouts[workoutId]={id:workoutId,title,type:"team",dayType};state.team.athletes.forEach(a=>{if(!a.assignedWorkouts.includes(workoutId))a.assignedWorkouts.push(workoutId)})}function bind(){app.querySelectorAll("[data-nav]").forEach(btn=>btn.onclick=()=>{state.ui.currentView=btn.dataset.nav;render()});app.querySelectorAll("[data-action='go-athletes']").forEach(btn=>btn.onclick=()=>{state.ui.currentView="team_athletes";render()});app.querySelectorAll("[data-action='go-announcements']").forEach(btn=>btn.onclick=()=>{state.ui.currentView="team_announcements";render()});app.querySelectorAll("[data-action='view-athlete']").forEach(btn=>btn.onclick=()=>{state.ui.activeAthleteId=btn.dataset.id;state.ui.currentView="team_athletes";render()});app.querySelectorAll("[data-action='assign-lower']").forEach(btn=>btn.onclick=()=>{assignWorkout(btn.dataset.id,"w-lower","Lower Strength","lower_strength");render()});app.querySelectorAll("[data-action='assign-upper']").forEach(btn=>btn.onclick=()=>{assignWorkout(btn.dataset.id,"w-upper","Upper Strength","upper_strength");render()});app.querySelectorAll("[data-action='assign-generated']").forEach(btn=>btn.onclick=()=>{assignWorkoutToAll("w-lower","Lower Strength","lower_strength");assignWorkoutToAll("w-upper","Upper Strength","upper_strength");assignWorkoutToAll("w-speed","Speed / Power","power_speed");addAnnouncement("Workout assignments updated","New team training week has been assigned.");state.ui.currentView="coach_dashboard";render()});app.querySelectorAll("[data-action='assign-workout-type']").forEach(btn=>btn.onclick=()=>{const day=btn.dataset.day;const title=day.replaceAll("_"," ").replace(/\b\w/g,c=>c.toUpperCase());assignWorkoutToAll(`w-${day}`,title,day);addAnnouncement("New team workout assigned",`${title} has been assigned to the full team.`);render()});const postBtn=app.querySelector("[data-action='post-announcement']");if(postBtn){postBtn.onclick=()=>{const title=document.getElementById("ann-title").value.trim();const message=document.getElementById("ann-message").value.trim();if(!title||!message)return alert("Add both title and message.");addAnnouncement(title,message);render()}}const seedBtn=app.querySelector("[data-action='seed-announcement']");if(seedBtn){seedBtn.onclick=()=>{addAnnouncement("Recovery emphasis","Keep today at RPE 6–7. No extra conditioning.");render()}}}render();
+import {initState,persist} from "./state/state.js"
+import {renderDashboard} from "./views/dashboard.js"
+import {renderAuth} from "./views/auth.js"
+import {renderTeam} from "./views/team.js"
+
+const app=document.getElementById("app")
+const state=initState()
+
+function render(){
+
+if(!state.session.loggedIn){
+app.innerHTML=renderAuth()
+bindAuth()
+return
+}
+
+let content=""
+switch(state.ui.view){
+case "team": content=renderTeam(state); break
+default: content=renderDashboard(state)
+}
+
+app.innerHTML=`
+<div class="app">
+<div class="sidebar">
+<h2>PerformanceIQ</h2>
+<button data-nav="dashboard">Dashboard</button>
+<button data-nav="team">Team</button>
+<button data-action="logout">Logout</button>
+</div>
+<div class="main">${content}</div>
+</div>`
+
+bind()
+persist(state)
+}
+
+function bind(){
+app.querySelectorAll("[data-nav]").forEach(b=>{
+b.onclick=()=>{state.ui.view=b.dataset.nav;render()}
+})
+
+const logout=app.querySelector("[data-action='logout']")
+if(logout) logout.onclick=()=>{
+state.session.loggedIn=false
+render()
+}
+}
+
+function bindAuth(){
+const login=document.getElementById("login-btn")
+login.onclick=()=>{
+const email=document.getElementById("email").value
+if(!email) return alert("enter email")
+state.session.loggedIn=true
+state.session.user=email
+render()
+}
+}
+
+render()
