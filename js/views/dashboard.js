@@ -1,14 +1,1 @@
-export function renderDashboard(state){
-return `
-<div class="card">
-<h2>Dashboard</h2>
-<p>Logged in as ${state.session.user}</p>
-</div>
-
-<div class="card">
-<h3>Team</h3>
-<p>${state.team.name}</p>
-<p>Join Code: ${state.team.joinCode}</p>
-</div>
-`
-}
+export function renderDashboard(state){return`<div class="grid cards"><div class="card"><h3>PIQ</h3><div class="timer">${state.dashboard.piq}</div></div><div class="card"><h3>Readiness</h3><div class="timer">${state.dashboard.readiness}</div></div><div class="card"><h3>Load</h3><div class="timer">${state.dashboard.load}</div></div><div class="card"><h3>Compliance</h3><div class="timer">${state.dashboard.compliance}%</div></div></div><div class="card"><h2>Platform Status</h2><p>Boot mode: <strong>${state.boot.mode}</strong></p><p>User: <strong>${state.session.user||""}</strong> (${state.session.role})</p><p>Team: <strong>${state.team.name}</strong></p><p>Join Code: <strong>${state.team.joinCode}</strong></p></div>`}

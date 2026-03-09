@@ -1,12 +1,1 @@
-export function renderAuth(){
-return `
-<div style="max-width:400px;margin:100px auto">
-<div class="card">
-<h2>Login</h2>
-<input id="email" placeholder="email">
-<br><br>
-<button id="login-btn">Login</button>
-</div>
-</div>
-`
-}
+export function renderAuth(){return`<div class="auth"><div class="card"><h2>PerformanceIQ Login</h2><p class="muted">Phase 6 build with Supabase-ready wiring and local fallback.</p><label>Email<input id="auth-email" placeholder="coach@team.com"></label><br><label>Role<select id="auth-role"><option value="coach">Coach</option><option value="athlete">Athlete</option></select></label><br><button id="login-btn">Login</button></div></div>`}

@@ -1,0 +1,1 @@
+export function renderSetupPanel(hasConfig){return`<div class="card"><h2>Supabase Setup</h2><p>${hasConfig?"Supabase keys detected.":"Supabase keys not detected. App is in local fallback mode."}</p><div class="row"><span class="badge">Run supabase/schema.sql</span><span class="badge">Run supabase/policies.sql</span><span class="badge">Set URL + anon key</span></div></div>`}
