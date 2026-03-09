@@ -1,0 +1,1 @@
+export const appConfig={supabaseUrl:window.__PIQ_SUPABASE_URL__||"",supabaseAnonKey:window.__PIQ_SUPABASE_ANON_KEY__||""};export const hasSupabaseConfig=()=>Boolean(appConfig.supabaseUrl&&appConfig.supabaseAnonKey);
