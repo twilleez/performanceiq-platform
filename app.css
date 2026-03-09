@@ -1,207 +1,23 @@
-// /js/app.js
-import { cacheDOM, dom } from './ui/dom.js';
-import { installInteractions } from './ui/interactions.js';
-import { getThemePref, applyTheme, toggleTheme } from './ui/theme.js';
-import { applySportTheme } from './ui/sportTheme.js';
-
-import { Storage } from './services/storage.js';
-import { toast } from './services/toast.js';
-
-import { STATE, ATHLETES, saveState, saveAthletes, setAthletes } from './state/state.js';
-import { STORAGE_KEY_TOUR } from './state/keys.js';
-
-import { switchView } from './router.js';
-
-import { renderDashboard } from './views/dashboard.js';
-import { renderAthletesView, bindAthletesViewEvents } from './views/athletes.js';
-import { renderTrainView, bindTrainViewEvents, renderGeneratedSession } from './views/train.js';
-import { renderAnalytics } from './views/analytics.js';
-import { renderSchedule } from './views/schedule.js';
-
-import { initOnboarding, maybeShowOnboarding, closeOnboardingIfOpen } from './ui/onboarding.js';
-import { createTodayTour } from './ui/tour.js';
-
-/* ---------------------------
-   Simple helpers
----------------------------- */
-function hideLoader() {
-  if (dom.loadingScreen) dom.loadingScreen.style.display = 'none';
+:root{
+  --bg:#0b1020;--bg2:#121933;--panel:#161f3d;--panel2:#1b2650;--line:rgba(255,255,255,.08);--text:#eef2ff;--muted:#a6b0d6;
+  --accent:#36d399;--accent2:#60a5fa;--warn:#f59e0b;--danger:#ef4444;--radius:20px;--shadow:0 18px 50px rgba(0,0,0,.28);
+  --font:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
 }
-
-function onEnter(viewId) {
-  if (viewId === 'dashboard') renderDashboard();
-  if (viewId === 'athletes') {
-    if (dom.athleteDetail) dom.athleteDetail.style.display = 'none';
-    if (dom.athleteCardGrid) dom.athleteCardGrid.style.display = '';
-    renderAthletesView(dom.athleteFilterInput?.value || dom.athleteSearch?.value || '');
-  }
-  if (viewId === 'train') renderTrainView();
-  if (viewId === 'analytics') renderAnalytics();
-  if (viewId === 'schedule') renderSchedule(dom.fullEventList);
-}
-
-// Tour needs a “navigate” that also triggers render (because router is separate in modular build).
-function navigate(viewId) {
-  switchView(viewId, { onEnter });
-}
-
-function handleSearch(value) {
-  if (STATE.currentView !== 'athletes') navigate('athletes');
-  renderAthletesView(value);
-  if (dom.athleteSearch) dom.athleteSearch.value = value;
-  if (dom.athleteFilterInput) dom.athleteFilterInput.value = value;
-}
-
-/* ---------------------------
-   Data mgmt (export/import/reset) — modularized baseline
----------------------------- */
-function bindDataManagement() {
-  dom.btnExportData?.addEventListener('click', () => {
-    try {
-      const blob = new Blob(
-        [JSON.stringify({ athletes: ATHLETES, state: STATE, exportedAt: new Date().toISOString() }, null, 2)],
-        { type: 'application/json' }
-      );
-      const url = URL.createObjectURL(blob);
-      const a = Object.assign(document.createElement('a'), { href: url, download: `piq-backup-${Date.now()}.json` });
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast('Backup downloaded ✓');
-    } catch (e) {
-      toast('Export failed: ' + e.message);
-    }
-  });
-
-  dom.btnImportData?.addEventListener('click', () => dom.importFileInput?.click());
-
-  dom.importFileInput?.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const p = JSON.parse(evt.target.result);
-        if (p.athletes && Array.isArray(p.athletes) && p.athletes.length) {
-          setAthletes(p.athletes);
-          if (p.state && typeof p.state === 'object') Object.assign(STATE, p.state);
-          saveState();
-          applySportTheme(STATE.sport);
-          renderDashboard();
-          toast(`Imported ${p.athletes.length} athletes ✓`);
-        } else {
-          toast('Import failed — no athletes found');
-        }
-      } catch {
-        toast('Import failed — invalid JSON');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  });
-
-  dom.btnResetData?.addEventListener('click', () => {
-    // You listed replacing confirm() with modal later; keeping parity right now.
-    if (!confirm('Reset to demo data? Current data will be lost.')) return;
-    // simplest: clear the athletes key and reload
-    Storage.remove('piq_athletes_v2');
-    location.reload();
-  });
-}
-
-/* ---------------------------
-   Settings (team/sport/theme)
----------------------------- */
-function bindSettings() {
-  if (dom.settingTeamName) dom.settingTeamName.value = STATE.teamName;
-
-  if (dom.settingSport) {
-    Array.from(dom.settingSport.options).forEach(o => {
-      o.selected = o.value.toLowerCase() === String(STATE.sport).toLowerCase();
-    });
-  }
-
-  dom.btnSaveSettings?.addEventListener('click', () => {
-    STATE.teamName = (dom.settingTeamName?.value || '').trim() || STATE.teamName;
-    STATE.season = dom.settingSeason?.value || STATE.season;
-    STATE.sport = (dom.settingSport?.value || STATE.sport).toLowerCase();
-
-    applySportTheme(STATE.sport);
-
-    if (dom.userRole) dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
-    saveState();
-    renderDashboard();
-    toast('Settings saved ✓');
-  });
-}
-
-/* ---------------------------
-   Navigation binding
----------------------------- */
-function bindNav() {
-  document.querySelectorAll('[data-view]').forEach(btn =>
-    btn.addEventListener('click', () => navigate(btn.dataset.view))
-  );
-}
-
-/* ---------------------------
-   Main init
----------------------------- */
-function init() {
-  cacheDOM();
-  installInteractions();
-
-  applyTheme(getThemePref());
-  dom.btnTheme?.addEventListener('click', toggleTheme);
-  dom.settingTheme?.addEventListener('change', (e) => applyTheme(e.target.value));
-
-  applySportTheme(STATE.sport);
-
-  bindNav();
-  bindSettings();
-  bindDataManagement();
-
-  // Search sync
-  dom.athleteSearch?.addEventListener('input', e => handleSearch(e.target.value));
-  dom.athleteFilterInput?.addEventListener('input', e => handleSearch(e.target.value));
-
-  // Top actions
-  dom.btnRefresh?.addEventListener('click', () => { renderDashboard(); toast('Data refreshed ↺'); });
-  dom.btnExport?.addEventListener('click', () => toast('Report export requires cloud sync — coming soon 📤'));
-  dom.btnExportAnalytics?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
-
-  // View-specific binds
-  bindTrainViewEvents();
-  bindAthletesViewEvents();
-
-  // ✅ Onboarding module (extracted from core.js) 19
-  initOnboarding({
-    onAfterFinish: () => {
-      // Make sure views reflect updated sport/theme/state
-      renderDashboard();
-    }
-  });
-
-  // ✅ TodayTour module (extracted from core.js) 20
-  const TodayTour = createTodayTour({ navigate });
-  TodayTour.bindKeyboardShortcuts();
-
-  // Keep “Escape closes onboarding too” parity with core.js behavior 21
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeOnboardingIfOpen();
-  });
-
-  // Initial user label
-  if (dom.userRole) dom.userRole.textContent = `Head Coach · ${STATE.sport.charAt(0).toUpperCase() + STATE.sport.slice(1)}`;
-
-  // First render
-  renderDashboard();
-  navigate(STATE.currentView || 'dashboard');
-
-  // Show onboarding once if not seen
-  maybeShowOnboarding();
-
-  hideLoader();
-}
-
-init();
+*{box-sizing:border-box}html,body{margin:0;padding:0;background:linear-gradient(180deg,#0a0f1e,#10182f);color:var(--text);font-family:var(--font)}
+body{min-height:100vh}.hidden{display:none!important}.small{font-size:.85rem}.muted{color:var(--muted)}
+.app-shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}.sidebar{padding:24px;border-right:1px solid var(--line);background:rgba(6,11,24,.72);backdrop-filter:blur(18px)}
+.brand{display:flex;gap:14px;align-items:center;margin-bottom:22px}.brand-mark{width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:#071019;font-weight:900}.brand-title{font-size:1.2rem;font-weight:800}.brand-subtitle{font-size:.9rem;color:var(--muted)}
+.nav-list{display:grid;gap:8px}.nav-tab{border:0;background:transparent;color:var(--text);padding:14px 16px;border-radius:14px;text-align:left;font-weight:700;cursor:pointer}.nav-tab:hover,.nav-tab.active{background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));outline:1px solid var(--line)}
+.sidebar-card,.panel,.card{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.03));border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.sidebar-card{padding:16px;margin-top:16px}.badge{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:rgba(54,211,153,.16);color:#9af0cc;font-weight:700;margin-top:8px}.save-pill{display:flex;align-items:center;gap:8px;margin-top:14px}.dot{width:10px;height:10px;border-radius:999px;display:inline-block}.dot.saved{background:var(--accent)}.dot.saving{background:var(--warn)}
+.main{padding:26px}.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}.topbar h1{margin:0 0 6px;font-size:2rem}.topbar-actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:0;border-radius:14px;padding:12px 16px;font-weight:800;cursor:pointer}.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#071019}.btn.ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--line)}
+.grid{display:grid;gap:16px}.grid.cards{grid-template-columns:repeat(4,minmax(0,1fr))}.card{padding:18px}.card h3,.card h4{margin:0 0 8px}.metric{font-size:2rem;font-weight:900}.view{display:grid;gap:16px}.row{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.list{display:grid;gap:12px}.list-item{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.list-item:first-child{border-top:0;padding-top:0}
+.panel{padding:18px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:grid;gap:8px}.field label{font-weight:700;font-size:.92rem}.field input,.field select,.field textarea{width:100%;background:rgba(9,14,28,.75);border:1px solid var(--line);color:var(--text);border-radius:14px;padding:12px 14px;font:inherit}.field textarea{min-height:104px;resize:vertical}
+.exercise-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.03)}.exercise-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.exercise-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.pill{padding:6px 10px;border-radius:999px;background:rgba(96,165,250,.12);color:#b8d2ff;font-size:.82rem}.warning{color:#fbbf24}.danger{color:#fca5a5}.good{color:#9af0cc}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.session-block{display:grid;gap:12px}.session-header{display:flex;justify-content:space-between;align-items:center;gap:10px}.progress{height:10px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden}.progress > span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.table{width:100%;border-collapse:collapse}.table th,.table td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:left}.table th{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.06em}
+.modal{border:0;padding:0;background:transparent}.modal::backdrop{background:rgba(4,8,18,.72)}.modal-card{width:min(760px,92vw);background:linear-gradient(180deg,#182246,#10172c);border:1px solid var(--line);border-radius:24px;padding:20px;color:var(--text)}.modal-sm{width:min(420px,92vw)}.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.icon-btn{border:0;background:rgba(255,255,255,.08);color:var(--text);width:38px;height:38px;border-radius:12px;cursor:pointer}.rest-display{font-size:4rem;font-weight:900;text-align:center;margin:18px 0}.timer-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.toast{position:fixed;right:18px;bottom:18px;background:#11182e;color:var(--text);padding:14px 16px;border-radius:14px;border:1px solid var(--line);box-shadow:var(--shadow);z-index:100}.chart-bars{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end;height:180px}.bar{border-radius:14px 14px 6px 6px;background:linear-gradient(180deg,var(--accent2),var(--accent));position:relative}.bar-label{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);font-size:.75rem;color:var(--muted)}
+@media (max-width:1080px){.app-shell{grid-template-columns:1fr}.sidebar{border-right:0;border-bottom:1px solid var(--line)}.grid.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.row{grid-template-columns:1fr}.main{padding:18px}}
+@media (max-width:700px){.form-grid,.grid.cards{grid-template-columns:1fr}.topbar{flex-direction:column}}
