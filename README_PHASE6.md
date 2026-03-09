@@ -1,0 +1,1 @@
+# PerformanceIQ Phase 6\n\nThis pack adds boot diagnostics, Supabase-ready client wiring, starter SQL schema, starter RLS policies, and keeps local fallback mode working until Supabase is configured.\n\nAdd before js/app.js loads:\n<script>window.__PIQ_SUPABASE_URL__="https://YOUR-PROJECT.supabase.co";window.__PIQ_SUPABASE_ANON_KEY__="YOUR-ANON-KEY";</script>
