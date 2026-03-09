@@ -1,1 +1,23 @@
-import{loadState,saveState}from"../services/storage.js";const demoTeam={id:"team-1",name:"Warriors Varsity",announcements:[{id:"a1",title:"Monday Lift",message:"Be ready by 6:00 PM. Hydrate before arriving.",date:"2026-03-09"},{id:"a2",title:"Game Week",message:"Reduce optional conditioning by 20% this week.",date:"2026-03-10"}],athletes:[{id:"ath-1",name:"James Carter",position:"PG",piq:82,readiness:88,compliance:92,risk:"low",assignedWorkouts:["w-lower","w-speed"]},{id:"ath-2",name:"Marcus Lee",position:"SG",piq:74,readiness:63,compliance:80,risk:"medium",assignedWorkouts:["w-upper"]},{id:"ath-3",name:"Andre Miles",position:"SF",piq:69,readiness:55,compliance:75,risk:"high",assignedWorkouts:["w-recovery"]}]};const workouts={"w-lower":{id:"w-lower",title:"Lower Strength",type:"team",dayType:"lower_strength"},"w-speed":{id:"w-speed",title:"Speed / Power",type:"team",dayType:"power_speed"},"w-upper":{id:"w-upper",title:"Upper Strength",type:"team",dayType:"upper_strength"},"w-recovery":{id:"w-recovery",title:"Recovery Mobility",type:"individual",dayType:"recovery"}};const base={user:{role:"coach",name:"Coach Hill"},athleteProfile:{name:"Demo Athlete",sport:"basketball",position:"PG",experience:"intermediate",equipment:["bodyweight","dumbbells"],training_days:4,goal:"strength_speed",meal_plan_enabled:false},dashboard:{readiness:81,load:56,compliance:87,piq:79},team:demoTeam,workouts,assigned:[],logs:{readiness:[],sessions:[]},ui:{currentView:"coach_dashboard",activeAthleteId:"ath-1"}};export function initState(){const saved=loadState();return saved?saved:structuredClone(base)}export function persist(state){saveState(state)}
+import {loadState,saveState} from "../services/storage.js"
+
+const base={
+session:{loggedIn:false,user:null},
+ui:{view:"dashboard"},
+team:{
+name:"Warriors Varsity",
+joinCode:"PIQ1234",
+athletes:[
+{id:"1",name:"James Carter",position:"PG",piq:82},
+{id:"2",name:"Marcus Lee",position:"SG",piq:74}
+]
+}
+}
+
+export function initState(){
+const saved=loadState()
+return saved?saved:structuredClone(base)
+}
+
+export function persist(state){
+saveState(state)
+}
