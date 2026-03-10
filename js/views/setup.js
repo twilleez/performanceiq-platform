@@ -1,1 +1,15 @@
-import{hasSupabaseConfig}from"../config/appConfig.js";export function renderSetup(){return`<div class="card"><h2>Schema-Aligned Setup</h2><p>${hasSupabaseConfig()?"Supabase keys detected.":"Supabase keys not detected. Running local fallback shell."}</p><div class="card"><div>Existing tables used: teams, team_members, athletes, readiness, piq_scores_daily, training_sessions</div><div>Workout display uses: workouts and workout_assignments</div><div>FK assumption: performance_metrics.athlete_id and workout_logs.athlete_id now reference public.athletes(id)</div></div></div>`}
+export function setupView(){
+
+return `
+
+<div class="card">
+
+<h2>Setup</h2>
+
+<p>Connect Supabase keys in index.html</p>
+
+</div>
+
+`
+
+}
