@@ -1,1 +1,15 @@
-export function renderDashboard(state){return`<div class="grid cards"><div class="card"><h3>Team PIQ</h3><div class="timer">${state.summary.piq||0}</div></div><div class="card"><h3>Avg Readiness</h3><div class="timer">${state.summary.readiness||0}</div></div><div class="card"><h3>Weekly Load</h3><div class="timer">${state.summary.weeklyLoad||0}</div></div><div class="card"><h3>Athletes at Risk</h3><div class="timer">${state.summary.atRisk||0}</div></div></div><div class="grid two"><div class="card"><h2>Dashboard Status</h2><p>Boot mode: <strong>${state.boot.mode}</strong></p><p>User: <strong>${state.session.user||""}</strong> (${state.session.role})</p><p>Team: <strong>${state.team.name||"No Team Loaded"}</strong></p><p>Join Code: <strong>${state.team.joinCode||"-"}</strong></p><div class="row"><span class="badge">Athletes ${state.summary.athleteCount||0}</span><span class="badge">Schema aligned</span><span class="badge">Workouts enabled</span></div></div><div class="card"><h2>Data Sources</h2><div class="card"><div>PIQ → piq_scores_daily</div><div>Readiness → readiness</div><div>Weekly load → training_sessions</div><div>Assigned workouts → workouts + workout_assignments</div></div></div></div>`}
+export function dashboard(state){
+
+return `
+<div class="card">
+
+<h2>Team Dashboard</h2>
+
+<p>Team PIQ: ${state.summary.piq}</p>
+<p>Readiness: ${state.summary.readiness}</p>
+<p>Weekly Load: ${state.summary.weeklyLoad}</p>
+
+</div>
+`
+
+}
