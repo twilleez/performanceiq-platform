@@ -1,1 +1,1 @@
-const KEY="piq_phase6_state";export function loadLocalState(){try{const raw=localStorage.getItem(KEY);return raw?JSON.parse(raw):null}catch{return null}}export function saveLocalState(state){localStorage.setItem(KEY,JSON.stringify(state))}
+const KEY="piq_schema_phase6_state";export function loadLocalState(){try{const raw=localStorage.getItem(KEY);return raw?JSON.parse(raw):null}catch{return null}}export function saveLocalState(state){localStorage.setItem(KEY,JSON.stringify(state))}
