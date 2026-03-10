@@ -1,0 +1,1 @@
+# PerformanceIQ Schema-Aligned Phase 6\n\nUses your existing tables: teams, team_members, athletes, readiness, piq_scores_daily, training_sessions. Uses your added tables: workouts and workout_assignments. Assumes performance_metrics.athlete_id and workout_logs.athlete_id now reference public.athletes(id). Add Supabase keys before js/app.js loads.
