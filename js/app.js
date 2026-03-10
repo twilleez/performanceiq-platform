@@ -1,41 +1,34 @@
-function render(){
-  if(!state.session.loggedIn){
-    app.innerHTML=`<div class="auth"><div class="card"><h2>PerformanceIQ Login</h2><p class="muted">Phase 8 upgrade with preserved prior-phase functionality plus analytics, alerts, heatmap, periodization, builder, and recruiting export.</p><label>Email<input id="auth-email" placeholder="coach@team.com"></label><br><label>Role<select id="auth-role"><option value="coach">Coach</option><option value="athlete">Athlete</option></select></label><br><button id="login-btn">Login</button></div></div>`;
+import {STATE} from "./state/state.js"
+import {createSupabase} from "./services/supabaseClient.js"
+import {hydrate} from "./services/dataLoader.js"
 
-    document.getElementById("login-btn").onclick = async () => {
-      const email = document.getElementById("auth-email").value.trim();
-      if (!email) return alert("Enter email.");
+import {dashboard} from "./views/dashboard.js"
+import {teamView} from "./views/team.js"
+import {workoutsView} from "./views/workouts.js"
+import {analyticsView} from "./views/analytics.js"
 
-      state.session.loggedIn = true;
-      state.session.user = email;
-      state.session.role = document.getElementById("auth-role").value;
-      state.view = state.session.role === "athlete" ? "athlete" : "dashboard";
+const app=document.getElementById("app")
 
-      // Only try to hydrate if Supabase is wired
-      if (state.bootMode === "supabase-configured" && typeof hydrateCoachDashboard === "function" && typeof supabase !== "undefined") {
-        try {
-          await hydrateCoachDashboard(state, supabase);
-        } catch (err) {
-          console.error("hydrateCoachDashboard failed", err);
-          // Optional: fall back message, but keep app usable
-        }
-      }
+async function boot(){
 
-      render();
-    };
+const supabase=await createSupabase()
 
-    return;
-  }
+if(supabase){
 
-  let content = dashboardView();
-  if(state.view==="team")content=teamView();
-  else if(state.view==="workouts")content=workoutsView();
-  else if(state.view==="analytics")content=analyticsView();
-  else if(state.view==="builder")content=builderView();
-  else if(state.view==="athlete")content=athleteView();
-  else if(state.view==="periodization")content=periodizationView();
-  else if(state.view==="recruiting")content=recruitingView();
-  else if(state.view==="setup")content=setupView();
-  app.innerHTML=shell(content);
-  bind();
+STATE.bootMode="supabase"
+
+await hydrate(STATE,supabase)
+
 }
+
+render()
+
+}
+
+function render(){
+
+app.innerHTML=dashboard(STATE)
+
+}
+
+boot()
