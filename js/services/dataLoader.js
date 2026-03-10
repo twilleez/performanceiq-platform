@@ -1,1 +1,18 @@
-import{fetchTeamsForUser,fetchRosterByTeam,fetchLatestReadinessByTeam,fetchLatestPiqByTeam,fetchWeeklyTrainingLoadByTeam,fetchAssignedWorkoutsByTeam}from"./schemaQueries.js";import{buildRosterView,buildTeamSummary}from"../features/dashboardMapper.js";function startOfWeekISO(){const now=new Date();const day=now.getDay();const diff=(day===0?-6:1)-day;now.setDate(now.getDate()+diff);return now.toISOString().slice(0,10)} export async function hydrateCoachDashboard(state,supabase){const userId=state.session.userId||"demo-user";const teamsRes=await fetchTeamsForUser(supabase,userId);if(teamsRes.error)throw teamsRes.error;const first=(teamsRes.data||[])[0];if(!first){state.team={id:null,name:"No Team Membership",joinCode:""};state.roster=[];state.summary={piq:0,readiness:0,weeklyLoad:0,atRisk:0,athleteCount:0};return}const team=first.teams||{};state.team.id=team.id||first.team_id;state.team.name=team.name||"Team";state.team.joinCode=team.join_code||"";const teamId=state.team.id;const [a,r,p,t,w]=await Promise.all([fetchRosterByTeam(supabase,teamId),fetchLatestReadinessByTeam(supabase,teamId),fetchLatestPiqByTeam(supabase,teamId),fetchWeeklyTrainingLoadByTeam(supabase,teamId,startOfWeekISO()),fetchAssignedWorkoutsByTeam(supabase,teamId)]);for(const res of [a,r,p,t,w]){if(res.error)throw res.error}const roster=buildRosterView({athletes:a.data||[],readinessRows:r.data||[],piqRows:p.data||[],trainingRows:t.data||[],assignments:w.data||[]});state.roster=roster;state.summary=buildTeamSummary(roster);state.ui.activeAthleteId=state.ui.activeAthleteId||(roster[0]?.id??null)}
+import {loadRoster,loadReadiness,loadPiq,loadTraining} from "./schemaQueries.js"
+import {buildRoster} from "../features/performanceEngine.js"
+
+export async function hydrate(state,supabase){
+
+const athletes=await loadRoster(supabase,state.team.id)
+const readiness=await loadReadiness(supabase,state.team.id)
+const piq=await loadPiq(supabase,state.team.id)
+const training=await loadTraining(supabase,state.team.id)
+
+state.roster=buildRoster(
+athletes.data,
+readiness.data,
+piq.data,
+training.data
+)
+
+}
