@@ -1,45 +1,21 @@
-// state.js
-import { loadLocalState, saveLocalState } from "../services/storage.js";
+export const STATE = {
 
-const base = {
-  boot: {
-    mode: "local-fallback",
-    diagnostics: []
-  },
-  session: {
-    loggedIn: false,
-    user:     null,
-    role:     "coach",
-    userId:   null
-  },
-  ui: {
-    view:            "dashboard",
-    activeAthleteId: null
-  },
-  team: {
-    id:       null,
-    name:     "No Team Loaded",
-    joinCode: ""
-  },
-  roster:  [],
-  summary: {
-    piq:          0,
-    readiness:    0,
-    weeklyLoad:   0,
-    atRisk:       0,
-    athleteCount: 0
-  },
-  setup: {
-    schemaAligned:      true,
-    workoutTablesAdded: true,
-    foreignKeysFixed:   true
-  }
-};
+bootMode:"local",
 
-export function initState() {
-  return loadLocalState() || structuredClone(base);
+session:{
+loggedIn:true,
+user:"coach"
+},
+
+team:{
+name:"Demo Team"
+},
+
+summary:{
+piq:82,
+readiness:79,
+weeklyLoad:412,
+risk:1
 }
 
-export function persist(state) {
-  saveLocalState(state);
 }
