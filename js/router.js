@@ -1,15 +1,1 @@
-import { dashboard } from "./views/dashboard.js"
-import { teamView } from "./views/team.js"
-import { workoutsView } from "./views/workouts.js"
-import { analyticsView } from "./views/analytics.js"
-
-export function initRouter(app,state){
-
-const view = state.ui?.view || "dashboard"
-
-if(view==="team") app.innerHTML = teamView(state)
-else if(view==="workouts") app.innerHTML = workoutsView(state)
-else if(view==="analytics") app.innerHTML = analyticsView(state)
-else app.innerHTML = dashboard(state)
-
-}
+import { dashboardView } from "./views/dashboard.js";import { teamView } from "./views/team.js";import { workoutsView } from "./views/workouts.js";import { analyticsView } from "./views/analytics.js";import { builderView } from "./views/builder.js";import { athleteMobileView } from "./views/athleteMobile.js";import { periodizationView } from "./views/periodization.js";import { recruitingView } from "./views/recruiting.js";import { setupView } from "./views/setup.js";import { buildRecruitingProfile } from "./features/performanceEngine.js";export function renderCurrentView(state){switch(state.ui.view){case "team":return teamView(state);case "workouts":return workoutsView(state);case "analytics":return analyticsView(state);case "builder":return builderView(state);case "athlete":return athleteMobileView(state);case "periodization":return periodizationView(state);case "recruiting":{const athlete=state.roster.find(a=>a.id===state.ui.activeAthleteId)||state.roster[0];return recruitingView(buildRecruitingProfile(athlete));}case "setup":return setupView(state);default:return dashboardView(state);}}
