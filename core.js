@@ -1,45 +1,1446 @@
-(function(){
+/* ================================================================
+   PerformanceIQ — Core.js  v6.0  (Full Fix Pass)
+   Changes from v5.2.1:
+   ✓ XSS: esc() helper on all user-data innerHTML paths
+   ✓ selectedAthleteId excluded from localStorage persistence
+   ✓ toast() auto-creates container if missing (no silent fail)
+   ✓ Keyboard shortcuts guard: ignores events when typing in inputs
+   ✓ Schedule view: add/delete events stored in STATE.events
+   ✓ applySportTheme() re-called on every theme toggle
+   ✓ All localStorage access wrapped in try/catch
+   ✓ Removed supabaseConfig.js dependency (uses appConfig env injection)
+   ✓ renderSchedule() fully functional
+   ================================================================ */
 'use strict';
-const $ = (id) => document.getElementById(id);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-const state = window.dataStore.getState();
-let restSeconds = 60, restTimer = null;
 
-function save(reason){ $('saveDot').className='dot saving'; $('saveText').textContent='Saving...'; window.dataStore.saveState(reason); setTimeout(()=>{$('saveDot').className='dot saved'; $('saveText').textContent='Saved';},180); }
-function toast(msg){ const el=$('toast'); el.textContent=msg; el.classList.remove('hidden'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.add('hidden'),2400); }
-function titleCase(v=''){ return String(v).replace(/_/g,' ').replace(/\b\w/g,m=>m.toUpperCase()); }
-function subtitle(){ const p=state.profile; return `${titleCase(p.role)} • ${titleCase(p.sport)} • ${window.PIQSportEngine.getPositionLabel(p.sport,p.position)}`; }
-function modeText(){ return state.profile.team_mode==='team' ? `Team athlete · ${state.profile.team_code || window.PIQConfig.demoTeamCode}` : 'Solo athlete'; }
-function renderShell(){ $('brandSubtitle').textContent = subtitle(); $('viewSubtitle').textContent = subtitle(); $('modeBadge').textContent = modeText(); }
-function setView(view){ state.ui.currentView=view; save('view'); $$('.view').forEach(v=>v.classList.add('hidden')); $$('.nav-tab').forEach(b=>b.classList.toggle('active', b.dataset.view===view)); $(view+'View').classList.remove('hidden'); $('viewTitle').textContent=titleCase(view); renderCurrent(); history.replaceState(null,'','#'+view); }
-function onboardingRequired(){ return !state.profile.onboarded; }
-function metricCards(){ return window.PIQDashboardView.renderCards(state).map(c=>`<div class="card"><div class="muted small">${c.label}</div><div class="metric">${c.value}</div><div class="muted">${c.sub}</div></div>`).join(''); }
-function renderDashboard(){ const perf=window.PIQPerformance.summary(state); $('dashboardView').innerHTML=`<div class="grid cards">${metricCards()}</div>
-  <div class="row"><div class="panel"><div class="session-header"><h3>Current phase</h3><span class="pill">Week ${currentWeek()}</span></div><p>${window.PIQPeriodization.getPhase(currentWeek()).name}</p><p class="muted">${window.PIQPeriodization.getPhase(currentWeek()).note}</p><div class="list"><div class="list-item"><span>Risk status</span><strong class="${perf.risk.level==='High'?'danger':perf.risk.level==='Medium'?'warning':'good'}">${perf.risk.level}</strong></div><div class="list-item"><span>Recovery note</span><span>${window.PIQAutomation.suggestion(state.profile)}</span></div><div class="list-item"><span>Meal plans</span><span>${state.profile.meal_plan_enabled?'Enabled':'Disabled'}</span></div></div></div>
-  <div class="panel"><h3>Weekly load heatmap</h3><div id="heatmap"></div></div></div>
-  <div class="panel"><div class="session-header"><h3>Recent sessions</h3><button class="btn ghost" id="generateFromDashboard">Generate next session</button></div>${renderRecentSessions()}</div>`;
-  window.PIQHeatmap.render($('heatmap'), state.sessions.slice(-7));
-  $('generateFromDashboard').onclick=generateWeek;
- }
- function renderRecentSessions(){ if(!state.sessions.length) return '<p class="muted">No completed sessions yet. Generate a workout to start.</p>'; return `<div class="list">${state.sessions.slice().reverse().slice(0,5).map(s=>`<div class="list-item"><div><strong>${titleCase(s.dayType)}</strong><div class="muted small">${new Date(s.logged_at||s.id.split('_')[1]||Date.now()).toLocaleDateString()}</div></div><div>${s.duration_min} min • RPE ${s.rpe||'—'} • PIQ ${s.piq_score||'—'}</div></div>`).join('')}</div>`; }
- function buildExerciseCard(item, blockIndex, itemIndex){ return `<div class="exercise-card"><div class="exercise-top"><div><strong>${item.name}</strong><div class="muted small">${item.sets} sets • ${item.reps} • Rest ${item.rest_sec}s</div></div><div class="toolbar"><button class="btn ghost swap-btn" data-block="${blockIndex}" data-item="${itemIndex}">Swap</button><button class="btn ghost rest-btn" data-rest="${item.rest_sec}">Rest</button></div></div><div class="exercise-meta"><span class="pill">Coach cue</span><span class="muted">${item.cues}</span></div></div>`; }
- function renderTrain(){ const s=state.currentSession; let html=`<div class="toolbar"><button class="btn primary" id="generateTrainBtn">Generate week</button><button class="btn ghost" id="newSessionBtn">Generate single session</button></div>`; if(!s){ html += `<div class="panel"><h3>No active session</h3><p class="muted">Generate a session from the athlete profile and current phase.</p></div>`; } else { html += `<div class="panel"><div class="session-header"><div><h3>${titleCase(s.dayType)}</h3><div class="muted">${s.phase} phase • ${s.duration_min} min • fatigue ${s.volume_score}</div></div><div class="toolbar"><button class="btn primary" id="completeWorkoutBtn">Complete workout</button></div></div><div class="progress"><span style="width:100%"></span></div><div class="grid">${s.blocks.map((b,bi)=>`<div class="session-block panel"><div class="session-header"><h4>${b.title}</h4><span class="pill">${b.items.length} drills</span></div>${b.items.map((it,ii)=>buildExerciseCard(it,bi,ii)).join('')}</div>`).join('')}</div></div>`; } $('trainView').innerHTML=html; $('generateTrainBtn').onclick=generateWeek; const ns=$('newSessionBtn'); if(ns) ns.onclick=()=>{state.currentSession=window.PIQEliteTraining.generateSession('lower_strength',state.profile,currentWeek()); save('session'); renderTrain(); toast('Single session generated');}; const cw=$('completeWorkoutBtn'); if(cw) cw.onclick=completeWorkout; bindSwapButtons(); bindRestButtons(); }
- function bindSwapButtons(){ $$('.swap-btn').forEach(btn=>btn.onclick=()=>openSwap(Number(btn.dataset.block),Number(btn.dataset.item))); }
- function bindRestButtons(){ $$('.rest-btn').forEach(btn=>btn.onclick=()=>openRest(Number(btn.dataset.rest)||60)); }
- function renderWellness(){ const last=state.wellness.checkins.at(-1); const readiness=window.PIQAnalytics.readiness(state.wellness.checkins); $('wellnessView').innerHTML=`<div class="row"><div class="panel"><h3>Daily readiness</h3><div class="metric">${readiness}</div><p class="muted">Log sleep, energy, soreness, and stress before training.</p><form id="wellnessForm" class="form-grid"><div class="field"><label>Sleep</label><input type="range" min="1" max="10" name="sleep" value="${last?.sleep||7}"></div><div class="field"><label>Energy</label><input type="range" min="1" max="10" name="energy" value="${last?.energy||7}"></div><div class="field"><label>Soreness</label><input type="range" min="1" max="10" name="soreness" value="${last?.soreness||3}"></div><div class="field"><label>Stress</label><input type="range" min="1" max="10" name="stress" value="${last?.stress||4}"></div><div class="field" style="grid-column:1/-1"><button class="btn primary">Save readiness</button></div></form></div><div class="panel"><h3>Risk review</h3><p><strong>${window.PIQRisk.evaluate(state).level}</strong></p><div class="list">${window.PIQRisk.evaluate(state).reasons.map(r=>`<div class="list-item">${r}</div>`).join('') || '<div class="list-item">No active alerts.</div>'}</div></div></div>`; $('wellnessForm').onsubmit=(e)=>{e.preventDefault(); const fd=new FormData(e.target); state.wellness.checkins.push({date:new Date().toISOString(),sleep:+fd.get('sleep'),energy:+fd.get('energy'),soreness:+fd.get('soreness'),stress:+fd.get('stress')}); save('wellness'); renderWellness(); renderDashboard(); toast('Readiness saved');}; }
- function renderTeam(){ if(state.profile.team_mode!=='team' && state.profile.role!=='coach'){ $('teamView').innerHTML='<div class="panel"><h3>Team features are disabled in solo mode</h3><p class="muted">Switch to team mode in settings to unlock announcements, roster, and coach workflows.</p></div>'; return; } const announcements=state.team.announcements.map(a=>`<div class="list-item"><div><strong>${a.title}</strong><div class="muted small">${a.message}</div></div></div>`).join(''); $('teamView').innerHTML=`<div class="grid cards"><div class="card"><div class="muted small">Athletes</div><div class="metric">${state.team.athletes.length}</div></div><div class="card"><div class="muted small">Announcements</div><div class="metric">${state.team.announcements.length}</div></div><div class="card"><div class="muted small">Avg PIQ</div><div class="metric">${Math.round(state.team.athletes.reduce((s,a)=>s+a.piq,0)/state.team.athletes.length)}</div></div><div class="card"><div class="muted small">Avg Readiness</div><div class="metric">${Math.round(state.team.athletes.reduce((s,a)=>s+a.readiness,0)/state.team.athletes.length)}</div></div></div><div class="row"><div class="panel"><h3>Coach announcements</h3><div class="list">${announcements}</div><form id="announcementForm" class="field"><label>New announcement</label><textarea name="message" placeholder="Post a coaching note or team update"></textarea><button class="btn primary" type="submit">Post update</button></form></div><div class="panel"><h3>Workout command</h3><p class="muted">Assign the current week template to the team.</p><button class="btn primary" id="assignTeamBtn">Assign week to team</button></div></div>`; $('announcementForm').onsubmit=(e)=>{e.preventDefault(); const msg=new FormData(e.target).get('message'); if(!msg) return; state.team.announcements.unshift({id:'a'+Date.now(),title:'Coach note',message:String(msg)}); save('announcement'); renderTeam(); toast('Announcement posted');}; $('assignTeamBtn').onclick=()=>toast('Team assignment queued locally'); }
- function renderAthletes(){ const rows=state.team.athletes.map(a=>`<tr><td>${a.name}</td><td>${a.position}</td><td>${a.piq}</td><td>${a.readiness}</td><td>${a.compliance}%</td><td>${a.risk}</td></tr>`).join(''); $('athletesView').innerHTML=`<div class="panel"><h3>Athlete roster</h3><table class="table"><thead><tr><th>Name</th><th>Position</th><th>PIQ</th><th>Readiness</th><th>Compliance</th><th>Risk</th></tr></thead><tbody>${rows}</tbody></table></div>`; }
- function renderAnalytics(){ const piq=window.PIQAnalytics.piq(state), metrics=state.analytics.metrics; $('analyticsView').innerHTML=`<div class="grid cards"><div class="card"><div class="muted small">Strength</div><div class="metric">${piq.strength}</div><div class="muted">Estimated from squat + bench</div></div><div class="card"><div class="muted small">Speed</div><div class="metric">${piq.speed}</div><div class="muted">40-yard sprint normalization</div></div><div class="card"><div class="muted small">Conditioning</div><div class="metric">${piq.conditioning}</div><div class="muted">Load vs control balance</div></div><div class="card"><div class="muted small">Recovery</div><div class="metric">${piq.recovery}</div><div class="muted">Readiness-based recovery score</div></div></div><div class="row"><div class="panel"><h3>Performance metrics</h3><div class="list"><div class="list-item"><span>Vertical jump</span><strong>${metrics.vertical_jump} in</strong></div><div class="list-item"><span>40-yard sprint</span><strong>${metrics.sprint_40}s</strong></div><div class="list-item"><span>Squat estimate</span><strong>${metrics.squat_est} lb</strong></div><div class="list-item"><span>Bench estimate</span><strong>${metrics.bench_est} lb</strong></div></div></div><div class="panel"><h3>PIQ formula</h3><p class="muted">30% strength + 20% speed + 20% conditioning + 15% compliance + 15% recovery.</p><div class="metric">${piq.score}</div></div></div>`; }
- function renderSettings(){ const p=state.profile; const macros=window.PIQNutrition.targets(p); $('settingsView').innerHTML=`<div class="row"><div class="panel">${window.PIQOnboarding.render(state)}</div><div class="panel"><h3>Engine settings</h3><div class="list"><div class="list-item"><span>Meal plan gating</span><strong>${p.meal_plan_enabled?'Enabled':'Disabled'}</strong></div><div class="list-item"><span>Daily protein target</span><strong>${macros.protein} g</strong></div><div class="list-item"><span>Daily carb target</span><strong>${macros.carbs} g</strong></div><div class="list-item"><span>Daily fat target</span><strong>${macros.fats} g</strong></div><div class="list-item"><span>Calories</span><strong>${macros.calories}</strong></div></div></div></div>`; bindOnboarding(); }
- function bindOnboarding(){ const form=$('onboardingForm'); if(!form) return; form.onsubmit=(e)=>{e.preventDefault(); const fd=new FormData(form); Object.assign(state.profile,{name:String(fd.get('name')),role:String(fd.get('role')),sport:String(fd.get('sport')),position:String(fd.get('position')),team_mode:String(fd.get('team_mode')),goal:String(fd.get('goal')),experience:String(fd.get('experience')),training_days:Number(fd.get('training_days')),weight_lbs:Number(fd.get('weight_lbs')),meal_plan_enabled:String(fd.get('meal_plan_enabled'))==='true',equipment:String(fd.get('equipment')).split(',').map(s=>s.trim()).filter(Boolean),team_code:String(fd.get('team_code')),onboarded:true}); save('profile'); renderShell(); renderCurrent(); toast('Profile updated'); } }
- function generateWeek(){ const week=currentWeek(); const sessions=window.PIQEliteTraining.generateWeek(state.profile,week); state.currentSession=sessions[0]; state.generatedWeek=sessions; save('generate_week'); renderTrain(); renderDashboard(); toast('Workout generated'); }
- function currentWeek(){ return ((state.sessions.length)%12)+1; }
- function completeWorkout(){ if(!state.currentSession) return; const rpe=prompt('Session RPE (1-10)?','7'); if(rpe===null) return; window.PIQWorkout.logCompletion(state,state.currentSession,rpe); save('complete'); renderTrain(); renderDashboard(); renderAnalytics(); toast('Workout completed'); }
- function openSwap(blockIndex,itemIndex){ const item=state.currentSession.blocks[blockIndex].items[itemIndex]; const options=window.PIQEliteTraining.swapOptions(item,state.profile); $('swapModalBody').innerHTML = options.length ? `<div class="list">${options.map(o=>`<button class="btn ghost swap-option" data-id="${o.id}">${o.title}</button>`).join('')}</div>` : '<p class="muted">No compatible swaps found with current equipment and difficulty.</p>'; $('swapModal').showModal(); $$('.swap-option').forEach(btn=>{ btn.onclick=()=>{ const ex=window.PIQExerciseLibrary.getById(btn.dataset.id); state.currentSession.blocks[blockIndex].items[itemIndex]={exercise_id:ex.id,name:ex.title,sets:ex.defaultSets,reps:ex.defaultReps,rest_sec:ex.defaultRest,cues:ex.cues.join(' • '),fatigue:ex.fatigue}; state.currentSession.volume_score = state.currentSession.blocks.flatMap(b=>b.items).reduce((s,x)=>s+Number(x.fatigue||0),0); save('swap'); $('swapModal').close(); renderTrain(); toast('Exercise swapped'); }; }); }
- function openRest(sec){ restSeconds=sec; updateRestDisplay(); $('restModal').showModal(); }
- function updateRestDisplay(){ const m=String(Math.floor(restSeconds/60)).padStart(2,'0'); const s=String(restSeconds%60).padStart(2,'0'); $('restDisplay').textContent=`${m}:${s}`; }
- function bindTopbar(){ $('quickGenerateBtn').onclick=generateWeek; $('quickResetBtn').onclick=()=>{ window.dataStore.reset(); location.reload(); }; $('restStartBtn').onclick=()=>{ clearInterval(restTimer); restTimer=setInterval(()=>{restSeconds--; updateRestDisplay(); if(restSeconds<=0){clearInterval(restTimer); toast('Rest complete'); $('restModal').close();}},1000); }; $$('[data-rest]').forEach(btn=>btn.onclick=()=>{ restSeconds=Number(btn.dataset.rest); updateRestDisplay(); }); }
- function renderCurrent(){ if(onboardingRequired()){ $('onboardingGate').classList.remove('hidden'); $('onboardingGate').innerHTML=window.PIQOnboarding.render(state); bindOnboarding(); } else $('onboardingGate').classList.add('hidden'); renderDashboard(); renderTrain(); renderWellness(); renderTeam(); renderAthletes(); renderAnalytics(); renderSettings(); }
- function init(){ renderShell(); bindTopbar(); $$('.nav-tab').forEach(btn=>btn.onclick=()=>setView(btn.dataset.view)); renderCurrent(); const initial=location.hash.replace('#','')||state.ui.currentView||'dashboard'; if($(initial+'View')) setView(initial); if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js').catch(()=>{}); } }
- document.addEventListener('DOMContentLoaded', init);
+/* ─── §1  STORAGE KEYS ─── */
+const STORAGE_KEY_ONBOARDED = 'piq_onboarded_v2';
+const STORAGE_KEY_STATE     = 'piq_state_v2';
+const STORAGE_KEY_ATHLETES  = 'piq_athletes_v2';
+const STORAGE_KEY_TOUR      = 'piq_tour_today_v1';
+const THEME_KEY             = 'piq_theme';
+
+/* ─── §2  DOM UTILS ─── */
+const el  = id => document.getElementById(id);
+const cap = s  => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+const pct = (t, f) => Math.round(t * f);
+
+/** XSS escape — use on any user-supplied string placed into innerHTML */
+function esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* ─── §3  THEME ─── */
+function getThemePref() {
+  try {
+    const saved = (localStorage.getItem(THEME_KEY) || '').toLowerCase();
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {}
+  const dom = (document.documentElement.getAttribute('data-theme') || '').toLowerCase();
+  return (dom === 'light' || dom === 'dark') ? dom : 'dark';
+}
+function applyTheme(theme) {
+  const t = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem(THEME_KEY, t); } catch {}
+  const btn = el('btnTheme');
+  if (btn) btn.textContent = t === 'dark' ? '🌙' : '☀️';
+  const sel = el('settingTheme');
+  if (sel) sel.value = t;
+  // Re-apply sport theme so accent blends stay correct for new bg
+  applySportTheme(STATE.sport);
+}
+function toggleTheme() {
+  applyTheme(getThemePref() === 'dark' ? 'light' : 'dark');
+}
+
+/* ─── §4  STATE ─── */
+const STATE = (() => {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_STATE) || 'null');
+    return Object.assign({
+      role: 'coach',
+      sport: 'basketball',
+      injuries: [],
+      teamName: 'Westview Varsity Basketball',
+      season: 'Pre-Season',
+      currentView: 'dashboard',
+      selectedAthleteId: null,
+      sessionLibrary: [],
+      events: null
+    }, s || {});
+  } catch {
+    return {
+      role: 'coach',
+      sport: 'basketball',
+      injuries: [],
+      teamName: 'Westview Varsity Basketball',
+      season: 'Pre-Season',
+      currentView: 'dashboard',
+      selectedAthleteId: null,
+      sessionLibrary: [],
+      events: null
+    };
+  }
 })();
+
+function saveState() {
+  try {
+    // Never persist selectedAthleteId — it must not leak across sessions
+    const { selectedAthleteId: _x, ...toSave } = STATE;
+    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(toSave));
+  } catch {}
+}
+
+/* ─── §5  DEFAULT ATHLETES ─── */
+const DEFAULT_ATHLETES = [
+  { id:1, name:'Marcus Johnson', initials:'MJ', pos:'PG', jersey:3,
+    score:92, severity:'green', acr:1.04, recovery:94, trend:+7, riskLevel:'none',
+    sleep:8.2, soreness:2, energy:9,
+    weekHistory:[65,71,78,82,86,88,92],
+    color:'rgba(46,204,113,0.15)', colorText:'var(--green)',
+    prs:[{exercise:'Back Squat',current:'295 lbs',prev:'280 lbs',date:'Feb 20'},
+         {exercise:'Bench Press',current:'225 lbs',prev:'215 lbs',date:'Feb 14'},
+         {exercise:'40yd Dash',current:'4.52s',prev:'4.61s',date:'Feb 18'}],
+    insight:'Sleep averaging <strong>8.2 hours</strong> — your top recovery pillar. Maintain this heading into game week.' },
+  { id:2, name:'Keisha Davis', initials:'KD', pos:'SF', jersey:21,
+    score:85, severity:'green', acr:1.09, recovery:88, trend:+4, riskLevel:'none',
+    sleep:7.8, soreness:3, energy:8,
+    weekHistory:[62,68,72,76,80,82,85],
+    color:'rgba(0,212,170,0.15)', colorText:'var(--accent)',
+    prs:[{exercise:'Power Clean',current:'165 lbs',prev:'155 lbs',date:'Feb 22'},
+         {exercise:'Vertical Jump',current:'28"',prev:'26"',date:'Feb 10'}],
+    insight:'Variety pillar at 90 — most diverse training profile on the team. One more strength block this week would round out the score.' },
+  { id:3, name:'Darius Jones', initials:'DJ', pos:'PF', jersey:5,
+    score:78, severity:'green', acr:0.92, recovery:82, trend:+2, riskLevel:'none',
+    sleep:7.5, soreness:4, energy:7,
+    weekHistory:[60,64,68,70,73,76,78],
+    color:'rgba(74,158,255,0.15)', colorText:'var(--blue)',
+    prs:[{exercise:'Romanian DL',current:'315 lbs',prev:'295 lbs',date:'Feb 19'}],
+    insight:'ACWR at 0.92 — slightly undertrained vs chronic baseline. One additional volume session this week would be optimal.' },
+  { id:4, name:'Tyler Williams', initials:'TW', pos:'SG', jersey:12,
+    score:58, severity:'yellow', acr:1.38, recovery:67, trend:-8, riskLevel:'watch',
+    sleep:6.2, soreness:6, energy:6,
+    weekHistory:[74,72,70,68,65,62,58],
+    color:'rgba(240,192,64,0.15)', colorText:'var(--yellow)',
+    prs:[],
+    insight:'<strong>ACWR 1.38</strong> — approaching danger zone. Reduce today\'s intensity and monitor soreness. Prioritize sleep before Friday\'s game.' },
+  { id:5, name:'Marcus Lewis', initials:'ML', pos:'C', jersey:44,
+    score:41, severity:'red', acr:1.67, recovery:52, trend:-18, riskLevel:'rest',
+    sleep:5.1, soreness:8, energy:4,
+    weekHistory:[70,66,62,57,51,46,41],
+    color:'rgba(255,69,96,0.15)', colorText:'var(--red)',
+    prs:[],
+    insight:'<strong>REST RECOMMENDED.</strong> ACWR 1.67 with poor sleep (5.1h) and high soreness — 3rd consecutive high-load day. High injury risk ahead of Friday.' },
+  { id:6, name:'Ryan Kim', initials:'RK', pos:'SG', jersey:7,
+    score:0, severity:'none', acr:null, recovery:null, trend:0, riskLevel:'none',
+    sleep:null, soreness:null, energy:null,
+    weekHistory:[],
+    color:'rgba(255,255,255,0.06)', colorText:'var(--text-dim)',
+    prs:[],
+    insight:'No wellness data logged today. Send athlete a check-in prompt to unlock their score.' },
+];
+
+let ATHLETES = (() => {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY_ATHLETES) || 'null');
+    return Array.isArray(s) && s.length ? s : DEFAULT_ATHLETES.map(a => ({...a}));
+  } catch { return DEFAULT_ATHLETES.map(a => ({...a})); }
+})();
+
+function saveAthletes() {
+  try { localStorage.setItem(STORAGE_KEY_ATHLETES, JSON.stringify(ATHLETES)); } catch {}
+}
+
+/* ─── §6  DEFAULT EVENTS ─── */
+const EVENTS_DEFAULT = [
+  { id: 1001, name:'vs. Riverside Academy',    detail:'Fri Mar 14 · 7:00 PM · Home',     days:3,  icon:'🏀' },
+  { id: 1002, name:'State Qualifier',          detail:'Tue Mar 18 · 2:00 PM · Away',      days:7,  icon:'🏆' },
+  { id: 1003, name:'Film Session + Walk-thru', detail:'Mon Mar 13 · 3:00 PM · Gym',       days:2,  icon:'📹' },
+  { id: 1004, name:'Team Recovery Day',        detail:'Sun Mar 12 · 10:00 AM · Facility', days:1,  icon:'🌿' },
+];
+
+function getEvents() {
+  if (!Array.isArray(STATE.events)) STATE.events = EVENTS_DEFAULT.map(e => ({...e}));
+  return STATE.events;
+}
+
+const FEED_ITEMS = [
+  { icon:'🏃', cls:'ok',     text:'<strong>Marcus J.</strong> logged Morning Sprint — 6.2 mi · sRPE 7',      time:'32 min ago'          },
+  { icon:'⚠️', cls:'danger', text:'<strong>System</strong> flagged Tyler W. for elevated ACWR (1.38)',        time:'1 hr ago'            },
+  { icon:'💪', cls:'accent', text:'<strong>Keisha D.</strong> hit a new PR — Power Clean 165 lbs (+10 lbs)', time:'2 hrs ago'           },
+  { icon:'🏀', cls:'orange', text:'<strong>Team Practice</strong> logged by Coach Davis — 14/18 attended',   time:'Yesterday · 5:00 PM' },
+  { icon:'🥗', cls:'ok',     text:'<strong>Darius J.</strong> logged nutrition — 3,100 kcal · 175g protein', time:'Yesterday · 7:45 PM' },
+  { icon:'⛔', cls:'danger', text:'<strong>Marcus L.</strong> flagged — ACWR 1.67, rest recommended today',   time:'Yesterday · 6:00 PM' },
+];
+
+const SESSION_LIBRARY = [
+  { type:'🔥 Strength', name:'TRAP BAR POWER',       meta:'50 min · High',     color:'orange' },
+  { type:'💨 Speed',    name:'ACCELERATION COMPLEX',  meta:'35 min · High',     color:'blue'   },
+  { type:'🌿 Recovery', name:'ACTIVE RECOVERY DAY',   meta:'25 min · Low',      color:'green'  },
+  { type:'🏀 Practice', name:'SKILL MICROBLOCKS',     meta:'60 min · Moderate', color:''       },
+  { type:'⚡ Power',    name:'PLYOMETRIC CIRCUIT',    meta:'40 min · High',     color:'orange' },
+  { type:'🧘 Mobility', name:'PRE-GAME ACTIVATION',  meta:'30 min · Low',      color:'green'  },
+];
+
+const WEEK_LOAD = [
+  { day:'S', au:320 }, { day:'M', au:580 }, { day:'T', au:740 },
+  { day:'W', au:460 }, { day:'T', au:890 }, { day:'F', au:980 },
+  { day:'S', au:620 },
+];
+
+/* ─── §7  SPORT THEME ─── */
+function setCSS(name, value) {
+  try { document.documentElement.style.setProperty(name, value); } catch {}
+}
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+function hexToRgb(hex) {
+  const h = String(hex || '').replace('#', '').trim();
+  const v = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const n = parseInt(v, 16);
+  if (!Number.isFinite(n) || v.length !== 6) return { r:0, g:0, b:0 };
+  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+}
+function hexToRgba(hex, a) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${clamp01(a)})`;
+}
+function blendHex(fg, bg, amount) {
+  const a = clamp01(amount);
+  const A = hexToRgb(fg), B = hexToRgb(bg);
+  const r = Math.round(A.r * (1 - a) + B.r * a);
+  const g = Math.round(A.g * (1 - a) + B.g * a);
+  const b = Math.round(A.b * (1 - a) + B.b * a);
+  return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
+const SPORT_THEMES = {
+  basketball: { accent:'#2EC4B6', blue:'#4a9eff', orange:'#ff6b2b' },
+  football:   { accent:'#7CFF57', blue:'#3B82F6', orange:'#F59E0B' },
+  soccer:     { accent:'#22C55E', blue:'#60A5FA', orange:'#FB7185' },
+  baseball:   { accent:'#EF4444', blue:'#3B82F6', orange:'#F97316' },
+  volleyball: { accent:'#A855F7', blue:'#4a9eff', orange:'#F59E0B' },
+  track:      { accent:'#00d4aa', blue:'#4a9eff', orange:'#F59E0B' },
+};
+
+function applySportTheme(sport) {
+  const theme = SPORT_THEMES[String(sport || '').toLowerCase()] || SPORT_THEMES.basketball;
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const bgHex  = isDark ? '#070b12' : '#ffffff';
+  const accent = blendHex(theme.accent, bgHex, isDark ? 0.08 : 0.00);
+  const blue   = theme.blue   || '#4a9eff';
+  const orange = theme.orange || '#ff6b2b';
+
+  setCSS('--accent',        accent);
+  setCSS('--blue',          blue);
+  setCSS('--orange',        orange);
+  setCSS('--accent-dim',    hexToRgba(accent, 0.11));
+  setCSS('--accent-2',      hexToRgba(accent, 0.16));
+  setCSS('--accent-glow',   hexToRgba(accent, 0.30));
+  setCSS('--accent-border', hexToRgba(accent, 0.22));
+
+  try {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#070b12' : '#f5f7fb');
+  } catch {}
+}
+
+/* ─── §8  TOAST ─── */
+function toast(msg, ms = 2800) {
+  let host = el('toastContainer');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'toastContainer';
+    document.body.appendChild(host);
+  }
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  host.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity .25s, transform .25s';
+    t.style.opacity    = '0';
+    t.style.transform  = 'translateY(6px)';
+    setTimeout(() => t.remove(), 280);
+  }, ms);
+}
+
+/* ─── §9  MICRO-INTERACTIONS ─── */
+function addRipple(ev, target) {
+  const r = document.createElement('span');
+  r.className = 'ripple';
+  const rect = target.getBoundingClientRect();
+  r.style.left = (ev.clientX - rect.left) + 'px';
+  r.style.top  = (ev.clientY - rect.top)  + 'px';
+  target.appendChild(r);
+  setTimeout(() => r.remove(), 700);
+}
+function springPress(target) {
+  try {
+    target.animate(
+      [{ transform:'scale(1)' },{ transform:'scale(.985)' },{ transform:'scale(1)' }],
+      { duration:220, easing:'cubic-bezier(.2,.8,.2,1)' }
+    );
+  } catch {}
+}
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target?.closest?.('.btn,.iconbtn,.icon-btn,.navbtn,.nav-btn,.tab,.tab-btn,.fab');
+  if (!t) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  springPress(t);
+  addRipple(e, t);
+}, { passive: true });
+
+/* ─── §10  TAB INDICATOR ─── */
+let _tabIndicator = null;
+function ensureTabIndicator() {
+  if (_tabIndicator && _tabIndicator.isConnected) return _tabIndicator;
+  const navHost = document.querySelector('.nav') || document.querySelector('.sidebar') || document.querySelector('.bottomnav');
+  if (!navHost) return null;
+  navHost.style.position = navHost.style.position || 'relative';
+  const ind = document.createElement('div');
+  ind.className = 'tab-indicator';
+  navHost.appendChild(ind);
+  _tabIndicator = ind;
+  return ind;
+}
+function moveIndicatorTo(btn) {
+  const ind = ensureTabIndicator();
+  if (!ind || !btn) return;
+  const host  = ind.parentElement;
+  const b     = btn.getBoundingClientRect();
+  const h     = host.getBoundingClientRect();
+  const left  = b.left - h.left;
+  const width = Math.max(26, b.width * 0.55);
+  const x     = left + (b.width - width) / 2;
+  ind.style.width     = width + 'px';
+  ind.style.transform = `translate3d(${Math.round(x)}px,0,0)`;
+  ind.classList.add('on');
+}
+function updateTabIndicators(viewId) {
+  const btn = document.querySelector(`[data-view="${viewId}"]`);
+  if (btn) moveIndicatorTo(btn);
+}
+
+/* ─── §11  NUMBER TWEEN ─── */
+function tweenNumber(node, to, ms = 700) {
+  if (!node) return;
+  const from  = parseInt((node.textContent || '0').replace(/[^\d]/g, ''), 10) || 0;
+  const end   = Math.max(0, Math.min(100, to || 0));
+  const start = performance.now();
+  function tick(now) {
+    const t     = Math.min(1, (now - start) / ms);
+    const eased = 1 - Math.pow(1 - t, 3);
+    node.textContent = String(Math.round(from + (end - from) * eased));
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ─── §12  RISK / SCORE HELPERS ─── */
+function getSevClass(sev) { return { green:'green', yellow:'yellow', red:'red' }[sev] || ''; }
+function getSevColor(sev) { return { green:'var(--green)', yellow:'var(--yellow)', red:'var(--red)' }[sev] || 'var(--text-dim)'; }
+function getAcrClass(acr) {
+  if (acr == null) return '';
+  return acr < 1.3 ? 'safe' : acr <= 1.5 ? 'watch' : 'danger';
+}
+function getAcrColor(acr) {
+  const c = getAcrClass(acr);
+  return c === 'safe' ? 'var(--green)' : c === 'watch' ? 'var(--yellow)' : c === 'danger' ? 'var(--red)' : 'var(--text-dim)';
+}
+function getAcrFlag(acr) {
+  if (acr == null) return '—';
+  return acr < 1.3 ? '✅' : acr <= 1.5 ? '⚠️' : '⛔';
+}
+function getRingClass(s) { return !s ? 'danger' : s >= 75 ? '' : s >= 50 ? 'warn' : 'danger'; }
+function getTier(score) {
+  if (score >= 85) return { cls:'great',  label:'⚡ Elite — Peak Form'            };
+  if (score >= 70) return { cls:'good',   label:'✓ Strong — Trending Up'          };
+  if (score >= 50) return { cls:'warn',   label:'⚠ Moderate — Monitor Load'      };
+  if (score >  0)  return { cls:'danger', label:'⛔ High Risk — Rest Recommended' };
+  return { cls:'', label:'— Not Logged' };
+}
+function getScoreNote(a) {
+  if (!a.score) return 'No sessions logged today. Encourage athlete to submit a wellness check-in.';
+  if (a.riskLevel === 'rest')  return `<strong>Rest today.</strong> ACWR ${a.acr} — 3+ consecutive high-load days. High injury risk before Friday. Full rest only.`;
+  if (a.riskLevel === 'watch') return `ACWR ${a.acr} approaching danger zone. Reduce intensity today and monitor soreness closely.`;
+  if (a.score >= 85) return `Outstanding form — all four pillars strong. Sleep ${a.sleep}h, soreness ${a.soreness}/10. Maintain momentum into game week.`;
+  return `Good baseline. Sleep at ${a.sleep}h — pushing to 8h+ could add 5–10 PIQ points before Friday's game.`;
+}
+function animateRing(fillEl, score, circ = 440) {
+  if (!fillEl) return;
+  fillEl.style.strokeDashoffset = circ;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    fillEl.style.strokeDashoffset = circ - Math.max(0, Math.min(score, 100)) / 100 * circ;
+  }));
+}
+function buildSparkline(id, values, color) {
+  const wrap = el(id); if (!wrap) return;
+  const max  = Math.max(...values, 1);
+  wrap.innerHTML = values.map((v, i) =>
+    `<div class="spark-bar${i === values.length - 1 ? ' hi' : ''}" style="height:${Math.round(v / max * 100)}%;background:${color}"></div>`
+  ).join('');
+}
+
+/* ─── §13  DASHBOARD ─── */
+function renderDashboard() {
+  const now    = new Date();
+  const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  if (el('dashSub')) el('dashSub').textContent = `${DAYS[now.getDay()]}, ${MONTHS[now.getMonth()]} ${now.getDate()} · ${STATE.teamName}`;
+
+  const logged  = ATHLETES.filter(a => a.score > 0);
+  const ready   = ATHLETES.filter(a => a.severity === 'green').length;
+  const monitor = ATHLETES.filter(a => a.severity === 'yellow').length;
+  const risk    = ATHLETES.filter(a => a.severity === 'red').length;
+  const avg     = logged.length ? Math.round(logged.reduce((s, a) => s + a.score, 0) / logged.length) : 0;
+  const BASE    = 65;
+
+  if (el('statAvg')) {
+    el('statAvg').textContent = avg ? String(avg) : '—';
+    if (avg) tweenNumber(el('statAvg'), avg, 650);
+  }
+  if (el('statReady'))   el('statReady').textContent   = String(ready);
+  if (el('statMonitor')) el('statMonitor').textContent = String(monitor);
+  if (el('statRisk'))    el('statRisk').textContent    = String(risk);
+
+  if (el('statAvgSub')) {
+    el('statAvgSub').className   = 'stat-sub ' + (avg >= BASE ? 'up' : 'down');
+    el('statAvgSub').textContent = avg ? (avg >= BASE ? `↑ ${avg - BASE} pts vs last week` : `↓ ${BASE - avg} pts vs last week`) : '—';
+  }
+  if (el('statReadySub'))   el('statReadySub').textContent   = `${ready} of ${ATHLETES.length} athletes`;
+  if (el('statMonitorSub')) el('statMonitorSub').textContent = monitor > 0 ? '↑ Check load today' : 'All clear';
+
+  const badge = el('riskBadge');
+  const flags = risk + monitor;
+  if (badge) { badge.textContent = String(flags); badge.style.display = flags > 0 ? 'flex' : 'none'; }
+
+  const evts = getEvents();
+  if (el('chipOnlineText')) el('chipOnlineText').textContent = `${Math.max(0, ATHLETES.length - 1)} online`;
+  if (el('chipFlags'))     el('chipFlags').style.display     = risk > 0 ? 'inline-flex' : 'none';
+  if (el('chipFlagsText')) el('chipFlagsText').textContent   = `${risk} flag${risk !== 1 ? 's' : ''}`;
+  if (el('chipGame'))      el('chipGame').style.display      = 'inline-flex';
+  if (el('chipGameText2')) el('chipGameText2').textContent   = `Game in ${evts[0]?.days ?? 0}d`;
+  if (el('pillOnlineText')) el('pillOnlineText').textContent = `Team · ${Math.max(0, ATHLETES.length - 1)} online`;
+  if (el('pillSeason'))    el('pillSeason').textContent      = STATE.season;
+  if (el('pillGame'))      el('pillGame').style.display      = 'inline-flex';
+  if (el('pillGameText'))  el('pillGameText').textContent    = `Game in ${evts[0]?.days ?? 0} days`;
+
+  buildSparkline('sparkAvg', [55, 58, 63, 66, 68, 70, avg || 0], 'var(--accent)');
+
+  renderHeatmap();
+  renderLoadBars();
+  renderAlerts();
+  renderRosterMini();
+  renderFeed();
+  renderEvents('eventList');
+
+  if (el('insightText')) {
+    el('insightText').innerHTML =
+      `When athletes sleep <strong>8+ hours</strong>, team PIQ averages <strong>+11 points higher</strong>.
+       With Friday's game, sleep is this week's #1 performance lever.
+       <div class="caption-illusion">Tip: tap an athlete row to open the detail view instantly.</div>`;
+  }
+}
+
+/* ─── §14  HEATMAP ─── */
+function renderHeatmap() {
+  if (!el('heatmapBody')) return;
+  el('heatmapBody').innerHTML = ATHLETES.map(a => {
+    const sevCls   = getSevClass(a.severity);
+    const sevColor = getSevColor(a.severity);
+    const acrCls   = getAcrClass(a.acr);
+    const readPct  = a.recovery || 0;
+    const riskHtml = a.riskLevel === 'watch'
+      ? `<span class="risk-badge watch">⚠ Watch</span>`
+      : a.riskLevel === 'rest'
+      ? `<span class="risk-badge rest">⛔ Rest</span>`
+      : a.score === 0
+      ? `<span class="risk-badge" style="color:var(--text-dim)">Not Logged</span>`
+      : `<span class="risk-badge none">—</span>`;
+    const scoreHtml = a.score
+      ? `<span class="score-badge ${sevCls}">${a.score}</span>`
+      : `<span style="color:var(--text-dim);font-family:var(--font-mono)">—</span>`;
+    return `<tr data-id="${a.id}" title="View ${esc(a.name)}">
+      <td><div class="athlete-cell">
+        <div class="athlete-av" style="background:${a.color};color:${a.colorText};width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${esc(a.initials)}</div>
+        <div><div class="athlete-name-text">${esc(a.name)}</div><div class="athlete-pos-text">${esc(a.pos)} · #${esc(String(a.jersey))}</div></div>
+      </div></td>
+      <td>${scoreHtml}</td>
+      <td><div class="readiness-wrap">
+        <div class="readiness-track"><div class="readiness-fill" style="width:${readPct}%;background:${sevColor}"></div></div>
+        <div class="readiness-num" style="color:${a.colorText}">${a.recovery ?? '—'}</div>
+      </div></td>
+      <td><span class="acr-val ${acrCls}">${a.acr ?? '—'}</span></td>
+      <td>${riskHtml}</td>
+      <td><span class="trend-val ${a.trend > 0 ? 'up' : a.trend < 0 ? 'down' : ''}">${a.trend > 0 ? '↑' : a.trend < 0 ? '↓' : '—'}${Math.abs(a.trend)}</span></td>
+    </tr>`;
+  }).join('');
+
+  el('heatmapBody').querySelectorAll('tr[data-id]').forEach(row =>
+    row.addEventListener('click', () => {
+      const a = ATHLETES.find(x => x.id === +row.dataset.id);
+      if (a) openAthleteDetail(a);
+    })
+  );
+}
+
+/* ─── §15  LOAD BARS ─── */
+function renderLoadBars() {
+  if (!el('loadBarList')) return;
+  el('loadBarList').innerHTML = ATHLETES.filter(a => a.acr != null).map(a => {
+    const pct_ = Math.min(100, Math.round(a.acr / 2.0 * 100));
+    const color = getAcrColor(a.acr);
+    const parts = a.name.split(' ');
+    const label = parts[0] + ' ' + (parts[1] ? parts[1][0] + '.' : '');
+    return `<div class="load-bar-item">
+      <div class="load-bar-name">${esc(label)}</div>
+      <div class="load-bar-track"><div class="load-bar-fill" style="width:${pct_}%;background:${color}"></div></div>
+      <div class="load-bar-val" style="color:${color}">${a.acr}</div>
+      <div class="load-bar-flag">${getAcrFlag(a.acr)}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ─── §16  ALERTS ─── */
+function renderAlerts() {
+  if (!el('alertsList')) return;
+  const alerts = [
+    ...ATHLETES.filter(a => a.riskLevel === 'rest').map(a => ({
+      cls:'danger', icon:'⛔',
+      title:`${esc(a.name)} — Rest Today`,
+      body:`ACWR ${a.acr} — 3rd consecutive high-load day. High injury risk. Full rest today.`
+    })),
+    ...ATHLETES.filter(a => a.riskLevel === 'watch').map(a => ({
+      cls:'warn', icon:'⚠',
+      title:`${esc(a.name)} — Monitor Load`,
+      body:`ACWR ${a.acr} approaching danger zone. Reduce intensity today.`
+    })),
+    ...ATHLETES.filter(a => a.score === 0).map(a => ({
+      cls:'info', icon:'📊',
+      title:`${esc(a.name)} — Not Logged`,
+      body:`No wellness data submitted today. Send a check-in prompt.`
+    })),
+  ];
+  el('alertsList').innerHTML = alerts.length
+    ? alerts.map(al => `<div class="alert ${al.cls}">
+        <div class="alert-icon">${al.icon}</div>
+        <div><div class="alert-title">${al.title}</div><div>${al.body}</div></div>
+      </div>`).join('')
+    : `<div class="alert ok"><div class="alert-icon">✅</div>
+        <div><div class="alert-title">All Clear</div><div>No risk flags today. Team load is well managed.</div></div>
+      </div>`;
+}
+
+/* ─── §17  ROSTER MINI ─── */
+function renderRosterMini() {
+  const wrap = el('rosterMini'); if (!wrap) return;
+  wrap.innerHTML = ATHLETES.slice(0, 5).map(a => {
+    const color = getSevColor(a.severity);
+    return `<div class="roster-row" data-id="${a.id}">
+      <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-size:11px;font-weight:700">${esc(a.initials)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.name)}</div>
+        <div style="font-size:11px;color:var(--text-dim)">${esc(a.pos)} · #${esc(String(a.jersey))}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+        <div class="readiness-track" style="width:56px"><div class="readiness-fill" style="width:${a.recovery || 0}%;background:${color}"></div></div>
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${color}">${a.score || '—'}</div>
+      </div>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('.roster-row').forEach(r =>
+    r.addEventListener('click', () => {
+      const a = ATHLETES.find(x => x.id === +r.dataset.id);
+      if (a) openAthleteDetail(a);
+    })
+  );
+}
+
+/* ─── §18  FEED ─── */
+function renderFeed() {
+  if (!el('activityFeed')) return;
+  el('activityFeed').innerHTML = FEED_ITEMS.map(f => `
+    <div class="feed-item">
+      <div class="feed-icon ${f.cls}">${f.icon}</div>
+      <div><div class="feed-text">${f.text}</div><div class="feed-time">${f.time}</div></div>
+    </div>`).join('');
+}
+
+/* ─── §19  EVENTS ─── */
+function renderEvents(containerId) {
+  const wrap = el(containerId); if (!wrap) return;
+  const evts = getEvents();
+  wrap.innerHTML = evts.map(ev => `
+    <div class="event-item" data-event-id="${ev.id}">
+      <div style="text-align:center;min-width:36px">
+        <div class="event-days-num ${ev.days <= 3 ? 'soon' : ''}">${ev.days}</div>
+        <div class="event-days-label">days</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="event-name">${esc(ev.name)}</div>
+        <div class="event-detail">${esc(ev.detail)}</div>
+      </div>
+      <div style="font-size:17px">${ev.icon}</div>
+    </div>`).join('');
+}
+
+/* ─── §20  ATHLETES VIEW ─── */
+function renderAthletesView(filter = '') {
+  const filtered = filter
+    ? ATHLETES.filter(a => a.name.toLowerCase().includes(filter.toLowerCase()) || a.pos.toLowerCase().includes(filter.toLowerCase()))
+    : ATHLETES;
+
+  if (el('athleteCountSub')) el('athleteCountSub').textContent = `${ATHLETES.length} athletes on roster`;
+  const grid = el('athleteCardGrid');
+  if (!grid) return;
+
+  if (!filtered.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-dim)">No athletes match "<em>${esc(filter)}</em>"</div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(a => {
+    const t     = getTier(a.score);
+    const color = getSevColor(a.severity);
+    return `<div class="card" data-id="${a.id}" style="cursor:pointer" tabindex="0" role="button" aria-label="View ${esc(a.name)}">
+      <div class="card-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:44px;height:44px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-family:var(--font-display);font-size:14px;font-weight:700">${esc(a.initials)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.name)}</div>
+            <div style="font-size:12px;color:var(--text-dim)">${esc(a.pos)} · #${esc(String(a.jersey))}</div>
+          </div>
+          <div style="font-family:var(--font-display);font-size:28px;font-weight:800;color:${color};flex-shrink:0">${a.score || '—'}</div>
+        </div>
+        <div>
+          <div class="readiness-track" style="width:100%;height:6px;margin-bottom:8px"><div class="readiness-fill" style="width:${a.recovery || 0}%;background:${color}"></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+            <div class="score-tier ${t.cls}" style="font-size:11px">${t.label}</div>
+            <div style="color:var(--text-dim)">ACWR: <span style="color:${color};font-weight:600">${a.acr ?? '—'}</span></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('[data-id]').forEach(card => {
+    const open = () => {
+      const a = ATHLETES.find(x => x.id === +card.dataset.id);
+      if (a) openAthleteDetail(a);
+    };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+  });
+}
+
+/* ─── §21  PILLARS ─── */
+function getPillars(a) {
+  if (!a.score) return [
+    { icon:'💪', name:'Load',     value:0, color:'var(--text-dim)' },
+    { icon:'⚡', name:'Streak',   value:0, color:'var(--text-dim)' },
+    { icon:'🎯', name:'Variety',  value:0, color:'var(--text-dim)' },
+    { icon:'🌙', name:'Recovery', value:0, color:'var(--text-dim)' },
+  ];
+  const cf = v => v >= 75 ? 'var(--green)' : v >= 50 ? 'var(--yellow)' : 'var(--red)';
+  const load     = Math.min(100, Math.round(a.score * 1.08 + 4));
+  const streak   = Math.min(100, Math.round(a.score * 0.95 + 5));
+  const variety  = Math.min(100, Math.round(a.score * 0.88 + 8));
+  const recovery = a.recovery != null ? a.recovery : Math.round(a.score * 0.72);
+  return [
+    { icon:'💪', name:'Load',     value:load,     color:cf(load)     },
+    { icon:'⚡', name:'Streak',   value:streak,   color:cf(streak)   },
+    { icon:'🎯', name:'Variety',  value:variety,  color:cf(variety)  },
+    { icon:'🌙', name:'Recovery', value:recovery, color:cf(recovery) },
+  ];
+}
+
+/* ─── §22  ATHLETE DETAIL ─── */
+function openAthleteDetail(a) {
+  if (STATE.currentView !== 'athletes') {
+    _applyViewDom('athletes');
+    STATE.currentView = 'athletes';
+  }
+  STATE.selectedAthleteId = a.id;
+
+  if (el('athleteCardGrid')) el('athleteCardGrid').style.display = 'none';
+  if (el('athleteDetail'))   el('athleteDetail').style.display   = 'flex';
+
+  const t     = getTier(a.score);
+  const color = getSevColor(a.severity);
+
+  if (el('detailHero')) el('detailHero').innerHTML = `
+    <div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-family:var(--font-display);font-size:22px;font-weight:800;border:2px solid var(--accent-border)">${esc(a.initials)}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-family:var(--font-display);font-size:26px;font-weight:800">${esc(a.name)}</div>
+      <div style="font-size:13px;color:var(--text-dim);margin-top:3px">${esc(a.pos)} · Jersey #${esc(String(a.jersey))} · ${esc(STATE.teamName)}</div>
+      <div class="athlete-chips" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <div class="athlete-chip sport">🏀 ${esc(cap(STATE.sport))}</div>
+        <div class="athlete-chip" ${a.riskLevel==='rest'?'style="background:var(--red-dim);border-color:var(--red-border);color:var(--red)"':a.riskLevel==='watch'?'style="background:var(--yellow-dim);border-color:var(--yellow-border);color:var(--yellow)"':''}>
+          ${a.riskLevel==='rest'?'⛔ Rest Day':a.riskLevel==='watch'?'⚠ Monitor':a.score?'✓ Active':'⚪ Not Logged'}
+        </div>
+        ${(a.riskLevel === 'none' && a.score) ? `<div class="athlete-chip" style="background:var(--accent-dim);border-color:var(--accent-border);color:var(--accent)">🔥 ${3 + a.id}-day streak</div>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0">
+      <div id="detailHeroScore" style="font-family:var(--font-display);font-size:44px;font-weight:800;line-height:1;color:${color}">${a.score || '—'}</div>
+      <div class="score-tier ${t.cls}" style="font-size:11px">${t.label}</div>
+    </div>`;
+
+  const rf = el('detailRingFill');
+  const rc = getRingClass(a.score);
+  if (rf) rf.className = 'ring-fill' + (rc ? ' ' + rc : '');
+
+  const ringNumEl = el('detailRingNum');
+  if (ringNumEl) {
+    ringNumEl.textContent = a.score ? String(a.score) : '—';
+    ringNumEl.className   = 'ring-number' + (rc ? ' ' + rc : '');
+    if (a.score) tweenNumber(ringNumEl, a.score, 900);
+  }
+
+  const de = el('detailRingDelta');
+  if (de) {
+    if (a.trend) {
+      de.className   = 'ring-delta ' + (a.trend > 0 ? 'up' : 'down');
+      de.textContent = (a.trend > 0 ? '↑' : '↓') + ' ' + Math.abs(a.trend) + ' pts';
+    } else de.textContent = '';
+  }
+  animateRing(rf, a.score, 440);
+
+  if (el('detailTier')) {
+    el('detailTier').className   = 'score-tier ' + t.cls;
+    el('detailTier').textContent = t.label;
+  }
+  if (el('detailScoreNote')) el('detailScoreNote').innerHTML = getScoreNote(a);
+
+  if (el('detailPillars')) el('detailPillars').innerHTML = getPillars(a).map(p => `
+    <div class="pillar">
+      <div class="pillar-icon">${p.icon}</div>
+      <div class="pillar-value" style="color:${p.color}">${p.value}</div>
+      <div class="pillar-bar"><div class="pillar-fill" style="width:${p.value}%;background:${p.color}"></div></div>
+      <div class="pillar-name">${p.name}</div>
+    </div>`).join('');
+
+  const wItems = [
+    { emoji:'😴', label:'Sleep',
+      display: a.sleep    != null ? `${a.sleep}h`      : '—',
+      color:   a.sleep    == null ? 'var(--text-dim)' : a.sleep    >= 7.5 ? 'var(--green)' : a.sleep    >= 6 ? 'var(--yellow)' : 'var(--red)' },
+    { emoji:'💢', label:'Soreness',
+      display: a.soreness != null ? `${a.soreness}/10` : '—',
+      color:   a.soreness == null ? 'var(--text-dim)' : a.soreness <= 3 ? 'var(--green)' : a.soreness <= 6 ? 'var(--yellow)' : 'var(--red)' },
+    { emoji:'⚡', label:'Energy',
+      display: a.energy   != null ? `${a.energy}/10`   : '—',
+      color:   a.energy   == null ? 'var(--text-dim)' : a.energy   >= 7 ? 'var(--green)' : a.energy   >= 4 ? 'var(--yellow)' : 'var(--red)' },
+  ];
+  if (el('detailWellness')) el('detailWellness').innerHTML = wItems.map(w => `
+    <div class="wellness-item">
+      <div class="wellness-emoji">${w.emoji}</div>
+      <div class="wellness-label">${w.label}</div>
+      <div class="wellness-value" style="color:${w.color}">${w.display}</div>
+    </div>`).join('');
+
+  if (el('detailLoad')) el('detailLoad').innerHTML = a.acr != null
+    ? `<div class="load-bar-item">
+        <div class="load-bar-name">ACWR</div>
+        <div class="load-bar-track"><div class="load-bar-fill" style="width:${Math.min(100, Math.round(a.acr / 2 * 100))}%;background:${getAcrColor(a.acr)}"></div></div>
+        <div class="load-bar-val" style="color:${getAcrColor(a.acr)}">${a.acr}</div>
+        <div class="load-bar-flag">${getAcrFlag(a.acr)}</div>
+      </div>`
+    : `<div style="font-size:13px;color:var(--text-dim)">No load data available.</div>`;
+
+  if (el('detailInsight')) el('detailInsight').innerHTML = a.insight;
+  renderDetailWorkout(a);
+
+  const prTable = el('detailPRs');
+  const prTbody = prTable ? prTable.querySelector('tbody') : null;
+  if (prTbody) {
+    prTbody.innerHTML = a.prs.length
+      ? a.prs.map(pr => `<tr>
+          <td>${esc(pr.exercise)}</td>
+          <td class="pr-new">${esc(pr.current)}</td>
+          <td style="color:var(--text-dim)">${esc(pr.prev)}</td>
+          <td style="color:var(--text-dim)">${esc(pr.date)}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="4" style="color:var(--text-dim);text-align:center;padding:20px">No PRs logged yet</td></tr>`;
+  }
+
+  const heroScoreEl = el('detailHeroScore');
+  if (heroScoreEl && a.score) tweenNumber(heroScoreEl, a.score, 750);
+}
+
+function renderDetailWorkout(a) {
+  const wrap = el('detailWorkout'); if (!wrap) return;
+  if (a.riskLevel === 'rest') {
+    wrap.innerHTML = `<div class="alert danger">
+      <div class="alert-icon">⛔</div>
+      <div><div class="alert-title">Rest Day — No Session Assigned</div>
+      <div>ACWR too high. Full rest prescription: light walking, foam rolling, and 9+ hours of sleep.</div></div>
+    </div>`;
+    return;
+  }
+  const session = generateSession(STATE.sport, a.riskLevel === 'watch' ? 'recovery' : 'practice', 60, 'moderate', []);
+  wrap.innerHTML = buildWorkoutCardHTML(session, false);
+}
+
+/* ─── §23  TRAIN VIEW + GENERATOR ─── */
+function renderTrainView() {
+  if (!el('sessionLibrary')) return;
+  el('sessionLibrary').innerHTML = SESSION_LIBRARY.map(s => {
+    const ac = s.color === 'orange' ? 'var(--orange)' : s.color === 'blue' ? 'var(--blue)' : s.color === 'green' ? 'var(--green)' : 'var(--accent)';
+    return `<div class="workout-card ${s.color}" style="cursor:pointer">
+      <div class="workout-type-tag" style="color:${ac}">${s.type}</div>
+      <div class="workout-name">${s.name}</div>
+      <div class="workout-meta"><span>${s.meta}</span></div>
+    </div>`;
+  }).join('');
+}
+
+const EXERCISE_BANK = {
+  basketball: {
+    practice: [
+      ['Form shooting 5 spots (20 makes)', 'Ball-handling: stationary series (3 min)', 'Closeout → slide → contest (3 rounds)'],
+      ['Pick & roll reads (10 reps each side)', 'Finishing: two-foot + euro (3×6/side)', 'Transition lanes (6 reps)'],
+      ['Shell defense 4v4 (8 min)', 'Rebound & outlet drill (10 reps)', 'Free throws (2×10)']
+    ],
+    strength: [
+      ['Goblet squat 4×8', 'DB bench press 4×8', 'Pull-ups or band rows 3×8–12'],
+      ['Split squat 3×8/side', 'RDL 3×8', 'Core: dead bug 3×10/side'],
+      ['Med ball slams 3×10', 'Farmer carry 3×40yd', 'Mobility: hips/ankles 6 min']
+    ],
+    speed: [
+      ['A-skips + wall drills (6 min)', '10–20yd accelerations (6 reps)', 'Decel mechanics (4 reps)'],
+      ['Lateral shuffle → sprint (6 reps)', 'Reaction starts (6 reps)', 'Mobility reset (4 min)']
+    ],
+    conditioning: [
+      ['Tempo runs: 10×100yd (easy)', 'Court suicides: 6 reps (moderate)', 'Breathing cooldown (3 min)']
+    ],
+    recovery: [
+      ['Zone 1 bike/walk 15–20 min', 'Mobility flow (hips/ankles/T-spine)', 'Foam roll: quads/glutes/calves']
+    ],
+    competition: [
+      ['Neural activation (jumps 3×3)', 'Game-speed shooting (5 min)', 'Special situations (AOB/SLOB)']
+    ]
+  }
+};
+
+function getExercisesFor(sport, type) {
+  const s = EXERCISE_BANK[sport] || EXERCISE_BANK.basketball || {};
+  const arr = s[type] || s.practice || [];
+  return Array.isArray(arr) ? arr : [];
+}
+
+function generateSession(sport, type, duration, intensity, injuries) {
+  const SE = { basketball:'🏀', football:'🏈', soccer:'⚽', baseball:'⚾', volleyball:'🏐', track:'🏃' };
+  const TL = { practice:'Practice', strength:'Strength', speed:'Speed', conditioning:'Conditioning', recovery:'Recovery', competition:'Competition Prep' };
+  const IL = { low:'Low', moderate:'Moderate', high:'High' };
+  const inj = (injuries && injuries.length) ? ' · ' + injuries.map(i => cap(i) + '-friendly').join(', ') : '';
+
+  const BLOCKS = {
+    practice:[
+      { dot:'var(--blue)',   name:'Dynamic Warm-up',                    time:pct(duration,.16) },
+      { dot:'var(--accent)', name:'Skill Microblocks — Sport-specific', time:pct(duration,.25) },
+      { dot:'var(--orange)', name:'Strength Block',                     time:pct(duration,.28) },
+      { dot:'var(--yellow)', name:'Power & Conditioning',              time:pct(duration,.18) },
+      { dot:'var(--green)',  name:'Cool-down + Mobility',              time:pct(duration,.13) },
+    ],
+    strength:[
+      { dot:'var(--blue)',   name:'Warm-up + Movement Prep',       time:pct(duration,.14) },
+      { dot:'var(--orange)', name:'Main Lift — Primary Pattern',   time:pct(duration,.32) },
+      { dot:'var(--accent)', name:'Accessory Work — Volume Build', time:pct(duration,.28) },
+      { dot:'var(--yellow)', name:'Core & Stability',              time:pct(duration,.16) },
+      { dot:'var(--green)',  name:'Stretch + Recovery Protocol',   time:pct(duration,.10) },
+    ],
+    speed:[
+      { dot:'var(--blue)',   name:'Neural Warm-up',                   time:pct(duration,.18) },
+      { dot:'var(--accent)', name:'Acceleration Mechanics × 6 sets',  time:pct(duration,.30) },
+      { dot:'var(--orange)', name:'Max Velocity Runs',                time:pct(duration,.25) },
+      { dot:'var(--yellow)', name:'Change of Direction Drills',       time:pct(duration,.17) },
+      { dot:'var(--green)',  name:'Cool-down + PNF Stretch',          time:pct(duration,.10) },
+    ],
+    recovery:[
+      { dot:'var(--blue)',   name:'Light Cardio — Zone 1',             time:pct(duration,.30) },
+      { dot:'var(--green)',  name:'Mobility Flow',                     time:pct(duration,.30) },
+      { dot:'var(--accent)', name:'Foam Rolling + Soft Tissue',        time:pct(duration,.25) },
+      { dot:'var(--yellow)', name:'Breathing + Parasympathetic Reset', time:pct(duration,.15) },
+    ],
+    conditioning:[
+      { dot:'var(--blue)',   name:'Dynamic Warm-up',               time:pct(duration,.15) },
+      { dot:'var(--orange)', name:'Aerobic Base — Steady State',   time:pct(duration,.30) },
+      { dot:'var(--accent)', name:'Interval Circuits × 4 rounds',  time:pct(duration,.30) },
+      { dot:'var(--yellow)', name:'Lactate Tolerance Drills',      time:pct(duration,.15) },
+      { dot:'var(--green)',  name:'Cool-down',                     time:pct(duration,.10) },
+    ],
+    competition:[
+      { dot:'var(--blue)',   name:'Pre-Game Activation',             time:pct(duration,.22) },
+      { dot:'var(--accent)', name:'Plyometric Priming × 3 sets',     time:pct(duration,.25) },
+      { dot:'var(--orange)', name:'Sport-Specific Movement Prep',    time:pct(duration,.28) },
+      { dot:'var(--green)',  name:'Mental Cue + Team Walk-through',  time:pct(duration,.25) },
+    ],
+  };
+
+  const blocks = (BLOCKS[type] || BLOCKS.practice).map(b => {
+    const exPools = getExercisesFor(sport, type);
+    if (Array.isArray(exPools) && exPools.length) {
+      const pick = exPools[Math.floor(Math.random() * exPools.length)];
+      b.exercises = Array.isArray(pick) ? pick : [];
+    }
+    return b;
+  });
+
+  return {
+    sport, type, duration, intensity,
+    typeTag: `${SE[sport] || '🏀'} ${TL[type] || 'Practice'} · ${IL[intensity] || 'Moderate'}${inj}`,
+    name: type === 'recovery'    ? 'ACTIVE RECOVERY SESSION'
+        : type === 'strength'    ? 'STRENGTH & POWER BLOCK'
+        : type === 'speed'       ? 'SPEED & ACCELERATION'
+        : type === 'competition' ? 'COMPETITION PREP'
+        : type === 'conditioning'? 'CONDITIONING CIRCUIT'
+        : 'FULL PRACTICE SESSION',
+    meta: [`⏱ ${duration} min`, `🔥 ${IL[intensity]}`, `${SE[sport] || '🏀'} ${cap(sport)}`].join(' · '),
+    blocks
+  };
+}
+
+function buildWorkoutCardHTML(session, showActions = true) {
+  const blocks = (Array.isArray(session?.blocks) ? session.blocks : []).map(b => {
+    const ex = Array.isArray(b.exercises) && b.exercises.length
+      ? `<div class="block-exercises">${b.exercises.map(x => `<div class="ex-line">• ${esc(x)}</div>`).join('')}</div>`
+      : '';
+    return `<div class="block-item">
+      <div class="block-dot" style="background:${b.dot}"></div>
+      <div class="block-name">${esc(b.name)}${ex}</div>
+      <div class="block-time">${b.time} min</div>
+    </div>`;
+  }).join('');
+
+  const actions = showActions ? `<div style="display:flex;gap:9px;margin-top:14px">
+    <button class="btn btn-primary btn-full js-start" style="font-size:13px">▷ Start Session</button>
+    <button class="btn btn-ghost js-save" style="font-size:13px">Save</button>
+  </div>` : '';
+
+  return `<div class="workout-card">
+    <div class="workout-type-tag">${session?.typeTag || ''}</div>
+    <div class="workout-name">${session?.name || 'Session'}</div>
+    <div class="workout-meta">${session?.meta || ''}</div>
+    <div class="block-list">${blocks}</div>
+    ${actions}
+  </div>`;
+}
+
+function renderGeneratedSession(opts) {
+  const sport = opts?.sport || el('buildSport')?.value || STATE.sport || 'basketball';
+  const type  = opts?.type  || el('buildType')?.value  || 'practice';
+  const dur   = +(opts?.duration || el('buildDuration')?.value || 60);
+  const inten = opts?.intensity  || el('buildIntensity')?.value || 'moderate';
+
+  const injuries = [];
+  document.querySelectorAll('#injuryChips .inj-chip.active').forEach(b => injuries.push(b.dataset.injury));
+
+  const session = generateSession(sport, type, dur, inten, injuries);
+  const wrap    = el('generatedSessionWrap');
+  if (wrap) {
+    wrap.innerHTML = buildWorkoutCardHTML(session, true);
+    wrap.querySelector('.js-start')?.addEventListener('click', () => toast(`Starting: ${session.name} ▷`));
+    wrap.querySelector('.js-save')?.addEventListener('click', () => {
+      if (!Array.isArray(STATE.sessionLibrary)) STATE.sessionLibrary = [];
+      STATE.sessionLibrary = [session, ...STATE.sessionLibrary].slice(0, 12);
+      saveState();
+      toast('Session saved to library ✓');
+    });
+  }
+
+  if (!Array.isArray(STATE.sessionLibrary)) STATE.sessionLibrary = [];
+  STATE.sessionLibrary = [session, ...STATE.sessionLibrary].slice(0, 12);
+  saveState();
+  toast(`Generated: ${session?.name || 'Session'}`);
+}
+
+/* ─── §24  ANALYTICS ─── */
+function renderAnalytics() {
+  if (el('analyticsSub')) el('analyticsSub').textContent = `${STATE.teamName} · ${STATE.season}`;
+  const logged  = ATHLETES.filter(a => a.score > 0);
+  const avg     = logged.length ? Math.round(logged.reduce((s, a) => s + a.score, 0) / logged.length) : 0;
+  const logRate = Math.round((logged.length / Math.max(1, ATHLETES.length)) * 100);
+  const BASE    = 65;
+
+  const grid = el('analyticsStatGrid');
+  if (grid) grid.innerHTML = `
+    <div class="stat-card accent">
+      <div class="stat-label">Team Avg PIQ</div><div class="stat-value">${avg}</div>
+      <div class="stat-sub up">↑ ${Math.max(0, avg - BASE)} pts this week</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Logging Rate</div><div class="stat-value">${logRate}%</div>
+      <div class="stat-sub up">${logged.length} / ${ATHLETES.length} athletes</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="stat-label">Avg Readiness</div><div class="stat-value">72%</div>
+      <div class="stat-sub down">↓ 5% vs last week</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Risk Flags</div>
+      <div class="stat-value">${ATHLETES.filter(a => a.riskLevel === 'rest' || a.riskLevel === 'watch').length}</div>
+      <div class="stat-sub">This week</div>
+    </div>`;
+
+  const maxAU = Math.max(...WEEK_LOAD.map(d => d.au));
+  if (el('loadChart')) el('loadChart').innerHTML = WEEK_LOAD.map(d => {
+    const h     = Math.max(4, Math.round(d.au / maxAU * 100));
+    const color = d.au >= 900 ? 'var(--red)' : d.au >= 700 ? 'var(--yellow)' : 'var(--accent)';
+    const alpha = (0.55 + 0.45 * (d.au / maxAU)).toFixed(2);
+    return `<div class="chart-bar-wrap" data-label="${d.au} AU" title="${d.au} AU">
+      <div class="chart-bar" style="height:${h}%;background:${color};opacity:${alpha}"></div>
+      <div class="chart-bar-lbl">${d.day}</div>
+    </div>`;
+  }).join('');
+
+  const ranges = [
+    { label:'80–100', count:ATHLETES.filter(a => a.score >= 80).length,                 color:'var(--green)'   },
+    { label:'60–79',  count:ATHLETES.filter(a => a.score >= 60 && a.score < 80).length, color:'var(--accent)'  },
+    { label:'40–59',  count:ATHLETES.filter(a => a.score >= 40 && a.score < 60).length, color:'var(--yellow)'  },
+    { label:'1–39',   count:ATHLETES.filter(a => a.score > 0  && a.score < 40).length,  color:'var(--red)'     },
+    { label:'N/A',    count:ATHLETES.filter(a => a.score === 0).length,                 color:'var(--surface4)' },
+  ];
+  const maxC = Math.max(...ranges.map(r => r.count), 1);
+
+  if (el('scoreDistChart')) el('scoreDistChart').innerHTML = ranges.map(r =>
+    `<div class="chart-bar-wrap" data-label="${r.count} athletes" title="${r.count} athletes">
+      <div class="chart-bar" style="height:${Math.max(6, Math.round(r.count / maxC * 100))}%;background:${r.color}"></div>
+      <div class="chart-bar-lbl">${r.label}</div>
+    </div>`).join('');
+
+  if (el('scoreRanges')) el('scoreRanges').innerHTML = ranges.map(r => `
+    <div style="display:flex;align-items:center;gap:9px;font-size:13px">
+      <div style="width:10px;height:10px;border-radius:2px;background:${r.color};flex-shrink:0"></div>
+      <div style="flex:1">${r.label}</div>
+      <div style="font-family:var(--font-mono);font-weight:600">${r.count} athlete${r.count !== 1 ? 's' : ''}</div>
+    </div>`).join('');
+
+  if (el('analyticsBody')) el('analyticsBody').innerHTML = ATHLETES.filter(a => a.score > 0).map(a => {
+    const h = a.weekHistory || [];
+    return `<tr>
+      <td><div class="athlete-cell">
+        <div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${a.color};color:${a.colorText};font-size:11px;font-weight:700">${esc(a.initials)}</div>
+        <div class="athlete-name-text">${esc(a.name)}</div>
+      </div></td>
+      <td style="font-family:var(--font-mono);color:var(--text-dim)">${h[0] ?? '—'}</td>
+      <td style="font-family:var(--font-mono);color:var(--text-dim)">${h[2] ?? '—'}</td>
+      <td style="font-family:var(--font-mono);color:var(--text-dim)">${h[4] ?? '—'}</td>
+      <td><span class="score-badge ${getSevClass(a.severity)}">${a.score}</span></td>
+      <td><span class="trend-val ${a.trend >= 0 ? 'up' : 'down'}">${a.trend >= 0 ? '↑' : '↓'}${Math.abs(a.trend)}</span></td>
+      <td><span class="acr-val ${getAcrClass(a.acr)}">${a.acr ?? '—'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ─── §25  SCHEDULE VIEW ─── */
+function renderSchedule() {
+  renderEvents('fullEventList');
+
+  const list = el('fullEventList');
+  if (!list) return;
+
+  // Attach per-event delete buttons
+  list.querySelectorAll('.event-item').forEach(item => {
+    const id  = +item.dataset.eventId;
+    const del = document.createElement('button');
+    del.className   = 'btn btn-ghost btn-sm';
+    del.textContent = '✕';
+    del.style.cssText = 'margin-left:auto;padding:4px 8px;font-size:11px;color:var(--text-dim)';
+    del.setAttribute('aria-label', 'Delete event');
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      STATE.events = getEvents().filter(ev => ev.id !== id);
+      saveState();
+      renderSchedule();
+      toast('Event removed');
+    });
+    item.appendChild(del);
+  });
+
+  // Wire up add-event form (only once)
+  const form = el('addEventForm');
+  if (!form || form.dataset.wired) return;
+  form.dataset.wired = '1';
+
+  el('btnAddEvent')?.addEventListener('click', () => {
+    const nameEl   = el('newEventName');
+    const detailEl = el('newEventDetail');
+    const daysEl   = el('newEventDays');
+    const iconEl   = el('newEventIcon');
+
+    const name   = (nameEl?.value   || '').trim();
+    const detail = (detailEl?.value || '').trim();
+    const days   = parseInt(daysEl?.value || '0', 10);
+    const icon   = (iconEl?.value   || '📅').trim() || '📅';
+
+    if (!name) { toast('Event name is required'); nameEl?.focus(); return; }
+
+    getEvents().unshift({ id:Date.now(), name, detail, days, icon });
+    saveState();
+
+    if (nameEl)   nameEl.value   = '';
+    if (detailEl) detailEl.value = '';
+    if (daysEl)   daysEl.value   = '';
+    if (iconEl)   iconEl.value   = '';
+
+    renderSchedule();
+    toast(`Event added: ${name} ✓`);
+  });
+}
+
+/* ─── §26  ROUTER ─── */
+function _applyViewDom(viewId) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active', 'enter'));
+  document.querySelectorAll('.nav-btn,.navbtn,[data-view]').forEach(b => b.classList.remove('active'));
+  const vEl = el('view-' + viewId);
+  const nEl = document.querySelector(`[data-view="${viewId}"]`);
+  if (vEl) { vEl.classList.add('active', 'enter'); setTimeout(() => vEl.classList.remove('enter'), 380); }
+  if (nEl) nEl.classList.add('active');
+  moveIndicatorTo(nEl);
+}
+
+function switchView(viewId) {
+  const prev = STATE.currentView;
+
+  if (prev === 'athletes' && viewId !== 'athletes') {
+    if (el('athleteDetail'))   el('athleteDetail').style.display   = 'none';
+    if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
+    STATE.selectedAthleteId = null;
+  }
+
+  STATE.currentView = viewId;
+  _applyViewDom(viewId);
+  updateTabIndicators(viewId);
+
+  if (viewId === 'athletes') {
+    if (el('athleteDetail'))   el('athleteDetail').style.display   = 'none';
+    if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
+    renderAthletesView();
+  }
+  if (viewId === 'analytics') renderAnalytics();
+  if (viewId === 'train')     renderTrainView();
+  if (viewId === 'schedule')  renderSchedule();
+}
+
+document.querySelectorAll('[data-view]').forEach(btn =>
+  btn.addEventListener('click', () => switchView(btn.dataset.view))
+);
+
+/* ─── §27  SEARCH ─── */
+function handleSearch(value) {
+  if (STATE.currentView !== 'athletes') {
+    STATE.currentView = 'athletes';
+    _applyViewDom('athletes');
+    updateTabIndicators('athletes');
+    if (el('athleteDetail'))   el('athleteDetail').style.display   = 'none';
+    if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
+  }
+  renderAthletesView(value);
+  if (el('athleteSearch'))      el('athleteSearch').value      = value;
+  if (el('athleteFilterInput')) el('athleteFilterInput').value = value;
+}
+el('athleteSearch')?.addEventListener('input', e => handleSearch(e.target.value));
+el('athleteFilterInput')?.addEventListener('input', e => handleSearch(e.target.value));
+
+/* ─── §28  BACK / VIEW ALL ─── */
+el('backToList')?.addEventListener('click', () => {
+  if (el('athleteDetail'))   el('athleteDetail').style.display   = 'none';
+  if (el('athleteCardGrid')) el('athleteCardGrid').style.display = '';
+  STATE.selectedAthleteId = null;
+  renderAthletesView();
+});
+el('viewAllAthletes')?.addEventListener('click', () => switchView('athletes'));
+el('rosterMore')?.addEventListener('click',      () => switchView('athletes'));
+
+/* ─── §29  TRAIN BUTTONS ─── */
+el('btnGenerate')?.addEventListener('click',       () => renderGeneratedSession());
+el('btnGenerateInline')?.addEventListener('click', () => renderGeneratedSession());
+el('btnPushToday')?.addEventListener('click',      () => toast('Session pushed to Today ✓'));
+document.querySelectorAll('#injuryChips .inj-chip').forEach(chip =>
+  chip.addEventListener('click', () => chip.classList.toggle('active'))
+);
+
+/* ─── §30  REFRESH / EXPORT ─── */
+el('btnRefresh')?.addEventListener('click',         () => { renderDashboard(); toast('Data refreshed ↺'); });
+el('btnExport')?.addEventListener('click',          () => toast('Report export requires cloud sync — coming soon 📤'));
+el('btnExportAnalytics')?.addEventListener('click', () => toast('PDF export coming in next phase 📄'));
+
+/* ─── §31  SETTINGS ─── */
+if (el('settingTeamName')) el('settingTeamName').value = STATE.teamName;
+if (el('settingSport')) Array.from(el('settingSport').options).forEach(o => { o.selected = o.value.toLowerCase() === STATE.sport; });
+
+el('btnSaveSettings')?.addEventListener('click', () => {
+  STATE.teamName = (el('settingTeamName')?.value || '').trim() || STATE.teamName;
+  STATE.season   = el('settingSeason')?.value  || STATE.season;
+  STATE.sport    = (el('settingSport')?.value  || STATE.sport).toLowerCase();
+  applySportTheme(STATE.sport);
+  if (el('userRole')) el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`;
+  saveState();
+  renderDashboard();
+  toast('Settings saved ✓');
+});
+
+el('btnExportData')?.addEventListener('click', () => {
+  try {
+    const blob = new Blob(
+      [JSON.stringify({ athletes:ATHLETES, state:STATE, exportedAt:new Date().toISOString() }, null, 2)],
+      { type:'application/json' }
+    );
+    const url = URL.createObjectURL(blob);
+    const a   = Object.assign(document.createElement('a'), { href:url, download:`piq-backup-${Date.now()}.json` });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast('Backup downloaded ✓');
+  } catch (e) { toast('Export failed: ' + e.message); }
+});
+
+el('btnImportData')?.addEventListener('click',  () => el('importFileInput')?.click());
+el('importFileInput')?.addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const p = JSON.parse(evt.target.result);
+      if (p.athletes && Array.isArray(p.athletes) && p.athletes.length) {
+        ATHLETES = p.athletes; saveAthletes();
+        if (p.state) Object.assign(STATE, p.state); saveState();
+        applySportTheme(STATE.sport);
+        renderDashboard();
+        toast(`Imported ${ATHLETES.length} athletes ✓`);
+      } else toast('Import failed — no athletes found');
+    } catch { toast('Import failed — invalid JSON'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+el('btnResetData')?.addEventListener('click', () => {
+  if (!confirm('Reset to demo data? Current data will be lost.')) return;
+  ATHLETES = DEFAULT_ATHLETES.map(a => ({...a}));
+  saveAthletes();
+  renderDashboard();
+  toast('Reset to demo data ↺');
+});
+
+/* ─── §32  TOUR ─── */
+const TodayTour = (() => {
+  let idx = 0, steps = [], backdrop, card, hl;
+  function $q(sel) { return document.querySelector(sel); }
+
+  function ensure() {
+    backdrop = backdrop || document.createElement('div');
+    backdrop.className   = 'piq-tour-backdrop';
+    backdrop.style.display = 'none';
+
+    hl = hl || document.createElement('div');
+    hl.className = 'piq-tour-hl';
+
+    card = card || document.createElement('div');
+    card.className = 'piq-tour-card';
+    card.innerHTML = `
+      <div class="piq-tour-head">
+        <div class="piq-tour-title">Today — quick workflow</div>
+        <button class="iconbtn js-tour-close" aria-label="Close tour">✕</button>
+      </div>
+      <div class="piq-tour-body">
+        <div class="piq-tour-h js-tour-h"></div>
+        <div class="muted small js-tour-p" style="margin-top:6px;line-height:1.6"></div>
+        <div class="caption-illusion js-tour-cap" style="margin-top:10px"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+          <button class="btn btn-ghost js-tour-back">Back</button>
+          <button class="btn btn-primary js-tour-next">Next</button>
+        </div>
+      </div>`;
+
+    if (!backdrop.isConnected) {
+      document.body.appendChild(backdrop);
+      document.body.appendChild(hl);
+      document.body.appendChild(card);
+    }
+
+    backdrop.addEventListener('click', close);
+    card.querySelector('.js-tour-close')?.addEventListener('click', close);
+    card.querySelector('.js-tour-back')?.addEventListener('click', () => go(idx - 1));
+    card.querySelector('.js-tour-next')?.addEventListener('click', () => go(idx + 1));
+  }
+
+  function rectFor(node) {
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { x:r.left, y:r.top, w:r.width, h:r.height };
+  }
+  function focus(node) {
+    const r = rectFor(node); if (!r) return;
+    const pad = 10;
+    hl.style.width     = (r.w + pad * 2) + 'px';
+    hl.style.height    = (r.h + pad * 2) + 'px';
+    hl.style.transform = `translate3d(${Math.round(r.x - pad)}px,${Math.round(r.y - pad)}px,0)`;
+    try { node.classList.add('tour-focus'); } catch {}
+  }
+  function clearFocus() { document.querySelectorAll('.tour-focus').forEach(n => n.classList.remove('tour-focus')); }
+
+  function go(n) {
+    ensure();
+    if (n < 0) n = 0;
+    if (n >= steps.length) { close(); return; }
+    idx = n;
+    clearFocus();
+    const s = steps[idx];
+    if (s.view && STATE.currentView !== s.view) switchView(s.view);
+    setTimeout(() => {
+      const target = (typeof s.target === 'function') ? s.target() : (s.target ? $q(s.target) : null);
+      if (target?.scrollIntoView) target.scrollIntoView({ behavior:'smooth', block:'center' });
+      focus(target);
+      card.querySelector('.js-tour-h').textContent   = `${idx + 1}/${steps.length} · ${s.h}`;
+      card.querySelector('.js-tour-p').textContent   = s.p;
+      card.querySelector('.js-tour-cap').textContent = s.cap || '';
+      const nextBtn = card.querySelector('.js-tour-next');
+      if (nextBtn) nextBtn.textContent = idx === steps.length - 1 ? 'Done' : 'Next';
+      const backBtn = card.querySelector('.js-tour-back');
+      if (backBtn) backBtn.style.display = idx === 0 ? 'none' : 'inline-flex';
+      backdrop.style.display = 'block';
+      hl.style.display       = 'block';
+      card.style.display     = 'block';
+    }, 120);
+  }
+
+  function start() {
+    ensure();
+    steps = [
+      { view:'dashboard', target:() => el('statAvg')?.closest('.stat-card') || el('statAvg'),
+        h:'Scan the team PIQ average', p:'Start here to see whether the team is trending up or down before you assign load.',
+        cap:'Headline is now WCAG-friendly and readable without browser zoom.' },
+      { view:'dashboard', target:() => el('alertsList')?.closest('.card') || el('alertsList'),
+        h:'Handle risk flags first', p:'Clear "Rest" and "Watch" athletes before planning practice. Tap any athlete row to open details.',
+        cap:'The caption motion gives a "guided" feel without distractions.' },
+      { view:'dashboard', target:() => el('heatmapBody')?.closest('table') || el('heatmapBody'),
+        h:'Use the heatmap for who/why', p:'Your fastest "who needs what" view: score, readiness, ACWR, and trend in one line.',
+        cap:'Tip: click a row → detail ring animates + pillars fill in.' },
+      { view:'train', target:() => el('generatedSessionWrap') || el('sessionLibrary'),
+        h:"Generate today's session", p:'Pick sport, duration, intensity, injuries — then generate a session. Save or start.',
+        cap:'Ripple + spring micro-interactions reinforce "this is a finished product."' },
+      { view:'athletes', target:() => el('athleteSearch') || el('athleteFilterInput'),
+        h:'Quick filter + communicate', p:'Search by name/position to check an athlete, then open detail to view readiness + notes.',
+        cap:'Larger typography + stronger focus ring for accessibility.' }
+    ];
+    try { localStorage.setItem(STORAGE_KEY_TOUR, '1'); } catch {}
+    go(0);
+  }
+
+  function close() {
+    if (backdrop) backdrop.style.display = 'none';
+    if (card)     card.style.display     = 'none';
+    if (hl)       hl.style.display       = 'none';
+    clearFocus();
+  }
+
+  return { start, close };
+})();
+
+/* ─── §33  ONBOARDING WIZARD ─── */
+let obStep = 1, obRole = 'coach', obSport = 'basketball';
+
+document.querySelectorAll('#roleGrid .role-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('#roleGrid .role-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    obRole = card.dataset.role;
+  });
+});
+document.querySelectorAll('#sportGrid .sport-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#sportGrid .sport-chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+    obSport = chip.dataset.sport;
+  });
+});
+document.querySelectorAll('#obInjuryChips .inj-chip').forEach(chip =>
+  chip.addEventListener('click', () => chip.classList.toggle('active'))
+);
+
+function goObStep(n) {
+  obStep = n;
+  document.querySelectorAll('.modal-step').forEach(s => s.classList.remove('active'));
+  el('obStep' + n)?.classList.add('active');
+  if (el('obProgress')) el('obProgress').style.width = Math.round(n / 3 * 100) + '%';
+}
+function closeModal() {
+  if (el('onboardingModal')) el('onboardingModal').style.display = 'none';
+  try { localStorage.setItem(STORAGE_KEY_ONBOARDED, '1'); } catch {}
+}
+
+el('obNext1')?.addEventListener('click', () => goObStep(2));
+el('obNext2')?.addEventListener('click', () => {
+  const first = el('obFirstSession');
+  if (first) first.innerHTML = buildWorkoutCardHTML(generateSession(obSport, 'practice', 60, 'moderate', []), false);
+  goObStep(3);
+});
+el('obBack2')?.addEventListener('click', () => goObStep(1));
+el('obBack3')?.addEventListener('click', () => goObStep(2));
+el('obClose')?.addEventListener('click',  closeModal);
+el('obSkip')?.addEventListener('click',   () => { closeModal(); toast('Welcome to PerformanceIQ ⚡'); });
+el('obFinish')?.addEventListener('click', () => {
+  STATE.role  = obRole;
+  STATE.sport = obSport;
+  applySportTheme(STATE.sport);
+  const LABELS = { coach:'Head Coach', athlete:'Athlete', admin:'Admin / AD', parent:'Parent', owner:'Owner', viewer:'Viewer' };
+  if (el('userName')) el('userName').textContent = LABELS[obRole] || 'Coach Davis';
+  if (el('userRole')) el('userRole').textContent = `${LABELS[obRole] || 'Head Coach'} · ${cap(obSport)}`;
+  saveState();
+  closeModal();
+  applySportTheme(STATE.sport);
+  renderDashboard();
+  toast('Welcome to PerformanceIQ ⚡');
+});
+
+/* ─── §34  KEYBOARD NAV ─── */
+document.addEventListener('keydown', e => {
+  // Guard: ignore when user is typing in a form control
+  const tag = (e.target?.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
+
+  if (e.key === 'Escape') {
+    const m = el('onboardingModal');
+    if (m && m.style.display !== 'none') closeModal();
+    TodayTour.close();
+  }
+  if (e.key === '?' || (e.shiftKey && e.key === '/')) TodayTour.start();
+
+  if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === 'd') switchView('dashboard');
+    if (e.key === 'a') switchView('athletes');
+    if (e.key === 't') switchView('train');
+    if (e.key === 'n') switchView('analytics');
+  }
+});
+
+/* ─── §35  INIT ─── */
+function init() {
+  applyTheme(getThemePref());
+  el('btnTheme')?.addEventListener('click', toggleTheme);
+  el('settingTheme')?.addEventListener('change', e => applyTheme(e.target.value));
+
+  applySportTheme(STATE.sport);
+  ensureTabIndicator();
+
+  const seen = (() => { try { return localStorage.getItem(STORAGE_KEY_ONBOARDED); } catch { return null; } })();
+  if (!seen && el('onboardingModal')) el('onboardingModal').style.display = 'flex';
+
+  if (el('userRole')) el('userRole').textContent = `Head Coach · ${cap(STATE.sport)}`;
+
+  renderDashboard();
+
+  const seenTour = (() => { try { return localStorage.getItem(STORAGE_KEY_TOUR); } catch { return null; } })();
+  if (!seenTour && seen) setTimeout(() => TodayTour.start(), 650);
+}
+
+init();
