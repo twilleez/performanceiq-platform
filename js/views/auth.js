@@ -1,1 +1,3 @@
-export function authView(){return `<div class="auth"><div class="card"><h2>PerformanceIQ Login</h2><p class="muted">Phase 10 Elite keeps prior functionality and upgrades the architecture.</p><label>Email<input id="auth-email" placeholder="coach@team.com"></label><br><label>Role<select id="auth-role"><option value="coach">Coach</option><option value="athlete">Athlete</option></select></label><br><button id="login-btn">Login</button></div></div>`}
+export function authView(){
+  return `<div class="auth"><div class="card"><h2>PerformanceIQ Login</h2><p class="muted">Sports-specific and swappable workouts are active.</p><label>Email<input id="auth-email" placeholder="coach@team.com"></label><br><label>Role<select id="auth-role"><option value="coach">Coach</option><option value="athlete">Athlete</option></select></label><br><button id="login-btn">Login</button></div></div>`;
+}

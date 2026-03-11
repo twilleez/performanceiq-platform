@@ -1,1 +1,3 @@
-export function recruitingView(profileText){return `<div class="card"><h2>Recruiting Profile Export</h2><pre>${profileText}</pre><button data-copy-profile="true">Copy Profile Text</button></div>`}
+export function recruitingView(profileText){
+  return `<div class="card"><h2>Recruiting Profile Export</h2><pre>${profileText}</pre><button data-copy-profile="true">Copy Profile Text</button></div>`;
+}
