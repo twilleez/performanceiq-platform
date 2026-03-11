@@ -1,33 +1,28 @@
-export function buildRoster(athletes,readiness,piq,training){
+import { exerciseLibrary } from "../data/exerciseLibrary.js";
 
-return athletes.map(a=>{
-
-const ready=readiness.find(r=>r.athlete_id===a.id)
-const p=piq.find(x=>x.athlete_id===a.id)
-
-let acr=null
-
-if(p?.acute_load && p?.chronic_load){
-
-acr=p.acute_load/p.chronic_load
-
+export function getExercise(id){
+  return exerciseLibrary.find(x => x.id === id) || null;
 }
 
-let risk="low"
-
-if(acr>1.5 || ready?.readiness_score<60) risk="high"
-else if(acr>1.3 || ready?.readiness_score<75) risk="medium"
-
-return{
-
-...a,
-piq:p?.piq_total,
-readiness:ready?.readiness_score,
-acr,
-risk
-
+export function getSwapOptions(exerciseId){
+  const current = getExercise(exerciseId);
+  if (!current) return [];
+  return exerciseLibrary.filter(x => x.id !== current.id && x.pattern === current.pattern);
 }
 
-})
+export function swapExerciseInWorkout(workout, oldId, newId){
+  workout.exercises = workout.exercises.map(id => id === oldId ? newId : id);
+}
 
+export function buildRecruitingProfile(a){
+  if (!a) return "No athlete selected.";
+  return [
+    `Athlete: ${a.name}`,
+    `Position: ${a.pos || "-"}`,
+    "Sport: Basketball",
+    `PIQ: ${a.piq ?? "-"}`,
+    `Readiness: ${a.readiness ?? "-"}`,
+    `Weekly Load: ${a.load ?? 0}`,
+    `ACR: ${a.acr ?? "-"}`
+  ].join("\n");
 }
