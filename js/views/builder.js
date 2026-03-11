@@ -1,17 +1,1 @@
-export function builderView(){
-
-return `
-
-<div class="card">
-
-<h2>Workout Builder</h2>
-
-<input placeholder="Workout name">
-
-<button>Create Workout</button>
-
-</div>
-
-`
-
-}
+export function builderView(state){return `<div class="grid two"><div class="card"><h2>Workout Builder</h2><label>Workout title<input id="wb-title" value="${state.builder.title}" placeholder="Lower Body Strength"></label><br><label>Day type<select id="wb-day-type"><option value="strength" ${state.builder.dayType==="strength"?"selected":""}>Strength</option><option value="power" ${state.builder.dayType==="power"?"selected":""}>Power</option><option value="speed" ${state.builder.dayType==="speed"?"selected":""}>Speed</option><option value="recovery" ${state.builder.dayType==="recovery"?"selected":""}>Recovery</option></select></label><br><label>Notes<textarea id="wb-notes" rows="6">${state.builder.notes}</textarea></label><br><div class="row"><button data-builder="save">Save Workout</button><button class="secondary" data-builder="seed">Seed Example</button></div></div><div class="card"><h2>Builder Status</h2><div class="list"><div class="item">Buttons are handled in <code>js/app.js</code></div><div class="item">Builder persists demo values locally</div><div class="item">Supabase write hooks are ready in services/schemaQueries.js</div></div></div></div>`}

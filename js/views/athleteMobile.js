@@ -1,15 +1,1 @@
-export function athleteMobile(){
-
-return `
-
-<div class="card">
-
-<h2>Athlete Daily View</h2>
-
-<p>Shows today's assigned workout.</p>
-
-</div>
-
-`
-
-}
+export function athleteMobileView(state){const active=state.roster.find(a=>a.id===state.ui.activeAthleteId)||state.roster[0];return `<div class="card"><div class="row"><h2>Athlete Mobile View</h2><span class="pill">Prototype</span></div>${active?`<div class="row"><span class="badge">Athlete ${active.name}</span><span class="badge">PIQ ${active.piq??"-"}</span><span class="badge">Readiness ${active.readiness??"-"}</span></div><div class="card"><h3>Today</h3>${active.workouts.length?active.workouts.map(w=>`<div class="item"><strong>${w.title}</strong><div class="muted small">${w.dayType} • ${w.status}</div></div>`).join(""):`<div class="item">No assigned workout.</div>`}</div>`:`<div class="item">No athlete loaded.</div>`}</div>`}

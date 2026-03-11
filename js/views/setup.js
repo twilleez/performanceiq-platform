@@ -1,15 +1,1 @@
-export function setupView(){
-
-return `
-
-<div class="card">
-
-<h2>Setup</h2>
-
-<p>Connect Supabase keys in index.html</p>
-
-</div>
-
-`
-
-}
+export function setupView(state){return `<div class="card"><h2>Setup</h2><div class="list"><div class="item">Boot mode: ${state.bootMode}</div><div class="item">Navigation buttons are rendered in <code>js/app.js</code> inside <code>shell()</code></div><div class="item">Button click handlers are bound in <code>js/app.js</code> inside <code>bindGlobalUI()</code></div><div class="item">Views are rendered from <code>js/views/*</code></div></div></div>`}

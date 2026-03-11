@@ -1,15 +1,1 @@
-export function workoutsView(){
-
-return `
-
-<div class="card">
-
-<h2>Workouts</h2>
-
-<p>Assigned workouts load from workout_assignments table.</p>
-
-</div>
-
-`
-
-}
+export function workoutsView(state){const rows=state.roster.flatMap(a=>a.workouts.map(w=>({athlete:a.name,...w})));return `<div class="card"><h2>Assigned Workouts</h2><table><thead><tr><th>Athlete</th><th>Workout</th><th>Day Type</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(w=>`<tr><td>${w.athlete}</td><td>${w.title}</td><td>${w.dayType}</td><td>${w.status}</td></tr>`).join(""):`<tr><td colspan="4">No workouts available.</td></tr>`}</tbody></table></div>`}

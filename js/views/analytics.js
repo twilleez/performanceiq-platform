@@ -1,15 +1,1 @@
-export function analyticsView(){
-
-return `
-
-<div class="card">
-
-<h2>Analytics</h2>
-
-<p>Charts display PIQ trend, readiness trend, and load trend.</p>
-
-</div>
-
-`
-
-}
+function lineSVG(values,stroke){const max=Math.max(...values,1),min=Math.min(...values,0),range=(max-min)||1;const pts=values.map((v,i)=>`${(i/(values.length-1||1))*100},${100-((v-min)/range)*100}`).join(" ");return `<svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline fill="none" stroke="${stroke}" stroke-width="2" points="${pts}" /></svg>`}export function analyticsView(state){return `<div class="grid two"><div class="card"><h2>PIQ Trend</h2>${lineSVG(state.analytics.teamTrend,"#4cc9f0")}</div><div class="card"><h2>Load Trend</h2>${lineSVG(state.analytics.loadTrend,"#ffb703")}</div></div><div class="card"><h2>Readiness Trend</h2>${lineSVG(state.analytics.readinessTrend,"#3ddc97")}</div>`}
