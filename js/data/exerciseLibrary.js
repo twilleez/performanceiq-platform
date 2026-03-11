@@ -1,1 +1,26 @@
-export const exerciseLibrary=[{id:"goblet_squat",title:"Goblet Squat",movement_pattern:"squat",training_intent:"strength",equipment:["dumbbells"],fatigue_score:3,sets:4,reps:"8"},{id:"split_squat",title:"Split Squat",movement_pattern:"lunge",training_intent:"strength",equipment:["bodyweight","dumbbells"],fatigue_score:3,sets:3,reps:"10"},{id:"rdl",title:"Romanian Deadlift",movement_pattern:"hinge",training_intent:"strength",equipment:["dumbbells"],fatigue_score:3,sets:3,reps:"10"},{id:"db_bench",title:"DB Bench Press",movement_pattern:"horizontal_push",training_intent:"strength",equipment:["dumbbells"],fatigue_score:3,sets:4,reps:"8"},{id:"push_up",title:"Push Up",movement_pattern:"horizontal_push",training_intent:"strength",equipment:["bodyweight"],fatigue_score:2,sets:3,reps:"12"},{id:"db_row",title:"DB Row",movement_pattern:"horizontal_pull",training_intent:"strength",equipment:["dumbbells"],fatigue_score:3,sets:4,reps:"8"},{id:"db_press",title:"DB Shoulder Press",movement_pattern:"vertical_push",training_intent:"strength",equipment:["dumbbells"],fatigue_score:3,sets:3,reps:"10"},{id:"box_jump",title:"Box Jump",movement_pattern:"plyometric",training_intent:"power",equipment:["bodyweight"],fatigue_score:4,sets:4,reps:"4"},{id:"sprint",title:"Sprint",movement_pattern:"sprint",training_intent:"speed",equipment:["bodyweight"],fatigue_score:5,sets:5,reps:"20 yd"},{id:"plank",title:"Plank",movement_pattern:"anti_extension",training_intent:"core",equipment:["bodyweight"],fatigue_score:1,sets:3,reps:"30s"},{id:"pallof",title:"Pallof Press",movement_pattern:"anti_rotation",training_intent:"core",equipment:["bodyweight"],fatigue_score:1,sets:3,reps:"12"},{id:"mobility",title:"Mobility Flow",movement_pattern:"recovery",training_intent:"recovery",equipment:["bodyweight"],fatigue_score:1,sets:1,reps:"12 min"}];export function findSwapCandidates(exercise,athlete){return exerciseLibrary.filter(ex=>ex.id!==exercise.id&&ex.movement_pattern===exercise.movement_pattern&&ex.training_intent===exercise.training_intent&&ex.equipment.some(eq=>athlete.equipment.includes(eq)))}
+export const exerciseLibrary = [
+  { id: "lateral_bound", title: "Lateral Bound", pattern: "power" },
+  { id: "skater_jump", title: "Skater Jump", pattern: "power" },
+  { id: "snap_down_jump", title: "Snap Down to Jump", pattern: "power" },
+  { id: "goblet_squat", title: "Goblet Squat", pattern: "strength_lower" },
+  { id: "rear_foot_split_squat", title: "Rear Foot Elevated Split Squat", pattern: "strength_lower" },
+  { id: "front_loaded_split_squat", title: "Front Loaded Split Squat", pattern: "strength_lower" },
+  { id: "single_leg_rdl", title: "Single Leg RDL", pattern: "hinge" },
+  { id: "db_rdl", title: "DB Romanian Deadlift", pattern: "hinge" },
+  { id: "hip_airplane", title: "Hip Airplane", pattern: "hinge" },
+  { id: "push_up_plus", title: "Push-Up Plus", pattern: "upper_push" },
+  { id: "db_floor_press", title: "DB Floor Press", pattern: "upper_push" },
+  { id: "half_kneeling_press", title: "Half Kneeling Press", pattern: "upper_push" },
+  { id: "1arm_row", title: "1-Arm DB Row", pattern: "upper_pull" },
+  { id: "seal_row_bench", title: "Bench Supported Row", pattern: "upper_pull" },
+  { id: "band_row", title: "Band Row", pattern: "upper_pull" },
+  { id: "sprint_10", title: "10 Yard Sprint", pattern: "speed" },
+  { id: "shuffle_sprint", title: "Shuffle to Sprint", pattern: "speed" },
+  { id: "accel_fall_start", title: "Falling Start Acceleration", pattern: "speed" },
+  { id: "pallof_press", title: "Pallof Press", pattern: "core" },
+  { id: "dead_bug", title: "Dead Bug", pattern: "core" },
+  { id: "side_plank_reach", title: "Side Plank Reach", pattern: "core" },
+  { id: "mobility_flow", title: "Basketball Mobility Flow", pattern: "recovery" },
+  { id: "ankle_hip_flow", title: "Ankle + Hip Flow", pattern: "recovery" },
+  { id: "breathing_reset", title: "Breathing Reset", pattern: "recovery" }
+];
