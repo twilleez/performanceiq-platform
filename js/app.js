@@ -1,12 +1,24 @@
 import { STATE } from "./state/state.js"
-import { dashboard } from "./views/dashboard.js"
+import { initRouter } from "./router.js"
+import { createSupabase } from "./services/supabaseClient.js"
+import { hydrateDashboard } from "./services/dataLoader.js"
 
 const app = document.getElementById("app")
 
-function render(){
+async function boot(){
 
-app.innerHTML = dashboard(STATE)
+const supabase = await createSupabase()
+
+STATE.bootMode = supabase ? "supabase" : "local"
+
+if(supabase){
+
+await hydrateDashboard(STATE, supabase)
 
 }
 
-render()
+initRouter(app, STATE)
+
+}
+
+boot()
