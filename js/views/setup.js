@@ -1,3 +1,1 @@
-export function setupView(state){
-  return `<div class="card"><h2>Setup</h2><div class="list"><div class="item">Boot mode: ${state.bootMode}</div><div class="item">Navigation buttons are rendered in js/app.js inside shell()</div><div class="item">Button click handlers are in js/app.js inside bindGlobalUI()</div><div class="item">Sports exercise data: js/data/exerciseLibrary.js</div><div class="item">Swap logic: js/features/performanceEngine.js</div></div></div>`;
-}
+export function setupView(state){return `<div class="card"><h2>Setup</h2><div class="list"><div class="item">Boot mode: ${state.bootMode}</div><div class="item">Phase 11 adds major sports workout catalogs</div><div class="item">Buttons are wired in js/app.js</div><div class="item">Exercise video library: js/views/videoLibrary.js</div><div class="item">Swap logic: js/features/performanceEngine.js</div></div></div>`}
