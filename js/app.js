@@ -22,3 +22,14 @@ initRouter(app, STATE)
 }
 
 boot()
+document.addEventListener("click",(e)=>{
+
+const btn = e.target.closest("[data-nav]")
+
+if(!btn) return
+
+STATE.ui.view = btn.dataset.nav
+
+initRouter(document.getElementById("app"),STATE)
+
+})
