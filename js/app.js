@@ -1,1 +1,131 @@
-import { STATE } from "./state/state.js";import { loadState, saveState } from "./services/storage.js";import { signInLocal } from "./services/authService.js";import { createSupabase } from "./services/supabaseClient.js";import { renderCurrentView } from "./router.js";import { authView } from "./views/auth.js";const app=document.getElementById("app");const bootStatus=document.getElementById("bootStatus");const persisted=loadState();if(persisted){Object.assign(STATE,persisted)}let supabase=null;function navButton(label,view){return `<button class="${STATE.ui.view===view?"":"secondary"}" data-nav="${view}">${label}</button>`}function shell(content){return `<div class="app"><aside class="sidebar"><div class="brand">PerformanceIQ</div><div class="subbrand">Phase 10 Elite</div><div class="nav">${navButton("Dashboard","dashboard")}${navButton("Team","team")}${navButton("Workouts","workouts")}${navButton("Analytics","analytics")}${navButton("Builder","builder")}${navButton("Athlete","athlete")}${navButton("Periodization","periodization")}${navButton("Recruiting","recruiting")}${navButton("Setup","setup")}<button class="secondary" data-logout="true">Logout</button></div></aside><main class="main">${content}</main></div>`}async function boot(){bootStatus.textContent="Booting PerformanceIQ...";supabase=await createSupabase();STATE.bootMode=supabase?"supabase-configured":"local-fallback";render()}function render(){if(!STATE.session.loggedIn){app.innerHTML=authView();bindAuth();return}app.innerHTML=shell(renderCurrentView(STATE));bindGlobalUI();saveState(STATE)}function bindAuth(){const btn=document.getElementById("login-btn");if(!btn)return;btn.onclick=()=>{const email=document.getElementById("auth-email").value.trim();const role=document.getElementById("auth-role").value;if(!email)return alert("Enter email.");signInLocal(STATE,email,role);STATE.ui.view=role==="athlete"?"athlete":"dashboard";render()}}function bindGlobalUI(){app.querySelectorAll("[data-nav]").forEach(btn=>btn.onclick=()=>{STATE.ui.view=btn.dataset.nav;render()});app.querySelectorAll("[data-athlete]").forEach(btn=>btn.onclick=()=>{STATE.ui.activeAthleteId=btn.dataset.athlete;STATE.ui.view="team";render()});const logout=app.querySelector("[data-logout='true']");if(logout)logout.onclick=()=>{STATE.session.loggedIn=false;STATE.session.user=null;render()};const seed=app.querySelector("[data-builder='seed']");if(seed)seed.onclick=()=>{document.getElementById("wb-title").value="Explosive Lower";document.getElementById("wb-day-type").value="power";document.getElementById("wb-notes").value="Box jumps, goblet squat, split squat, plank."};const save=app.querySelector("[data-builder='save']");if(save)save.onclick=()=>{STATE.builder.title=document.getElementById("wb-title").value.trim();STATE.builder.dayType=document.getElementById("wb-day-type").value;STATE.builder.notes=document.getElementById("wb-notes").value.trim();alert("Builder values saved in local state. Supabase write hooks are ready in js/services/schemaQueries.js.");saveState(STATE)};const copy=app.querySelector("[data-copy-profile='true']");if(copy)copy.onclick=async()=>{const text=app.querySelector("pre")?.innerText||"";try{await navigator.clipboard.writeText(text);alert("Profile copied.")}catch{alert("Copy failed on this browser.")}}}boot();
+import { STATE } from "./state/state.js";
+import { loadState, saveState } from "./services/storage.js";
+import { signInLocal } from "./services/authService.js";
+import { renderCurrentView } from "./router.js";
+import { authView } from "./views/auth.js";
+import { swapExerciseInWorkout } from "./features/performanceEngine.js";
+
+const app = document.getElementById("app");
+const bootStatus = document.getElementById("bootStatus");
+
+const persisted = loadState();
+if (persisted) Object.assign(STATE, persisted);
+
+function navButton(label, view){
+  return `<button class="${STATE.ui.view===view ? "" : "secondary"}" data-nav="${view}">${label}</button>`;
+}
+
+function shell(content){
+  return `<div class="app"><aside class="sidebar"><div class="brand">PerformanceIQ</div><div class="subbrand">Sports Workouts + Swap</div><div class="nav">${navButton("Dashboard","dashboard")}${navButton("Team","team")}${navButton("Workouts","workouts")}${navButton("Builder","builder")}${navButton("Athlete","athlete")}${navButton("Periodization","periodization")}${navButton("Recruiting","recruiting")}${navButton("Setup","setup")}<button class="secondary" data-logout="true">Logout</button></div></aside><main class="main">${content}</main></div>`;
+}
+
+function render(){
+  bootStatus.textContent = "Booting PerformanceIQ...";
+  if (!STATE.session.loggedIn){
+    app.innerHTML = authView();
+    bindAuth();
+    return;
+  }
+  app.innerHTML = shell(renderCurrentView(STATE));
+  bindGlobalUI();
+  saveState(STATE);
+}
+
+function bindAuth(){
+  const btn = document.getElementById("login-btn");
+  if (!btn) return;
+  btn.onclick = () => {
+    const email = document.getElementById("auth-email").value.trim();
+    const role = document.getElementById("auth-role").value;
+    if (!email) return alert("Enter email.");
+    signInLocal(STATE, email, role);
+    STATE.ui.view = role === "athlete" ? "athlete" : "dashboard";
+    render();
+  };
+}
+
+function bindGlobalUI(){
+  app.querySelectorAll("[data-nav]").forEach(btn => btn.onclick = () => {
+    STATE.ui.view = btn.dataset.nav;
+    render();
+  });
+
+  app.querySelectorAll("[data-athlete]").forEach(btn => btn.onclick = () => {
+    STATE.ui.activeAthleteId = btn.dataset.athlete;
+    STATE.ui.view = "team";
+    render();
+  });
+
+  const logout = app.querySelector("[data-logout='true']");
+  if (logout) logout.onclick = () => {
+    STATE.session.loggedIn = false;
+    STATE.session.user = null;
+    render();
+  };
+
+  const seed = app.querySelector("[data-builder='seed']");
+  if (seed) seed.onclick = () => {
+    document.getElementById("wb-title").value = "Basketball Lower Power";
+    document.getElementById("wb-day-type").value = "power";
+    document.getElementById("wb-notes").value = "Lateral power + unilateral strength + acceleration.";
+  };
+
+  const save = app.querySelector("[data-builder='save']");
+  if (save) save.onclick = () => {
+    STATE.builder.title = document.getElementById("wb-title").value.trim();
+    STATE.builder.dayType = document.getElementById("wb-day-type").value;
+    STATE.builder.notes = document.getElementById("wb-notes").value.trim();
+    STATE.builder.athleteId = document.getElementById("wb-athlete").value;
+    const athlete = STATE.roster.find(a => a.id === STATE.builder.athleteId);
+    if (athlete && STATE.builder.title){
+      athlete.workouts.unshift({
+        id: `w_${Date.now()}`,
+        title: STATE.builder.title,
+        dayType: STATE.builder.dayType,
+        status: "assigned",
+        notes: STATE.builder.notes,
+        exercises: ["lateral_bound","goblet_squat","single_leg_rdl","sprint_10","dead_bug"]
+      });
+      alert("Sports-specific workout added to local state.");
+      STATE.ui.activeAthleteId = athlete.id;
+    } else {
+      alert("Enter a workout title and athlete.");
+    }
+    render();
+  };
+
+  app.querySelectorAll("[data-swap]").forEach(btn => btn.onclick = () => {
+    const [athleteId, workoutId, exerciseId] = btn.dataset.swap.split("|");
+    STATE.ui.swapTarget = { athleteId, workoutId, exerciseId };
+    render();
+  });
+
+  const close = app.querySelector("[data-swap-close='true']");
+  if (close) close.onclick = () => {
+    STATE.ui.swapTarget = null;
+    render();
+  };
+
+  app.querySelectorAll("[data-swap-pick]").forEach(btn => btn.onclick = () => {
+    const target = STATE.ui.swapTarget;
+    if (!target) return;
+    const athlete = STATE.roster.find(a => a.id === target.athleteId);
+    const workout = athlete?.workouts.find(w => w.id === target.workoutId);
+    if (workout) swapExerciseInWorkout(workout, target.exerciseId, btn.dataset.swapPick);
+    STATE.ui.swapTarget = null;
+    render();
+  });
+
+  const copy = app.querySelector("[data-copy-profile='true']");
+  if (copy) copy.onclick = async () => {
+    const text = app.querySelector("pre")?.innerText || "";
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Profile copied.");
+    } catch {
+      alert("Copy failed on this browser.");
+    }
+  };
+}
+
+render();
