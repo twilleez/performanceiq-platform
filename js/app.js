@@ -106,7 +106,7 @@ function bindAuth() {
 
 // ─── Event binding ────────────────────────────────────────────────────────────
 function bindUI() {
-  const on = (sel, fn) => document.querySelectorAll(sel).forEach(el => el.addEventListener("click", fn));
+  const on = (sel, fn) => document.querySelectorAll(sel).forEach(el => el.addEventListener("click", e => fn(e.currentTarget)));
 
   // Navigation
   on("[data-nav]",            btn => { saveScroll(); STATE.ui.tab = btn.dataset.nav; render(); });
