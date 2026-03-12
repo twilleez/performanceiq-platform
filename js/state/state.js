@@ -1,17 +1,46 @@
 export const STATE = {
-  bootMode:"local-fallback",
-  session:{loggedIn:false,user:null,role:"coach"},
-  ui:{view:"dashboard",activeAthleteId:"a1",swapTarget:null,selectedSport:"basketball"},
-  team:{name:"Demo Team",joinCode:"DEMO1234"},
-  roster:[
-    {id:"a1",name:"Player One",pos:"PG",sport:"basketball",piq:82,readiness:79,load:412,acr:1.18,risk:"low",workouts:[{id:"w1",title:"Basketball Explosive Lower",dayType:"power",status:"assigned",notes:"Landing mechanics + unilateral force",exercises:["bb_lateral_bound","bb_goblet_squat","bb_single_leg_rdl","bb_sprint","bb_dead_bug"]}]},
-    {id:"a2",name:"Player Two",pos:"WR",sport:"football",piq:76,readiness:68,load:455,acr:1.38,risk:"medium",workouts:[{id:"w2",title:"Football Speed + Strength",dayType:"strength",status:"assigned",notes:"Acceleration + force production",exercises:["fb_broad_jump","fb_split_squat","fb_trap_rdl","fb_accel_sprint","fb_pallof"]}]},
-    {id:"a3",name:"Player Three",pos:"CM",sport:"soccer",piq:73,readiness:74,load:436,acr:1.24,risk:"low",workouts:[{id:"w3",title:"Soccer Speed Endurance Lift",dayType:"speed",status:"assigned",notes:"Stride mechanics + single-leg strength",exercises:["sc_counter_jump","sc_stepup","sc_rdl","sc_fly_sprint","sc_side_plank"]}]},
-    {id:"a4",name:"Player Four",pos:"SS",sport:"baseball",piq:71,readiness:72,load:398,acr:1.19,risk:"low",workouts:[{id:"w4",title:"Baseball Rotational Power",dayType:"power",status:"assigned",notes:"Hip-shoulder separation + decel control",exercises:["bs_med_rot_throw","bs_rear_split","bs_rdl","bs_10_split","bs_deadbug"]}]},
-    {id:"a5",name:"Player Five",pos:"200m",sport:"track",piq:69,readiness:67,load:470,acr:1.32,risk:"medium",workouts:[{id:"w5",title:"Track Power + Sprint Support",dayType:"power",status:"assigned",notes:"Stiffness + acceleration transfer",exercises:["tr_hurdle_hop","tr_split_squat","tr_rdl","tr_accel","tr_hollow"]}]}
-  ],
-  summary:{piq:74,readiness:72,weeklyLoad:2171,atRisk:2},
-  alerts:["Player Two: medium risk due to readiness / ACR","Player Five: medium risk due to readiness / ACR"],
-  calendar:{Mon:["Lift","Practice"],Tue:["Recovery"],Wed:["Lift","Speed"],Thu:["Practice"],Fri:["Lift"],Sat:["Game"],Sun:["Off"]},
-  builder:{title:"",dayType:"strength",notes:"",athleteId:"a1"}
+  session: { loggedIn: false, user: null, role: "athlete" },
+  mode: { athleteOnly: true, hasTeam: true },
+  ui: { tab: "today", activeSheet: null, activeExerciseId: null, teamTab: "home" },
+  athlete: {
+    id: "athlete_1",
+    name: "Willie Athlete",
+    sport: "basketball",
+    position: "PG",
+    equipment: ["Dumbbells", "Bands", "Bench"],
+    goals: ["Explosiveness", "Strength", "Durability"],
+    block: "Explosive Foundation",
+    week: "Week 4",
+    mealPlanEnabled: false,
+    readiness: { hrv: "Stable", sleep: 7.8, soreness: "Low", score: 83 },
+    progress: { strength: 78, conditioning: 71, mobility: 84, streak: 12, weeklyVolume: 218 },
+    prs: [
+      { label: "Goblet Squat", value: "70 lb x 8", delta: "+10 lb" },
+      { label: "10 yd Sprint", value: "1.82 sec", delta: "-0.06" }
+    ],
+    session: {
+      title: "Today • Lower Power",
+      status: "ready",
+      notes: "Explosive intent on every rep. Own the landing.",
+      exercises: [
+        { id: "bb_bound", sets: [{ target: "4/side", done: false }, { target: "4/side", done: false }, { target: "4/side", done: false }] },
+        { id: "bb_squat", sets: [{ target: "8", done: false }, { target: "8", done: false }, { target: "8", done: false }] },
+        { id: "bb_rdl", sets: [{ target: "6/side", done: false }, { target: "6/side", done: false }, { target: "6/side", done: false }] },
+        { id: "bb_sprint", sets: [{ target: "2 reps", done: false }, { target: "2 reps", done: false }, { target: "2 reps", done: false }] },
+        { id: "bb_core", sets: [{ target: "8/side", done: false }, { target: "8/side", done: false }] }
+      ]
+    }
+  },
+  team: {
+    name: "Virginia Trailblazers",
+    announcements: ["Lift moved to 5:30 PM.", "Bring bands to Thursday recovery session."],
+    homeEvents: ["Practice • 6 PM", "Team Lift • Fri 4 PM", "Film • Sat 10 AM"],
+    schedule: { Mon:["Practice","Lift"], Tue:["Recovery"], Wed:["Practice"], Thu:["Speed"], Fri:["Lift"], Sat:["Game"], Sun:["Off"] },
+    roster: [
+      { id: "athlete_1", name: "Willie Athlete", pos: "PG", piq: 83, readiness: 83, role: "captain" },
+      { id: "athlete_2", name: "Jay Carter", pos: "SG", piq: 79, readiness: 76, role: "athlete" },
+      { id: "athlete_3", name: "Coach Davis", pos: "Coach", piq: null, readiness: null, role: "coach" }
+    ],
+    activity: ["Willie hit a new sprint PR.", "Jay completed all sessions this week.", "Block milestone: Week 4 complete."]
+  }
 };
