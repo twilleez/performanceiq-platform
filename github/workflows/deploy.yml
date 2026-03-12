@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:   # allows manual trigger from Actions tab
 
 jobs:
   test:
@@ -17,12 +18,18 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Run tests
+        run: npm test
+        env:
+          # Tests that need env vars get placeholders so they don't throw on import
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-key
 
   deploy:
     name: Deploy to GitHub Pages
+    # Only deploy on pushes to main (not PRs), and only if tests pass
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
