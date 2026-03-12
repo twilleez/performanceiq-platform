@@ -1,1 +1,0 @@
-export function saveState(state){ localStorage.setItem("piq_state", JSON.stringify(state)); }

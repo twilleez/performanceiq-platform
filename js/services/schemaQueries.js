@@ -1,1 +1,0 @@
-export async function createWorkout(supabase,payload){return supabase.from("workouts").insert(payload).select().single()}export async function assignWorkout(supabase,payload){return supabase.from("workout_assignments").insert(payload).select().single()}

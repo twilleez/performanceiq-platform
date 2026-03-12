@@ -1,1 +1,0 @@
-export function setupView(state){return `<div class="card"><h2>Setup</h2><div class="list"><div class="item">Boot mode: ${state.bootMode}</div><div class="item">Phase 12 adds calendar, heatmap, auto workouts, and coach tools</div><div class="item">Buttons are wired in js/app.js</div></div></div>`}

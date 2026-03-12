@@ -1,1 +1,0 @@
-export function calendarView(state){const days=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];return `<div class="card"><h2>Training Calendar</h2><div class="calendar">${days.map(d=>`<div class="day"><strong>${d}</strong><div class="list" style="margin-top:8px">${(state.calendar[d]||[]).map(x=>`<div class="item small">${x}</div>`).join("")}</div></div>`).join("")}</div></div>`}
