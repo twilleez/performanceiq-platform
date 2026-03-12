@@ -1,1 +1,21 @@
-import { dashboardView } from "./views/dashboard.js";import { teamView } from "./views/team.js";import { workoutsView } from "./views/workouts.js";import { calendarView } from "./views/calendar.js";import { heatmapView } from "./views/heatmap.js";import { builderView } from "./views/builder.js";import { athleteMobileView } from "./views/athleteMobile.js";import { periodizationView } from "./views/periodization.js";import { recruitingView } from "./views/recruiting.js";import { setupView } from "./views/setup.js";import { videoLibraryView } from "./views/videoLibrary.js";import { swapModalView } from "./views/swapModal.js";import { buildRecruitingProfile,getSwapOptions } from "./features/performanceEngine.js";export function renderCurrentView(state){let main="";switch(state.ui.view){case "team":main=teamView(state);break;case "workouts":main=workoutsView(state);break;case "calendar":main=calendarView(state);break;case "heatmap":main=heatmapView(state);break;case "builder":main=builderView(state);break;case "videos":main=videoLibraryView(state);break;case "athlete":main=athleteMobileView(state);break;case "periodization":main=periodizationView();break;case "recruiting":{const a=state.roster.find(x=>x.id===state.ui.activeAthleteId)||state.roster[0];main=recruitingView(buildRecruitingProfile(a));break;}case "setup":main=setupView(state);break;default:main=dashboardView(state)}if(state.ui.swapTarget)main+=swapModalView(getSwapOptions(state.ui.swapTarget.exerciseId));return main}
+import { athleteHomeView } from "./views/athleteHome.js";
+import { sessionView } from "./views/session.js";
+import { progressView } from "./views/progress.js";
+import { profileView } from "./views/profile.js";
+import { teamHomeView, teamScheduleView, rosterView, teamActivityView } from "./views/team.js";
+export function renderScreen(state){
+  if (state.mode === "team"){
+    switch (state.ui.teamTab){
+      case "schedule": return teamScheduleView(state);
+      case "roster": return rosterView(state);
+      case "activity": return teamActivityView(state);
+      default: return teamHomeView(state);
+    }
+  }
+  switch (state.ui.tab){
+    case "session": return sessionView(state);
+    case "progress": return progressView(state);
+    case "profile": return profileView(state);
+    default: return athleteHomeView(state);
+  }
+}

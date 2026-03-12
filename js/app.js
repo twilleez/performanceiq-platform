@@ -1,52 +1,180 @@
-import { STATE } from "./state/state.js";
+import { STATE, hydrateState, SCHEMA_VERSION } from "./state/state.js";
+import { saveState } from "./services/storage.js";
+import { getSwapOptions, swapExercise, markSetDone, autoGenerateWorkout } from "./features/trainingEngine.js";
+import { renderScreen } from "./router.js";
 import { authView } from "./views/auth.js";
-import { todayView, sessionView, progressView, profileView } from "./views/athlete.js";
-import { teamHomeView, teamScheduleView, teamRosterView, teamActivityView } from "./views/team.js";
-import { getExercise, getSwapOptions, swapExercise, completeSet, overallCompletion } from "./features/engines.js";
-import { loadState, saveState } from "./services/storage.js";
-import { signInLocal } from "./services/authService.js";
-const app=document.getElementById("app");
-const persisted=loadState();
-if(persisted) Object.assign(STATE,persisted);
-function renderSheet(){
-  if(!STATE.ui.activeSheet) return "";
-  if(STATE.ui.activeSheet==="team-home") return teamHomeView(STATE);
-  if(STATE.ui.activeSheet==="team-schedule") return teamScheduleView(STATE);
-  if(STATE.ui.activeSheet==="team-roster") return teamRosterView(STATE);
-  if(STATE.ui.activeSheet==="team-activity") return teamActivityView(STATE);
-  if(STATE.ui.activeSheet==="swap") {
-    const options=getSwapOptions(STATE.ui.activeExerciseId, STATE.athlete.sport);
-    return `<div class="sheet-backdrop" data-action="close-sheet"></div><div class="sheet"><div class="sheet-handle"></div><div class="sheet-body"><div class="brand">Swap Exercise</div><div class="title" style="font-size:28px">Keep the pattern</div><div class="content" style="padding:10px 0 0">${options.length?options.map(x=>`<div class="item"><div style="font-weight:700">${x.title}</div><div class="muted small">${x.quick||x.pattern}</div><button class="ghost" style="margin-top:10px" data-action="apply-swap" data-newid="${x.id}">Use</button></div>`).join(""):`<div class="item">No swap options.</div>`}</div></div></div>`;
+import { readinessSheet, setLoggingSheet, swapSheet, detailSheet, videoSheet } from "./views/sheets.js";
+
+// ─── Hydrate persisted state (schema-safe deep merge) ────────────────────────
+hydrateState();
+
+const app = document.getElementById("app");
+
+// ─── Scroll preservation across re-renders ───────────────────────────────────
+let _savedScrollY = 0;
+
+function saveScroll()  { _savedScrollY = window.scrollY; }
+function restoreScroll() { requestAnimationFrame(() => window.scrollTo(0, _savedScrollY)); }
+
+// ─── Nav helpers ─────────────────────────────────────────────────────────────
+function navBtn(key, label) {
+  return `<button class="nav-btn${STATE.ui.tab === key ? " active" : ""}" data-nav="${key}">${label}</button>`;
+}
+function teamNavBtn(key, label) {
+  return `<button class="nav-btn${STATE.ui.teamTab === key ? " active" : ""}" data-team-nav="${key}">${label}</button>`;
+}
+
+function nowBar() {
+  if (STATE.ui.tab !== "session" || STATE.mode !== "athlete") return "";
+  const workout = STATE.workouts.find(w => w.id === STATE.ui.activeWorkoutId) || STATE.workouts[0];
+  return `
+    <div class="now-bar">
+      <div>
+        <strong>${workout.title}</strong>
+        <div class="muted small">Session active</div>
+      </div>
+      <div class="row">
+        <button class="secondary sm" data-action="auto-workout">Auto Workout</button>
+        <button class="sm" data-action="end-session">Finish</button>
+      </div>
+    </div>
+  `;
+}
+
+function bottomNav() {
+  if (STATE.mode === "team") {
+    return `
+      <div class="bottom-nav">
+        ${teamNavBtn("team-home", "Home")}
+        ${teamNavBtn("schedule", "Schedule")}
+        ${teamNavBtn("roster", "Roster")}
+        ${teamNavBtn("activity", "Activity")}
+      </div>
+    `;
   }
-  const meta=getExercise(STATE.ui.activeExerciseId);
-  const ex=STATE.athlete.session.exercises.find(x=>x.id===STATE.ui.activeExerciseId);
-  if(!ex) return "";
-  return `<div class="sheet-backdrop" data-action="close-sheet"></div><div class="sheet"><div class="sheet-handle"></div><div class="sheet-body"><div class="brand">Exercise</div><div class="title" style="font-size:28px">${meta.title}</div><div class="subtitle">${meta.quick} • ${meta.pattern}</div><div class="content" style="padding:10px 0 0"><div class="glass card"><div class="card-title">Log Sets</div><div class="set-grid">${ex.sets.map((set,idx)=>`<button class="set ${set.done?"done":""}" data-action="toggle-set" data-exercise="${ex.id}" data-set="${idx}">Set ${idx+1}<div class="small muted" style="margin-top:4px">${set.target}</div></button>`).join("")}</div></div><div class="glass card"><div class="card-title">Actions</div><div class="pill-row"><button class="ghost" data-action="open-swap" data-exercise="${ex.id}">Swap</button><button class="ghost" data-action="close-sheet">Done</button></div></div></div></div></div>`;
+  return `
+    <div class="bottom-nav">
+      ${navBtn("today",    "Today")}
+      ${navBtn("session",  "Train")}
+      ${navBtn("progress", "Progress")}
+      ${navBtn("profile",  "Profile")}
+    </div>
+  `;
 }
-function render(){
-  if(!STATE.session.loggedIn){ app.innerHTML=authView(); bindAuth(); return; }
-  const completion=overallCompletion(STATE.athlete.session);
-  let body="";
-  if(STATE.ui.tab==="today") body=todayView(STATE, completion);
-  if(STATE.ui.tab==="train") body=sessionView(STATE, completion);
-  if(STATE.ui.tab==="progress") body=progressView(STATE);
-  if(STATE.ui.tab==="profile") body=profileView(STATE);
-  const now=STATE.ui.tab==="train"?`<div class="now"><div><strong>${STATE.athlete.session.title}</strong><div class="small muted">${completion.done}/${completion.total} sets logged</div></div><button class="ghost" data-action="close-session">Close</button></div>`:"";
-  const teamFab=STATE.mode.hasTeam?`<button class="team-fab" data-action="open-team">${STATE.ui.activeSheet?.startsWith("team-")?"Close Team":"Team"}</button>`:"";
-  app.innerHTML=`<div class="shell">${body}${now}${teamFab}<div class="nav"><button class="${STATE.ui.tab==="today"?"active":""}" data-tab="today">Today</button><button class="${STATE.ui.tab==="train"?"active":""}" data-tab="train">Train</button><button class="${STATE.ui.tab==="progress"?"active":""}" data-tab="progress">Progress</button><button class="${STATE.ui.tab==="profile"?"active":""}" data-tab="profile">Profile</button></div>${renderSheet()}</div>`;
-  bindUI(); saveState(STATE);
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  if (!STATE.session.loggedIn) {
+    app.innerHTML = authView();
+    bindAuth();
+    return;
+  }
+
+  const swapOptions = STATE.ui.activeSwapExerciseId
+    ? getSwapOptions(STATE.ui.activeSwapExerciseId, STATE.athlete.sport)
+    : [];
+
+  const main = `<div class="app-shell">${renderScreen(STATE)}${nowBar()}${bottomNav()}</div>`;
+  app.innerHTML =
+    main +
+    readinessSheet(STATE) +
+    setLoggingSheet(STATE) +
+    swapSheet(STATE, swapOptions) +
+    detailSheet(STATE) +
+    videoSheet(STATE);
+
+  bindUI();
+  saveState(STATE);
+  restoreScroll();
 }
-function bindAuth(){ const btn=document.getElementById("login-btn"); if(!btn) return; btn.onclick=()=>{ const email=document.getElementById("auth-email").value.trim(); const role=document.getElementById("auth-role").value; if(!email) return alert("Enter email."); signInLocal(STATE,email,role); render(); }; }
-function bindUI(){
-  document.querySelectorAll("[data-tab]").forEach(btn=>btn.onclick=()=>{ STATE.ui.tab=btn.dataset.tab; render(); });
-  document.querySelectorAll("[data-action='start-session']").forEach(btn=>btn.onclick=()=>{ STATE.ui.tab="train"; render(); });
-  document.querySelectorAll("[data-action='open-exercise']").forEach(btn=>btn.onclick=()=>{ STATE.ui.activeExerciseId=btn.dataset.exercise; STATE.ui.activeSheet="exercise"; render(); });
-  document.querySelectorAll("[data-action='toggle-set']").forEach(btn=>btn.onclick=()=>{ completeSet(STATE.athlete.session, btn.dataset.exercise, Number(btn.dataset.set)); render(); });
-  document.querySelectorAll("[data-action='open-swap']").forEach(btn=>btn.onclick=()=>{ STATE.ui.activeExerciseId=btn.dataset.exercise; STATE.ui.activeSheet="swap"; render(); });
-  document.querySelectorAll("[data-action='apply-swap']").forEach(btn=>btn.onclick=()=>{ swapExercise(STATE.athlete.session, STATE.ui.activeExerciseId, btn.dataset.newid); STATE.ui.activeSheet=null; render(); });
-  document.querySelectorAll("[data-action='close-sheet']").forEach(btn=>btn.onclick=()=>{ STATE.ui.activeSheet=null; render(); });
-  document.querySelectorAll("[data-action='open-team']").forEach(btn=>btn.onclick=()=>{ STATE.ui.activeSheet=STATE.ui.activeSheet?.startsWith("team-")?null:"team-home"; render(); });
-  document.querySelectorAll("[data-teamtab]").forEach(btn=>btn.onclick=()=>{ STATE.ui.activeSheet=`team-${btn.dataset.teamtab}`; render(); });
-  document.querySelectorAll("[data-action='close-session']").forEach(btn=>btn.onclick=()=>{ STATE.ui.tab="today"; render(); });
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+function bindAuth() {
+  document.getElementById("login-athlete").onclick = () => {
+    STATE.session.loggedIn = true;
+    STATE.session.user = document.getElementById("login-name").value.trim() || "Athlete";
+    STATE.mode = "athlete";
+    render();
+  };
+  document.getElementById("login-team").onclick = () => {
+    STATE.session.loggedIn = true;
+    STATE.session.user = document.getElementById("login-name").value.trim() || "Coach";
+    STATE.mode = "team";
+    render();
+  };
 }
+
+// ─── Event binding ────────────────────────────────────────────────────────────
+function bindUI() {
+  const on = (sel, fn) => document.querySelectorAll(sel).forEach(el => el.addEventListener("click", fn));
+
+  // Navigation
+  on("[data-nav]",            btn => { saveScroll(); STATE.ui.tab = btn.dataset.nav; render(); });
+  on("[data-team-nav]",       btn => { saveScroll(); STATE.ui.teamTab = btn.dataset.teamNav; STATE.mode = "team"; render(); });
+  on("[data-action='open-team-tab']", btn => { STATE.mode = "team"; STATE.ui.teamTab = btn.dataset.teamtab; render(); });
+
+  // Session flow
+  on("[data-action='start-session']", () => { STATE.ui.tab = "session"; render(); });
+  on("[data-action='end-session']",   () => { STATE.ui.tab = "today";   render(); });
+
+  // Readiness sheet
+  on("[data-action='open-readiness']",  () => { STATE.ui.activeReadinessSheet = true;  render(); });
+  on("[data-action='close-readiness']", () => { STATE.ui.activeReadinessSheet = false; render(); });
+  on("[data-action='save-readiness']",  () => {
+    const sleepEl    = document.getElementById("ri-sleep");
+    const sorenessEl = document.getElementById("ri-soreness");
+    const hydrationEl= document.getElementById("ri-hydration");
+    if (sleepEl)     STATE.athlete.sleep     = parseFloat(sleepEl.value)    || STATE.athlete.sleep;
+    if (sorenessEl)  STATE.athlete.soreness  = sorenessEl.value;
+    if (hydrationEl) STATE.athlete.hydration = hydrationEl.value;
+    STATE.ui.activeReadinessSheet = false;
+    render();
+  });
+
+  // Set logging sheet
+  on("[data-action='open-sets']",     btn => { STATE.ui.activeSetExerciseId = btn.dataset.ex; render(); });
+  on("[data-action='close-set-sheet']", () => { STATE.ui.activeSetExerciseId = null;           render(); });
+
+  // Toggle set done (works on both session card tiles AND set-logging sheet tiles)
+  on("[data-action='toggle-set']", btn => {
+    const workout = STATE.workouts.find(w => w.id === STATE.ui.activeWorkoutId) || STATE.workouts[0];
+    markSetDone(workout, btn.dataset.ex, Number(btn.dataset.set));
+    render();
+  });
+
+  // Swap sheet
+  on("[data-action='swap']",             btn => { STATE.ui.activeSwapExerciseId = btn.dataset.ex; render(); });
+  on("[data-action='close-swap-sheet']", () =>  { STATE.ui.activeSwapExerciseId = null;            render(); });
+  on("[data-action='pick-swap']", btn => {
+    const workout = STATE.workouts.find(w => w.id === STATE.ui.activeWorkoutId) || STATE.workouts[0];
+    swapExercise(workout, STATE.ui.activeSwapExerciseId, btn.dataset.new);
+    STATE.ui.activeSwapExerciseId = null;
+    render();
+  });
+
+  // Exercise detail sheet
+  on("[data-action='detail']",             btn => { STATE.ui.activeDetailExerciseId = btn.dataset.ex; render(); });
+  on("[data-action='close-detail-sheet']", () =>  { STATE.ui.activeDetailExerciseId = null;            render(); });
+
+  // Video — show a "coming soon" sheet instead of alert()
+  on("[data-action='video']", btn => {
+    STATE.ui.activeVideoUrl   = btn.dataset.url || null;
+    STATE.ui.videoSheetOpen   = true;
+    render();
+  });
+  on("[data-action='close-video-sheet']", () => {
+    STATE.ui.activeVideoUrl  = null;
+    STATE.ui.videoSheetOpen  = false;
+    render();
+  });
+
+  // Auto workout
+  on("[data-action='auto-workout']", () => {
+    const w = autoGenerateWorkout(STATE.athlete.sport, STATE.athlete.readiness);
+    STATE.workouts.unshift(w);
+    STATE.ui.activeWorkoutId = w.id;
+    render();
+  });
+}
+
 render();
