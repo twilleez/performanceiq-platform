@@ -1,1 +1,27 @@
-export const exerciseLibrary=[{id:"bb_lateral_bound",title:"Lateral Bound",sport:"basketball",pattern:"power",video:"lateral-bound-demo.mp4"},{id:"bb_goblet_squat",title:"Goblet Squat",sport:"basketball",pattern:"strength_lower",video:"goblet-squat-demo.mp4"},{id:"bb_single_leg_rdl",title:"Single Leg RDL",sport:"basketball",pattern:"hinge",video:"single-leg-rdl-demo.mp4"},{id:"bb_sprint",title:"10 Yard Sprint",sport:"basketball",pattern:"speed",video:"sprint-demo.mp4"},{id:"bb_dead_bug",title:"Dead Bug",sport:"basketball",pattern:"core",video:"dead-bug-demo.mp4"},{id:"bb_skater_jump",title:"Skater Jump",sport:"basketball",pattern:"power",video:"skater-jump-demo.mp4"},{id:"fb_broad_jump",title:"Broad Jump",sport:"football",pattern:"power",video:"broad-jump-demo.mp4"},{id:"fb_split_squat",title:"Split Squat",sport:"football",pattern:"strength_lower",video:"split-squat-demo.mp4"},{id:"fb_trap_rdl",title:"Trap Bar RDL",sport:"football",pattern:"hinge",video:"trap-rdl-demo.mp4"},{id:"fb_accel_sprint",title:"Acceleration Sprint",sport:"football",pattern:"speed",video:"accel-sprint-demo.mp4"},{id:"fb_pallof",title:"Pallof Press",sport:"football",pattern:"core",video:"pallof-demo.mp4"},{id:"fb_box_jump",title:"Box Jump",sport:"football",pattern:"power",video:"box-jump-demo.mp4"},{id:"sc_counter_jump",title:"Countermovement Jump",sport:"soccer",pattern:"power",video:"cmj-demo.mp4"},{id:"sc_stepup",title:"DB Step-Up",sport:"soccer",pattern:"strength_lower",video:"step-up-demo.mp4"},{id:"sc_rdl",title:"DB RDL",sport:"soccer",pattern:"hinge",video:"db-rdl-demo.mp4"},{id:"sc_fly_sprint",title:"Flying Sprint",sport:"soccer",pattern:"speed",video:"fly-sprint-demo.mp4"},{id:"sc_side_plank",title:"Side Plank Reach",sport:"soccer",pattern:"core",video:"side-plank-demo.mp4"},{id:"sc_lateral_hop",title:"Lateral Hop",sport:"soccer",pattern:"power",video:"lateral-hop-demo.mp4"},{id:"bs_med_rot_throw",title:"Med Ball Rotational Throw",sport:"baseball",pattern:"power",video:"med-rot-throw-demo.mp4"},{id:"bs_rear_split",title:"Rear Foot Split Squat",sport:"baseball",pattern:"strength_lower",video:"rfess-demo.mp4"},{id:"bs_rdl",title:"Single Leg RDL",sport:"baseball",pattern:"hinge",video:"baseball-rdl-demo.mp4"},{id:"bs_10_split",title:"10 Yard Split Sprint",sport:"baseball",pattern:"speed",video:"10-split-demo.mp4"},{id:"bs_deadbug",title:"Dead Bug Iso",sport:"baseball",pattern:"core",video:"deadbug-iso-demo.mp4"},{id:"bs_skater_bound",title:"Skater Bound",sport:"baseball",pattern:"power",video:"skater-bound-demo.mp4"},{id:"tr_hurdle_hop",title:"Hurdle Hop",sport:"track",pattern:"power",video:"hurdle-hop-demo.mp4"},{id:"tr_split_squat",title:"Front Foot Elevated Split Squat",sport:"track",pattern:"strength_lower",video:"ffes-demo.mp4"},{id:"tr_rdl",title:"Barbell RDL",sport:"track",pattern:"hinge",video:"track-rdl-demo.mp4"},{id:"tr_accel",title:"Falling Start Sprint",sport:"track",pattern:"speed",video:"fall-start-demo.mp4"},{id:"tr_hollow",title:"Hollow Body Hold",sport:"track",pattern:"core",video:"hollow-hold-demo.mp4"},{id:"tr_bounds",title:"Sprint Bounds",sport:"track",pattern:"power",video:"bounds-demo.mp4"}];
+export const exerciseLibrary = [
+  {id:"bb_lateral_bound",title:"Lateral Bound",sport:"basketball",pattern:"power"},
+  {id:"bb_goblet_squat",title:"Goblet Squat",sport:"basketball",pattern:"strength_lower"},
+  {id:"bb_single_leg_rdl",title:"Single Leg RDL",sport:"basketball",pattern:"hinge"},
+  {id:"bb_sprint",title:"10 Yard Sprint",sport:"basketball",pattern:"speed"},
+  {id:"bb_dead_bug",title:"Dead Bug",sport:"basketball",pattern:"core"},
+  {id:"fb_broad_jump",title:"Broad Jump",sport:"football",pattern:"power"},
+  {id:"fb_split_squat",title:"Split Squat",sport:"football",pattern:"strength_lower"},
+  {id:"fb_trap_rdl",title:"Trap Bar RDL",sport:"football",pattern:"hinge"},
+  {id:"fb_accel_sprint",title:"Acceleration Sprint",sport:"football",pattern:"speed"},
+  {id:"fb_pallof",title:"Pallof Press",sport:"football",pattern:"core"},
+  {id:"sc_counter_jump",title:"Countermovement Jump",sport:"soccer",pattern:"power"},
+  {id:"sc_stepup",title:"DB Step-Up",sport:"soccer",pattern:"strength_lower"},
+  {id:"sc_rdl",title:"DB RDL",sport:"soccer",pattern:"hinge"},
+  {id:"sc_fly_sprint",title:"Flying Sprint",sport:"soccer",pattern:"speed"},
+  {id:"sc_side_plank",title:"Side Plank Reach",sport:"soccer",pattern:"core"},
+  {id:"bs_med_rot_throw",title:"Med Ball Rotational Throw",sport:"baseball",pattern:"power"},
+  {id:"bs_rear_split",title:"Rear Foot Split Squat",sport:"baseball",pattern:"strength_lower"},
+  {id:"bs_rdl",title:"Single Leg RDL",sport:"baseball",pattern:"hinge"},
+  {id:"bs_10_split",title:"10 Yard Split Sprint",sport:"baseball",pattern:"speed"},
+  {id:"bs_deadbug",title:"Dead Bug Iso",sport:"baseball",pattern:"core"},
+  {id:"tr_hurdle_hop",title:"Hurdle Hop",sport:"track",pattern:"power"},
+  {id:"tr_split_squat",title:"Front Foot Elevated Split Squat",sport:"track",pattern:"strength_lower"},
+  {id:"tr_rdl",title:"Barbell RDL",sport:"track",pattern:"hinge"},
+  {id:"tr_accel",title:"Falling Start Sprint",sport:"track",pattern:"speed"},
+  {id:"tr_hollow",title:"Hollow Body Hold",sport:"track",pattern:"core"}
+];
