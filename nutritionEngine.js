@@ -1,1 +1,0 @@
-window.PIQNutrition={targets(profile){const w=Number(profile.weight_lbs||160);const protein=Math.round(w*0.9),carbs=Math.round(w*2),fats=Math.round(w*0.35);return{protein,carbs,fats,calories:protein*4+carbs*4+fats*9};}};
