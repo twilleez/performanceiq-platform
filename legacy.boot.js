@@ -1,1 +1,0 @@
-window.PIQLegacyBoot={loaded:true};
