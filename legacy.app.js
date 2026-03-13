@@ -1,1 +1,0 @@
-window.PIQLegacyApp={loaded:true};
