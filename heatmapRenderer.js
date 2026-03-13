@@ -1,1 +1,0 @@
-window.PIQHeatmap={render(el,sessions){const days=['M','T','W','T','F','S','S'];const values=days.map((_,i)=>Math.min(100,((sessions||[])[i]?.volume_score||0)*8));el.innerHTML='<div class="chart-bars">'+values.map((v,i)=>`<div class="bar" style="height:${Math.max(16,v)}%"><span class="bar-label">${days[i]}</span></div>`).join('')+'</div>';}};
