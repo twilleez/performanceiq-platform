@@ -1,1 +1,0 @@
-window.PIQSportEngine={positions:{basketball:[['pg','Point Guard'],['sg','Shooting Guard'],['sf','Small Forward'],['pf','Power Forward'],['c','Center']],football:[['qb','Quarterback'],['wr','Wide Receiver'],['db','Defensive Back']]},getPositionLabel(sport,id){const arr=this.positions[sport]||[];const hit=arr.find(x=>x[0]===id);return hit?hit[1]:id;}};
