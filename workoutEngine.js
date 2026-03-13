@@ -1,1 +1,0 @@
-window.PIQWorkout={logCompletion(state, session, rpe){session.completed=true;session.rpe=Number(rpe||7);session.logged_at=new Date().toISOString();session.completion_pct=100; const piq=window.PIQAnalytics.piq(state);session.piq_score=piq.score; state.sessions.push(session); state.currentSession=null; return session;}};
