@@ -1,4 +1,5 @@
-import { supabase } from "./supabase.js";
+import { requireSupabase } from "./supabase.js";
+const supabase = requireSupabase();
 
 // ─── Sign up ───────────────────────────────────────────────────────────────
 // role: 'athlete' | 'coach'

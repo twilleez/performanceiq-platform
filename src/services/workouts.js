@@ -1,4 +1,5 @@
-import { supabase } from "./supabase.js";
+import { requireSupabase } from "./supabase.js";
+const supabase = requireSupabase();
 
 // ─── Fetch today's workout for the logged-in athlete ──────────────────────
 export async function getTodaysWorkout(athleteId) {
@@ -38,7 +39,7 @@ export async function createWorkout(athleteId, workout) {
       sport:          workout.sport,
       day_type:       workout.dayType,
       notes:          workout.notes ?? "",
-      recovery_cue:   workout.recoveryCue ?? "",
+      recovery_cue:   workout.recovery_cue ?? workout.recoveryCue ?? "",
       exercises:      workout.exercises,
       scheduled_date: new Date().toISOString().split("T")[0],
     })

@@ -1,4 +1,5 @@
-import { supabase } from "./supabase.js";
+import { requireSupabase } from "./supabase.js";
+const supabase = requireSupabase();
 
 // ─── Get today's log (may be null) ────────────────────────────────────────
 export async function getTodaysReadiness(athleteId) {

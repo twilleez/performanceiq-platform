@@ -1,4 +1,5 @@
-import { supabase } from "./supabase.js";
+import { requireSupabase } from "./supabase.js";
+const supabase = requireSupabase();
 
 // ─── Get teams the current user coaches ────────────────────────────────────
 export async function getCoachTeams(coachId) {

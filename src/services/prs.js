@@ -1,4 +1,5 @@
-import { supabase } from "./supabase.js";
+import { requireSupabase } from "./supabase.js";
+const supabase = requireSupabase();
 
 // ─── Get all PRs for an athlete ────────────────────────────────────────────
 export async function getPersonalRecords(athleteId) {
