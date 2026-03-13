@@ -101,6 +101,12 @@ select{cursor:pointer}
 <body>
 <div id="app"></div>
 <script>
+  // Unregister any stale service workers from old builds
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.unregister());
+  });
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // EXERCISES DATA
 // ─────────────────────────────────────────────────────────────────────────────
