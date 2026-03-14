@@ -121,6 +121,26 @@ select{cursor:pointer}
 button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .loading-full{min-height:100vh;display:grid;place-items:center}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* Builder */
+.builder-exercise{padding:14px;border-radius:16px;background:var(--surface2);border:1px solid var(--line);margin-bottom:10px;position:relative}
+.builder-exercise.dragging{opacity:.4;border-style:dashed}
+.builder-exercise.drag-over{border-color:var(--accent);background:rgba(83,181,255,.06)}
+.drag-handle{cursor:grab;padding:4px 8px;color:var(--muted2);font-size:18px;user-select:none;flex-shrink:0}
+.drag-handle:active{cursor:grabbing}
+.set-config-row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)}
+.set-config-row:last-child{border-bottom:none}
+.mini-input{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:var(--text);font:inherit;font-size:12px;width:100%;text-align:center;outline:none}
+.mini-input:focus{border-color:rgba(83,181,255,.4)}
+.ex-picker-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.ex-picker-item{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line);cursor:pointer;transition:all .15s}
+.ex-picker-item:hover{background:rgba(83,181,255,.08);border-color:rgba(83,181,255,.3)}
+.ex-picker-item.selected{background:rgba(83,181,255,.12);border-color:rgba(83,181,255,.4)}
+.athlete-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--line);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.athlete-chip.selected{background:rgba(83,181,255,.15);border-color:rgba(83,181,255,.4);color:var(--accent)}
+.template-item{padding:12px 14px;border-radius:14px;background:var(--surface2);border:1px solid var(--line);cursor:pointer;transition:all .15s}
+.template-item:hover{border-color:rgba(83,181,255,.3);background:rgba(83,181,255,.05)}
+.tag{display:inline-flex;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes slide-up{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -175,6 +195,10 @@ const DB = {
   async getPRs(userId){const{data,error}=await sb.from('personal_records').select('*').eq('athlete_id',userId).order('set_at',{ascending:false});if(error)throw error;return data??[];},
   async getCoachTeam(coachId){const{data,error}=await sb.from('teams').select('*').eq('coach_id',coachId).limit(1);if(error)throw error;return data?.[0]??null;},
   async getAthleteTeam(athleteId){const{data,error}=await sb.from('team_members').select('team_id,teams(*)').eq('athlete_id',athleteId).limit(1);if(error)throw error;return data?.[0]?.teams??null;},
+  async saveTemplate(template){const{data,error}=await sb.from('workout_templates').insert(template).select().single();if(error)throw error;return data;},
+  async getTemplates(coachId){const{data,error}=await sb.from('workout_templates').select('*').eq('created_by',coachId).order('created_at',{ascending:false});if(error)throw error;return data??[];},
+  async assignWorkout(payload){const{data,error}=await sb.from('workouts').insert(payload).select().single();if(error)throw error;return data;},
+  async getTeamMembers(teamId){const{data,error}=await sb.from('team_members').select('athlete_id, profiles(id,name,position,sport)').eq('team_id',teamId);if(error)throw error;return data??[];},
   async migrateSoloData(userId,d){
     const r={profile:false,readiness:0,workouts:0,prs:0};
     try{
@@ -467,6 +491,8 @@ const solo={
   saveWorkoutProgress(workoutId,exercises){const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);if(idx>=0){all[idx].exercises=exercises;lsSet(PIQ.workouts,all);}},
   completeWorkout(workoutId,exercises){const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);if(idx>=0){all[idx].exercises=exercises;all[idx].completed_at=new Date().toISOString();lsSet(PIQ.workouts,all);}},
   getRecentWorkouts(days=30){const all=lsGet(PIQ.workouts,[]);const since=new Date(Date.now()-days*86400000).toISOString().split("T")[0];return all.filter(w=>w.scheduled_date>=since).sort((a,b)=>b.scheduled_date.localeCompare(a.scheduled_date));},
+  getTemplates:()=>lsGet('piq_templates',[]),
+  saveTemplate(t){const all=lsGet('piq_templates',[]);all.unshift({...t,id:'tpl_'+Date.now(),created_at:new Date().toISOString()});lsSet('piq_templates',all);return all[0];},
   getAllReadiness:()=>lsGet(PIQ.readiness,[]),getAllWorkouts:()=>lsGet(PIQ.workouts,[]),getAllPRs:()=>lsGet(PIQ.prs,[]),getPRs(){return lsGet(PIQ.prs,[]).sort((a,b)=>b.set_at?.localeCompare(a.set_at??"")??0);},
   clearAll(){Object.values(PIQ).forEach(k=>localStorage.removeItem(k));},
 };
@@ -478,7 +504,7 @@ const STATE={
   session:null,profile:null,mode:"solo",syncStatus:"offline",
   workout:null,readiness:null,prs:[],readinessTrend:[],recentWorkouts:[],team:null,teamReadiness:[],
   intelReport:null,
-  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
+  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,builderOpen:false,builderStep:1,builderDraft:null,templatePickerOpen:false,assignSheetOpen:false,savedTemplates:[],onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
 };
 function setToast(msg,type="success"){STATE.ui.toast={msg,type};setTimeout(()=>{STATE.ui.toast=null;render();},3200);}
 function isCoach(){return STATE.profile?.role==="coach";}
@@ -1084,6 +1110,252 @@ function onboardingSheet(state){
   return"";
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COACH WORKOUT BUILDER
+// ─────────────────────────────────────────────────────────────────────────────
+const PATTERNS = ['power','strength_lower','hinge','speed','core'];
+const PATTERN_LABELS = {power:'⚡ Power',strength_lower:'🏋️ Strength',hinge:'🔄 Hinge',speed:'💨 Speed',core:'🎯 Core'};
+const DAY_TYPES = ['power','build','recovery','speed','conditioning'];
+
+function getBuilderDraft(){
+  return STATE.ui.builderDraft || {
+    title:'',sport:'basketball',day_type:'power',notes:'',recovery_cue:'',
+    exercises:[],assignTo:[],assignDate:todayStr(),saveAsTemplate:false,templateName:''
+  };
+}
+
+function builderView(state){
+  if(!isCoach())return'';
+  const draft=getBuilderDraft();
+  const SPORTS=['basketball','football','soccer','baseball','volleyball','track'];
+  const team=state.team;
+
+  // Step indicators
+  const steps=['Build','Configure','Assign'];
+  const stepDots=steps.map((s,i)=>{
+    const active=state.ui.builderStep===i+1;
+    const done=state.ui.builderStep>i+1;
+    return `<div style="display:flex;align-items:center;gap:6px">
+      <div style="width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;background:${done?'#34d399':active?'var(--accent)':'rgba(255,255,255,.08)'};color:${done||active?'#05111e':'var(--muted)'}">${done?'✓':i+1}</div>
+      <span style="font-size:12px;font-weight:600;color:${active?'var(--text)':'var(--muted)'}">${s}</span>
+    </div>`;
+  }).join('<div style="flex:1;height:1px;background:var(--line);margin:0 4px"></div>');
+
+  if(state.ui.builderStep===1) return builderStep1(draft,stepDots,SPORTS);
+  if(state.ui.builderStep===2) return builderStep2(draft,stepDots);
+  if(state.ui.builderStep===3) return builderStep3(draft,stepDots,state);
+  return '';
+}
+
+function builderStep1(draft,stepDots,SPORTS){
+  const libBySport=EXERCISES.filter(x=>x.sport===draft.sport);
+  const byPattern={};
+  PATTERNS.forEach(p=>{byPattern[p]=libBySport.filter(x=>x.pattern===p);});
+  const selectedIds=(draft.exercises||[]).map(e=>e.id);
+
+  const patternSections=PATTERNS.map(p=>{
+    if(!byPattern[p].length)return'';
+    const items=byPattern[p].map(ex=>{
+      const sel=selectedIds.includes(ex.id);
+      return `<div class="ex-picker-item${sel?' selected':''}" data-pick-ex="${ex.id}">
+        <div style="font-weight:700;font-size:13px">${ex.title}</div>
+        <div class="muted" style="font-size:11px;margin-top:2px">${ex.equipment}</div>
+        ${sel?'<div style="font-size:10px;color:var(--accent);margin-top:4px;font-weight:700">✓ Added</div>':''}
+      </div>`;
+    }).join('');
+    return `<div class="section">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">${PATTERN_LABELS[p]}</div>
+      <div class="ex-picker-grid">${items}</div>
+    </div>`;
+  }).join('');
+
+  const selectedCards=(draft.exercises||[]).map((ex,idx)=>{
+    const meta=getExercise(ex.id);
+    return `<div class="builder-exercise" draggable="true" data-drag-idx="${idx}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="drag-handle">⠿</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:14px">${meta?.title||ex.id}</div>
+          <div class="muted" style="font-size:12px">${PATTERN_LABELS[meta?.pattern]||meta?.pattern} · ${meta?.equipment}</div>
+        </div>
+        <button class="secondary sm" data-remove-ex="${idx}" style="flex-shrink:0;color:var(--red);border-color:rgba(248,113,113,.25)">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="screen">
+    <div class="topbar"><div><div class="muted">Builder</div><div class="title-xl">New Workout</div></div></div>
+    <div class="row section" style="gap:8px">${stepDots}</div>
+
+    <div class="card section">
+      <div class="title-md" style="margin-bottom:12px">Workout Details</div>
+      <div class="list" style="gap:10px">
+        <label class="input-row"><span style="font-weight:500;min-width:80px">Title</span><input id="b-title" type="text" value="${draft.title||''}" placeholder="e.g. Monday Power Block" style="text-align:right;border:none;background:transparent;padding:4px 0"/></label>
+        <label class="input-row"><span style="font-weight:500;min-width:80px">Sport</span><select id="b-sport" class="select-input">${['basketball','football','soccer','baseball','volleyball','track'].map(s=>`<option value="${s}"${draft.sport===s?' selected':''}>${s[0].toUpperCase()+s.slice(1)}</option>`).join('')}</select></label>
+        <label class="input-row"><span style="font-weight:500;min-width:80px">Type</span><select id="b-daytype" class="select-input">${DAY_TYPES.map(t=>`<option value="${t}"${draft.day_type===t?' selected':''}>${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}</select></label>
+        <label class="input-row"><span style="font-weight:500;min-width:80px">Notes</span><input id="b-notes" type="text" value="${draft.notes||''}" placeholder="Session focus…" style="text-align:right;border:none;background:transparent;padding:4px 0"/></label>
+        <label class="input-row"><span style="font-weight:500;min-width:80px">Cue</span><input id="b-cue" type="text" value="${draft.recovery_cue||''}" placeholder="Recovery intent…" style="text-align:right;border:none;background:transparent;padding:4px 0"/></label>
+      </div>
+    </div>
+
+    ${selectedIds.length?
+      `<div class="card section">
+        <div class="space" style="margin-bottom:10px">
+          <div class="title-md">Selected Exercises</div>
+          <span class="muted small">${selectedIds.length} added · drag to reorder</span>
+        </div>
+        ${selectedCards}
+      </div>`:''}
+
+    <div class="card section">
+      <div class="space" style="margin-bottom:12px">
+        <div class="title-md">Exercise Library</div>
+        <select id="b-sport-filter" class="select-input" data-action="builder-filter-sport">
+          ${SPORTS.map(s=>`<option value="${s}"${draft.sport===s?' selected':''}>${s[0].toUpperCase()+s.slice(1)}</option>`).join('')}
+        </select>
+      </div>
+      ${patternSections}
+    </div>
+
+    <div style="height:80px"></div>
+    <div style="position:fixed;bottom:calc(var(--nav-h) + max(env(safe-area-inset-bottom,8px),8px) + 10px);left:12px;right:12px;z-index:75">
+      <button style="width:100%;border-radius:18px" data-action="builder-next-1" ${selectedIds.length?'':'disabled'}>Configure Sets & Reps →</button>
+    </div>
+  </div>`;
+}
+
+function builderStep2(draft,stepDots){
+  const exCards=(draft.exercises||[]).map((ex,idx)=>{
+    const meta=getExercise(ex.id);
+    const sets=ex.sets||[{reps:'5',weight:'',rest:'60'}];
+    const setRows=sets.map((s,si)=>`
+      <div class="set-config-row">
+        <div style="text-align:center">
+          <div class="muted" style="font-size:10px;margin-bottom:3px">SET ${si+1}</div>
+        </div>
+        <input class="mini-input" type="text" placeholder="Reps/Target" value="${s.reps||s.target||''}" data-ex-idx="${idx}" data-set-idx="${si}" data-field="reps"/>
+        <input class="mini-input" type="text" placeholder="Load/Notes" value="${s.weight||''}" data-ex-idx="${idx}" data-set-idx="${si}" data-field="weight"/>
+        <button class="secondary sm" data-remove-set="${idx}-${si}" style="font-size:16px;padding:4px 8px;color:var(--red);border-color:rgba(248,113,113,.2)">−</button>
+      </div>`).join('');
+    return `<div class="card section">
+      <div class="space" style="margin-bottom:10px">
+        <div>
+          <div style="font-weight:700;font-size:15px">${meta?.title||ex.id}</div>
+          <div class="muted small">${PATTERN_LABELS[meta?.pattern]||meta?.pattern} · ${meta?.equipment}</div>
+        </div>
+        <div class="row" style="gap:6px">
+          <label class="muted small" style="display:flex;align-items:center;gap:4px">
+            Rest <input class="mini-input" type="number" placeholder="sec" value="${ex.rest_sec||60}" data-ex-idx="${idx}" data-field="rest_sec" style="width:60px"/>s
+          </label>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid var(--line2)">
+        <div class="muted" style="font-size:11px;font-weight:700;text-align:center">Set</div>
+        <div class="muted" style="font-size:11px;font-weight:700;text-align:center">Reps / Target</div>
+        <div class="muted" style="font-size:11px;font-weight:700;text-align:center">Load / Notes</div>
+        <div></div>
+      </div>
+      ${setRows}
+      <button class="secondary sm" data-add-set="${idx}" style="margin-top:10px;width:100%">+ Add Set</button>
+    </div>`;
+  }).join('');
+
+  return `<div class="screen">
+    <div class="topbar"><div><div class="muted">Builder</div><div class="title-xl">Configure Sets</div></div></div>
+    <div class="row section" style="gap:8px">${stepDots}</div>
+    ${exCards}
+    <div style="height:80px"></div>
+    <div style="position:fixed;bottom:calc(var(--nav-h) + max(env(safe-area-inset-bottom,8px),8px) + 10px);left:12px;right:12px;z-index:75;display:flex;gap:10px">
+      <button class="secondary" style="border-radius:18px;flex-shrink:0" data-action="builder-back-2">← Back</button>
+      <button style="flex:1;border-radius:18px" data-action="builder-next-2">Assign Workout →</button>
+    </div>
+  </div>`;
+}
+
+function builderStep3(draft,stepDots,state){
+  const team=state.team;
+  const members=state.ui.teamMembers||[];
+
+  const athleteChips=members.length
+    ? members.map(m=>{
+        const p=m.profiles;if(!p)return'';
+        const sel=(draft.assignTo||[]).includes(p.id);
+        return `<span class="athlete-chip${sel?' selected':''}" data-assign-athlete="${p.id}">${sel?'✓ ':''}${p.name||'Athlete'}${p.position?` · ${p.position}":''}</span>`;
+      }).join('')
+    : `<div class="muted" style="font-size:13px;padding:12px 0">No team members found. Add athletes to your team first.</div>`;
+
+  const allSelected=members.length>0&&members.every(m=>m.profiles&&(draft.assignTo||[]).includes(m.profiles.id));
+
+  return `<div class="screen">
+    <div class="topbar"><div><div class="muted">Builder</div><div class="title-xl">Assign & Save</div></div></div>
+    <div class="row section" style="gap:8px">${stepDots}</div>
+
+    <div class="card section">
+      <div class="title-md" style="margin-bottom:6px">Workout Summary</div>
+      <div class="muted" style="font-size:13px;margin-bottom:10px">${draft.title||'Untitled'} · ${draft.day_type} · ${(draft.exercises||[]).length} exercises · ${(draft.exercises||[]).reduce((s,e)=>s+(e.sets||[]).length,0)} sets</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        ${(draft.exercises||[]).map(e=>{const m=getExercise(e.id);return `<span class="pill" style="font-size:11px">${m?.title||e.id}</span>`;}).join('')}
+      </div>
+    </div>
+
+    <div class="card section">
+      <div class="space" style="margin-bottom:12px">
+        <div class="title-md">Assign To</div>
+        <button class="secondary sm" data-action="assign-all">${allSelected?'Deselect All':'Select All'}</button>
+      </div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${athleteChips}</div>
+
+      <label class="input-row" style="margin-top:14px">
+        <span style="font-weight:500">Schedule Date</span>
+        <input id="b-date" type="date" value="${draft.assignDate||todayStr()}" class="select-input"/>
+      </label>
+    </div>
+
+    <div class="card section">
+      <div class="space" style="margin-bottom:12px">
+        <div class="title-md">Save as Template</div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="b-save-template" ${draft.saveAsTemplate?'checked':''} style="width:auto"/>
+          <span class="muted small">Save for reuse</span>
+        </label>
+      </div>
+      ${draft.saveAsTemplate?`<input id="b-template-name" type="text" placeholder="Template name…" value="${draft.templateName||draft.title||''}" style="margin-top:8px"/>`:''}
+    </div>
+
+    <div style="height:80px"></div>
+    <div style="position:fixed;bottom:calc(var(--nav-h) + max(env(safe-area-inset-bottom,8px),8px) + 10px);left:12px;right:12px;z-index:75;display:flex;gap:10px">
+      <button class="secondary" style="border-radius:18px;flex-shrink:0" data-action="builder-back-3">← Back</button>
+      <button style="flex:1;border-radius:18px;background:#34d399;color:#052a1c" data-action="builder-assign" ${(draft.assignTo||[]).length?'':'disabled'}>🚀 Assign Workout</button>
+    </div>
+  </div>`;
+}
+
+// Template picker sheet
+function templatePickerSheet(state){
+  if(!state.ui.templatePickerOpen)return'';
+  const templates=state.ui.savedTemplates||[];
+  const items=templates.length
+    ? templates.map(t=>`<div class="template-item" data-load-template="${t.id}">
+        <div class="space">
+          <div>
+            <div style="font-weight:700;font-size:15px">${t.title}</div>
+            <div class="muted small">${t.sport} · ${t.day_type} · ${(t.exercises||[]).length} exercises</div>
+          </div>
+          <button class="sm" data-load-template="${t.id}">Load</button>
+        </div>
+      </div>`).join('')
+    : `<div class="muted" style="text-align:center;padding:24px;font-size:13px">No saved templates yet. Build and save a workout to see it here.</div>`;
+
+  return `<div class="sheet-backdrop" data-action="close-template-picker"><div class="sheet" onclick="event.stopPropagation()">
+    <div class="handle"></div>
+    <div class="space" style="margin-bottom:14px">
+      <div><div class="title-lg">Saved Templates</div><div class="muted" style="font-size:13px">${templates.length} templates</div></div>
+      <button class="secondary sm" data-action="close-template-picker">✕</button>
+    </div>
+    <div class="list">${items}</div>
+  </div></div>`;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDER ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1104,7 +1376,7 @@ function teamNavBtn(key,icon,label){const active=STATE.ui.teamTab===key;const is
 function nowBar(){if(STATE.ui.tab!=="session"||isCoach()||!STATE.workout)return"";return`<div class="now-bar"><div><strong style="font-size:14px">${STATE.workout.title}</strong><div class="muted small">Active session</div></div><button class="sm" data-action="end-session" style="background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3)">Finish</button></div>`;}
 
 function bottomNav(){
-  if(isCoach())return`<nav class="bottom-nav">${teamNavBtn("team-home","🏠","Home")}${teamNavBtn("schedule","📅","Schedule")}${teamNavBtn("roster","👥","Roster")}${teamNavBtn("intelligence","🧠","Intel")}</nav>`;
+  if(isCoach())return`<nav class="bottom-nav" style="grid-template-columns:repeat(5,1fr)">${teamNavBtn("team-home","🏠","Home")}${teamNavBtn("schedule","📅","Schedule")}${teamNavBtn("roster","👥","Roster")}${teamNavBtn("builder","🛠️","Builder")}${teamNavBtn("intelligence","🧠","Intel")}</nav>`;
   return`<nav class="bottom-nav">${navBtn("today","🏠","Today")}${navBtn("session","🏋️","Train")}${navBtn("progress","📈","Progress")}${navBtn("profile","👤","Profile")}</nav>`;
 }
 
@@ -1116,7 +1388,7 @@ function renderScreen(){
     switch(STATE.ui.teamTab){
       case"schedule":return teamScheduleView(STATE);
       case"roster":return rosterView(STATE);
-      case"intelligence":return coachIntelView(STATE);
+      case"intelligence":return coachIntelView(STATE);case"builder":return builderView(STATE);
       default:return teamHomeView(STATE);
     }
   }
@@ -1137,7 +1409,7 @@ function render(){
     const toast=STATE.ui.toast?`<div class="toast toast-${STATE.ui.toast.type}">${STATE.ui.toast.msg}</div>`:"";
     app.innerHTML=
       `<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>`+
-      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+toast;
+      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+templatePickerSheet(STATE)+toast;
     bindUI();
     requestAnimationFrame(()=>window.scrollTo(0,_scrollY));
   }catch(e){
@@ -1234,6 +1506,246 @@ function bindUI(){
   });
   on("[data-action='save-profile']",async()=>{const n=document.getElementById("p-name")?.value;const s=document.getElementById("p-sport")?.value;const pos=document.getElementById("p-position")?.value;const g=document.getElementById("p-goal")?.value;STATE.profile=solo.saveProfile({...STATE.profile,name:n||STATE.profile.name,sport:s||STATE.profile.sport,position:pos||STATE.profile.position,goal:g||STATE.profile.goal});refreshIntelReport();setToast("Profile saved.","success");render();});
   on("[data-action='reset-solo']",()=>{if(!confirm("Clear ALL local data? This cannot be undone."))return;solo.clearAll();STATE.profile=null;STATE.workout=null;STATE.readiness=null;STATE.prs=[];STATE.readinessTrend=[];STATE.recentWorkouts=[];STATE.intelReport=null;STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};render();});
+
+  // ── Builder bindings ─────────────────────────────────────────────────────
+  // Open builder tab — init draft
+  const builderNavEl=document.querySelector("[data-team-nav='builder']");
+  if(builderNavEl){
+    builderNavEl.addEventListener('click',()=>{
+      if(!STATE.ui.builderDraft)STATE.ui.builderDraft=null; // reset handled by getBuilderDraft
+      // Load templates
+      loadTemplates();
+    });
+  }
+
+  // Exercise picker — toggle selection
+  document.querySelectorAll('[data-pick-ex]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const draft=getBuilderDraft();
+      STATE.ui.builderDraft=draft;
+      const id=btn.dataset.pickEx;
+      const idx=draft.exercises.findIndex(e=>e.id===id);
+      if(idx>=0){draft.exercises.splice(idx,1);}
+      else{draft.exercises.push({id,sets:[{reps:'5',weight:'',target:'5 reps',done:false}],rest_sec:60});}
+      // Sync title/sport from form
+      const t=document.getElementById('b-title');if(t)draft.title=t.value;
+      const s=document.getElementById('b-sport');if(s)draft.sport=s.value;
+      const dt=document.getElementById('b-daytype');if(dt)draft.day_type=dt.value;
+      render();
+    });
+  });
+
+  // Sport filter change
+  const sportFilter=document.getElementById('b-sport-filter');
+  if(sportFilter){
+    sportFilter.addEventListener('change',()=>{
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      draft.sport=sportFilter.value;draft.exercises=[];render();
+    });
+  }
+
+  // Remove exercise from builder
+  document.querySelectorAll('[data-remove-ex]').forEach(btn=>{
+    btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      draft.exercises.splice(Number(btn.dataset.removeEx),1);render();
+    });
+  });
+
+  // Drag-to-reorder
+  let dragSrcIdx=null;
+  document.querySelectorAll('[data-drag-idx]').forEach(el=>{
+    el.addEventListener('dragstart',()=>{dragSrcIdx=Number(el.dataset.dragIdx);el.classList.add('dragging');});
+    el.addEventListener('dragend',()=>{el.classList.remove('dragging');document.querySelectorAll('.builder-exercise').forEach(e=>e.classList.remove('drag-over'));});
+    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
+    el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
+    el.addEventListener('drop',e=>{
+      e.preventDefault();el.classList.remove('drag-over');
+      const targetIdx=Number(el.dataset.dragIdx);
+      if(dragSrcIdx===null||dragSrcIdx===targetIdx)return;
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      const moved=draft.exercises.splice(dragSrcIdx,1)[0];
+      draft.exercises.splice(targetIdx,0,moved);
+      dragSrcIdx=null;render();
+    });
+  });
+
+  // Next: step 1 → 2
+  document.querySelector("[data-action='builder-next-1']")?.addEventListener('click',()=>{
+    const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+    const t=document.getElementById('b-title');if(t)draft.title=t.value;
+    const s=document.getElementById('b-sport');if(s)draft.sport=s.value;
+    const dt=document.getElementById('b-daytype');if(dt)draft.day_type=dt.value;
+    const n=document.getElementById('b-notes');if(n)draft.notes=n.value;
+    const c=document.getElementById('b-cue');if(c)draft.recovery_cue=c.value;
+    if(!draft.exercises.length){setToast('Add at least one exercise.','error');return;}
+    if(!draft.title.trim()){setToast('Give the workout a title.','error');return;}
+    // Init sets if needed
+    draft.exercises=draft.exercises.map(ex=>({...ex,sets:ex.sets&&ex.sets.length?ex.sets:[{reps:'5',weight:'',target:'5 reps',done:false}]}));
+    STATE.ui.builderStep=2;render();
+  });
+
+  // Back: step 2 → 1
+  document.querySelector("[data-action='builder-back-2']")?.addEventListener('click',()=>{STATE.ui.builderStep=1;render();});
+
+  // Set config changes
+  document.querySelectorAll('[data-ex-idx][data-set-idx]').forEach(inp=>{
+    inp.addEventListener('input',()=>{
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      const ei=Number(inp.dataset.exIdx),si=Number(inp.dataset.setIdx),field=inp.dataset.field;
+      if(!draft.exercises[ei])return;
+      if(!draft.exercises[ei].sets[si])return;
+      draft.exercises[ei].sets[si][field]=inp.value;
+      if(field==='reps')draft.exercises[ei].sets[si].target=inp.value;
+    });
+  });
+
+  // Rest sec change
+  document.querySelectorAll('[data-ex-idx][data-field="rest_sec"]').forEach(inp=>{
+    inp.addEventListener('input',()=>{
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      const ei=Number(inp.dataset.exIdx);
+      if(draft.exercises[ei])draft.exercises[ei].rest_sec=Number(inp.value)||60;
+    });
+  });
+
+  // Add set
+  document.querySelectorAll('[data-add-set]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      const ei=Number(btn.dataset.addSet);
+      if(!draft.exercises[ei])return;
+      const last=draft.exercises[ei].sets.slice(-1)[0];
+      draft.exercises[ei].sets.push({...(last||{}),reps:last?.reps||'5',weight:last?.weight||'',target:last?.reps||'5 reps',done:false});
+      render();
+    });
+  });
+
+  // Remove set
+  document.querySelectorAll('[data-remove-set]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      const[ei,si]=btn.dataset.removeSet.split('-').map(Number);
+      if(!draft.exercises[ei]||draft.exercises[ei].sets.length<=1)return;
+      draft.exercises[ei].sets.splice(si,1);render();
+    });
+  });
+
+  // Next: step 2 → 3
+  document.querySelector("[data-action='builder-next-2']")?.addEventListener('click',async()=>{
+    const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+    STATE.ui.builderStep=3;
+    // Load team members
+    if(!STATE.ui.teamMembers&&STATE.team&&!isSolo()){
+      try{STATE.ui.teamMembers=await DB.getTeamMembers(STATE.team.id);}catch{STATE.ui.teamMembers=[];}
+    }
+    render();
+  });
+
+  // Back: step 3 → 2
+  document.querySelector("[data-action='builder-back-3']")?.addEventListener('click',()=>{STATE.ui.builderStep=2;render();});
+
+  // Athlete chip toggle
+  document.querySelectorAll('[data-assign-athlete]').forEach(chip=>{
+    chip.addEventListener('click',()=>{
+      const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+      const id=chip.dataset.assignAthlete;
+      const idx=(draft.assignTo||[]).indexOf(id);
+      if(idx>=0)draft.assignTo.splice(idx,1);else draft.assignTo.push(id);
+      render();
+    });
+  });
+
+  // Select all athletes
+  document.querySelector("[data-action='assign-all']")?.addEventListener('click',()=>{
+    const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+    const members=STATE.ui.teamMembers||[];
+    const allIds=members.map(m=>m.profiles?.id).filter(Boolean);
+    const allSelected=allIds.every(id=>(draft.assignTo||[]).includes(id));
+    draft.assignTo=allSelected?[]:allIds;
+    render();
+  });
+
+  // Save template toggle
+  document.getElementById('b-save-template')?.addEventListener('change',e=>{
+    const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+    draft.saveAsTemplate=e.target.checked;render();
+  });
+  document.getElementById('b-template-name')?.addEventListener('input',e=>{
+    const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+    draft.templateName=e.target.value;
+  });
+
+  // Date change
+  document.getElementById('b-date')?.addEventListener('change',e=>{
+    const draft=getBuilderDraft();STATE.ui.builderDraft=draft;
+    draft.assignDate=e.target.value;
+  });
+
+  // Assign workout
+  document.querySelector("[data-action='builder-assign']")?.addEventListener('click',async()=>{
+    const draft=getBuilderDraft();
+    const btn=document.querySelector("[data-action='builder-assign']");
+    if(btn){btn.disabled=true;btn.textContent='Assigning...';}
+
+    try{
+      // Normalise exercises for storage
+      const exercises=draft.exercises.map(ex=>({
+        id:ex.id,
+        rest_sec:ex.rest_sec||60,
+        sets:(ex.sets||[]).map(s=>({target:s.reps||s.target||'5 reps',weight:s.weight||'',done:false}))
+      }));
+
+      const payload={
+        title:draft.title,sport:draft.sport,day_type:draft.day_type,
+        notes:draft.notes,recovery_cue:draft.recovery_cue,
+        exercises,scheduled_date:draft.assignDate,
+        created_at:new Date().toISOString(),completed_at:null,
+      };
+
+      // Save template if requested
+      if(draft.saveAsTemplate){
+        const tplPayload={...payload,title:draft.templateName||draft.title,created_by:STATE.session?.user.id||'solo'};
+        if(isSolo())solo.saveTemplate(tplPayload);
+        else try{await DB.saveTemplate(tplPayload);}catch(e){solo.saveTemplate(tplPayload);}
+      }
+
+      // Assign to each athlete
+      let assigned=0;
+      for(const athleteId of (draft.assignTo||[])){
+        if(isSolo()){solo.createWorkout({...payload,athlete_id:'solo'});assigned++;}
+        else{try{await DB.assignWorkout({...payload,athlete_id:athleteId,assigned_by:STATE.session?.user.id});assigned++;}catch(e){console.warn('assign err:',e);}}
+      }
+
+      setToast('Assigned to '+assigned+' athlete'+(assigned!==1?'s':'')+'. 🚀','success');
+      STATE.ui.builderDraft=null;STATE.ui.builderStep=1;STATE.ui.teamTab='team-home';
+      await loadTemplates();
+      render();
+    }catch(e){
+      setToast('Assignment failed: '+e.message,'error');
+      if(btn){btn.disabled=false;btn.textContent='🚀 Assign Workout';}
+    }
+  });
+
+  // Template picker
+  document.querySelector("[data-action='close-template-picker']")?.addEventListener('click',()=>{STATE.ui.templatePickerOpen=false;render();});
+  document.querySelectorAll('[data-load-template]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const tplId=btn.dataset.loadTemplate;
+      const tpl=(STATE.ui.savedTemplates||[]).find(t=>String(t.id)===String(tplId));
+      if(!tpl)return;
+      STATE.ui.builderDraft={
+        title:tpl.title,sport:tpl.sport,day_type:tpl.day_type,
+        notes:tpl.notes||'',recovery_cue:tpl.recovery_cue||'',
+        exercises:(tpl.exercises||[]).map(e=>({...e,sets:(e.sets||[]).map(s=>({...s,done:false}))})),
+        assignTo:[],assignDate:todayStr(),saveAsTemplate:false,templateName:''
+      };
+      STATE.ui.templatePickerOpen=false;STATE.ui.builderStep=1;STATE.ui.teamTab='builder';
+      render();
+    });
+  });
+
   document.getElementById('btn-confirm-migrate')?.addEventListener('click',async()=>{
     const userId=STATE.session?.user.id;if(!userId)return;
     const btn=document.getElementById('btn-confirm-migrate');
@@ -1249,6 +1761,10 @@ function bindUI(){
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA LOADING
 // ─────────────────────────────────────────────────────────────────────────────
+async function loadTemplates(){
+  if(isSolo()){STATE.ui.savedTemplates=solo.getTemplates();}
+  else if(STATE.session){try{STATE.ui.savedTemplates=await DB.getTemplates(STATE.session.user.id);}catch{STATE.ui.savedTemplates=[];}}
+}
 async function loadCloudData(userId){
   STATE.syncStatus='syncing';render();
   try{
@@ -1256,7 +1772,10 @@ async function loadCloudData(userId){
     STATE.profile=profile;STATE.readiness=readiness;STATE.readinessTrend=readinessTrend;STATE.workout=workout;STATE.recentWorkouts=recentWorkouts;STATE.prs=prs;
     if(!STATE.profile){STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};}
     STATE.team=profile?.role==='coach'?await DB.getCoachTeam(userId):await DB.getAthleteTeam(userId);
-    STATE.teamReadiness=[];STATE.syncStatus='synced';refreshIntelReport();
+    STATE.teamReadiness=[];
+  // Load team members for builder
+  if(STATE.team){try{const members=await DB.getTeamMembers(STATE.team.id);STATE.ui.teamMembers=members;}catch{STATE.ui.teamMembers=[];}}
+  STATE.syncStatus='synced';refreshIntelReport();
   }catch(e){console.error('Cloud load:',e);STATE.syncStatus='offline';STATE.ui.error='Sync error.';}
 }
 function syncBar(){
@@ -1312,6 +1831,7 @@ async function boot(){
     loadSoloData();
     if(!STATE.profile){STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};}
   }
+  await loadTemplates();
   refreshIntelReport();
   sb.auth.onAuthStateChange(async(event,session)=>{
     if(event==='SIGNED_IN'&&session&&STATE.mode==='solo'){
