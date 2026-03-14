@@ -141,6 +141,12 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .template-item{padding:12px 14px;border-radius:14px;background:var(--surface2);border:1px solid var(--line);cursor:pointer;transition:all .15s}
 .template-item:hover{border-color:rgba(83,181,255,.3);background:rgba(83,181,255,.05)}
 .tag{display:inline-flex;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+
+/* PWA / Offline */
+.offline-banner{position:fixed;top:0;left:0;right:0;z-index:200;padding:10px 16px;background:rgba(251,191,36,.12);border-bottom:1px solid rgba(251,191,36,.3);display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:#fbbf24;animation:slide-down .25s ease}
+.notify-prompt{padding:14px 16px;border-radius:16px;background:rgba(83,181,255,.07);border:1px solid rgba(83,181,255,.2);font-size:13px;margin-top:14px}
+.install-prompt{padding:14px 16px;border-radius:16px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.2);font-size:13px;margin-top:14px}
+@keyframes slide-down{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes slide-up{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -158,9 +164,13 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 <body>
 <div id="app"></div>
 <script>
-// Unregister stale service workers
+// Register service worker (replaces any stale registration)
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); });
+  // Unregister old stale SWs first, then register new one
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    const stale = regs.filter(r => !r.active?.scriptURL?.includes('sw.js'));
+    return Promise.all(stale.map(r => r.unregister()));
+  });
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // SUPABASE CLIENT
@@ -493,6 +503,9 @@ const solo={
   getRecentWorkouts(days=30){const all=lsGet(PIQ.workouts,[]);const since=new Date(Date.now()-days*86400000).toISOString().split("T")[0];return all.filter(w=>w.scheduled_date>=since).sort((a,b)=>b.scheduled_date.localeCompare(a.scheduled_date));},
   getTemplates:()=>lsGet('piq_templates',[]),
   saveTemplate(t){const all=lsGet('piq_templates',[]);all.unshift({...t,id:'tpl_'+Date.now(),created_at:new Date().toISOString()});lsSet('piq_templates',all);return all[0];},
+  getOfflineQueue:()=>lsGet('piq_offline_queue',[]),
+  addToQueue(op){const q=lsGet('piq_offline_queue',[]);q.push({...op,queuedAt:new Date().toISOString()});lsSet('piq_offline_queue',q);},
+  clearQueue(){lsSet('piq_offline_queue',[]);},
   getAllReadiness:()=>lsGet(PIQ.readiness,[]),getAllWorkouts:()=>lsGet(PIQ.workouts,[]),getAllPRs:()=>lsGet(PIQ.prs,[]),getPRs(){return lsGet(PIQ.prs,[]).sort((a,b)=>b.set_at?.localeCompare(a.set_at??"")??0);},
   clearAll(){Object.values(PIQ).forEach(k=>localStorage.removeItem(k));},
 };
@@ -504,7 +517,7 @@ const STATE={
   session:null,profile:null,mode:"solo",syncStatus:"offline",
   workout:null,readiness:null,prs:[],readinessTrend:[],recentWorkouts:[],team:null,teamReadiness:[],
   intelReport:null,
-  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,builderOpen:false,builderStep:1,builderDraft:null,templatePickerOpen:false,assignSheetOpen:false,savedTemplates:[],onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
+  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,builderOpen:false,builderStep:1,builderDraft:null,templatePickerOpen:false,assignSheetOpen:false,savedTemplates:[],isOnline:true,offlineQueue:[],swRegistered:false,notifyPermission:'default',onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
 };
 function setToast(msg,type="success"){STATE.ui.toast={msg,type};setTimeout(()=>{STATE.ui.toast=null;render();},3200);}
 function isCoach(){return STATE.profile?.role==="coach";}
@@ -997,7 +1010,7 @@ function profileView(state){
       <div class="title-md" style="margin-bottom:12px">Account</div>
       ${isSoloMode?`<div class="banner" style="margin-bottom:14px;font-size:13px"><strong>Solo Mode</strong> — data stored on this device only.</div><button class="secondary" style="width:100%;margin-bottom:8px" data-action="sign-in-prompt">Create Account / Sign In</button>`:`<button class="secondary sm" style="margin-top:4px;width:100%" data-action="sign-out">Sign Out</button>`}
     </div>
-    ${isSoloMode?`<div class="card section" style="border-color:rgba(248,113,113,.2)"><div class="title-md" style="margin-bottom:8px;color:#f87171">Reset Data</div><div class="muted" style="font-size:13px;margin-bottom:12px">Clears all workouts, readiness logs, and PRs on this device.</div><button class="secondary sm" style="border-color:rgba(248,113,113,.3);color:#f87171" data-action="reset-solo">Clear All Local Data</button></div>`:""}
+    ${notifyPromptCard()}${installPromptCard()}${isSoloMode?`<div class="card section" style="border-color:rgba(248,113,113,.2)"><div class="title-md" style="margin-bottom:8px;color:#f87171">Reset Data</div><div class="muted" style="font-size:13px;margin-bottom:12px">Clears all workouts, readiness logs, and PRs on this device.</div><button class="secondary sm" style="border-color:rgba(248,113,113,.3);color:#f87171" data-action="reset-solo">Clear All Local Data</button></div>`:""}
   </div>`;
 }
 
@@ -1356,6 +1369,212 @@ function templatePickerSheet(state){
     <div class="list">${items}</div>
   </div></div>`;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PWA ENGINE — Service Worker, Push, Offline, Install
+// ─────────────────────────────────────────────────────────────────────────────
+const PWA = {
+  // ── Service Worker Registration ──────────────────────────────────────────
+  async registerSW() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
+      STATE.ui.swRegistered = true;
+      console.log('[PIQ] SW registered:', reg.scope);
+      // Listen for messages from SW (e.g. sync requested)
+      navigator.serviceWorker.addEventListener('message', e => {
+        if (e.data?.type === 'SYNC_REQUESTED') PWA.flushOfflineQueue();
+      });
+    } catch (e) {
+      console.warn('[PIQ] SW registration failed:', e);
+    }
+  },
+
+  // ── Push Notification Permission ─────────────────────────────────────────
+  async requestNotifyPermission() {
+    if (!('Notification' in window)) return 'unsupported';
+    if (Notification.permission === 'granted') return 'granted';
+    const result = await Notification.requestPermission();
+    STATE.ui.notifyPermission = result;
+    render();
+    return result;
+  },
+
+  getNotifyPermission() {
+    if (!('Notification' in window)) return 'unsupported';
+    return Notification.permission;
+  },
+
+  // ── Show local notification (no server push needed) ──────────────────────
+  async notify(title, body, tag = 'piq', url = './') {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body, tag, icon: './icon-192.png', badge: './icon-192.png',
+        vibrate: [200, 100, 200],
+        data: { url }
+      });
+    } catch {
+      // Fallback to basic Notification API
+      try { new Notification(title, { body, tag, icon: './icon-192.png' }); } catch {}
+    }
+  },
+
+  // ── Schedule daily readiness reminder ────────────────────────────────────
+  scheduleDailyReminder() {
+    if (Notification.permission !== 'granted') return;
+    // Use localStorage to track last scheduled
+    const key = 'piq_reminder_scheduled';
+    const today = todayStr();
+    if (lsGet(key) === today) return; // already scheduled today
+    lsSet(key, today);
+    // Schedule for 8am — calculate ms until then
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(8, 0, 0, 0);
+    if (target <= now) target.setDate(target.getDate() + 1); // tomorrow
+    const ms = target - now;
+    setTimeout(() => {
+      // Only fire if no check-in today
+      const todaysReadiness = solo.getTodaysReadiness();
+      if (!todaysReadiness) {
+        PWA.notify(
+          'PerformanceIQ — Daily Check-in',
+          'Log your readiness to get your training recommendation.',
+          'piq-checkin', './'
+        );
+      }
+    }, ms);
+    console.log('[PIQ] Reminder scheduled in', Math.round(ms/60000), 'min');
+  },
+
+  // ── Notify: coach assigned workout ───────────────────────────────────────
+  notifyWorkoutAssigned(workoutTitle, coachName = 'Your coach') {
+    PWA.notify(
+      'New Workout Assigned',
+      coachName + ' assigned: ' + workoutTitle,
+      'piq-workout', './'
+    );
+  },
+
+  // ── Notify: session complete ──────────────────────────────────────────────
+  notifySessionComplete(workoutTitle) {
+    PWA.notify(
+      'Session Complete 🎯',
+      workoutTitle + ' — great work today.',
+      'piq-complete', './'
+    );
+  },
+
+  // ── Notify: high risk alert ───────────────────────────────────────────────
+  notifyHighRisk(riskLevel) {
+    if (riskLevel !== 'High') return;
+    PWA.notify(
+      'High Injury Risk Detected ⚠️',
+      'Your readiness signals suggest reducing training intensity today.',
+      'piq-risk', './'
+    );
+  },
+
+  // ── Online/Offline detection ─────────────────────────────────────────────
+  initNetworkDetection() {
+    const update = () => {
+      const wasOffline = !STATE.ui.isOnline;
+      STATE.ui.isOnline = navigator.onLine;
+      if (wasOffline && STATE.ui.isOnline) {
+        // Just came back online — flush queue
+        setToast('Back online — syncing...', 'success');
+        PWA.flushOfflineQueue();
+      }
+      render();
+    };
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    STATE.ui.isOnline = navigator.onLine;
+  },
+
+  // ── Offline queue flush ───────────────────────────────────────────────────
+  async flushOfflineQueue() {
+    if (isSolo() || !STATE.session) return;
+    const queue = solo.getOfflineQueue();
+    if (!queue.length) return;
+    let flushed = 0;
+    for (const op of queue) {
+      try {
+        if (op.type === 'upsert_readiness') {
+          await DB.upsertReadiness(op.data);
+        } else if (op.type === 'create_workout') {
+          await DB.createWorkout(op.data);
+        } else if (op.type === 'update_workout') {
+          await DB.updateWorkout(op.data.id, op.data.updates);
+        } else if (op.type === 'upsert_profile') {
+          await DB.upsertProfile(op.data);
+        }
+        flushed++;
+      } catch (e) {
+        console.warn('[PIQ] Queue flush error:', op.type, e);
+      }
+    }
+    if (flushed > 0) {
+      solo.clearQueue();
+      setToast(flushed + ' offline change' + (flushed !== 1 ? 's' : '') + ' synced.', 'success');
+      await loadCloudData(STATE.session.user.id);
+      render();
+    }
+  },
+
+  // ── Background sync registration ─────────────────────────────────────────
+  async registerSync() {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if ('sync' in reg) await reg.sync.register('piq-sync');
+    } catch {}
+  },
+
+  // ── PWA Install prompt ────────────────────────────────────────────────────
+  installPrompt: null,
+  initInstallPrompt() {
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      PWA.installPrompt = e;
+      render(); // show install banner
+    });
+    window.addEventListener('appinstalled', () => {
+      PWA.installPrompt = null;
+      setToast('PerformanceIQ installed! 🎉', 'success');
+      render();
+    });
+  },
+  async triggerInstall() {
+    if (!PWA.installPrompt) return;
+    PWA.installPrompt.prompt();
+    const { outcome } = await PWA.installPrompt.userChoice;
+    if (outcome === 'accepted') PWA.installPrompt = null;
+    render();
+  }
+};
+
+// ── Offline banner (rendered inline) ────────────────────────────────────────
+function offlineBanner() {
+  if (STATE.ui.isOnline) return '';
+  const qLen = solo.getOfflineQueue().length;
+  return '<div class="offline-banner">📡 Offline' + (qLen ? ' · ' + qLen + ' change' + (qLen !== 1 ? 's' : '') + ' queued' : '') + '</div>';
+}
+
+// ── Notification prompt card (shown in profile) ──────────────────────────────
+function notifyPromptCard() {
+  const perm = PWA.getNotifyPermission();
+  if (perm === 'granted' || perm === 'unsupported') return '';
+  return '<div class="notify-prompt section"><div class="space"><div><div style="font-weight:700;margin-bottom:2px">Enable Notifications</div><div class="muted" style="font-size:12px">Daily check-in reminders · workout alerts · risk warnings</div></div><button class="sm" data-action="request-notify">Enable</button></div></div>';
+}
+
+// ── Install prompt card ───────────────────────────────────────────────────────
+function installPromptCard() {
+  if (!PWA.installPrompt) return '';
+  return '<div class="install-prompt section"><div class="space"><div><div style="font-weight:700;margin-bottom:2px">Install App</div><div class="muted" style="font-size:12px">Add to home screen for the best experience</div></div><button class="sm" style="background:#34d399;color:#052a1c" data-action="install-app">Install</button></div></div>';
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDER ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1408,7 +1627,7 @@ function render(){
     const swapOptions=STATE.ui.activeSwapExerciseId?getSwapOptions(STATE.ui.activeSwapExerciseId,STATE.profile?.sport??"basketball"):[];
     const toast=STATE.ui.toast?`<div class="toast toast-${STATE.ui.toast.type}">${STATE.ui.toast.msg}</div>`:"";
     app.innerHTML=
-      `<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>`+
+      `${offlineBanner()}<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>`+
       readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+templatePickerSheet(STATE)+toast;
     bindUI();
     requestAnimationFrame(()=>window.scrollTo(0,_scrollY));
@@ -1462,7 +1681,8 @@ function bindUI(){
   on("[data-nav]",b=>{_scrollY=window.scrollY;STATE.ui.tab=b.dataset.nav;render();});
   on("[data-team-nav]",b=>{_scrollY=window.scrollY;STATE.ui.teamTab=b.dataset.teamNav;render();});
   on("[data-action='start-session']",()=>{STATE.ui.tab="session";render();});
-  on("[data-action='end-session']",async()=>{if(STATE.workout){solo.completeWorkout(STATE.workout.id,STATE.workout.exercises);setToast("Session complete. Great work. 💪","success");loadSoloData();refreshIntelReport();}STATE.ui.tab="today";render();});
+  on("[data-action='end-session']",async()=>{if(STATE.workout){solo.completeWorkout(STATE.workout.id,STATE.workout.exercises);PWA.notifySessionComplete(STATE.workout.title);
+      setToast("Session complete. Great work. 💪","success");loadSoloData();refreshIntelReport();}STATE.ui.tab="today";render();});
   on("[data-action='sign-out']",async()=>{await DB.signOut();STATE.session=null;STATE.profile=null;STATE.mode='solo';STATE.intelReport=null;loadSoloData();render();});
   on("[data-action='sign-in-prompt']",()=>{STATE.mode="connected";STATE.session=null;render();});
   on("[data-action='open-readiness']",()=>{STATE.ui.activeReadinessSheet=true;render();});
@@ -1475,9 +1695,15 @@ function bindUI(){
     const score=computeReadinessScore(sleep,soreness,battery);
     const rEntry={athlete_id:isSolo()?"solo":STATE.session?.user.id,log_date:todayStr(),score,hrv:"",sleep_hrs:sleep,soreness,hydration,body_battery:battery,notes:""};
     if(isSolo()){STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});STATE.readinessTrend=solo.getReadinessTrend(14);}
-    else{try{STATE.readiness=await DB.upsertReadiness(rEntry);STATE.readinessTrend=await DB.getReadinessTrend(STATE.session.user.id,14);}catch(e){STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});STATE.readinessTrend=solo.getReadinessTrend(14);}}
+    else if(!STATE.ui.isOnline){
+      STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});
+      STATE.readinessTrend=solo.getReadinessTrend(14);
+      solo.addToQueue({type:'upsert_readiness',data:rEntry});
+    } else {try{STATE.readiness=await DB.upsertReadiness(rEntry);STATE.readinessTrend=await DB.getReadinessTrend(STATE.session.user.id,14);}catch(e){STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});STATE.readinessTrend=solo.getReadinessTrend(14);solo.addToQueue({type:'upsert_readiness',data:rEntry});}}
     STATE.ui.activeReadinessSheet=false;
     refreshIntelReport();
+    if(STATE.intelReport?.risk?.level==='High') PWA.notifyHighRisk('High');
+    PWA.scheduleDailyReminder();
     setToast("Check-in saved. Score: "+score,"success");render();
   });
   on("[data-action='close-migration']",()=>{STATE.ui.migrationSheetOpen=false;STATE.ui.migrationResults=null;render();});
@@ -1719,6 +1945,8 @@ function bindUI(){
       }
 
       setToast('Assigned to '+assigned+' athlete'+(assigned!==1?'s':'')+'. 🚀','success');
+      // Notify coach device for confirmation
+      PWA.notify('Workout Assigned 🚀', draft.title+' assigned to '+assigned+' athlete'+(assigned!==1?'s':'')+'.');
       STATE.ui.builderDraft=null;STATE.ui.builderStep=1;STATE.ui.teamTab='team-home';
       await loadTemplates();
       render();
@@ -1746,6 +1974,18 @@ function bindUI(){
     });
   });
 
+
+  // ── PWA bindings ─────────────────────────────────────────────────────────
+  on("[data-action='request-notify']",async()=>{
+    const result=await PWA.requestNotifyPermission();
+    if(result==='granted'){
+      setToast('Notifications enabled! 🔔','success');
+      PWA.scheduleDailyReminder();
+    } else {
+      setToast('Notifications blocked in browser settings.','error');
+    }
+  });
+  on("[data-action='install-app']",()=>PWA.triggerInstall());
   document.getElementById('btn-confirm-migrate')?.addEventListener('click',async()=>{
     const userId=STATE.session?.user.id;if(!userId)return;
     const btn=document.getElementById('btn-confirm-migrate');
@@ -1820,6 +2060,10 @@ async function signUpSupabase(email,password,role){
 // BOOT
 // ─────────────────────────────────────────────────────────────────────────────
 async function boot(){
+  // Init PWA subsystems immediately
+  PWA.initNetworkDetection();
+  PWA.initInstallPrompt();
+  PWA.registerSW();
   app.innerHTML='<div style="min-height:100vh;display:grid;place-items:center"><div class="loading-spinner"></div></div>';
   const session=await DB.getSession();
   if(session){
@@ -1833,6 +2077,8 @@ async function boot(){
   }
   await loadTemplates();
   refreshIntelReport();
+  // Schedule reminder if permission already granted
+  if(PWA.getNotifyPermission()==='granted') PWA.scheduleDailyReminder();
   sb.auth.onAuthStateChange(async(event,session)=>{
     if(event==='SIGNED_IN'&&session&&STATE.mode==='solo'){
       STATE.session=session;STATE.mode='cloud';STATE.ui.loading=true;render();
