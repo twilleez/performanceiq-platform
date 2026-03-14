@@ -17,6 +17,7 @@
   --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.04);
   --text:#eef1f7;--muted:#8892a4;--muted2:#5a6475;
   --accent:#53b5ff;--accent2:#ff6b35;--green:#34d399;--yellow:#fbbf24;--red:#f87171;
+  --intel:#a78bfa;--intel2:#7c3aed;--intel-bg:rgba(167,139,250,.08);--intel-line:rgba(167,139,250,.2);
   --shadow:0 20px 60px rgba(0,0,0,.35);--shadow-sm:0 4px 16px rgba(0,0,0,.2);
   --radius:22px;--radius-sm:14px;--nav-h:80px;
 }
@@ -27,6 +28,7 @@ body{
   background-image:
     radial-gradient(ellipse 800px 500px at 75% -5%,rgba(83,181,255,.10) 0%,transparent 60%),
     radial-gradient(ellipse 600px 400px at 20% 80%,rgba(255,107,53,.06) 0%,transparent 55%),
+    radial-gradient(ellipse 400px 300px at 50% 50%,rgba(167,139,250,.04) 0%,transparent 60%),
     linear-gradient(180deg,#080c12 0%,#0c1120 40%,#080c12 100%);
   color:var(--text);
   font-family:"SF Pro Text",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -41,12 +43,14 @@ body{
 .metric-sm{font-size:28px;font-weight:780;letter-spacing:-.04em;line-height:1}
 button{font:inherit;border:none;cursor:pointer;border-radius:var(--radius-sm);transition:all .15s ease;-webkit-tap-highlight-color:transparent}
 button:active{transform:scale(.96);opacity:.85}
-button:not(.secondary):not(.sm):not(.nav-btn){background:var(--accent);color:#05111e;font-weight:700;padding:13px 18px;border-radius:16px}
-button:not(.secondary):not(.sm):not(.nav-btn):hover{background:#6ec4ff}
+button:not(.secondary):not(.sm):not(.nav-btn):not(.intel-btn){background:var(--accent);color:#05111e;font-weight:700;padding:13px 18px;border-radius:16px}
+button:not(.secondary):not(.sm):not(.nav-btn):not(.intel-btn):hover{background:#6ec4ff}
 button.secondary{background:rgba(255,255,255,.04);color:var(--text);border:1px solid var(--line);font-weight:600;padding:11px 16px}
 button.secondary:hover{background:rgba(255,255,255,.07)}
 button.sm{padding:7px 12px;font-size:12px;font-weight:700;border-radius:10px;background:var(--accent);color:#05111e}
 button.sm.secondary,button.secondary.sm{background:rgba(255,255,255,.05);color:var(--text);border:1px solid var(--line)}
+button.intel-btn{background:rgba(167,139,250,.15);color:var(--intel);border:1px solid var(--intel-line);font-weight:700;padding:9px 14px;border-radius:12px;font-size:13px}
+button.intel-btn:hover{background:rgba(167,139,250,.25)}
 input,select,textarea{font:inherit;color:var(--text);background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:10px 12px;width:100%;outline:none;transition:border-color .15s}
 input:focus,select:focus,textarea:focus{border-color:rgba(83,181,255,.45);background:rgba(83,181,255,.04)}
 select{cursor:pointer}
@@ -59,12 +63,15 @@ select{cursor:pointer}
 .space{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .list{display:grid;gap:10px}.section{margin-top:14px}.center{text-align:center}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);padding:16px}
+.intel-card{background:var(--intel-bg);border:1px solid var(--intel-line);border-radius:var(--radius);padding:16px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 .item,.exercise-card,.day-card{padding:12px 14px;border-radius:16px;background:var(--surface2);border:1px solid var(--line)}
 .exercise-card{border-radius:18px;padding:14px}.exercise-done{border-color:rgba(52,211,153,.2)}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12px;font-weight:600;white-space:nowrap}
+.pill.intel{background:rgba(167,139,250,.1);border-color:var(--intel-line);color:var(--intel)}
 .stat-chip{padding:6px 10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12px;font-weight:500}
 .role-badge{display:inline-flex;padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--line);font-size:11px;font-weight:700;text-transform:capitalize;letter-spacing:.03em}
 .banner{padding:11px 14px;border-radius:14px;background:rgba(83,181,255,.08);border:1px solid rgba(83,181,255,.16);font-size:13px;line-height:1.5}
+.intel-banner{padding:12px 14px;border-radius:14px;background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.2);font-size:13px;line-height:1.6}
 .set-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .set-tile{padding:10px 6px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line);text-align:center;cursor:pointer;transition:all .15s;color:var(--text)}
 .set-tile:hover{background:rgba(255,255,255,.07)}.set-tile.done{background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.35)}.set-tile:active{transform:scale(.94)}
@@ -78,20 +85,39 @@ select{cursor:pointer}
 .nav-btn{display:grid;place-items:center;gap:3px;border-radius:16px;background:transparent;color:var(--muted2);font-size:11px;font-weight:600;padding:6px 4px;transition:all .15s;letter-spacing:.02em}
 .nav-btn:hover{color:var(--muted)}.nav-btn:active{transform:scale(.92)}
 .nav-btn.active{background:rgba(83,181,255,.12);color:var(--accent);border:1px solid rgba(83,181,255,.18)}
+.nav-btn.active.intel-nav{background:rgba(167,139,250,.12);color:var(--intel);border-color:var(--intel-line)}
 .now-bar{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + max(env(safe-area-inset-bottom,8px),8px) + 8px);background:rgba(14,19,30,.92);border:1px solid var(--line);border-radius:18px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:14px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:75;box-shadow:var(--shadow-sm)}
 .login-wrap{min-height:100vh;display:grid;place-items:center;padding:20px}
 .login-card{width:min(440px,100%);padding:28px 22px}
 .day-card{padding:10px 12px}.day-card.today{border-color:rgba(83,181,255,.4);background:rgba(83,181,255,.08)}
 .loading-spinner{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+.intel-spinner{width:28px;height:28px;border:2px solid var(--intel-line);border-top-color:var(--intel);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto}
 .toast{position:fixed;bottom:calc(var(--nav-h) + max(env(safe-area-inset-bottom,8px),8px) + 14px);left:50%;transform:translateX(-50%);padding:11px 18px;border-radius:14px;font-size:13px;font-weight:600;z-index:100;pointer-events:none;white-space:nowrap;animation:toast-in .22s ease}
 .toast-success{background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.4);color:#34d399}
 .toast-error{background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.4);color:#f87171}
-.spark{height:44px}
 .active-sport{background:rgba(83,181,255,.18)!important;border-color:rgba(83,181,255,.45)!important;color:var(--text)!important}
+/* Risk level indicators */
+.risk-low{color:#34d399}.risk-medium{color:#fbbf24}.risk-high{color:#f87171}
+.risk-bar{height:6px;border-radius:6px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:6px}
+.risk-fill{height:100%;border-radius:6px;transition:width .5s ease}
+/* Intelligence pulsing glow */
+.intel-glow{box-shadow:0 0 20px rgba(167,139,250,.15),0 4px 16px rgba(0,0,0,.2)}
+/* Load zone badges */
+.load-zone{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.load-zone.green{background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25)}
+.load-zone.yellow{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25)}
+.load-zone.red{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.25)}
+/* Spark/trend line */
+.spark{height:44px}
+/* Periodization phase pill */
+.phase-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes slide-up{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes toast-in{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes intel-pulse{0%,100%{opacity:.7}50%{opacity:1}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.intel-loading{background:linear-gradient(90deg,rgba(167,139,250,.05) 0%,rgba(167,139,250,.15) 50%,rgba(167,139,250,.05) 100%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;height:14px;width:100%}
 @media(max-width:640px){.grid.two,.grid.three{grid-template-columns:1fr}.set-row{grid-template-columns:repeat(2,1fr)}.title-xl{font-size:26px}.metric{font-size:38px}}
 @media(min-width:640px){.set-row{grid-template-columns:repeat(4,1fr)}}
 @media(min-width:900px){.screen{padding-left:24px;padding-right:24px}.sheet{border-radius:28px}}
@@ -102,12 +128,11 @@ select{cursor:pointer}
 <body>
 <div id="app"></div>
 <script>
-  // Unregister any stale service workers from old builds
+// Unregister stale service workers
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(r => r.unregister());
-  });
+  navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); });
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // EXERCISES DATA
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,78 +179,223 @@ const EXERCISES = [
   {id:"pallof_hold",sport:"track",pattern:"core",equipment:"band",title:"Pallof Hold",cue:"Tall spine. Resist the pull for full time — don't let the torso rotate."},
 ];
 
-function getExercise(id) { return EXERCISES.find(x => x.id === id) || null; }
-function getSwapOptions(exerciseId, sport) {
-  const cur = getExercise(exerciseId);
-  if (!cur) return [];
-  return EXERCISES.filter(x => x.id !== cur.id && x.sport === sport && x.pattern === cur.pattern);
-}
-function swapExercise(workout, oldId, newId) {
-  if (!workout?.exercises) return;
-  workout.exercises = workout.exercises.map(ex => ex.id === oldId ? {...ex, id: newId} : ex);
-}
-function markSetDone(workout, exerciseId, setIndex) {
-  if (!workout?.exercises) return;
-  const ex = workout.exercises.find(x => x.id === exerciseId);
-  if (!ex || !ex.sets[setIndex]) return;
-  ex.sets[setIndex].done = !ex.sets[setIndex].done;
-}
-function progressPct(workout) {
-  if (!workout) return 0;
-  const sets = (workout.exercises ?? []).flatMap(ex => ex.sets ?? []);
-  if (!sets.length) return 0;
-  return Math.round((sets.filter(s => s.done).length / sets.length) * 100);
-}
-function buildWorkoutPayload(sport, readiness = 75) {
-  const lib = EXERCISES.filter(x => x.sport === sport);
-  if (!lib.length) return {title:"General Conditioning",sport,day_type:"recovery",notes:"Bodyweight session.",recovery_cue:"Move well.",exercises:[]};
-  const recovery = readiness < 70;
-  const setsMain = readiness >= 85 ? 4 : readiness >= 70 ? 3 : 2;
-  const repsStr  = readiness >= 85 ? "4" : readiness >= 70 ? "5" : "6";
-  const pick = p => lib.find(x => x.pattern === p)?.id;
-  const exercises = [
-    {id:pick("power"),          sets: Array(recovery ? 2 : setsMain).fill(null).map(()=>({target:`${recovery?2:setsMain} \u00d7 ${repsStr}`,done:false}))},
-    {id:pick("strength_lower"), sets: Array(setsMain).fill(null).map(()=>({target:`${setsMain} \u00d7 6`,done:false}))},
-    {id:pick("hinge"),          sets: Array(setsMain).fill(null).map(()=>({target:`${setsMain} \u00d7 6`,done:false}))},
-    {id:pick("speed"),          sets: [{target:`${recovery?3:5} reps`,done:false}]},
-    {id:pick("core"),           sets: Array(3).fill(null).map(()=>({target:"3 \u00d7 8/side",done:false}))},
-  ].filter(e => !!e.id);
-  const n = sport[0].toUpperCase() + sport.slice(1);
-  return {
-    title:`${n} ${recovery?"Recovery":readiness>=85?"Peak Performance":"Build"} Session`,
-    sport, day_type:recovery?"recovery":readiness>=85?"power":"build",
-    notes:recovery?"Auto-generated lower-strain session.":readiness>=85?"Auto-generated peak session — you're primed.":"Auto-generated build session.",
-    recovery_cue:recovery?"Move well and leave fresher than you started.":readiness>=85?"Quality first. Chase clean outputs.":"Consistent quality. Build the habit.",
-    exercises,
-  };
+function getExercise(id){return EXERCISES.find(x=>x.id===id)||null;}
+function getSwapOptions(exerciseId,sport){const cur=getExercise(exerciseId);if(!cur)return[];return EXERCISES.filter(x=>x.id!==cur.id&&x.sport===sport&&x.pattern===cur.pattern);}
+function swapExercise(workout,oldId,newId){if(!workout?.exercises)return;workout.exercises=workout.exercises.map(ex=>ex.id===oldId?{...ex,id:newId}:ex);}
+function markSetDone(workout,exerciseId,setIndex){if(!workout?.exercises)return;const ex=workout.exercises.find(x=>x.id===exerciseId);if(!ex||!ex.sets[setIndex])return;ex.sets[setIndex].done=!ex.sets[setIndex].done;}
+function progressPct(workout){if(!workout)return 0;const sets=(workout.exercises??[]).flatMap(ex=>ex.sets??[]);if(!sets.length)return 0;return Math.round((sets.filter(s=>s.done).length/sets.length)*100);}
+function buildWorkoutPayload(sport,readiness=75){
+  const lib=EXERCISES.filter(x=>x.sport===sport);
+  if(!lib.length)return{title:"General Conditioning",sport,day_type:"recovery",notes:"Bodyweight session.",recovery_cue:"Move well.",exercises:[]};
+  const recovery=readiness<70;const setsMain=readiness>=85?4:readiness>=70?3:2;const repsStr=readiness>=85?"4":readiness>=70?"5":"6";
+  const pick=p=>lib.find(x=>x.pattern===p)?.id;
+  const exercises=[
+    {id:pick("power"),sets:Array(recovery?2:setsMain).fill(null).map(()=>({target:`${recovery?2:setsMain} \u00d7 ${repsStr}`,done:false}))},
+    {id:pick("strength_lower"),sets:Array(setsMain).fill(null).map(()=>({target:`${setsMain} \u00d7 6`,done:false}))},
+    {id:pick("hinge"),sets:Array(setsMain).fill(null).map(()=>({target:`${setsMain} \u00d7 6`,done:false}))},
+    {id:pick("speed"),sets:[{target:`${recovery?3:5} reps`,done:false}]},
+    {id:pick("core"),sets:Array(3).fill(null).map(()=>({target:"3 \u00d7 8/side",done:false}))},
+  ].filter(e=>!!e.id);
+  const n=sport[0].toUpperCase()+sport.slice(1);
+  return{title:`${n} ${recovery?"Recovery":readiness>=85?"Peak Performance":"Build"} Session`,sport,day_type:recovery?"recovery":readiness>=85?"power":"build",notes:recovery?"Auto-generated lower-strain session.":readiness>=85?"Auto-generated peak session — you're primed.":"Auto-generated build session.",recovery_cue:recovery?"Move well and leave fresher than you started.":readiness>=85?"Quality first. Chase clean outputs.":"Consistent quality. Build the habit.",exercises};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MICROCYCLE
 // ─────────────────────────────────────────────────────────────────────────────
-const MICROCYCLE_TEMPLATES = {
+const MICROCYCLE_TEMPLATES={
   basketball:[{day:"Mon",label:"Explosive Lower"},{day:"Tue",label:"Recovery + Mobility"},{day:"Wed",label:"Upper Strength"},{day:"Thu",label:"Speed + COD"},{day:"Fri",label:"Flush + Reset"}],
-  football:  [{day:"Mon",label:"Power + Strength"},{day:"Tue",label:"Film + Recovery"},{day:"Wed",label:"Conditioning"},{day:"Thu",label:"Speed + Agility"},{day:"Fri",label:"Activation + Rest"}],
-  soccer:    [{day:"Mon",label:"Strength Lower"},{day:"Tue",label:"Aerobic Base"},{day:"Wed",label:"Speed Endurance"},{day:"Thu",label:"Tactical + COD"},{day:"Fri",label:"Flush + Mobility"}],
-  baseball:  [{day:"Mon",label:"Rotational Power"},{day:"Tue",label:"Arm Care + Mobility"},{day:"Wed",label:"Lower Strength"},{day:"Thu",label:"Speed + Agility"},{day:"Fri",label:"Recovery"}],
+  football:[{day:"Mon",label:"Power + Strength"},{day:"Tue",label:"Film + Recovery"},{day:"Wed",label:"Conditioning"},{day:"Thu",label:"Speed + Agility"},{day:"Fri",label:"Activation + Rest"}],
+  soccer:[{day:"Mon",label:"Strength Lower"},{day:"Tue",label:"Aerobic Base"},{day:"Wed",label:"Speed Endurance"},{day:"Thu",label:"Tactical + COD"},{day:"Fri",label:"Flush + Mobility"}],
+  baseball:[{day:"Mon",label:"Rotational Power"},{day:"Tue",label:"Arm Care + Mobility"},{day:"Wed",label:"Lower Strength"},{day:"Thu",label:"Speed + Agility"},{day:"Fri",label:"Recovery"}],
   volleyball:[{day:"Mon",label:"Explosive Power"},{day:"Tue",label:"Upper Strength"},{day:"Wed",label:"Conditioning"},{day:"Thu",label:"Jump Training"},{day:"Fri",label:"Mobility + Flush"}],
-  track:     [{day:"Mon",label:"Max Velocity"},{day:"Tue",label:"Strength Lower"},{day:"Wed",label:"Speed Endurance"},{day:"Thu",label:"Technical Work"},{day:"Fri",label:"Activation + Rest"}],
+  track:[{day:"Mon",label:"Max Velocity"},{day:"Tue",label:"Strength Lower"},{day:"Wed",label:"Speed Endurance"},{day:"Thu",label:"Technical Work"},{day:"Fri",label:"Activation + Rest"}],
 };
-function buildMicrocycle(sport="basketball") {
-  const t = MICROCYCLE_TEMPLATES[sport] ?? MICROCYCLE_TEMPLATES.basketball;
-  const d = new Date().getDay(); const todayIdx = d>=1&&d<=5?d-1:-1;
+function buildMicrocycle(sport="basketball"){
+  const t=MICROCYCLE_TEMPLATES[sport]??MICROCYCLE_TEMPLATES.basketball;
+  const d=new Date().getDay();const todayIdx=d>=1&&d<=5?d-1:-1;
   return t.map((x,i)=>({...x,status:i<todayIdx?"done":i===todayIdx?"today":"upcoming"}));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ELITE ATHLETE INTELLIGENCE ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+const INTEL = {
+  // ── Injury Risk Engine ──────────────────────────────────────────────────
+  assessInjuryRisk(profile, readinessTrend, recentWorkouts) {
+    const factors = [];
+    let riskScore = 0;
+
+    // Readiness trend analysis
+    if (readinessTrend.length >= 3) {
+      const recent3 = readinessTrend.slice(-3).map(r => r.score);
+      const avg3 = recent3.reduce((s,v) => s+v, 0) / 3;
+      const allAvg = readinessTrend.reduce((s,r) => s+r.score, 0) / readinessTrend.length;
+      if (avg3 < allAvg - 10) {
+        riskScore += 25;
+        factors.push({ label: "Readiness declining", detail: `Down ${Math.round(allAvg - avg3)} pts vs baseline`, severity: "high" });
+      }
+      // Consecutive low days
+      const lowDays = recent3.filter(s => s < 65).length;
+      if (lowDays >= 2) { riskScore += 20; factors.push({ label: "Multiple low-readiness days", detail: `${lowDays} of last 3 days below 65`, severity: "high" }); }
+    }
+
+    // Soreness pattern
+    if (readinessTrend.length >= 1) {
+      const lastR = readinessTrend[readinessTrend.length - 1];
+      if (lastR?.soreness === "High") { riskScore += 20; factors.push({ label: "High soreness reported", detail: "Muscular stress elevated", severity: "high" }); }
+      else if (lastR?.soreness === "Moderate") { riskScore += 10; factors.push({ label: "Moderate soreness", detail: "Monitor closely today", severity: "medium" }); }
+    }
+
+    // Training frequency / overload
+    const last7 = recentWorkouts.filter(w => {
+      const diff = (Date.now() - new Date(w.scheduled_date)) / 86400000;
+      return diff <= 7 && w.completed_at;
+    });
+    if (last7.length >= 6) { riskScore += 20; factors.push({ label: "High training frequency", detail: `${last7.length} sessions in 7 days`, severity: "high" }); }
+    else if (last7.length >= 5) { riskScore += 10; factors.push({ label: "Elevated training load", detail: `${last7.length} sessions this week`, severity: "medium" }); }
+
+    // Sleep deprivation pattern
+    const recentSleep = readinessTrend.slice(-3).filter(r => r.sleep_hrs < 6);
+    if (recentSleep.length >= 2) { riskScore += 15; factors.push({ label: "Sleep deficit detected", detail: "Under 6hrs on recent nights", severity: "medium" }); }
+
+    const level = riskScore >= 50 ? "High" : riskScore >= 25 ? "Medium" : "Low";
+    const color = level === "High" ? "#f87171" : level === "Medium" ? "#fbbf24" : "#34d399";
+    return { score: Math.min(100, riskScore), level, color, factors };
+  },
+
+  // ── Load Management & Periodization ─────────────────────────────────────
+  analyzeLoad(recentWorkouts, readinessTrend) {
+    const completed = recentWorkouts.filter(w => w.completed_at);
+    const last7 = completed.filter(w => (Date.now() - new Date(w.scheduled_date)) / 86400000 <= 7);
+    const last14 = completed.filter(w => (Date.now() - new Date(w.scheduled_date)) / 86400000 <= 14);
+    const prev7 = last14.filter(w => {
+      const d = (Date.now() - new Date(w.scheduled_date)) / 86400000;
+      return d > 7 && d <= 14;
+    });
+
+    const acuteLoad = last7.length;
+    const chronicLoad = last14.length / 2;
+    const acwr = chronicLoad > 0 ? acuteLoad / chronicLoad : 1;
+
+    let zone, zoneClass, zoneMsg;
+    if (acwr < 0.8) { zone = "Underloaded"; zoneClass = "yellow"; zoneMsg = "Training load is below your baseline. Consider increasing volume."; }
+    else if (acwr <= 1.3) { zone = "Optimal"; zoneClass = "green"; zoneMsg = "Load is well-managed. Keep this range for peak adaptation."; }
+    else { zone = "Overloaded"; zoneClass = "red"; zoneMsg = "Acute load spike detected. Reduce intensity to protect against injury."; }
+
+    // Periodization phase detection
+    const weekNum = Math.ceil((Date.now() - new Date(new Date().getFullYear(), 0, 1)) / (7 * 86400000));
+    const phaseWeek = ((weekNum - 1) % 4) + 1;
+    const phases = ["Accumulation", "Intensification", "Realization", "Deload"];
+    const phaseColors = ["rgba(83,181,255,.15)", "rgba(251,191,36,.15)", "rgba(255,107,53,.15)", "rgba(52,211,153,.15)"];
+    const phaseBorders = ["rgba(83,181,255,.3)", "rgba(251,191,36,.3)", "rgba(255,107,53,.3)", "rgba(52,211,153,.3)"];
+    const phaseIdx = phaseWeek - 1;
+    const phase = phases[phaseIdx];
+    const phaseColor = phaseColors[phaseIdx];
+    const phaseBorder = phaseBorders[phaseIdx];
+
+    return { acuteLoad, chronicLoad: chronicLoad.toFixed(1), acwr: acwr.toFixed(2), zone, zoneClass, zoneMsg, phase, phaseColor, phaseBorder, weekInBlock: phaseWeek };
+  },
+
+  // ── Performance Trend Analysis ───────────────────────────────────────────
+  analyzeTrends(readinessTrend, recentWorkouts) {
+    const completed = recentWorkouts.filter(w => w.completed_at);
+    const scores = readinessTrend.map(r => r.score);
+
+    // Readiness momentum
+    let momentum = "stable";
+    if (scores.length >= 4) {
+      const firstHalf = scores.slice(0, Math.floor(scores.length / 2));
+      const secondHalf = scores.slice(Math.floor(scores.length / 2));
+      const firstAvg = firstHalf.reduce((s,v) => s+v, 0) / firstHalf.length;
+      const secondAvg = secondHalf.reduce((s,v) => s+v, 0) / secondHalf.length;
+      if (secondAvg > firstAvg + 5) momentum = "improving";
+      else if (secondAvg < firstAvg - 5) momentum = "declining";
+    }
+
+    // Consistency score (% of days with check-in in last 14)
+    const consistency = Math.min(100, Math.round((readinessTrend.length / 14) * 100));
+
+    // Session completion rate
+    const last30 = recentWorkouts.filter(w => (Date.now() - new Date(w.scheduled_date)) / 86400000 <= 30);
+    const completionRate = last30.length ? Math.round((completed.filter(w => (Date.now() - new Date(w.scheduled_date)) / 86400000 <= 30).length / last30.length) * 100) : 0;
+
+    // Peak readiness day
+    const peakEntry = scores.length ? readinessTrend[scores.indexOf(Math.max(...scores))] : null;
+
+    return { momentum, consistency, completionRate, peakScore: peakEntry?.score ?? null, peakDate: peakEntry?.log_date ?? null, totalSessions: completed.length };
+  },
+
+  // ── AI Recommendation Engine ─────────────────────────────────────────────
+  generateRecommendations(profile, readiness, readinessTrend, recentWorkouts, riskAssessment, loadAnalysis) {
+    const recs = [];
+    const score = readiness?.score ?? 75;
+    const sport = profile?.sport ?? "basketball";
+
+    // Training intensity recommendation
+    if (riskAssessment.level === "High") {
+      recs.push({ type: "warning", icon: "⚠️", title: "Reduce Training Intensity", body: "Your injury risk is elevated. Today's session should be low-intensity movement only — no max effort work.", priority: 1 });
+    } else if (score >= 85) {
+      recs.push({ type: "peak", icon: "⚡", title: "Prime Window Detected", body: `Readiness is at ${score}. This is a high-quality training day — prioritize power and skill work while your CNS is primed.`, priority: 1 });
+    } else if (score < 65) {
+      recs.push({ type: "recovery", icon: "🔄", title: "Recovery Session Recommended", body: "Low readiness detected. A recovery session — mobility, light aerobic work, and soft tissue care — will serve you better than a hard training day.", priority: 1 });
+    }
+
+    // Load management
+    if (loadAnalysis.zone === "Overloaded") {
+      recs.push({ type: "warning", icon: "📊", title: "Load Spike Detected", body: `ACWR of ${loadAnalysis.acwr} is above optimal range. Schedule a rest day or deload session in the next 48 hours.`, priority: 2 });
+    } else if (loadAnalysis.zone === "Underloaded") {
+      recs.push({ type: "info", icon: "📈", title: "Increase Training Volume", body: "Your recent load is below your chronic baseline. Gradually add a session or increase volume to continue adaptation.", priority: 3 });
+    }
+
+    // Periodization guidance
+    const phaseGuidance = {
+      "Accumulation": "Focus on volume and technique. Build your base this week — more sets, moderate intensity.",
+      "Intensification": "Increase load, reduce volume. Fewer sets but push closer to your working max.",
+      "Realization": "Peak performance week. Low volume, high intensity, full recovery between sessions.",
+      "Deload": "Reduce everything by 40-50%. Let your body absorb the last 3 weeks of work."
+    };
+    recs.push({ type: "phase", icon: "🗓️", title: `${loadAnalysis.phase} Phase`, body: phaseGuidance[loadAnalysis.phase], priority: 4 });
+
+    // Sleep recommendation
+    const avgSleep = readinessTrend.length ? readinessTrend.slice(-3).reduce((s,r) => s + r.sleep_hrs, 0) / Math.min(3, readinessTrend.length) : 7;
+    if (avgSleep < 7) {
+      recs.push({ type: "warning", icon: "😴", title: "Sleep Quality Alert", body: `Averaging ${avgSleep.toFixed(1)} hours recently. Athletes need 8-9 hours for full recovery. Prioritize sleep tonight.`, priority: 2 });
+    }
+
+    // Sport-specific recommendation
+    const sportTips = {
+      basketball: "COD and lateral quickness are your performance differentiators. Protect them with consistent hip mobility work.",
+      football: "Explosive power output drops fast under fatigue. Keep CNS-demanding work early in your sessions.",
+      soccer: "Aerobic base directly impacts your late-game quality. Don't skip tempo runs on recovery days.",
+      baseball: "Rotational velocity is injury-sensitive. Arm care and thoracic mobility should be daily non-negotiables.",
+      volleyball: "Jump training volume accumulates joint stress fast. Monitor knee soreness closely on high-volume weeks.",
+      track: "Speed work requires full CNS recovery. 48-72 hours between max velocity sessions is minimum."
+    };
+    recs.push({ type: "sport", icon: "🏆", title: `${sport.charAt(0).toUpperCase() + sport.slice(1)} Insight`, body: sportTips[sport] ?? "Consistency is the most underrated performance variable. Show up every day.", priority: 5 });
+
+    return recs.sort((a,b) => a.priority - b.priority).slice(0, 4);
+  },
+
+  // ── Full Intelligence Report ─────────────────────────────────────────────
+  generateReport(profile, readiness, readinessTrend, recentWorkouts) {
+    const risk = this.assessInjuryRisk(profile, readinessTrend, recentWorkouts);
+    const load = this.analyzeLoad(recentWorkouts, readinessTrend);
+    const trends = this.analyzeTrends(readinessTrend, recentWorkouts);
+    const recs = this.generateRecommendations(profile, readiness, readinessTrend, recentWorkouts, risk, load);
+    return { risk, load, trends, recs, generatedAt: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) };
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SOLO STORE (localStorage)
 // ─────────────────────────────────────────────────────────────────────────────
-const PIQ = {profile:"piq_profile",workouts:"piq_workouts",readiness:"piq_readiness",prs:"piq_prs"};
+const PIQ={profile:"piq_profile",workouts:"piq_workouts",readiness:"piq_readiness",prs:"piq_prs"};
 function lsGet(k,fb=null){try{const r=localStorage.getItem(k);return r?JSON.parse(r):fb;}catch{return fb;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 function todayStr(){return new Date().toISOString().split("T")[0];}
 
-const solo = {
+const solo={
   getProfile:()=>lsGet(PIQ.profile,null),
   saveProfile(p){const v={...p,id:"solo",role:p.role??"athlete"};lsSet(PIQ.profile,v);return v;},
   getTodaysReadiness(){const a=lsGet(PIQ.readiness,[]);return a.find(r=>r.log_date===todayStr())??null;},
@@ -236,33 +406,12 @@ const solo = {
     if(idx>=0)all[idx]=entry;else all.push(entry);
     lsSet(PIQ.readiness,all);return entry;
   },
-  getReadinessTrend(days=14){
-    const all=lsGet(PIQ.readiness,[]);
-    const since=new Date(Date.now()-days*86400000).toISOString().split("T")[0];
-    return all.filter(r=>r.log_date>=since).sort((a,b)=>a.log_date.localeCompare(b.log_date));
-  },
-  getTodaysWorkout(){
-    const all=lsGet(PIQ.workouts,[]);const t=todayStr();
-    return all.filter(w=>w.scheduled_date===t).sort((a,b)=>b.created_at?.localeCompare(a.created_at??"")??0)[0]??null;
-  },
-  createWorkout(payload){
-    const all=lsGet(PIQ.workouts,[]);
-    const w={id:"solo_"+Date.now(),athlete_id:"solo",scheduled_date:todayStr(),created_at:new Date().toISOString(),completed_at:null,...payload};
-    all.push(w);lsSet(PIQ.workouts,all);return w;
-  },
-  saveWorkoutProgress(workoutId,exercises){
-    const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);
-    if(idx>=0){all[idx].exercises=exercises;lsSet(PIQ.workouts,all);}
-  },
-  completeWorkout(workoutId,exercises){
-    const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);
-    if(idx>=0){all[idx].exercises=exercises;all[idx].completed_at=new Date().toISOString();lsSet(PIQ.workouts,all);}
-  },
-  getRecentWorkouts(days=30){
-    const all=lsGet(PIQ.workouts,[]);
-    const since=new Date(Date.now()-days*86400000).toISOString().split("T")[0];
-    return all.filter(w=>w.scheduled_date>=since).sort((a,b)=>b.scheduled_date.localeCompare(a.scheduled_date));
-  },
+  getReadinessTrend(days=14){const all=lsGet(PIQ.readiness,[]);const since=new Date(Date.now()-days*86400000).toISOString().split("T")[0];return all.filter(r=>r.log_date>=since).sort((a,b)=>a.log_date.localeCompare(b.log_date));},
+  getTodaysWorkout(){const all=lsGet(PIQ.workouts,[]);const t=todayStr();return all.filter(w=>w.scheduled_date===t).sort((a,b)=>b.created_at?.localeCompare(a.created_at??"")??0)[0]??null;},
+  createWorkout(payload){const all=lsGet(PIQ.workouts,[]);const w={id:"solo_"+Date.now(),athlete_id:"solo",scheduled_date:todayStr(),created_at:new Date().toISOString(),completed_at:null,...payload};all.push(w);lsSet(PIQ.workouts,all);return w;},
+  saveWorkoutProgress(workoutId,exercises){const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);if(idx>=0){all[idx].exercises=exercises;lsSet(PIQ.workouts,all);}},
+  completeWorkout(workoutId,exercises){const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);if(idx>=0){all[idx].exercises=exercises;all[idx].completed_at=new Date().toISOString();lsSet(PIQ.workouts,all);}},
+  getRecentWorkouts(days=30){const all=lsGet(PIQ.workouts,[]);const since=new Date(Date.now()-days*86400000).toISOString().split("T")[0];return all.filter(w=>w.scheduled_date>=since).sort((a,b)=>b.scheduled_date.localeCompare(a.scheduled_date));},
   getPRs(){return lsGet(PIQ.prs,[]).sort((a,b)=>b.set_at?.localeCompare(a.set_at??"")??0);},
   clearAll(){Object.values(PIQ).forEach(k=>localStorage.removeItem(k));},
 };
@@ -270,25 +419,329 @@ const solo = {
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────────────────────────────────────
-const STATE = {
+const STATE={
   session:null,profile:null,mode:"solo",
   workout:null,readiness:null,prs:[],readinessTrend:[],recentWorkouts:[],team:null,teamReadiness:[],
-  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,videoSheetOpen:false,activeVideoUrl:null,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
+  intelReport:null,
+  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
 };
-function setLoading(v){STATE.ui.loading=v;}
-function setError(m){STATE.ui.error=m;}
-function clearError(){STATE.ui.error=null;}
 function setToast(msg,type="success"){STATE.ui.toast={msg,type};setTimeout(()=>{STATE.ui.toast=null;render();},3200);}
 function isCoach(){return STATE.profile?.role==="coach";}
 function isSolo(){return STATE.mode==="solo";}
+function clearError(){STATE.ui.error=null;}
+function setError(m){STATE.ui.error=m;}
+
+function refreshIntelReport(){
+  if(STATE.profile){
+    STATE.intelReport=INTEL.generateReport(STATE.profile,STATE.readiness,STATE.readinessTrend,STATE.recentWorkouts);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPARKLINE
+// ─────────────────────────────────────────────────────────────────────────────
+function sparkline(values,color="#53b5ff",h=44){
+  if(!values||values.length<2)return"";
+  const w=260,pad=4,min=Math.min(...values),max=Math.max(...values),range=max-min||1;
+  const pts=values.map((v,i)=>`${(pad+(i/(values.length-1))*(w-pad*2)).toFixed(1)},${(h-pad-((v-min)/range)*(h-pad*2)).toFixed(1)}`);
+  const[lx,ly]=pts[pts.length-1].split(",");
+  const area=`M${pts[0].split(",")[0]},${h} L${pts.join(" L")} L${lx},${h} Z`;
+  const gid="sg"+color.replace("#","");
+  return`<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;margin-top:10px;height:${h}px"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".22"/><stop offset="100%" stop-color="${color}" stop-opacity=".01"/></linearGradient></defs><path d="${area}" fill="url(#${gid})"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${lx}" cy="${ly}" r="4" fill="${color}" opacity=".9"/></svg>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTELLIGENCE PANEL (inline, Today tab)
+// ─────────────────────────────────────────────────────────────────────────────
+function intelligencePanelView(report) {
+  if (!report) return `<div class="intel-card section"><div class="space"><div class="row" style="gap:8px"><span style="font-size:16px">🧠</span><div class="title-md" style="color:var(--intel)">Intelligence Engine</div></div></div><div style="margin-top:12px;padding:16px;text-align:center;opacity:.6"><div class="muted" style="font-size:13px">Log a readiness check-in to activate intelligence analysis.</div></div></div>`;
+
+  const { risk, load, trends, recs, generatedAt } = report;
+
+  // Risk gauge
+  const riskBar = `<div class="risk-bar"><div class="risk-fill" style="width:${risk.score}%;background:${risk.color}"></div></div>`;
+  const riskFactors = risk.factors.length
+    ? risk.factors.map(f => `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--line2)"><span style="font-size:11px;margin-top:2px">${f.severity==="high"?"🔴":"🟡"}</span><div><div style="font-size:13px;font-weight:600">${f.label}</div><div class="muted" style="font-size:12px">${f.detail}</div></div></div>`).join("")
+    : `<div class="muted" style="font-size:13px;padding:8px 0">No risk factors detected. Keep it up.</div>`;
+
+  // Load zone
+  const loadZone = `<span class="load-zone ${load.zoneClass}">${load.zone}</span>`;
+  const phasePill = `<span class="phase-pill" style="background:${load.phaseColor};border:1px solid ${load.phaseBorder};color:var(--text)">${load.phase} · Week ${load.weekInBlock}/4</span>`;
+
+  // Trend indicators
+  const momentumIcon = { improving: "↑", stable: "→", declining: "↓" }[trends.momentum];
+  const momentumColor = { improving: "#34d399", stable: "#8892a4", declining: "#f87171" }[trends.momentum];
+
+  // Recommendations
+  const recColors = { warning: "#f87171", peak: "#fbbf24", recovery: "#34d399", info: "#53b5ff", phase: "#a78bfa", sport: "#ff6b35" };
+  const recItems = recs.map(r => `
+    <div class="item" style="border-color:${recColors[r.type]}22;background:${recColors[r.type]}08">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:18px;flex-shrink:0">${r.icon}</span>
+        <div><div style="font-weight:700;font-size:14px;color:${recColors[r.type]};margin-bottom:3px">${r.title}</div><div class="muted" style="font-size:13px;line-height:1.5">${r.body}</div></div>
+      </div>
+    </div>`).join("");
+
+  return `
+  <div class="intel-card section intel-glow">
+    <div class="space" style="margin-bottom:14px">
+      <div class="row" style="gap:8px">
+        <span style="font-size:18px">🧠</span>
+        <div><div class="title-md" style="color:var(--intel)">Intelligence Engine</div><div class="muted" style="font-size:11px">Updated ${generatedAt}</div></div>
+      </div>
+      <button class="intel-btn" data-action="open-intel-sheet">Full Report</button>
+    </div>
+
+    <!-- Risk + Load summary row -->
+    <div class="grid two" style="gap:10px;margin-bottom:12px">
+      <div style="padding:12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+        <div class="muted small" style="margin-bottom:4px">Injury Risk</div>
+        <div style="font-size:20px;font-weight:800;color:${risk.color}">${risk.level}</div>
+        ${riskBar}
+      </div>
+      <div style="padding:12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+        <div class="muted small" style="margin-bottom:4px">Training Load</div>
+        ${loadZone}
+        <div class="muted" style="font-size:11px;margin-top:6px">ACWR ${load.acwr}</div>
+      </div>
+    </div>
+
+    <!-- Phase + Momentum row -->
+    <div class="row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      ${phasePill}
+      <span class="pill" style="color:${momentumColor};border-color:${momentumColor}33;background:${momentumColor}0d">${momentumIcon} Readiness ${trends.momentum}</span>
+      <span class="pill" style="font-size:11px">${trends.consistency}% check-in rate</span>
+    </div>
+
+    <!-- Top recommendation -->
+    ${recs.length ? `
+    <div class="item" style="border-color:${recColors[recs[0].type]}22;background:${recColors[recs[0].type]}08">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:18px;flex-shrink:0">${recs[0].icon}</span>
+        <div><div style="font-weight:700;font-size:14px;color:${recColors[recs[0].type]};margin-bottom:3px">${recs[0].title}</div><div class="muted" style="font-size:13px;line-height:1.5">${recs[0].body}</div></div>
+      </div>
+    </div>` : ""}
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTELLIGENCE FULL REPORT SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+function intelSheet(state) {
+  if (!state.ui.intelSheetOpen) return "";
+  const report = state.intelReport;
+  if (!report) return "";
+  const { risk, load, trends, recs } = report;
+  const recColors = { warning: "#f87171", peak: "#fbbf24", recovery: "#34d399", info: "#53b5ff", phase: "#a78bfa", sport: "#ff6b35" };
+  const trendVals = state.readinessTrend.map(r => r.score);
+
+  const riskFactorItems = risk.factors.length
+    ? risk.factors.map(f => `<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--line2)"><span>${f.severity==="high"?"🔴":"🟡"}</span><div><div style="font-weight:600;font-size:14px">${f.label}</div><div class="muted small">${f.detail}</div></div></div>`).join("")
+    : `<div class="muted" style="padding:12px 0;font-size:13px">✅ No active risk factors detected.</div>`;
+
+  const recItems = recs.map(r => `
+    <div class="item" style="border-color:${recColors[r.type]}22;background:${recColors[r.type]}08">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:20px;flex-shrink:0">${r.icon}</span>
+        <div><div style="font-weight:700;font-size:15px;color:${recColors[r.type]};margin-bottom:4px">${r.title}</div><div class="muted" style="font-size:13px;line-height:1.6">${r.body}</div></div>
+      </div>
+    </div>`).join("");
+
+  return `<div class="sheet-backdrop" data-action="close-intel-sheet"><div class="sheet" onclick="event.stopPropagation()">
+    <div class="handle"></div>
+    <div class="space" style="margin-bottom:16px">
+      <div><div class="title-lg" style="color:var(--intel)">🧠 Intelligence Report</div><div class="muted" style="font-size:13px">Full analysis · ${state.profile?.name?.split(" ")[0] ?? "Athlete"}</div></div>
+      <button class="secondary sm" data-action="close-intel-sheet">✕</button>
+    </div>
+
+    <!-- INJURY RISK -->
+    <div class="card section">
+      <div class="space" style="margin-bottom:10px">
+        <div class="title-md">Injury Risk Assessment</div>
+        <span style="font-weight:800;font-size:18px;color:${risk.color}">${risk.level}</span>
+      </div>
+      <div class="risk-bar" style="margin-bottom:12px"><div class="risk-fill" style="width:${risk.score}%;background:${risk.color}"></div></div>
+      <div>${riskFactorItems}</div>
+    </div>
+
+    <!-- LOAD MANAGEMENT -->
+    <div class="card section">
+      <div class="title-md" style="margin-bottom:12px">Load Management</div>
+      <div class="grid three" style="gap:8px;margin-bottom:12px">
+        <div style="text-align:center;padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+          <div class="muted small">Acute Load</div>
+          <div style="font-size:22px;font-weight:800;color:var(--accent)">${load.acuteLoad}</div>
+          <div class="muted" style="font-size:11px">sessions / 7d</div>
+        </div>
+        <div style="text-align:center;padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+          <div class="muted small">Chronic Load</div>
+          <div style="font-size:22px;font-weight:800;color:var(--accent)">${load.chronicLoad}</div>
+          <div class="muted" style="font-size:11px">sessions / 7d avg</div>
+        </div>
+        <div style="text-align:center;padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+          <div class="muted small">ACWR</div>
+          <div style="font-size:22px;font-weight:800;color:${load.zoneClass==="green"?"#34d399":load.zoneClass==="yellow"?"#fbbf24":"#f87171"}">${load.acwr}</div>
+          <div class="muted" style="font-size:11px">optimal 0.8–1.3</div>
+        </div>
+      </div>
+      <div class="intel-banner">${load.zoneMsg}</div>
+      <div class="row" style="margin-top:12px;gap:8px">
+        <span class="phase-pill" style="background:${load.phaseColor};border:1px solid ${load.phaseBorder};color:var(--text)">${load.phase}</span>
+        <span class="muted small">Week ${load.weekInBlock} of 4-week block</span>
+      </div>
+    </div>
+
+    <!-- PERFORMANCE TRENDS -->
+    <div class="card section">
+      <div class="title-md" style="margin-bottom:12px">Performance Trends</div>
+      ${trendVals.length >= 2 ? sparkline(trendVals, "#a78bfa") : `<div class="muted" style="font-size:13px;padding:8px 0">Log 2+ check-ins to see your trend chart.</div>`}
+      <div class="grid two" style="gap:8px;margin-top:12px">
+        <div style="padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+          <div class="muted small">Check-in Rate</div>
+          <div style="font-size:20px;font-weight:800;color:var(--intel)">${trends.consistency}%</div>
+          <div class="muted" style="font-size:11px">last 14 days</div>
+        </div>
+        <div style="padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+          <div class="muted small">Completion Rate</div>
+          <div style="font-size:20px;font-weight:800;color:#ff6b35">${trends.completionRate}%</div>
+          <div class="muted" style="font-size:11px">sessions finished</div>
+        </div>
+        ${trends.peakScore ? `<div style="padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+          <div class="muted small">Peak Readiness</div>
+          <div style="font-size:20px;font-weight:800;color:#34d399">${trends.peakScore}</div>
+          <div class="muted" style="font-size:11px">${trends.peakDate}</div>
+        </div>` : ""}
+        <div style="padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--line)">
+          <div class="muted small">Total Sessions</div>
+          <div style="font-size:20px;font-weight:800;color:var(--accent)">${trends.totalSessions}</div>
+          <div class="muted" style="font-size:11px">completed</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI RECOMMENDATIONS -->
+    <div class="section">
+      <div class="title-md" style="margin-bottom:12px;color:var(--intel)">AI Recommendations</div>
+      <div class="list">${recItems}</div>
+    </div>
+  </div></div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION INTEL WIDGET (inside session view)
+// ─────────────────────────────────────────────────────────────────────────────
+function sessionIntelWidget(report) {
+  if (!report) return "";
+  const { risk, load, recs } = report;
+  const topRec = recs[0];
+  if (!topRec) return "";
+  const recColors = { warning: "#f87171", peak: "#fbbf24", recovery: "#34d399", info: "#53b5ff", phase: "#a78bfa", sport: "#ff6b35" };
+  return `
+  <div class="intel-card" style="margin-top:14px">
+    <div class="row" style="gap:8px;margin-bottom:10px">
+      <span style="font-size:14px">🧠</span>
+      <span style="font-size:12px;font-weight:700;color:var(--intel);text-transform:uppercase;letter-spacing:.06em">Intelligence</span>
+      <span style="margin-left:auto"><span class="load-zone ${load.zoneClass}" style="font-size:10px">${load.zone} Load</span></span>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <span style="font-size:16px;flex-shrink:0">${topRec.icon}</span>
+      <div><div style="font-weight:700;font-size:13px;color:${recColors[topRec.type]};margin-bottom:2px">${topRec.title}</div><div class="muted" style="font-size:12px;line-height:1.5">${topRec.body}</div></div>
+    </div>
+    <div class="row" style="margin-top:10px;gap:8px">
+      <div class="risk-bar" style="flex:1"><div class="risk-fill" style="width:${risk.score}%;background:${risk.color}"></div></div>
+      <span style="font-size:11px;font-weight:700;color:${risk.color}">${risk.level} Risk</span>
+    </div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COACH INTELLIGENCE DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+function coachIntelView(state) {
+  const team = state.team;
+  const tr = state.teamReadiness ?? [];
+
+  // Generate team-level intelligence
+  const flagged = tr.filter(r => r.score < 65);
+  const moderate = tr.filter(r => r.score >= 65 && r.score < 80);
+  const ready = tr.filter(r => r.score >= 80);
+  const avgTeamScore = tr.length ? Math.round(tr.reduce((s, r) => s + r.score, 0) / tr.length) : null;
+
+  // Team risk signals
+  const signals = [];
+  if (flagged.length >= Math.ceil(tr.length * 0.4) && tr.length > 0) signals.push({ level: "high", msg: `${Math.round((flagged.length/tr.length)*100)}% of team below readiness threshold — consider a team recovery day.` });
+  if (flagged.length > 0 && flagged.length < Math.ceil(tr.length * 0.4)) signals.push({ level: "medium", msg: `${flagged.length} athlete${flagged.length>1?"s":""} flagged. Review their load and assign modified sessions.` });
+  if (ready.length === tr.length && tr.length > 0) signals.push({ level: "low", msg: "Full team at capacity. High-intensity training day is appropriate." });
+  if (!signals.length) signals.push({ level: "info", msg: "Awaiting check-ins. Send a reminder to your athletes." });
+
+  const signalColors = { high: "#f87171", medium: "#fbbf24", low: "#34d399", info: "#53b5ff" };
+  const signalBgs = { high: "rgba(248,113,113,.08)", medium: "rgba(251,191,36,.08)", low: "rgba(52,211,153,.08)", info: "rgba(83,181,255,.08)" };
+
+  const athleteCards = tr.slice(0, 8).map(r => {
+    // Mini risk assessment per athlete
+    const sleepFlag = r.sleep_hrs < 6;
+    const sorenessFlag = r.soreness === "High";
+    const batteryFlag = r.body_battery < 40;
+    const riskFlags = [sleepFlag && "💤 Low sleep", sorenessFlag && "⚠️ High soreness", batteryFlag && "🔋 Low energy"].filter(Boolean);
+    const c = r.score >= 80 ? "#34d399" : r.score >= 65 ? "#fbbf24" : "#f87171";
+    return `<div class="card" style="padding:14px">
+      <div class="space">
+        <div>
+          <div style="font-weight:700;font-size:15px">${r.profiles?.name ?? "Athlete"}</div>
+          <div class="muted small">${r.profiles?.position ?? "—"} · ${r.soreness ?? "—"} soreness</div>
+          ${riskFlags.length ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${riskFlags.map(f=>`<span style="font-size:10px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.2);color:#f87171;padding:2px 8px;border-radius:999px;font-weight:600">${f}</span>`).join("")}</div>` : ""}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:26px;font-weight:800;color:${c}">${r.score}</div>
+          <div style="height:3px;width:60px;border-radius:3px;background:rgba(255,255,255,.07);margin-top:4px"><div style="width:${r.score}%;height:100%;border-radius:3px;background:${c}"></div></div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `<div class="screen">
+    <div class="topbar">
+      <div><div class="muted">Intelligence</div><div class="title-xl">Team Command</div></div>
+      ${team ? `<span class="pill intel">${team.name}</span>` : ""}
+    </div>
+
+    <!-- Team Summary -->
+    <div class="grid three section">
+      <div class="card" style="text-align:center"><div class="metric-sm" style="color:#34d399">${ready.length}</div><div class="muted small">Game Ready</div></div>
+      <div class="card" style="text-align:center"><div class="metric-sm" style="color:#fbbf24">${moderate.length}</div><div class="muted small">Build Day</div></div>
+      <div class="card" style="text-align:center"><div class="metric-sm" style="color:#f87171">${flagged.length}</div><div class="muted small">At Risk</div></div>
+    </div>
+
+    <!-- Team Avg + Signal -->
+    <div class="intel-card section intel-glow">
+      <div class="row" style="gap:8px;margin-bottom:12px">
+        <span style="font-size:16px">🧠</span>
+        <span class="title-md" style="color:var(--intel)">Team Intelligence</span>
+        ${avgTeamScore !== null ? `<span style="margin-left:auto;font-size:22px;font-weight:800;color:${avgTeamScore>=80?"#34d399":avgTeamScore>=65?"#fbbf24":"#f87171"}">${avgTeamScore}<span class="muted" style="font-size:13px;font-weight:400"> avg</span></span>` : ""}
+      </div>
+      ${signals.map(s => `<div style="padding:10px 12px;border-radius:12px;background:${signalBgs[s.level]};border:1px solid ${signalColors[s.level]}22;margin-bottom:8px;font-size:13px;color:${signalColors[s.level]};font-weight:600">${s.msg}</div>`).join("")}
+    </div>
+
+    <!-- Load Phase Card -->
+    <div class="card section">
+      <div class="space">
+        <div class="title-md">Periodization Status</div>
+        ${(() => { const l = INTEL.analyzeLoad(STATE.recentWorkouts, STATE.readinessTrend); return `<span class="phase-pill" style="background:${l.phaseColor};border:1px solid ${l.phaseBorder};color:var(--text)">${l.phase} · W${l.weekInBlock}</span>`; })()}
+      </div>
+      <div class="muted" style="font-size:13px;margin-top:8px">ACWR ${(() => INTEL.analyzeLoad(STATE.recentWorkouts, STATE.readinessTrend).acwr)()} — ${(() => INTEL.analyzeLoad(STATE.recentWorkouts, STATE.readinessTrend).zoneMsg)()}</div>
+    </div>
+
+    <!-- Athlete Risk Cards -->
+    ${tr.length ? `<div class="section"><div class="space" style="margin-bottom:12px"><div class="title-md">Athlete Risk Profiles</div><span class="muted small">${tr.length} checked in</span></div><div class="list">${athleteCards}</div></div>` : `<div class="card section" style="text-align:center;padding:32px 16px;opacity:.6"><div style="font-size:36px;margin-bottom:10px">👥</div><div class="title-md">No check-ins yet</div><div class="muted" style="font-size:13px;margin-top:6px">Athletes' readiness data will appear here.</div></div>`}
+  </div>`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VIEWS
 // ─────────────────────────────────────────────────────────────────────────────
-function authView(state) {
-  const err = state.ui.error
-    ? `<div class="banner" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);margin-top:12px">${state.ui.error}</div>` : "";
-  return `<div class="login-wrap"><div class="card login-card">
+function authView(state){
+  const err=state.ui.error?`<div class="banner" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);margin-top:12px">${state.ui.error}</div>`:"";
+  return`<div class="login-wrap"><div class="card login-card">
     <div class="title-xl" style="letter-spacing:-.04em;margin-bottom:2px">PerformanceIQ</div>
     <div class="muted" style="margin-bottom:22px;font-size:14px">Athlete-first training. Coach-powered teams.</div>
     <div id="auth-email-form">
@@ -314,16 +767,16 @@ function authView(state) {
   </div></div>`;
 }
 
-function athleteHomeView(state) {
-  const {profile,workout,readiness} = state;
-  const score = readiness?.score ?? null;
-  const scoreColor = score===null?"var(--muted)":score>=80?"#34d399":score>=65?"#fbbf24":"#f87171";
-  const readinessMsg = score===null?"Log today's check-in to get your readiness score.":score>=80?"You're primed. Push outputs, keep technique clean.":score>=65?"Enough to train well. Prioritise quality over volume.":"Your body needs care today. Recovery session is the smart play.";
-  const chips = score!==null?`<div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px"><span class="stat-chip">HRV ${readiness.hrv||"—"}</span><span class="stat-chip">Sleep ${readiness.sleep_hrs}h</span><span class="stat-chip">Soreness ${readiness.soreness}</span><span class="stat-chip">Battery ${readiness.body_battery}%</span></div>`:"";
-  const pct = workout ? progressPct(workout) : 0;
-  const dayType = workout?.day_type??"";
-  const dayTypePill = dayType?`<span class="pill" style="font-size:11px;background:${dayType==="power"?"rgba(251,191,36,.1)":dayType==="recovery"?"rgba(52,211,153,.1)":"rgba(83,181,255,.1)"};border-color:${dayType==="power"?"rgba(251,191,36,.3)":dayType==="recovery"?"rgba(52,211,153,.3)":"rgba(83,181,255,.3)"}">${dayType}</span>`:"";
-  const workoutBlock = workout?`
+function athleteHomeView(state){
+  const{profile,workout,readiness}=state;
+  const score=readiness?.score??null;
+  const scoreColor=score===null?"var(--muted)":score>=80?"#34d399":score>=65?"#fbbf24":"#f87171";
+  const readinessMsg=score===null?"Log today's check-in to get your readiness score.":score>=80?"You're primed. Push outputs, keep technique clean.":score>=65?"Enough to train well. Prioritise quality over volume.":"Your body needs care today. Recovery session is the smart play.";
+  const chips=score!==null?`<div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px"><span class="stat-chip">HRV ${readiness.hrv||"—"}</span><span class="stat-chip">Sleep ${readiness.sleep_hrs}h</span><span class="stat-chip">Soreness ${readiness.soreness}</span><span class="stat-chip">Battery ${readiness.body_battery}%</span></div>`:"";
+  const pct=workout?progressPct(workout):0;
+  const dayType=workout?.day_type??"";
+  const dayTypePill=dayType?`<span class="pill" style="font-size:11px;background:${dayType==="power"?"rgba(251,191,36,.1)":dayType==="recovery"?"rgba(52,211,153,.1)":"rgba(83,181,255,.1)"};border-color:${dayType==="power"?"rgba(251,191,36,.3)":dayType==="recovery"?"rgba(52,211,153,.3)":"rgba(83,181,255,.3)"}">${dayType}</span>`:"";
+  const workoutBlock=workout?`
     <div class="card">
       <div class="space" style="align-items:flex-start">
         <div style="flex:1;min-width:0">
@@ -333,9 +786,7 @@ function athleteHomeView(state) {
         </div>
         <div class="metric-sm" style="color:var(--accent);flex-shrink:0">${pct}%</div>
       </div>
-      <div style="margin-top:10px;height:3px;border-radius:3px;background:rgba(255,255,255,.07)">
-        <div style="width:${pct}%;height:100%;border-radius:3px;background:var(--accent);transition:width .4s"></div>
-      </div>
+      <div style="margin-top:10px;height:3px;border-radius:3px;background:rgba(255,255,255,.07)"><div style="width:${pct}%;height:100%;border-radius:3px;background:var(--accent);transition:width .4s"></div></div>
       <div class="row" style="margin-top:12px;justify-content:space-between">
         <div class="muted" style="font-size:12px">${workout.recovery_cue}</div>
         <button class="sm" data-action="start-session">▶ Start</button>
@@ -347,10 +798,10 @@ function athleteHomeView(state) {
       <div class="muted" style="font-size:13px;margin-bottom:16px">Generate a session based on your readiness score.</div>
       <button data-action="auto-workout" style="width:100%">⚡ Generate Workout</button>
     </div>`;
-  const micro = buildMicrocycle(profile?.sport??"basketball");
-  const microCards = micro.map(d=>{const isToday=d.status==="today";const isDone=d.status==="done";return`<div class="day-card${isToday?" today":""}" style="${isDone?"opacity:.4":""}"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;color:${isToday?"var(--accent)":"var(--muted)"}">${isToday?"Today":isDone?"Done":d.day}</div><div style="font-weight:600;font-size:13px">${d.label}</div></div>`;}).join("");
-  const dateStr = new Date().toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"});
-  return `<div class="screen">
+  const micro=buildMicrocycle(profile?.sport??"basketball");
+  const microCards=micro.map(d=>{const isToday=d.status==="today";const isDone=d.status==="done";return`<div class="day-card${isToday?" today":""}" style="${isDone?"opacity:.4":""}"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;color:${isToday?"var(--accent)":"var(--muted)"}">${isToday?"Today":isDone?"Done":d.day}</div><div style="font-weight:600;font-size:13px">${d.label}</div></div>`;}).join("");
+  const dateStr=new Date().toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"});
+  return`<div class="screen">
     <div class="topbar">
       <div><div class="muted" style="font-size:12px">${dateStr}</div><div class="title-xl">${profile?.name?`Hey, ${profile.name.split(" ")[0]}.`:"My Training."}</div></div>
       ${profile?.sport?`<div class="pill">${profile.sport[0].toUpperCase()+profile.sport.slice(1)}</div>`:""}
@@ -367,6 +818,8 @@ function athleteHomeView(state) {
       </div>
       ${workoutBlock}
     </div>
+    <!-- INTELLIGENCE PANEL -->
+    ${intelligencePanelView(state.intelReport)}
     <div class="card section">
       <div class="space" style="margin-bottom:12px"><div class="title-md">This Week</div>${profile?.goal?`<span class="pill" style="font-size:11px">${profile.goal}</span>`:""}</div>
       <div class="grid" style="grid-template-columns:repeat(5,1fr);gap:8px">${microCards}</div>
@@ -375,16 +828,16 @@ function athleteHomeView(state) {
   </div>`;
 }
 
-function sessionView(state) {
-  const workout = state.workout;
-  if (!workout) return `<div class="screen"><div class="topbar"><div><div class="muted">Train</div><div class="title-xl">No Session</div></div></div><div class="card section" style="text-align:center;padding:40px 16px"><div style="font-size:48px;margin-bottom:14px">🏋️</div><div class="title-md" style="margin-bottom:8px">No workout assigned yet</div><div class="muted" style="margin-bottom:20px;font-size:14px">Generate a session based on your readiness score.</div><button data-action="auto-workout">⚡ Generate Workout</button></div></div>`;
-  const pct = progressPct(workout);
-  const totalSets = (workout.exercises??[]).flatMap(e=>e.sets??[]).length;
-  const doneSets  = (workout.exercises??[]).flatMap(e=>e.sets??[]).filter(s=>s.done).length;
-  const exCards = (workout.exercises??[]).map(ex=>{
+function sessionView(state){
+  const workout=state.workout;
+  if(!workout)return`<div class="screen"><div class="topbar"><div><div class="muted">Train</div><div class="title-xl">No Session</div></div></div><div class="card section" style="text-align:center;padding:40px 16px"><div style="font-size:48px;margin-bottom:14px">🏋️</div><div class="title-md" style="margin-bottom:8px">No workout assigned yet</div><div class="muted" style="margin-bottom:20px;font-size:14px">Generate a session from the Today tab.</div><button data-action="auto-workout">⚡ Generate Workout</button></div></div>`;
+  const pct=progressPct(workout);
+  const totalSets=(workout.exercises??[]).flatMap(e=>e.sets??[]).length;
+  const doneSets=(workout.exercises??[]).flatMap(e=>e.sets??[]).filter(s=>s.done).length;
+  const exCards=(workout.exercises??[]).map(ex=>{
     const meta=getExercise(ex.id);const exDone=(ex.sets??[]).filter(s=>s.done).length;const exTotal=(ex.sets??[]).length;const allDone=exDone===exTotal&&exTotal>0;
     const tiles=(ex.sets??[]).map((s,idx)=>`<button class="set-tile${s.done?" done":""}" data-action="toggle-set" data-ex="${ex.id}" data-set="${idx}"><div class="muted small" style="font-size:10px">SET ${idx+1}</div><div style="font-weight:700;margin:3px 0;font-size:13px">${s.target}</div><div style="font-size:11px">${s.done?"✓":"—"}</div></button>`).join("");
-    return `<div class="exercise-card${allDone?" exercise-done":""}">
+    return`<div class="exercise-card${allDone?" exercise-done":""}">
       <div class="space" style="align-items:flex-start">
         <div style="flex:1;min-width:0"><div class="title-md" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${allDone?"✓ ":""}${meta?.title||ex.id}</div><div class="muted small">${meta?.pattern??"—"} · ${meta?.equipment??"bodyweight"}</div></div>
         <div class="row" style="gap:6px;flex-shrink:0">
@@ -398,36 +851,27 @@ function sessionView(state) {
       <div style="margin-top:8px;height:2px;border-radius:2px;background:rgba(255,255,255,.06)"><div style="width:${exTotal?Math.round((exDone/exTotal)*100):0}%;height:100%;border-radius:2px;background:${allDone?"#34d399":"var(--accent)"};transition:width .3s"></div></div>
     </div>`;
   }).join("");
-  return `<div class="screen">
+  return`<div class="screen">
     <div class="topbar"><div><div class="muted">Train</div><div class="title-xl">${workout.title}</div></div><div class="pill" style="${pct===100?"background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.3);color:#34d399":""}">${pct}%</div></div>
     <div class="section" style="padding:0 2px">
       <div style="height:4px;border-radius:4px;background:rgba(255,255,255,.07)"><div style="width:${pct}%;height:100%;border-radius:4px;background:${pct===100?"#34d399":"var(--accent)"};transition:width .4s ease"></div></div>
       <div class="row" style="justify-content:space-between;margin-top:6px"><div class="muted small">${doneSets} of ${totalSets} sets complete</div><div class="muted small" style="font-style:italic">${workout.recovery_cue||""}</div></div>
     </div>
+    <!-- SESSION INTEL WIDGET -->
+    ${sessionIntelWidget(state.intelReport)}
     <div class="list section">${exCards}</div>
     ${pct===100?`<div class="card section" style="text-align:center;padding:24px 16px;background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.2)"><div style="font-size:36px;margin-bottom:10px">🎯</div><div class="title-md" style="color:#34d399">Session Complete</div><div class="muted" style="margin-top:6px;margin-bottom:16px">All sets logged. Finish the session below.</div><button data-action="end-session" style="background:rgba(52,211,153,.9);color:#052a1c">Finish Session</button></div>`:""}
   </div>`;
 }
 
-function sparkline(values,color="#53b5ff",h=44) {
-  if(!values||values.length<2)return"";
-  const w=260,pad=4,min=Math.min(...values),max=Math.max(...values),range=max-min||1;
-  const pts=values.map((v,i)=>`${(pad+(i/(values.length-1))*(w-pad*2)).toFixed(1)},${(h-pad-((v-min)/range)*(h-pad*2)).toFixed(1)}`);
-  const [lx,ly]=pts[pts.length-1].split(",");
-  const area=`M${pts[0].split(",")[0]},${h} L${pts.join(" L")} L${lx},${h} Z`;
-  const gid="sg"+color.replace("#","");
-  return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;margin-top:10px;height:${h}px"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".22"/><stop offset="100%" stop-color="${color}" stop-opacity=".01"/></linearGradient></defs><path d="${area}" fill="url(#${gid})"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${lx}" cy="${ly}" r="4" fill="${color}" opacity=".9"/></svg>`;
-}
-
-function progressView(state) {
-  const {prs,readinessTrend} = state;
-  const recentWorkouts = state.recentWorkouts??[];
-  const completed = recentWorkouts.filter(w=>w.completed_at);
-  const avg = readinessTrend.length?Math.round(readinessTrend.reduce((s,r)=>s+r.score,0)/readinessTrend.length):null;
-  const trendVals = readinessTrend.map(r=>r.score);
-  const last = trendVals[trendVals.length-1]??null;
-  const prev = trendVals[trendVals.length-2]??null;
-  const arrow = last===null||prev===null?"":last>prev?" ↑":last<prev?" ↓":" →";
+function progressView(state){
+  const{prs,readinessTrend}=state;
+  const recentWorkouts=state.recentWorkouts??[];
+  const completed=recentWorkouts.filter(w=>w.completed_at);
+  const avg=readinessTrend.length?Math.round(readinessTrend.reduce((s,r)=>s+r.score,0)/readinessTrend.length):null;
+  const trendVals=readinessTrend.map(r=>r.score);
+  const last=trendVals[trendVals.length-1]??null;const prev=trendVals[trendVals.length-2]??null;
+  const arrow=last===null||prev===null?"":last>prev?" ↑":last<prev?" ↓":" →";
   let streak=0;
   const sorted=[...recentWorkouts].filter(w=>w.completed_at).sort((a,b)=>b.scheduled_date.localeCompare(a.scheduled_date));
   if(sorted.length){streak=1;let pr=sorted[0].scheduled_date;for(let i=1;i<sorted.length;i++){const diff=(new Date(pr)-new Date(sorted[i].scheduled_date))/86400000;if(diff<=2){streak++;pr=sorted[i].scheduled_date;}else break;}}
@@ -440,18 +884,18 @@ function progressView(state) {
   const trendCard=readinessTrend.length>=2?`<div class="card section"><div class="space"><div class="title-md">Readiness Trend</div><span class="muted small">14 days</span></div>${sparkline(trendVals)}<div class="row" style="justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:6px"><span class="stat-chip" style="font-size:11px">Low ${Math.min(...trendVals)}</span><span class="stat-chip" style="font-size:11px">High ${Math.max(...trendVals)}</span><span class="stat-chip" style="font-size:11px">Avg ${avg}</span><span class="stat-chip" style="font-size:11px">${trendVals.length} logs</span></div></div>`:`<div class="card section" style="opacity:.6;text-align:center;padding:24px 16px"><div style="font-size:32px;margin-bottom:8px">📈</div><div class="title-md">No Trend Yet</div><div class="muted" style="font-size:13px;margin-top:6px">Log readiness on 2+ days to see your trend chart.</div></div>`;
   const history=completed.length?completed.slice(0,8).map(w=>{const date=new Date(w.scheduled_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});const ex=w.exercises?.length??0;const c={power:"#fbbf24",recovery:"#34d399",build:"#53b5ff"}[w.day_type]??"var(--muted)";return`<div class="item space"><div><div style="font-weight:600;font-size:14px">${w.title}</div><div class="muted small">${date} · ${ex} exercise${ex!==1?"s":""}</div></div><span class="pill" style="font-size:11px;color:${c};border-color:${c}33">${w.day_type??"session"}</span></div>`;}).join(""):`<div class="item muted" style="text-align:center;padding:20px">No completed sessions yet.</div>`;
   const prItems=prs.length?prs.slice(0,10).map(pr=>`<div class="item space"><div><div style="font-weight:600">${pr.exercise_id.replace(/_/g," ")}</div><div class="muted small">${pr.label}</div></div><div style="text-align:right"><div style="font-weight:700;color:#34d399">${pr.value} ${pr.unit??""}</div><div class="muted small">${pr.set_at}</div></div></div>`).join(""):`<div class="item muted" style="text-align:center;padding:20px">No PRs logged yet.</div>`;
-  return `<div class="screen"><div class="topbar"><div><div class="muted">Progress</div><div class="title-xl">Depth Over Noise</div></div></div><div class="grid three section">${pillarCards}</div>${trendCard}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Session History</div><span class="muted small">${completed.length} sessions</span></div><div class="list">${history}</div></div><div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Personal Records</div><span class="muted small">${prs.length} recorded</span></div><div class="list">${prItems}</div></div></div>`;
+  return`<div class="screen"><div class="topbar"><div><div class="muted">Progress</div><div class="title-xl">Depth Over Noise</div></div></div><div class="grid three section">${pillarCards}</div>${trendCard}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Session History</div><span class="muted small">${completed.length} sessions</span></div><div class="list">${history}</div></div><div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Personal Records</div><span class="muted small">${prs.length} recorded</span></div><div class="list">${prItems}</div></div></div>`;
 }
 
-function profileView(state) {
-  const {profile}=state;
+function profileView(state){
+  const{profile}=state;
   if(!profile)return`<div class="screen"><div class="muted" style="padding:40px 16px;text-align:center">Loading profile…</div></div>`;
   const isSoloMode=!state.session;
   const SPORTS=["basketball","football","soccer","baseball","volleyball","track"];
   const GOALS=["Get Faster","Build Strength","Improve Endurance","Peak for Season","Recover Smart","General Fitness"];
   const completed=(state.recentWorkouts??[]).filter(w=>w.completed_at).length;
   const avgR=state.readinessTrend?.length?Math.round(state.readinessTrend.reduce((s,r)=>s+r.score,0)/state.readinessTrend.length):null;
-  return `<div class="screen">
+  return`<div class="screen">
     <div class="topbar"><div><div class="muted">Profile</div><div class="title-xl">${profile.name||"Athlete"}</div></div><span class="role-badge" style="font-size:12px;padding:6px 10px">${isSoloMode?"Solo Mode":profile.role}</span></div>
     <div class="grid three section">
       <div class="card" style="text-align:center"><div class="metric-sm" style="color:#ff6b35">${completed}</div><div class="muted small">Sessions</div></div>
@@ -476,20 +920,21 @@ function profileView(state) {
   </div>`;
 }
 
-function teamHomeView(state) {
+function teamHomeView(state){
   const team=state.team;
   if(!team)return`<div class="screen"><div class="topbar"><div><div class="muted">Team</div><div class="title-xl">No Team Found</div></div></div><div class="card section" style="text-align:center;padding:32px 16px"><div style="font-size:40px;margin-bottom:12px">👥</div><div class="title-md">You're not on a team yet</div><div class="muted" style="font-size:13px;margin-top:8px">Ask your coach to add you, or create a team.</div></div></div>`;
   const tr=state.teamReadiness??[];const flagged=tr.filter(r=>r.score<65);const readyCount=tr.filter(r=>r.score>=80).length;
   const list=tr.length?tr.slice(0,8).map(r=>{const c=r.score>=80?"#34d399":r.score>=65?"#fbbf24":"#f87171";return`<div class="item space"><div><div style="font-weight:600">${r.profiles?.name??"Athlete"}</div><div class="muted small">${r.profiles?.position??""} · ${r.soreness??"—"} soreness</div></div><div style="font-weight:700;color:${c};font-size:18px">${r.score}</div></div>`;}).join(""):`<div class="item muted" style="text-align:center;padding:16px">No check-ins yet today.</div>`;
-  return `<div class="screen"><div class="topbar"><div><div class="muted">Team</div><div class="title-xl">${team.name}</div></div><span class="pill">${team.sport??""}</span></div><div class="grid three section"><div class="card" style="text-align:center"><div class="metric-sm" style="color:#53b5ff">${tr.length}</div><div class="muted small">Checked In</div></div><div class="card" style="text-align:center"><div class="metric-sm" style="color:#34d399">${readyCount}</div><div class="muted small">Game Ready</div></div><div class="card" style="text-align:center"><div class="metric-sm" style="color:#f87171">${flagged.length}</div><div class="muted small">Need Attention</div></div></div>${flagged.length?`<div class="banner section" style="background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.25)"><strong>${flagged.length} athlete${flagged.length>1?"s":""}</strong> with readiness below 65 — consider modified sessions.</div>`:""}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Today's Readiness</div></div><div class="list">${list}</div></div></div>`;
+  return`<div class="screen"><div class="topbar"><div><div class="muted">Team</div><div class="title-xl">${team.name}</div></div><span class="pill">${team.sport??""}</span></div><div class="grid three section"><div class="card" style="text-align:center"><div class="metric-sm" style="color:#53b5ff">${tr.length}</div><div class="muted small">Checked In</div></div><div class="card" style="text-align:center"><div class="metric-sm" style="color:#34d399">${readyCount}</div><div class="muted small">Game Ready</div></div><div class="card" style="text-align:center"><div class="metric-sm" style="color:#f87171">${flagged.length}</div><div class="muted small">Need Attention</div></div></div>${flagged.length?`<div class="banner section" style="background:rgba(248,113,113,.08);border-color:rgba(248,113,113,.25)"><strong>${flagged.length} athlete${flagged.length>1?"s":""}</strong> with readiness below 65 — consider modified sessions.</div>`:""}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Today's Readiness</div></div><div class="list">${list}</div></div></div>`;
 }
 
-function readinessSheet(state) {
+// Sheets
+function readinessSheet(state){
   if(!state.ui.activeReadinessSheet)return"";
   const r=state.readiness;const score=r?.score??null;
   const scoreColor=score===null?"var(--muted)":score>=80?"#34d399":score>=65?"#fbbf24":"#f87171";
   const scoreLabel=score===null?"Not logged":score>=80?"Primed":score>=65?"Build":"Recover";
-  return `<div class="sheet-backdrop" data-action="close-readiness"><div class="sheet" onclick="event.stopPropagation()">
+  return`<div class="sheet-backdrop" data-action="close-readiness"><div class="sheet" onclick="event.stopPropagation()">
     <div class="handle"></div>
     <div class="space"><div><div class="title-lg">Today's Check-in</div><div class="muted">Log how your body feels right now.</div></div><button class="secondary sm" data-action="close-readiness">✕</button></div>
     ${score!==null?`<div class="readiness-hero section"><div class="metric" style="color:${scoreColor}">${score}</div><div class="pill" style="border-color:${scoreColor};color:${scoreColor}">${scoreLabel}</div><div class="row section" style="flex-wrap:wrap;gap:8px"><span class="stat-chip">HRV ${r.hrv||"—"}</span><span class="stat-chip">Sleep ${r.sleep_hrs}h</span><span class="stat-chip">Soreness ${r.soreness}</span><span class="stat-chip">Battery ${r.body_battery}%</span></div></div>`:""}
@@ -506,14 +951,14 @@ function readinessSheet(state) {
   </div></div>`;
 }
 
-function setLoggingSheet(state) {
+function setLoggingSheet(state){
   if(!state.ui.activeSetExerciseId)return"";
   const workout=state.workout;if(!workout)return"";
   const ex=workout.exercises?.find(x=>x.id===state.ui.activeSetExerciseId);if(!ex)return"";
   const meta=getExercise(ex.id);
   const doneSets=(ex.sets??[]).filter(s=>s.done).length;const totalSets=(ex.sets??[]).length;
   const tiles=(ex.sets??[]).map((s,idx)=>`<button class="set-tile${s.done?" done":""}" data-action="toggle-set" data-ex="${ex.id}" data-set="${idx}"><div class="muted small">Set ${idx+1}</div><div style="font-weight:700;margin:4px 0">${s.target}</div><div class="small">${s.done?"✓ Done":"Tap to log"}</div></button>`).join("");
-  return `<div class="sheet-backdrop" data-action="close-set-sheet"><div class="sheet" onclick="event.stopPropagation()">
+  return`<div class="sheet-backdrop" data-action="close-set-sheet"><div class="sheet" onclick="event.stopPropagation()">
     <div class="handle"></div>
     <div class="space"><div><div class="title-lg">${meta?.title||ex.id}</div><div class="muted">${meta?.cue||"Tap a set to mark it complete."}</div></div><button class="secondary sm" data-action="close-set-sheet">Done</button></div>
     <div class="section"><div style="height:3px;border-radius:3px;background:rgba(255,255,255,.08)"><div style="width:${totalSets?Math.round((doneSets/totalSets)*100):0}%;height:100%;border-radius:3px;background:var(--accent);transition:width .3s"></div></div><div class="muted small" style="margin-top:6px">${doneSets} of ${totalSets} sets logged</div></div>
@@ -521,11 +966,11 @@ function setLoggingSheet(state) {
   </div></div>`;
 }
 
-function swapSheet(state,options) {
+function swapSheet(state,options){
   if(!state.ui.activeSwapExerciseId)return"";
   const cur=getExercise(state.ui.activeSwapExerciseId);
   const items=options.length?options.map(o=>`<div class="item space"><div><strong>${o.title}</strong><div class="muted small">${o.pattern} · ${o.equipment}</div><div class="muted small" style="font-size:11px;margin-top:4px">${o.cue}</div></div><button class="sm" data-action="pick-swap" data-new="${o.id}">Use</button></div>`).join(""):`<div class="item muted">No swap options found.</div>`;
-  return `<div class="sheet-backdrop" data-action="close-swap-sheet"><div class="sheet" onclick="event.stopPropagation()">
+  return`<div class="sheet-backdrop" data-action="close-swap-sheet"><div class="sheet" onclick="event.stopPropagation()">
     <div class="handle"></div>
     <div class="space"><div><div class="title-lg">Swap Exercise</div><div class="muted">Same sport · same pattern · same intent.</div></div><button class="secondary sm" data-action="close-swap-sheet">✕</button></div>
     ${cur?`<div class="banner section" style="font-size:13px">Replacing: <strong>${cur.title}</strong></div>`:""}
@@ -533,18 +978,18 @@ function swapSheet(state,options) {
   </div></div>`;
 }
 
-function detailSheet(state) {
+function detailSheet(state){
   if(!state.ui.activeDetailExerciseId)return"";
   const meta=getExercise(state.ui.activeDetailExerciseId);if(!meta)return"";
   const pl={power:"⚡ Power",strength_lower:"🏋️ Strength",hinge:"🔄 Hinge",speed:"💨 Speed",core:"🎯 Core"}[meta.pattern]||meta.pattern;
-  return `<div class="sheet-backdrop" data-action="close-detail-sheet"><div class="sheet" onclick="event.stopPropagation()">
+  return`<div class="sheet-backdrop" data-action="close-detail-sheet"><div class="sheet" onclick="event.stopPropagation()">
     <div class="handle"></div>
     <div class="space"><div><div class="title-lg">${meta.title}</div><div class="row" style="gap:8px;margin-top:6px"><span class="pill" style="font-size:11px">${pl}</span><span class="pill" style="font-size:11px">${meta.equipment}</span><span class="pill" style="font-size:11px">${meta.sport}</span></div></div><button class="secondary sm" data-action="close-detail-sheet">✕</button></div>
     <div class="card section"><div class="muted small" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Coaching Cue</div><div style="font-size:16px;line-height:1.55;font-weight:500">"${meta.cue}"</div></div>
   </div></div>`;
 }
 
-function onboardingSheet(state) {
+function onboardingSheet(state){
   const step=state.ui.onboardingStep;if(!step)return"";
   const SPORTS=["basketball","football","soccer","baseball","volleyball","track"];
   const GOALS=["Get Faster","Build Strength","Improve Endurance","Peak for Season","Recover Smart","General Fitness"];
@@ -587,10 +1032,10 @@ function onboardingSheet(state) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDER ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
-const app = document.getElementById("app");
-let _scrollY = 0;
+const app=document.getElementById("app");
+let _scrollY=0;
 
-function computeReadinessScore(sleepHrs, soreness, battery) {
+function computeReadinessScore(sleepHrs,soreness,battery){
   let s=50;
   s+=Math.min(25,Math.round((sleepHrs/9)*25));
   s+=({None:25,Low:20,Moderate:10,High:0}[soreness]??15);
@@ -599,37 +1044,48 @@ function computeReadinessScore(sleepHrs, soreness, battery) {
 }
 
 function navBtn(key,icon,label){const active=STATE.ui.tab===key;return`<button class="nav-btn${active?" active":""}" data-nav="${key}"><span style="font-size:18px">${icon}</span><span>${label}</span></button>`;}
-function teamNavBtn(key,icon,label){const active=STATE.ui.teamTab===key;return`<button class="nav-btn${active?" active":""}" data-team-nav="${key}"><span style="font-size:18px">${icon}</span><span>${label}</span></button>`;}
+function teamNavBtn(key,icon,label){const active=STATE.ui.teamTab===key;const isIntel=key==="intelligence";return`<button class="nav-btn${active?" active":""}${isIntel&&active?" intel-nav":""}" data-team-nav="${key}"><span style="font-size:18px">${icon}</span><span>${label}</span></button>`;}
 
 function nowBar(){if(STATE.ui.tab!=="session"||isCoach()||!STATE.workout)return"";return`<div class="now-bar"><div><strong style="font-size:14px">${STATE.workout.title}</strong><div class="muted small">Active session</div></div><button class="sm" data-action="end-session" style="background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3)">Finish</button></div>`;}
 
 function bottomNav(){
-  if(isCoach())return`<nav class="bottom-nav">${teamNavBtn("team-home","🏠","Home")}${teamNavBtn("schedule","📅","Schedule")}${teamNavBtn("roster","👥","Roster")}${teamNavBtn("activity","📊","Activity")}</nav>`;
+  if(isCoach())return`<nav class="bottom-nav">${teamNavBtn("team-home","🏠","Home")}${teamNavBtn("schedule","📅","Schedule")}${teamNavBtn("roster","👥","Roster")}${teamNavBtn("intelligence","🧠","Intel")}</nav>`;
   return`<nav class="bottom-nav">${navBtn("today","🏠","Today")}${navBtn("session","🏋️","Train")}${navBtn("progress","📈","Progress")}${navBtn("profile","👤","Profile")}</nav>`;
-}
-
-function renderScreen(){
-  if(isCoach()){switch(STATE.ui.teamTab){case"schedule":return teamScheduleView?teamScheduleView(STATE):teamHomeView(STATE);case"roster":return rosterView?rosterView(STATE):teamHomeView(STATE);case"activity":return teamActivityView?teamActivityView(STATE):teamHomeView(STATE);default:return teamHomeView(STATE);}}
-  switch(STATE.ui.tab){case"session":return sessionView(STATE);case"progress":return progressView(STATE);case"profile":return profileView(STATE);default:return athleteHomeView(STATE);}
 }
 
 function teamScheduleView(state){const team=state.team;if(!team)return`<div class="screen"><div class="muted" style="padding:40px">No team.</div></div>`;const days=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];const todayMon=new Date().getDay()===0?6:new Date().getDay()-1;return`<div class="screen"><div class="topbar"><div><div class="muted">Schedule</div><div class="title-xl">Weekly Plan</div></div><span class="pill">${team.name}</span></div><div class="card section"><div class="grid" style="grid-template-columns:repeat(7,1fr);gap:6px">${days.map((d,i)=>`<div style="min-height:80px;border-radius:14px;padding:8px;background:${i===todayMon?"rgba(83,181,255,.1)":"var(--surface2)"};border:1px solid ${i===todayMon?"rgba(83,181,255,.35)":"var(--line)"}"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${i===todayMon?"var(--accent)":"var(--muted)"}">${d}</div></div>`).join("")}</div></div></div>`;}
 function rosterView(state){const team=state.team;if(!team)return`<div class="screen"><div class="muted" style="padding:40px">No team.</div></div>`;const tr=state.teamReadiness??[];const items=tr.length?tr.map(r=>{const c=r.score>=80?"#34d399":r.score>=65?"#fbbf24":"#f87171";return`<div class="card"><div class="space"><div><div style="font-weight:700;font-size:16px">${r.profiles?.name??"Athlete"}</div><div class="muted small">${r.profiles?.position??"—"}</div></div><div style="font-weight:700;color:${c};font-size:20px">${r.score}</div></div></div>`;}).join(""):`<div class="card section" style="text-align:center;padding:32px 16px;opacity:.6"><div class="title-md">No athletes checked in</div></div>`;return`<div class="screen"><div class="topbar"><div><div class="muted">Roster</div><div class="title-xl">${team.name}</div></div></div><div class="list section">${items}</div></div>`;}
-function teamActivityView(state){const team=state.team;if(!team)return`<div class="screen"><div class="muted" style="padding:40px">No team.</div></div>`;const tr=state.teamReadiness??[];const low=tr.filter(r=>r.score<65);const high=tr.filter(r=>r.score>=80);const signals=[];if(high.length)signals.push(`<div class="card" style="background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.2)"><div style="font-weight:600;color:#34d399;margin-bottom:4px">🟢 ${high.length} athletes at full capacity</div><div class="muted small">${high.map(r=>r.profiles?.name??"Athlete").join(", ")}</div></div>`);if(low.length)signals.push(`<div class="card" style="background:rgba(248,113,113,.07);border-color:rgba(248,113,113,.2)"><div style="font-weight:600;color:#f87171;margin-bottom:4px">🔴 ${low.length} need modified sessions</div></div>`);if(!signals.length)signals.push(`<div class="card" style="text-align:center;padding:32px 16px;opacity:.6"><div style="font-size:36px;margin-bottom:10px">📊</div><div class="title-md">No signals yet today</div></div>`);return`<div class="screen"><div class="topbar"><div><div class="muted">Activity</div><div class="title-xl">Signal, Not Noise</div></div></div><div class="list section">${signals.join("")}</div></div>`;}
 
-function render() {
-  try {
-    if(!STATE.session && !isSolo()){app.innerHTML=authView(STATE);bindAuth();return;}
+function renderScreen(){
+  if(isCoach()){
+    switch(STATE.ui.teamTab){
+      case"schedule":return teamScheduleView(STATE);
+      case"roster":return rosterView(STATE);
+      case"intelligence":return coachIntelView(STATE);
+      default:return teamHomeView(STATE);
+    }
+  }
+  switch(STATE.ui.tab){
+    case"session":return sessionView(STATE);
+    case"progress":return progressView(STATE);
+    case"profile":return profileView(STATE);
+    default:return athleteHomeView(STATE);
+  }
+}
+
+function render(){
+  try{
+    if(!STATE.session&&!isSolo()){app.innerHTML=authView(STATE);bindAuth();return;}
     if(!STATE.profile&&!STATE.ui.loading){if(!STATE.ui.onboardingStep)STATE.ui.onboardingStep=1;if(!STATE.ui.onboardingDraft)STATE.ui.onboardingDraft={};app.innerHTML=onboardingSheet(STATE);bindOnboarding();return;}
     if(STATE.ui.loading){app.innerHTML=`<div style="min-height:100vh;display:grid;place-items:center"><div class="loading-spinner"></div></div>`;return;}
     const swapOptions=STATE.ui.activeSwapExerciseId?getSwapOptions(STATE.ui.activeSwapExerciseId,STATE.profile?.sport??"basketball"):[];
     const toast=STATE.ui.toast?`<div class="toast toast-${STATE.ui.toast.type}">${STATE.ui.toast.msg}</div>`:"";
     app.innerHTML=
       `<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>`+
-      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+toast;
+      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+toast;
     bindUI();
     requestAnimationFrame(()=>window.scrollTo(0,_scrollY));
-  } catch(e) {
+  }catch(e){
     console.error("Render error:",e);
     app.innerHTML=`<div style="min-height:100vh;display:grid;place-items:center;padding:20px"><div class="card" style="max-width:400px;text-align:center;padding:28px"><div style="font-size:40px;margin-bottom:12px">⚠️</div><div class="title-md" style="margin-bottom:8px">Something went wrong</div><div class="muted" style="font-size:13px;margin-bottom:16px">${e.message}</div><button onclick="window.location.reload()">Reload App</button></div></div>`;
   }
@@ -638,14 +1094,14 @@ function render() {
 // ─────────────────────────────────────────────────────────────────────────────
 // EVENT BINDING
 // ─────────────────────────────────────────────────────────────────────────────
-function bindAuth() {
+function bindAuth(){
   const $=id=>document.getElementById(id);
   $("btn-signin")?.addEventListener("click",async()=>{clearError();try{await signInSupabase($("auth-email").value,$("auth-password").value);}catch(e){setError(e.message);render();}});
   $("btn-signup")?.addEventListener("click",()=>{$("auth-email-form").hidden=true;$("signup-role-step").hidden=false;const doSU=async role=>{try{await signUpSupabase($("auth-email").value,$("auth-password").value,role);setToast("Account created! Check your email.","success");$("signup-role-step").hidden=true;$("auth-email-form").hidden=false;render();}catch(e){setError(e.message);render();}};$("btn-role-athlete")?.addEventListener("click",()=>doSU("athlete"));$("btn-role-coach")?.addEventListener("click",()=>doSU("coach"));});
   $("btn-solo")?.addEventListener("click",()=>{STATE.mode="solo";STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};render();});
 }
 
-function bindOnboarding() {
+function bindOnboarding(){
   const draft=STATE.ui.onboardingDraft;
   document.querySelectorAll("[data-ob-sport]").forEach(b=>b.addEventListener("click",()=>{draft.sport=b.dataset.obSport;render();}));
   document.querySelectorAll("[data-ob-goal]").forEach(b=>b.addEventListener("click",()=>{draft.goal=b.dataset.obGoal;render();}));
@@ -658,16 +1114,16 @@ function bindOnboarding() {
     const profile={name:draft.name??"Athlete",sport:draft.sport??"basketball",position:draft.position??"",goal:draft.goal??"General Fitness",role:draft.role??"athlete",equipment:draft.equipment??[]};
     STATE.profile=solo.saveProfile(profile);
     STATE.ui.onboardingStep=null;STATE.ui.onboardingDraft=null;
-    loadSoloData();setToast("Welcome, "+profile.name.split(" ")[0]+"! 🎉","success");render();
+    loadSoloData();refreshIntelReport();setToast("Welcome, "+profile.name.split(" ")[0]+"! 🎉","success");render();
   });
 }
 
-function bindUI() {
+function bindUI(){
   const on=(sel,fn)=>document.querySelectorAll(sel).forEach(el=>el.addEventListener("click",e=>{e.stopPropagation();fn(e.currentTarget);}));
   on("[data-nav]",b=>{_scrollY=window.scrollY;STATE.ui.tab=b.dataset.nav;render();});
   on("[data-team-nav]",b=>{_scrollY=window.scrollY;STATE.ui.teamTab=b.dataset.teamNav;render();});
   on("[data-action='start-session']",()=>{STATE.ui.tab="session";render();});
-  on("[data-action='end-session']",()=>{if(STATE.workout){solo.completeWorkout(STATE.workout.id,STATE.workout.exercises);setToast("Session complete. Great work. 💪","success");loadSoloData();}STATE.ui.tab="today";render();});
+  on("[data-action='end-session']",()=>{if(STATE.workout){solo.completeWorkout(STATE.workout.id,STATE.workout.exercises);setToast("Session complete. Great work. 💪","success");loadSoloData();refreshIntelReport();}STATE.ui.tab="today";render();});
   on("[data-action='sign-out']",()=>{STATE.session=null;STATE.profile=null;STATE.mode="solo";render();});
   on("[data-action='sign-in-prompt']",()=>{STATE.mode="connected";STATE.session=null;render();});
   on("[data-action='open-readiness']",()=>{STATE.ui.activeReadinessSheet=true;render();});
@@ -680,8 +1136,12 @@ function bindUI() {
     const score=computeReadinessScore(sleep,soreness,battery);
     STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});
     STATE.readinessTrend=solo.getReadinessTrend(14);
-    STATE.ui.activeReadinessSheet=false;setToast("Check-in saved. Score: "+score,"success");render();
+    STATE.ui.activeReadinessSheet=false;
+    refreshIntelReport();
+    setToast("Check-in saved. Score: "+score,"success");render();
   });
+  on("[data-action='open-intel-sheet']",()=>{STATE.ui.intelSheetOpen=true;render();});
+  on("[data-action='close-intel-sheet']",()=>{STATE.ui.intelSheetOpen=false;render();});
   on("[data-action='open-sets']",b=>{STATE.ui.activeSetExerciseId=b.dataset.ex;render();});
   on("[data-action='close-set-sheet']",()=>{STATE.ui.activeSetExerciseId=null;render();});
   on("[data-action='toggle-set']",b=>{if(!STATE.workout)return;markSetDone(STATE.workout,b.dataset.ex,Number(b.dataset.set));solo.saveWorkoutProgress(STATE.workout.id,STATE.workout.exercises);render();});
@@ -691,30 +1151,29 @@ function bindUI() {
   on("[data-action='detail']",b=>{STATE.ui.activeDetailExerciseId=b.dataset.ex;render();});
   on("[data-action='close-detail-sheet']",()=>{STATE.ui.activeDetailExerciseId=null;render();});
   on("[data-action='auto-workout']",()=>{const payload=buildWorkoutPayload(STATE.profile?.sport??"basketball",STATE.readiness?.score??75);STATE.workout=solo.createWorkout(payload);STATE.ui.tab="session";setToast("Workout generated. Let's go.","success");render();});
-  on("[data-action='save-profile']",()=>{const n=document.getElementById("p-name")?.value;const s=document.getElementById("p-sport")?.value;const pos=document.getElementById("p-position")?.value;const g=document.getElementById("p-goal")?.value;STATE.profile=solo.saveProfile({...STATE.profile,name:n||STATE.profile.name,sport:s||STATE.profile.sport,position:pos||STATE.profile.position,goal:g||STATE.profile.goal});setToast("Profile saved.","success");render();});
-  on("[data-action='reset-solo']",()=>{if(!confirm("Clear ALL local data? This cannot be undone."))return;solo.clearAll();STATE.profile=null;STATE.workout=null;STATE.readiness=null;STATE.prs=[];STATE.readinessTrend=[];STATE.recentWorkouts=[];STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};render();});
+  on("[data-action='save-profile']",()=>{const n=document.getElementById("p-name")?.value;const s=document.getElementById("p-sport")?.value;const pos=document.getElementById("p-position")?.value;const g=document.getElementById("p-goal")?.value;STATE.profile=solo.saveProfile({...STATE.profile,name:n||STATE.profile.name,sport:s||STATE.profile.sport,position:pos||STATE.profile.position,goal:g||STATE.profile.goal});refreshIntelReport();setToast("Profile saved.","success");render();});
+  on("[data-action='reset-solo']",()=>{if(!confirm("Clear ALL local data? This cannot be undone."))return;solo.clearAll();STATE.profile=null;STATE.workout=null;STATE.readiness=null;STATE.prs=[];STATE.readinessTrend=[];STATE.recentWorkouts=[];STATE.intelReport=null;STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};render();});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DATA LOADING (Solo mode — Supabase optional)
+// DATA LOADING
 // ─────────────────────────────────────────────────────────────────────────────
-function loadSoloData() {
-  STATE.profile        = solo.getProfile();
-  STATE.workout        = solo.getTodaysWorkout();
-  STATE.readiness      = solo.getTodaysReadiness();
-  STATE.prs            = solo.getPRs();
-  STATE.readinessTrend = solo.getReadinessTrend(14);
-  STATE.recentWorkouts = solo.getRecentWorkouts(30);
-  STATE.team           = null;
-  STATE.teamReadiness  = [];
+function loadSoloData(){
+  STATE.profile=solo.getProfile();
+  STATE.workout=solo.getTodaysWorkout();
+  STATE.readiness=solo.getTodaysReadiness();
+  STATE.prs=solo.getPRs();
+  STATE.readinessTrend=solo.getReadinessTrend(14);
+  STATE.recentWorkouts=solo.getRecentWorkouts(30);
+  STATE.team=null;
+  STATE.teamReadiness=[];
 }
 
-// Minimal Supabase stubs (only needed if you configure env vars via meta tags or window globals)
-async function signInSupabase(email, password) {
+async function signInSupabase(email,password){
   if(window.SUPABASE_CLIENT){const{data,error}=await window.SUPABASE_CLIENT.auth.signInWithPassword({email,password});if(error)throw error;return data;}
   throw new Error("Supabase not configured. Use Solo mode.");
 }
-async function signUpSupabase(email, password, role) {
+async function signUpSupabase(email,password,role){
   if(window.SUPABASE_CLIENT){const{data,error}=await window.SUPABASE_CLIENT.auth.signUp({email,password,options:{data:{role}}});if(error)throw error;return data;}
   throw new Error("Supabase not configured. Use Solo mode.");
 }
@@ -722,11 +1181,10 @@ async function signUpSupabase(email, password, role) {
 // ─────────────────────────────────────────────────────────────────────────────
 // BOOT
 // ─────────────────────────────────────────────────────────────────────────────
-function boot() {
-  // Always start in solo mode for GitHub Pages (no build step, no env vars)
-  STATE.mode = "solo";
+function boot(){
+  STATE.mode="solo";
   loadSoloData();
-  // If no profile saved, onboarding will trigger automatically in render()
+  refreshIntelReport();
   render();
 }
 
