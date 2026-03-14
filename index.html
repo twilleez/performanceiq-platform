@@ -147,7 +147,17 @@ if ('serviceWorker' in navigator) {
 // ─────────────────────────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://jijqjbgmhhlvokgtuema.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppanFqYmdtaGhsdm9rZ3R1ZW1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDEyMTYsImV4cCI6MjA4ODkxNzIxNn0.bX3-H-B1KrDe5d5ernRoDAojIEVT7sdXXtPBlxvktKk';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    storageKey: 'piq_auth',
+    storage: {
+      getItem: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+      setItem: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+      removeItem: (k) => { try { localStorage.removeItem(k); } catch {} },
+    }
+  }
+});
 const DB = {
   async signIn(email,password){const{data,error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;return data;},
   async signUp(email,password,role){const{data,error}=await sb.auth.signUp({email,password,options:{data:{role}}});if(error)throw error;return data;},
@@ -1180,12 +1190,12 @@ function bindUI(){
   on("[data-nav]",b=>{_scrollY=window.scrollY;STATE.ui.tab=b.dataset.nav;render();});
   on("[data-team-nav]",b=>{_scrollY=window.scrollY;STATE.ui.teamTab=b.dataset.teamNav;render();});
   on("[data-action='start-session']",()=>{STATE.ui.tab="session";render();});
-  on("[data-action='end-session']",()=>{if(STATE.workout){solo.completeWorkout(STATE.workout.id,STATE.workout.exercises);setToast("Session complete. Great work. 💪","success");loadSoloData();refreshIntelReport();}STATE.ui.tab="today";render();});
+  on("[data-action='end-session']",async()=>{if(STATE.workout){solo.completeWorkout(STATE.workout.id,STATE.workout.exercises);setToast("Session complete. Great work. 💪","success");loadSoloData();refreshIntelReport();}STATE.ui.tab="today";render();});
   on("[data-action='sign-out']",async()=>{await DB.signOut();STATE.session=null;STATE.profile=null;STATE.mode='solo';STATE.intelReport=null;loadSoloData();render();});
   on("[data-action='sign-in-prompt']",()=>{STATE.mode="connected";STATE.session=null;render();});
   on("[data-action='open-readiness']",()=>{STATE.ui.activeReadinessSheet=true;render();});
   on("[data-action='close-readiness']",()=>{STATE.ui.activeReadinessSheet=false;render();});
-  on("[data-action='save-readiness']",()=>{
+  on("[data-action='save-readiness']",async()=>{
     const sleep=parseFloat(document.getElementById("ri-sleep")?.value)||7;
     const soreness=document.getElementById("ri-soreness")?.value||"Low";
     const hydration=document.getElementById("ri-hydration")?.value||"On target";
@@ -1212,7 +1222,7 @@ function bindUI(){
   });
   on("[data-action='swap']",b=>{STATE.ui.activeSwapExerciseId=b.dataset.ex;render();});
   on("[data-action='close-swap-sheet']",()=>{STATE.ui.activeSwapExerciseId=null;render();});
-  on("[data-action='pick-swap']",b=>{if(!STATE.workout)return;swapExercise(STATE.workout,STATE.ui.activeSwapExerciseId,b.dataset.new);STATE.ui.activeSwapExerciseId=null;solo.saveWorkoutProgress(STATE.workout.id,STATE.workout.exercises);render();});
+  on("[data-action='pick-swap']",async b=>{if(!STATE.workout)return;swapExercise(STATE.workout,STATE.ui.activeSwapExerciseId,b.dataset.new);STATE.ui.activeSwapExerciseId=null;solo.saveWorkoutProgress(STATE.workout.id,STATE.workout.exercises);render();});
   on("[data-action='detail']",b=>{STATE.ui.activeDetailExerciseId=b.dataset.ex;render();});
   on("[data-action='close-detail-sheet']",()=>{STATE.ui.activeDetailExerciseId=null;render();});
   on("[data-action='auto-workout']",async()=>{
@@ -1222,7 +1232,7 @@ function bindUI(){
     else{try{STATE.workout=await DB.createWorkout(payload);}catch(e){STATE.workout=solo.createWorkout(payload);}}
     STATE.ui.tab="session";setToast("Workout generated. Let's go.","success");render();
   });
-  on("[data-action='save-profile']",()=>{const n=document.getElementById("p-name")?.value;const s=document.getElementById("p-sport")?.value;const pos=document.getElementById("p-position")?.value;const g=document.getElementById("p-goal")?.value;STATE.profile=solo.saveProfile({...STATE.profile,name:n||STATE.profile.name,sport:s||STATE.profile.sport,position:pos||STATE.profile.position,goal:g||STATE.profile.goal});refreshIntelReport();setToast("Profile saved.","success");render();});
+  on("[data-action='save-profile']",async()=>{const n=document.getElementById("p-name")?.value;const s=document.getElementById("p-sport")?.value;const pos=document.getElementById("p-position")?.value;const g=document.getElementById("p-goal")?.value;STATE.profile=solo.saveProfile({...STATE.profile,name:n||STATE.profile.name,sport:s||STATE.profile.sport,position:pos||STATE.profile.position,goal:g||STATE.profile.goal});refreshIntelReport();setToast("Profile saved.","success");render();});
   on("[data-action='reset-solo']",()=>{if(!confirm("Clear ALL local data? This cannot be undone."))return;solo.clearAll();STATE.profile=null;STATE.workout=null;STATE.readiness=null;STATE.prs=[];STATE.readinessTrend=[];STATE.recentWorkouts=[];STATE.intelReport=null;STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};render();});
   document.getElementById('btn-confirm-migrate')?.addEventListener('click',async()=>{
     const userId=STATE.session?.user.id;if(!userId)return;
@@ -1319,7 +1329,7 @@ async function boot(){
   render();
 }
 
-boot();
+(async()=>{await boot();})();
 </script>
 </body>
 </html>
