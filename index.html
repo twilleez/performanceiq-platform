@@ -1281,7 +1281,7 @@ function builderStep3(draft,stepDots,state){
     ? members.map(m=>{
         const p=m.profiles;if(!p)return'';
         const sel=(draft.assignTo||[]).includes(p.id);
-        return `<span class="athlete-chip${sel?' selected':''}" data-assign-athlete="${p.id}">${sel?'✓ ':''}${p.name||'Athlete'}${p.position?` · ${p.position}":''}</span>`;
+        return `<span class="athlete-chip${sel?' selected':''}" data-assign-athlete="${p.id}">${sel?'✓ ':''}${p.name||'Athlete'}${p.position?' · '+p.position:''}</span>`;
       }).join('')
     : `<div class="muted" style="font-size:13px;padding:12px 0">No team members found. Add athletes to your team first.</div>`;
 
