@@ -2036,6 +2036,9 @@ function migrationSheet(state){
 }
 
 function loadSoloData(){
+  // Preserve active onboarding state
+  const _step=STATE.ui.onboardingStep;
+  const _draft=STATE.ui.onboardingDraft;
   STATE.profile=solo.getProfile();
   STATE.workout=solo.getTodaysWorkout();
   STATE.readiness=solo.getTodaysReadiness();
@@ -2045,6 +2048,8 @@ function loadSoloData(){
   STATE.team=null;
   STATE.teamReadiness=[];
   STATE.syncStatus='offline';
+  // Restore onboarding if it was active
+  if(_step){STATE.ui.onboardingStep=_step;STATE.ui.onboardingDraft=_draft;}
 }
 
 async function signInSupabase(email,password){
@@ -2080,6 +2085,8 @@ async function boot(){
   // Schedule reminder if permission already granted
   if(PWA.getNotifyPermission()==='granted') PWA.scheduleDailyReminder();
   sb.auth.onAuthStateChange(async(event,session)=>{
+    // Ignore noisy initial events during onboarding
+    if((event==='INITIAL_SESSION'||event==='SIGNED_OUT')&&STATE.ui.onboardingStep) return;
     if(event==='SIGNED_IN'&&session&&STATE.mode==='solo'){
       STATE.session=session;STATE.mode='cloud';STATE.ui.loading=true;render();
       await loadCloudData(session.user.id);
@@ -2088,6 +2095,8 @@ async function boot(){
       if(hasLocal){STATE.ui.migrationSheetOpen=true;}
       refreshIntelReport();render();
     } else if(event==='SIGNED_OUT'){
+      // Don't interrupt active onboarding flow
+      if(STATE.ui.onboardingStep) return;
       STATE.session=null;STATE.mode='solo';STATE.profile=null;STATE.intelReport=null;
       loadSoloData();render();
     }
