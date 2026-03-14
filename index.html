@@ -11,6 +11,7 @@
   <meta name="description" content="Athlete-first training. Coach-powered teams." />
   <link rel="manifest" href="./manifest.json">
   <title>PerformanceIQ</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 :root {
   --bg:#080c12;--bg2:#0d1220;--surface:rgba(18,24,38,.80);--surface2:rgba(14,19,30,.95);
@@ -111,6 +112,15 @@ select{cursor:pointer}
 .spark{height:44px}
 /* Periodization phase pill */
 .phase-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+
+.sync-banner{padding:10px 14px;border-radius:14px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.2);font-size:13px;line-height:1.5;display:flex;align-items:center;gap:10px}
+.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sync-dot.synced{background:#34d399}
+.sync-dot.syncing{background:#fbbf24;animation:pulse 1s infinite}
+.sync-dot.offline{background:#8892a4}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.loading-full{min-height:100vh;display:grid;place-items:center}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes slide-up{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -132,6 +142,41 @@ select{cursor:pointer}
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(regs => { regs.forEach(r => r.unregister()); });
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPABASE CLIENT
+// ─────────────────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://jijqjbgmhhlvokgtuema.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppanFqYmdtaGhsdm9rZ3R1ZW1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDEyMTYsImV4cCI6MjA4ODkxNzIxNn0.bX3-H-B1KrDe5d5ernRoDAojIEVT7sdXXtPBlxvktKk';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const DB = {
+  async signIn(email,password){const{data,error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;return data;},
+  async signUp(email,password,role){const{data,error}=await sb.auth.signUp({email,password,options:{data:{role}}});if(error)throw error;return data;},
+  async signOut(){await sb.auth.signOut();},
+  async getSession(){const{data}=await sb.auth.getSession();return data.session;},
+  async getProfile(userId){const{data,error}=await sb.from('profiles').select('*').eq('id',userId).single();if(error&&error.code!=='PGRST116')throw error;return data;},
+  async upsertProfile(p){const{data,error}=await sb.from('profiles').upsert(p,{onConflict:'id'}).select().single();if(error)throw error;return data;},
+  async getTodaysReadiness(userId){const today=todayStr();const{data,error}=await sb.from('readiness_logs').select('*').eq('athlete_id',userId).eq('log_date',today).single();if(error&&error.code!=='PGRST116')throw error;return data;},
+  async upsertReadiness(entry){const{data,error}=await sb.from('readiness_logs').upsert(entry,{onConflict:'athlete_id,log_date'}).select().single();if(error)throw error;return data;},
+  async getReadinessTrend(userId,days=14){const since=new Date(Date.now()-days*86400000).toISOString().split('T')[0];const{data,error}=await sb.from('readiness_logs').select('*').eq('athlete_id',userId).gte('log_date',since).order('log_date',{ascending:true});if(error)throw error;return data??[];},
+  async getTodaysWorkout(userId){const today=todayStr();const{data,error}=await sb.from('workouts').select('*').eq('athlete_id',userId).eq('scheduled_date',today).order('created_at',{ascending:false}).limit(1);if(error)throw error;return data?.[0]??null;},
+  async createWorkout(payload){const{data,error}=await sb.from('workouts').insert(payload).select().single();if(error)throw error;return data;},
+  async updateWorkout(id,updates){const{data,error}=await sb.from('workouts').update(updates).eq('id',id).select().single();if(error)throw error;return data;},
+  async getRecentWorkouts(userId,days=30){const since=new Date(Date.now()-days*86400000).toISOString().split('T')[0];const{data,error}=await sb.from('workouts').select('*').eq('athlete_id',userId).gte('scheduled_date',since).order('scheduled_date',{ascending:false});if(error)throw error;return data??[];},
+  async getPRs(userId){const{data,error}=await sb.from('personal_records').select('*').eq('athlete_id',userId).order('set_at',{ascending:false});if(error)throw error;return data??[];},
+  async getCoachTeam(coachId){const{data,error}=await sb.from('teams').select('*').eq('coach_id',coachId).limit(1);if(error)throw error;return data?.[0]??null;},
+  async getAthleteTeam(athleteId){const{data,error}=await sb.from('team_members').select('team_id,teams(*)').eq('athlete_id',athleteId).limit(1);if(error)throw error;return data?.[0]?.teams??null;},
+  async migrateSoloData(userId,d){
+    const r={profile:false,readiness:0,workouts:0,prs:0};
+    try{
+      if(d.profile){await DB.upsertProfile({id:userId,name:d.profile.name||'',sport:d.profile.sport||'basketball',position:d.profile.position||'',goal:d.profile.goal||'',equipment:d.profile.equipment||[],email:''});r.profile=true;}
+      for(const x of d.readiness||[]){try{await sb.from('readiness_logs').upsert({...x,id:undefined,athlete_id:userId},{onConflict:'athlete_id,log_date',ignoreDuplicates:true});r.readiness++;}catch{}}
+      for(const x of d.workouts||[]){try{await sb.from('workouts').insert({...x,id:undefined,athlete_id:userId});r.workouts++;}catch{}}
+      for(const x of d.prs||[]){try{await sb.from('personal_records').insert({...x,id:undefined,athlete_id:userId});r.prs++;}catch{}}
+    }catch(e){console.warn('migrate partial:',e);}
+    return r;
+  }
+};
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXERCISES DATA
@@ -412,7 +457,7 @@ const solo={
   saveWorkoutProgress(workoutId,exercises){const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);if(idx>=0){all[idx].exercises=exercises;lsSet(PIQ.workouts,all);}},
   completeWorkout(workoutId,exercises){const all=lsGet(PIQ.workouts,[]);const idx=all.findIndex(w=>w.id===workoutId);if(idx>=0){all[idx].exercises=exercises;all[idx].completed_at=new Date().toISOString();lsSet(PIQ.workouts,all);}},
   getRecentWorkouts(days=30){const all=lsGet(PIQ.workouts,[]);const since=new Date(Date.now()-days*86400000).toISOString().split("T")[0];return all.filter(w=>w.scheduled_date>=since).sort((a,b)=>b.scheduled_date.localeCompare(a.scheduled_date));},
-  getPRs(){return lsGet(PIQ.prs,[]).sort((a,b)=>b.set_at?.localeCompare(a.set_at??"")??0);},
+  getAllReadiness:()=>lsGet(PIQ.readiness,[]),getAllWorkouts:()=>lsGet(PIQ.workouts,[]),getAllPRs:()=>lsGet(PIQ.prs,[]),getPRs(){return lsGet(PIQ.prs,[]).sort((a,b)=>b.set_at?.localeCompare(a.set_at??"")??0);},
   clearAll(){Object.values(PIQ).forEach(k=>localStorage.removeItem(k));},
 };
 
@@ -420,10 +465,10 @@ const solo={
 // STATE
 // ─────────────────────────────────────────────────────────────────────────────
 const STATE={
-  session:null,profile:null,mode:"solo",
+  session:null,profile:null,mode:"solo",syncStatus:"offline",
   workout:null,readiness:null,prs:[],readinessTrend:[],recentWorkouts:[],team:null,teamReadiness:[],
   intelReport:null,
-  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
+  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
 };
 function setToast(msg,type="success"){STATE.ui.toast={msg,type};setTimeout(()=>{STATE.ui.toast=null;render();},3200);}
 function isCoach(){return STATE.profile?.role==="coach";}
@@ -806,7 +851,7 @@ function athleteHomeView(state){
       <div><div class="muted" style="font-size:12px">${dateStr}</div><div class="title-xl">${profile?.name?`Hey, ${profile.name.split(" ")[0]}.`:"My Training."}</div></div>
       ${profile?.sport?`<div class="pill">${profile.sport[0].toUpperCase()+profile.sport.slice(1)}</div>`:""}
     </div>
-    ${state.ui.error?`<div class="banner section" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3)">${state.ui.error}</div>`:""}
+    ${syncBar()}${state.ui.error?`<div class="banner section" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3)">${state.ui.error}</div>`:""}
     <div class="grid two section">
       <div class="card">
         <div class="space">
@@ -1082,7 +1127,7 @@ function render(){
     const toast=STATE.ui.toast?`<div class="toast toast-${STATE.ui.toast.type}">${STATE.ui.toast.msg}</div>`:"";
     app.innerHTML=
       `<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>`+
-      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+toast;
+      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+toast;
     bindUI();
     requestAnimationFrame(()=>window.scrollTo(0,_scrollY));
   }catch(e){
@@ -1096,7 +1141,19 @@ function render(){
 // ─────────────────────────────────────────────────────────────────────────────
 function bindAuth(){
   const $=id=>document.getElementById(id);
-  $("btn-signin")?.addEventListener("click",async()=>{clearError();try{await signInSupabase($("auth-email").value,$("auth-password").value);}catch(e){setError(e.message);render();}});
+  $("btn-signin")?.addEventListener("click",async()=>{
+    clearError();const btn=$("btn-signin");btn.disabled=true;btn.textContent="Signing in…";
+    try{
+      const d=await DB.signIn($("auth-email").value,$("auth-password").value);
+      STATE.session=d.session;STATE.mode="cloud";STATE.ui.loading=true;render();
+      await loadCloudData(d.session.user.id);
+      STATE.ui.loading=false;
+      if(!STATE.profile){STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};}
+      const hasLocal=solo.getProfile()||solo.getAllReadiness().length||solo.getAllWorkouts().length;
+      if(hasLocal){STATE.ui.migrationSheetOpen=true;}
+      setToast("Welcome back! ☁️","success");render();
+    }catch(e){setError(e.message);btn.disabled=false;btn.textContent="Sign In";render();}
+  });
   $("btn-signup")?.addEventListener("click",()=>{$("auth-email-form").hidden=true;$("signup-role-step").hidden=false;const doSU=async role=>{try{await signUpSupabase($("auth-email").value,$("auth-password").value,role);setToast("Account created! Check your email.","success");$("signup-role-step").hidden=true;$("auth-email-form").hidden=false;render();}catch(e){setError(e.message);render();}};$("btn-role-athlete")?.addEventListener("click",()=>doSU("athlete"));$("btn-role-coach")?.addEventListener("click",()=>doSU("coach"));});
   $("btn-solo")?.addEventListener("click",()=>{STATE.mode="solo";STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};render();});
 }
@@ -1124,7 +1181,7 @@ function bindUI(){
   on("[data-team-nav]",b=>{_scrollY=window.scrollY;STATE.ui.teamTab=b.dataset.teamNav;render();});
   on("[data-action='start-session']",()=>{STATE.ui.tab="session";render();});
   on("[data-action='end-session']",()=>{if(STATE.workout){solo.completeWorkout(STATE.workout.id,STATE.workout.exercises);setToast("Session complete. Great work. 💪","success");loadSoloData();refreshIntelReport();}STATE.ui.tab="today";render();});
-  on("[data-action='sign-out']",()=>{STATE.session=null;STATE.profile=null;STATE.mode="solo";render();});
+  on("[data-action='sign-out']",async()=>{await DB.signOut();STATE.session=null;STATE.profile=null;STATE.mode='solo';STATE.intelReport=null;loadSoloData();render();});
   on("[data-action='sign-in-prompt']",()=>{STATE.mode="connected";STATE.session=null;render();});
   on("[data-action='open-readiness']",()=>{STATE.ui.activeReadinessSheet=true;render();});
   on("[data-action='close-readiness']",()=>{STATE.ui.activeReadinessSheet=false;render();});
@@ -1134,30 +1191,81 @@ function bindUI(){
     const hydration=document.getElementById("ri-hydration")?.value||"On target";
     const battery=parseInt(document.getElementById("ri-battery")?.value)||70;
     const score=computeReadinessScore(sleep,soreness,battery);
-    STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});
-    STATE.readinessTrend=solo.getReadinessTrend(14);
+    const rEntry={athlete_id:isSolo()?"solo":STATE.session?.user.id,log_date:todayStr(),score,hrv:"",sleep_hrs:sleep,soreness,hydration,body_battery:battery,notes:""};
+    if(isSolo()){STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});STATE.readinessTrend=solo.getReadinessTrend(14);}
+    else{try{STATE.readiness=await DB.upsertReadiness(rEntry);STATE.readinessTrend=await DB.getReadinessTrend(STATE.session.user.id,14);}catch(e){STATE.readiness=solo.saveReadiness({sleep,soreness,hydration,bodyBattery:battery,score,hrv:""});STATE.readinessTrend=solo.getReadinessTrend(14);}}
     STATE.ui.activeReadinessSheet=false;
     refreshIntelReport();
     setToast("Check-in saved. Score: "+score,"success");render();
   });
+  on("[data-action='close-migration']",()=>{STATE.ui.migrationSheetOpen=false;STATE.ui.migrationResults=null;render();});
   on("[data-action='open-intel-sheet']",()=>{STATE.ui.intelSheetOpen=true;render();});
   on("[data-action='close-intel-sheet']",()=>{STATE.ui.intelSheetOpen=false;render();});
   on("[data-action='open-sets']",b=>{STATE.ui.activeSetExerciseId=b.dataset.ex;render();});
   on("[data-action='close-set-sheet']",()=>{STATE.ui.activeSetExerciseId=null;render();});
-  on("[data-action='toggle-set']",b=>{if(!STATE.workout)return;markSetDone(STATE.workout,b.dataset.ex,Number(b.dataset.set));solo.saveWorkoutProgress(STATE.workout.id,STATE.workout.exercises);render();});
+  on("[data-action='toggle-set']",async b=>{
+    if(!STATE.workout)return;
+    markSetDone(STATE.workout,b.dataset.ex,Number(b.dataset.set));
+    if(isSolo()){solo.saveWorkoutProgress(STATE.workout.id,STATE.workout.exercises);}
+    else{try{await DB.updateWorkout(STATE.workout.id,{exercises:STATE.workout.exercises});}catch(e){solo.saveWorkoutProgress(STATE.workout.id,STATE.workout.exercises);}}
+    render();
+  });
   on("[data-action='swap']",b=>{STATE.ui.activeSwapExerciseId=b.dataset.ex;render();});
   on("[data-action='close-swap-sheet']",()=>{STATE.ui.activeSwapExerciseId=null;render();});
   on("[data-action='pick-swap']",b=>{if(!STATE.workout)return;swapExercise(STATE.workout,STATE.ui.activeSwapExerciseId,b.dataset.new);STATE.ui.activeSwapExerciseId=null;solo.saveWorkoutProgress(STATE.workout.id,STATE.workout.exercises);render();});
   on("[data-action='detail']",b=>{STATE.ui.activeDetailExerciseId=b.dataset.ex;render();});
   on("[data-action='close-detail-sheet']",()=>{STATE.ui.activeDetailExerciseId=null;render();});
-  on("[data-action='auto-workout']",()=>{const payload=buildWorkoutPayload(STATE.profile?.sport??"basketball",STATE.readiness?.score??75);STATE.workout=solo.createWorkout(payload);STATE.ui.tab="session";setToast("Workout generated. Let's go.","success");render();});
+  on("[data-action='auto-workout']",async()=>{
+    const uid=isSolo()?"solo":STATE.session?.user.id;
+    const payload={...buildWorkoutPayload(STATE.profile?.sport??"basketball",STATE.readiness?.score??75),athlete_id:uid,scheduled_date:todayStr(),created_at:new Date().toISOString(),completed_at:null};
+    if(isSolo()){STATE.workout=solo.createWorkout(payload);}
+    else{try{STATE.workout=await DB.createWorkout(payload);}catch(e){STATE.workout=solo.createWorkout(payload);}}
+    STATE.ui.tab="session";setToast("Workout generated. Let's go.","success");render();
+  });
   on("[data-action='save-profile']",()=>{const n=document.getElementById("p-name")?.value;const s=document.getElementById("p-sport")?.value;const pos=document.getElementById("p-position")?.value;const g=document.getElementById("p-goal")?.value;STATE.profile=solo.saveProfile({...STATE.profile,name:n||STATE.profile.name,sport:s||STATE.profile.sport,position:pos||STATE.profile.position,goal:g||STATE.profile.goal});refreshIntelReport();setToast("Profile saved.","success");render();});
   on("[data-action='reset-solo']",()=>{if(!confirm("Clear ALL local data? This cannot be undone."))return;solo.clearAll();STATE.profile=null;STATE.workout=null;STATE.readiness=null;STATE.prs=[];STATE.readinessTrend=[];STATE.recentWorkouts=[];STATE.intelReport=null;STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};render();});
+  document.getElementById('btn-confirm-migrate')?.addEventListener('click',async()=>{
+    const userId=STATE.session?.user.id;if(!userId)return;
+    const btn=document.getElementById('btn-confirm-migrate');
+    if(btn){btn.disabled=true;btn.textContent='Migrating...';}
+    const soloData={profile:solo.getProfile(),readiness:solo.getAllReadiness(),workouts:solo.getAllWorkouts(),prs:solo.getAllPRs()};
+    const results=await DB.migrateSoloData(userId,soloData);
+    STATE.ui.migrationResults=results;
+    await loadCloudData(userId);
+    render();
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA LOADING
 // ─────────────────────────────────────────────────────────────────────────────
+async function loadCloudData(userId){
+  STATE.syncStatus='syncing';render();
+  try{
+    const[profile,readiness,readinessTrend,workout,recentWorkouts,prs]=await Promise.all([DB.getProfile(userId),DB.getTodaysReadiness(userId),DB.getReadinessTrend(userId,14),DB.getTodaysWorkout(userId),DB.getRecentWorkouts(userId,30),DB.getPRs(userId)]);
+    STATE.profile=profile;STATE.readiness=readiness;STATE.readinessTrend=readinessTrend;STATE.workout=workout;STATE.recentWorkouts=recentWorkouts;STATE.prs=prs;
+    if(!STATE.profile){STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};}
+    STATE.team=profile?.role==='coach'?await DB.getCoachTeam(userId):await DB.getAthleteTeam(userId);
+    STATE.teamReadiness=[];STATE.syncStatus='synced';refreshIntelReport();
+  }catch(e){console.error('Cloud load:',e);STATE.syncStatus='offline';STATE.ui.error='Sync error.';}
+}
+function syncBar(){
+  if(isSolo())return'';
+  const s=STATE.syncStatus;
+  const label={syncing:'Syncing...',synced:'Synced to cloud',offline:'Offline'}[s];
+  return '<div class="sync-banner section"><div class="sync-dot '+s+'"></div><span style="font-size:13px;color:var(--muted)">'+label+'</span>'+(s==='synced'?'<span style="margin-left:auto;font-size:11px;color:var(--muted2)">&#x2601;&#xFE0F; '+(STATE.profile?.email||'')+'</span>':'')+'</div>';
+}
+function migrationSheet(state){
+  if(!state.ui.migrationSheetOpen)return'';
+  const r=state.ui.migrationResults;
+  if(r){
+    return '<div class="sheet-backdrop"><div class="sheet" style="max-width:440px;border-radius:28px;padding:28px;margin:auto"><div class="handle"></div><div style="text-align:center;margin-bottom:20px"><div style="font-size:40px">&#x2705;</div><div class="title-lg" style="margin-top:10px">Data Migrated</div><div class="muted" style="font-size:13px;margin-top:6px">Your solo data has been uploaded to your account.</div></div><div class="list" style="margin-bottom:20px"><div class="item space"><span>Profile</span><span style="color:#34d399;font-weight:700">'+(r.profile?'Synced':'Skipped')+'</span></div><div class="item space"><span>Readiness logs</span><span style="color:#34d399;font-weight:700">'+r.readiness+' entries</span></div><div class="item space"><span>Workouts</span><span style="color:#34d399;font-weight:700">'+r.workouts+' sessions</span></div><div class="item space"><span>Personal records</span><span style="color:#34d399;font-weight:700">'+r.prs+' PRs</span></div></div><button style="width:100%" data-action="close-migration">Done</button></div></div>';
+  }
+  const sp=solo.getProfile(),sr=solo.getAllReadiness(),sw=solo.getAllWorkouts(),sp2=solo.getAllPRs();
+  if(!sp&&!sr.length&&!sw.length&&!sp2.length)return'';
+  return '<div class="sheet-backdrop"><div class="sheet" style="max-width:440px;border-radius:28px;padding:28px;margin:auto"><div class="handle"></div><div class="title-lg" style="margin-bottom:8px">Migrate Local Data</div><div class="muted" style="font-size:13px;margin-bottom:20px">We found existing data on this device. Upload it to your new account?</div><div class="list" style="margin-bottom:20px">'+(sp?'<div class="item space"><span>Profile</span><span class="muted small">1 profile</span></div>':'')+(sr.length?'<div class="item space"><span>Readiness logs</span><span class="muted small">'+sr.length+' entries</span></div>':'')+(sw.length?'<div class="item space"><span>Workouts</span><span class="muted small">'+sw.length+' sessions</span></div>':'')+(sp2.length?'<div class="item space"><span>Personal records</span><span class="muted small">'+sp2.length+' PRs</span></div>':'')+'</div><button style="width:100%;margin-bottom:10px" id="btn-confirm-migrate">Upload to Account</button><button class="secondary" style="width:100%" data-action="close-migration">Skip</button></div></div>';
+}
+
 function loadSoloData(){
   STATE.profile=solo.getProfile();
   STATE.workout=solo.getTodaysWorkout();
@@ -1167,6 +1275,7 @@ function loadSoloData(){
   STATE.recentWorkouts=solo.getRecentWorkouts(30);
   STATE.team=null;
   STATE.teamReadiness=[];
+  STATE.syncStatus='offline';
 }
 
 async function signInSupabase(email,password){
@@ -1181,10 +1290,32 @@ async function signUpSupabase(email,password,role){
 // ─────────────────────────────────────────────────────────────────────────────
 // BOOT
 // ─────────────────────────────────────────────────────────────────────────────
-function boot(){
-  STATE.mode="solo";
-  loadSoloData();
+async function boot(){
+  app.innerHTML='<div style="min-height:100vh;display:grid;place-items:center"><div class="loading-spinner"></div></div>';
+  const session=await DB.getSession();
+  if(session){
+    STATE.session=session;STATE.mode='cloud';STATE.ui.loading=true;render();
+    await loadCloudData(session.user.id);
+    STATE.ui.loading=false;
+  } else {
+    STATE.mode='solo';
+    loadSoloData();
+    if(!STATE.profile){STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};}
+  }
   refreshIntelReport();
+  sb.auth.onAuthStateChange(async(event,session)=>{
+    if(event==='SIGNED_IN'&&session&&STATE.mode==='solo'){
+      STATE.session=session;STATE.mode='cloud';STATE.ui.loading=true;render();
+      await loadCloudData(session.user.id);
+      STATE.ui.loading=false;
+      const hasLocal=solo.getProfile()||solo.getAllReadiness().length||solo.getAllWorkouts().length;
+      if(hasLocal){STATE.ui.migrationSheetOpen=true;}
+      refreshIntelReport();render();
+    } else if(event==='SIGNED_OUT'){
+      STATE.session=null;STATE.mode='solo';STATE.profile=null;STATE.intelReport=null;
+      loadSoloData();render();
+    }
+  });
   render();
 }
 
