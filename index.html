@@ -147,6 +147,70 @@ button:disabled{opacity:.45;cursor:not-allowed;transform:none}
 .notify-prompt{padding:14px 16px;border-radius:16px;background:rgba(83,181,255,.07);border:1px solid rgba(83,181,255,.2);font-size:13px;margin-top:14px}
 .install-prompt{padding:14px 16px;border-radius:16px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.2);font-size:13px;margin-top:14px}
 @keyframes slide-down{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── Premium Loading Screen ─────────────────────────────────────────────── */
+.piq-loader{position:fixed;inset:0;z-index:999;display:flex;align-items:center;justify-content:center;background:#080c12;background-image:radial-gradient(ellipse 800px 500px at 60% 20%,rgba(83,181,255,.12) 0%,transparent 60%),radial-gradient(ellipse 500px 400px at 20% 80%,rgba(255,107,53,.07) 0%,transparent 55%)}
+.piq-loader-card{text-align:center;padding:48px 40px;border-radius:32px;background:rgba(18,24,38,.7);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);box-shadow:0 32px 80px rgba(0,0,0,.4),0 0 0 1px rgba(83,181,255,.06);animation:loader-in .5s cubic-bezier(.32,.72,0,1) both}
+.piq-logo{width:72px;height:72px;border-radius:22px;background:linear-gradient(135deg,#53b5ff 0%,#3a8fd4 50%,#ff6b35 100%);display:grid;place-items:center;margin:0 auto 20px;box-shadow:0 8px 32px rgba(83,181,255,.35);animation:logo-pulse 2s ease-in-out infinite}
+.piq-loader-title{font-size:28px;font-weight:800;letter-spacing:-.04em;color:#eef1f7;margin-bottom:4px}
+.piq-loader-sub{font-size:13px;color:#8892a4;margin-bottom:28px;font-weight:500}
+.piq-progress-track{width:220px;height:3px;border-radius:3px;background:rgba(255,255,255,.07);margin:0 auto;overflow:hidden}
+.piq-progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#53b5ff,#ff6b35);animation:progress-fill 1.8s cubic-bezier(.4,0,.2,1) forwards}
+.piq-loader-status{font-size:11px;color:#5a6475;margin-top:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+@keyframes loader-in{from{opacity:0;transform:translateY(20px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes logo-pulse{0%,100%{box-shadow:0 8px 32px rgba(83,181,255,.35)}50%{box-shadow:0 8px 48px rgba(83,181,255,.6),0 0 0 8px rgba(83,181,255,.08)}}
+@keyframes progress-fill{0%{width:0%}60%{width:75%}80%{width:88%}100%{width:100%}}
+
+/* ── Set Logging ─────────────────────────────────────────────────────────── */
+.set-log-row{display:grid;grid-template-columns:28px 1fr 1fr 1fr 36px;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line2)}
+.set-log-row:last-child{border-bottom:none}
+.set-log-row.completed{opacity:.6}
+.set-num{font-size:11px;font-weight:700;color:var(--muted);text-align:center}
+.log-input{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:7px 6px;color:var(--text);font:inherit;font-size:13px;font-weight:600;text-align:center;width:100%;outline:none;transition:border-color .15s}
+.log-input:focus{border-color:rgba(83,181,255,.5);background:rgba(83,181,255,.06)}
+.log-input.pr-set{border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.06)}
+.set-done-btn{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:14px;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.04);transition:all .15s;flex-shrink:0}
+.set-done-btn.done{background:rgba(52,211,153,.15);border-color:rgba(52,211,153,.4);color:#34d399}
+.rpe-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;font-size:11px;font-weight:800}
+
+/* ── Rest Timer ──────────────────────────────────────────────────────────── */
+.rest-timer-bar{position:fixed;left:12px;right:12px;bottom:calc(var(--nav-h) + max(env(safe-area-inset-bottom,8px),8px) + 60px);background:rgba(14,19,30,.96);border:1px solid rgba(83,181,255,.25);border-radius:18px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:14px;backdrop-filter:blur(20px);z-index:74;box-shadow:0 8px 32px rgba(0,0,0,.3);animation:slide-up .2s ease}
+.timer-ring{position:relative;width:44px;height:44px;flex-shrink:0}
+.timer-ring svg{transform:rotate(-90deg)}
+.timer-ring-val{position:absolute;inset:0;display:grid;place-items:center;font-size:13px;font-weight:800;color:var(--accent)}
+
+/* ── PR Badge ────────────────────────────────────────────────────────────── */
+.pr-flash{animation:pr-pop .4s cubic-bezier(.32,.72,0,1)}
+@keyframes pr-pop{0%{transform:scale(1)}50%{transform:scale(1.15)}100%{transform:scale(1)}}
+.pr-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.35);color:#fbbf24;font-size:11px;font-weight:800}
+
+/* ── Messaging ───────────────────────────────────────────────────────────── */
+.msg-bubble{padding:10px 14px;border-radius:16px;max-width:78%;font-size:14px;line-height:1.5;word-break:break-word}
+.msg-bubble.sent{background:var(--accent);color:#05111e;border-bottom-right-radius:4px;align-self:flex-end}
+.msg-bubble.received{background:var(--surface2);border:1px solid var(--line);border-bottom-left-radius:4px;align-self:flex-start}
+.msg-thread{display:flex;flex-direction:column;gap:8px;padding:12px 0}
+.msg-input-row{display:flex;gap:8px;padding:12px 0 0;border-top:1px solid var(--line)}
+.msg-input-row input{flex:1;border-radius:12px}
+.unread-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
+
+/* ── Video Library ───────────────────────────────────────────────────────── */
+.video-card{border-radius:16px;overflow:hidden;background:var(--surface2);border:1px solid var(--line);cursor:pointer;transition:all .15s}
+.video-card:hover{border-color:rgba(83,181,255,.3);transform:translateY(-2px)}
+.video-thumb{width:100%;aspect-ratio:16/9;background:rgba(0,0,0,.4);display:grid;place-items:center;position:relative}
+.play-btn{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.9);display:grid;place-items:center;font-size:16px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.video-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+
+/* ── Health Integration ──────────────────────────────────────────────────── */
+.health-source{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--surface2);border:1px solid var(--line)}
+.health-icon{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:20px;flex-shrink:0}
+
+/* ── PDF Report ──────────────────────────────────────────────────────────── */
+@media print{
+  .bottom-nav,.now-bar,.rest-timer-bar,.offline-banner,.toast{display:none!important}
+  .screen{padding-bottom:20px!important}
+  body{background:#fff!important;color:#000!important}
+  .card,.intel-card{background:#f8f9fa!important;border-color:#dee2e6!important;box-shadow:none!important}
+}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes slide-up{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -517,7 +581,7 @@ const STATE={
   session:null,profile:null,mode:"solo",syncStatus:"offline",
   workout:null,readiness:null,prs:[],readinessTrend:[],recentWorkouts:[],team:null,teamReadiness:[],
   intelReport:null,
-  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,builderOpen:false,builderStep:1,builderDraft:null,templatePickerOpen:false,assignSheetOpen:false,savedTemplates:[],isOnline:true,offlineQueue:[],swRegistered:false,notifyPermission:'default',onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
+  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,builderOpen:false,builderStep:1,builderDraft:null,templatePickerOpen:false,assignSheetOpen:false,savedTemplates:[],isOnline:true,offlineQueue:[],swRegistered:false,notifyPermission:'default',restTimerActive:false,restTimerRemaining:0,restTimerTotal:60,activeVideoId:null,activeMsgThread:null,msgThreads:[],deviceBattery:null,healthConnected:false,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
 };
 function setToast(msg,type="success"){STATE.ui.toast={msg,type};setTimeout(()=>{STATE.ui.toast=null;render();},3200);}
 function isCoach(){return STATE.profile?.role==="coach";}
@@ -930,7 +994,21 @@ function sessionView(state){
   const doneSets=(workout.exercises??[]).flatMap(e=>e.sets??[]).filter(s=>s.done).length;
   const exCards=(workout.exercises??[]).map(ex=>{
     const meta=getExercise(ex.id);const exDone=(ex.sets??[]).filter(s=>s.done).length;const exTotal=(ex.sets??[]).length;const allDone=exDone===exTotal&&exTotal>0;
-    const tiles=(ex.sets??[]).map((s,idx)=>`<button class="set-tile${s.done?" done":""}" data-action="toggle-set" data-ex="${ex.id}" data-set="${idx}"><div class="muted small" style="font-size:10px">SET ${idx+1}</div><div style="font-weight:700;margin:3px 0;font-size:13px">${s.target}</div><div style="font-size:11px">${s.done?"✓":"—"}</div></button>`).join("");
+    const tiles=(ex.sets??[]).map((s,idx)=>{
+      const isPR=s.is_pr;
+      return `<div class="set-log-row${s.done?' completed':''}">
+        <div class="set-num">${idx+1}${isPR?'<div class="pr-tag" style="font-size:9px;padding:1px 4px;margin-top:2px">PR</div>':''}</div>
+        <input class="log-input" type="number" placeholder="lbs" value="${s.weight||''}" min="0" step="2.5"
+          data-log-ex="${ex.id}" data-log-set="${idx}" data-log-field="weight" ${s.done?'':''}/>
+        <input class="log-input" type="number" placeholder="reps" value="${s.reps||s.target_reps||''}" min="0"
+          data-log-ex="${ex.id}" data-log-set="${idx}" data-log-field="reps"/>
+        <select class="log-input" data-log-ex="${ex.id}" data-log-set="${idx}" data-log-field="rpe" style="font-size:11px">
+          <option value="">RPE</option>
+          ${[6,7,7.5,8,8.5,9,9.5,10].map(r=>`<option value="${r}"${s.rpe==r?' selected':''}>${r}</option>`).join('')}
+        </select>
+        <button class="set-done-btn${s.done?' done':''}" data-action="log-set-done" data-ex="${ex.id}" data-set="${idx}">${s.done?'✓':'○'}</button>
+      </div>`;
+    }).join('');
     return`<div class="exercise-card${allDone?" exercise-done":""}">
       <div class="space" style="align-items:flex-start">
         <div style="flex:1;min-width:0"><div class="title-md" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${allDone?"✓ ":""}${meta?.title||ex.id}</div><div class="muted small">${meta?.pattern??"—"} · ${meta?.equipment??"bodyweight"}</div></div>
@@ -978,7 +1056,7 @@ function progressView(state){
   const trendCard=readinessTrend.length>=2?`<div class="card section"><div class="space"><div class="title-md">Readiness Trend</div><span class="muted small">14 days</span></div>${sparkline(trendVals)}<div class="row" style="justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:6px"><span class="stat-chip" style="font-size:11px">Low ${Math.min(...trendVals)}</span><span class="stat-chip" style="font-size:11px">High ${Math.max(...trendVals)}</span><span class="stat-chip" style="font-size:11px">Avg ${avg}</span><span class="stat-chip" style="font-size:11px">${trendVals.length} logs</span></div></div>`:`<div class="card section" style="opacity:.6;text-align:center;padding:24px 16px"><div style="font-size:32px;margin-bottom:8px">📈</div><div class="title-md">No Trend Yet</div><div class="muted" style="font-size:13px;margin-top:6px">Log readiness on 2+ days to see your trend chart.</div></div>`;
   const history=completed.length?completed.slice(0,8).map(w=>{const date=new Date(w.scheduled_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});const ex=w.exercises?.length??0;const c={power:"#fbbf24",recovery:"#34d399",build:"#53b5ff"}[w.day_type]??"var(--muted)";return`<div class="item space"><div><div style="font-weight:600;font-size:14px">${w.title}</div><div class="muted small">${date} · ${ex} exercise${ex!==1?"s":""}</div></div><span class="pill" style="font-size:11px;color:${c};border-color:${c}33">${w.day_type??"session"}</span></div>`;}).join(""):`<div class="item muted" style="text-align:center;padding:20px">No completed sessions yet.</div>`;
   const prItems=prs.length?prs.slice(0,10).map(pr=>`<div class="item space"><div><div style="font-weight:600">${pr.exercise_id.replace(/_/g," ")}</div><div class="muted small">${pr.label}</div></div><div style="text-align:right"><div style="font-weight:700;color:#34d399">${pr.value} ${pr.unit??""}</div><div class="muted small">${pr.set_at}</div></div></div>`).join(""):`<div class="item muted" style="text-align:center;padding:20px">No PRs logged yet.</div>`;
-  return`<div class="screen"><div class="topbar"><div><div class="muted">Progress</div><div class="title-xl">Depth Over Noise</div></div></div><div class="grid three section">${pillarCards}</div>${trendCard}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Session History</div><span class="muted small">${completed.length} sessions</span></div><div class="list">${history}</div></div><div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Personal Records</div><span class="muted small">${prs.length} recorded</span></div><div class="list">${prItems}</div></div></div>`;
+  return`<div class="screen"><div class="topbar"><div><div class="muted">Progress</div><div class="title-xl">Depth Over Noise</div></div><button class="secondary sm" data-action="export-pdf" style="flex-shrink:0">⬇ Export</button></div><div class="grid three section">${pillarCards}</div>${trendCard}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Session History</div><span class="muted small">${completed.length} sessions</span></div><div class="list">${history}</div></div><div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Personal Records</div><span class="muted small">${prs.length} recorded</span></div><div class="list">${prItems}</div></div></div>`;
 }
 
 function profileView(state){
@@ -1010,7 +1088,7 @@ function profileView(state){
       <div class="title-md" style="margin-bottom:12px">Account</div>
       ${isSoloMode?`<div class="banner" style="margin-bottom:14px;font-size:13px"><strong>Solo Mode</strong> — data stored on this device only.</div><button class="secondary" style="width:100%;margin-bottom:8px" data-action="sign-in-prompt">Create Account / Sign In</button>`:`<button class="secondary sm" style="margin-top:4px;width:100%" data-action="sign-out">Sign Out</button>`}
     </div>
-    ${notifyPromptCard()}${installPromptCard()}${isSoloMode?`<div class="card section" style="border-color:rgba(248,113,113,.2)"><div class="title-md" style="margin-bottom:8px;color:#f87171">Reset Data</div><div class="muted" style="font-size:13px;margin-bottom:12px">Clears all workouts, readiness logs, and PRs on this device.</div><button class="secondary sm" style="border-color:rgba(248,113,113,.3);color:#f87171" data-action="reset-solo">Clear All Local Data</button></div>`:""}
+    ${healthIntegrationCard()}${notifyPromptCard()}${installPromptCard()}${isSoloMode?`<div class="card section" style="border-color:rgba(248,113,113,.2)"><div class="title-md" style="margin-bottom:8px;color:#f87171">Reset Data</div><div class="muted" style="font-size:13px;margin-bottom:12px">Clears all workouts, readiness logs, and PRs on this device.</div><button class="secondary sm" style="border-color:rgba(248,113,113,.3);color:#f87171" data-action="reset-solo">Clear All Local Data</button></div>`:""}
   </div>`;
 }
 
@@ -1575,6 +1653,338 @@ function installPromptCard() {
   if (!PWA.installPrompt) return '';
   return '<div class="install-prompt section"><div class="space"><div><div style="font-weight:700;margin-bottom:2px">Install App</div><div class="muted" style="font-size:12px">Add to home screen for the best experience</div></div><button class="sm" style="background:#34d399;color:#052a1c" data-action="install-app">Install</button></div></div>';
 }
+
+function showPremiumLoader(status='Loading your data...'){
+  document.getElementById('app').innerHTML=`
+  <div class="piq-loader">
+    <div class="piq-loader-card">
+      <div class="piq-logo">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+          <path d="M18 6L28 12V24L18 30L8 24V12L18 6Z" fill="white" opacity=".9"/>
+          <path d="M18 10L25 14V22L18 26L11 22V14L18 10Z" fill="white" opacity=".3"/>
+          <circle cx="18" cy="18" r="4" fill="white"/>
+        </svg>
+      </div>
+      <div class="piq-loader-title">PerformanceIQ</div>
+      <div class="piq-loader-sub">Athlete-first training intelligence</div>
+      <div class="piq-progress-track"><div class="piq-progress-fill"></div></div>
+      <div class="piq-loader-status" id="loader-status">${status}</div>
+    </div>
+  </div>`;
+}
+function updateLoaderStatus(msg){
+  const el=document.getElementById('loader-status');
+  if(el) el.textContent=msg;
+}
+
+// ── Rest Timer ───────────────────────────────────────────────────────────────
+const RestTimer = {
+  interval: null,
+  remaining: 0,
+  total: 0,
+  start(seconds) {
+    this.stop();
+    this.total = seconds;
+    this.remaining = seconds;
+    STATE.ui.restTimerActive = true;
+    STATE.ui.restTimerRemaining = seconds;
+    STATE.ui.restTimerTotal = seconds;
+    render();
+    this.interval = setInterval(() => {
+      this.remaining--;
+      STATE.ui.restTimerRemaining = this.remaining;
+      if (this.remaining <= 0) {
+        this.stop();
+        PWA.notify('Rest Complete ⏱️', 'Time to go — next set is ready.', 'piq-timer');
+        setToast('Rest complete. Next set!', 'success');
+      }
+      // Update timer display without full re-render
+      const el = document.getElementById('rest-timer-val');
+      const ring = document.getElementById('rest-timer-ring');
+      if (el) el.textContent = this.remaining > 0 ? this.remaining : '✓';
+      if (ring) {
+        const pct = this.remaining / this.total;
+        const circ = 2 * Math.PI * 18;
+        ring.style.strokeDashoffset = circ * (1 - pct);
+      }
+      if (this.remaining <= 0) render();
+    }, 1000);
+  },
+  stop() {
+    if (this.interval) { clearInterval(this.interval); this.interval = null; }
+    STATE.ui.restTimerActive = false;
+    STATE.ui.restTimerRemaining = 0;
+  },
+  skip() { this.stop(); render(); }
+};
+
+function restTimerBar() {
+  if (!STATE.ui.restTimerActive) return '';
+  const r = STATE.ui.restTimerRemaining || 0;
+  const total = STATE.ui.restTimerTotal || 60;
+  const pct = Math.max(0, r / total);
+  const circ = 2 * Math.PI * 18;
+  const dash = circ * (1 - pct);
+  const color = r > 10 ? '#53b5ff' : r > 5 ? '#fbbf24' : '#f87171';
+  return `<div class="rest-timer-bar">
+    <div class="timer-ring">
+      <svg width="44" height="44" viewBox="0 0 44 44">
+        <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="3"/>
+        <circle id="rest-timer-ring" cx="22" cy="22" r="18" fill="none" stroke="${color}" stroke-width="3"
+          stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${dash.toFixed(1)}"
+          stroke-linecap="round" style="transition:stroke-dashoffset .9s linear,stroke .3s"/>
+      </svg>
+      <div class="timer-ring-val" id="rest-timer-val" style="color:${color}">${r}</div>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:14px">Rest Timer</div>
+      <div class="muted" style="font-size:12px">${r}s remaining · next set ready soon</div>
+    </div>
+    <button class="secondary sm" onclick="RestTimer.skip();render()">Skip</button>
+  </div>`;
+}
+
+// ── Video Library ────────────────────────────────────────────────────────────
+const EXERCISE_VIDEOS = {
+  lat_bound:      'https://www.youtube.com/embed/X6GaFnzAqfU',
+  goblet_squat:   'https://www.youtube.com/embed/MeIiIdhvXT4',
+  rfess:          'https://www.youtube.com/embed/2C-uNgKwPLE',
+  sl_rdl:         'https://www.youtube.com/embed/g6REzLGKBGU',
+  dead_bug:       'https://www.youtube.com/embed/4XLEnwUr1d8',
+  broad_jump:     'https://www.youtube.com/embed/gEFXBKsrjpM',
+  trap_dl:        'https://www.youtube.com/embed/Wjj-GXVjnmQ',
+  kb_swing:       'https://www.youtube.com/embed/YSxHifyI6s8',
+  nordic_curl:    'https://www.youtube.com/embed/d2GqUotzpqM',
+  box_jump:       'https://www.youtube.com/embed/52r_Ul5k03g',
+  back_squat:     'https://www.youtube.com/embed/1oed-UmAxFs',
+  hang_power_clean:'https://www.youtube.com/embed/t3bSbpJbGQ8',
+  front_squat:    'https://www.youtube.com/embed/m4ytaHBhOQc',
+  romanian_dl:    'https://www.youtube.com/embed/JCXUYuzwNrM',
+  pallof_press:   'https://www.youtube.com/embed/AH_QZLm_0-s',
+};
+
+function videoLibraryView(state) {
+  const sport = state.profile?.sport || 'basketball';
+  const lib = EXERCISES.filter(x => x.sport === sport);
+  const PATTERN_LABELS_V = {power:'⚡ Power',strength_lower:'🏋️ Strength',hinge:'🔄 Hinge',speed:'💨 Speed',core:'🎯 Core'};
+
+  const byPattern = {};
+  lib.forEach(ex => { if(!byPattern[ex.pattern]) byPattern[ex.pattern] = []; byPattern[ex.pattern].push(ex); });
+
+  const sections = Object.entries(byPattern).map(([pattern, exs]) => {
+    const cards = exs.map(ex => {
+      const hasVideo = !!EXERCISE_VIDEOS[ex.id];
+      return `<div class="video-card" ${hasVideo ? `data-action="open-video" data-video-id="${ex.id}"` : ''}>
+        <div class="video-thumb" style="background:rgba(14,19,30,.8)">
+          ${hasVideo
+            ? `<div class="play-btn">▶</div>`
+            : `<div style="font-size:11px;color:var(--muted2);text-align:center;padding:8px">No video<br>yet</div>`}
+        </div>
+        <div style="padding:10px 12px">
+          <div style="font-weight:700;font-size:13px">${ex.title}</div>
+          <div class="muted" style="font-size:11px;margin-top:2px">${ex.equipment}</div>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="section">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px">${PATTERN_LABELS_V[pattern]||pattern}</div>
+      <div class="video-grid">${cards}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="screen">
+    <div class="topbar"><div><div class="muted">Library</div><div class="title-xl">Exercise Videos</div></div><span class="pill">${sport[0].toUpperCase()+sport.slice(1)}</span></div>
+    ${sections}
+  </div>`;
+}
+
+function videoPlayerSheet(state) {
+  if (!state.ui.activeVideoId) return '';
+  const meta = getExercise(state.ui.activeVideoId);
+  const url = EXERCISE_VIDEOS[state.ui.activeVideoId];
+  if (!url) return '';
+  return `<div class="sheet-backdrop" data-action="close-video"><div class="sheet" onclick="event.stopPropagation()">
+    <div class="handle"></div>
+    <div class="space" style="margin-bottom:14px">
+      <div><div class="title-lg">${meta?.title||''}</div><div class="muted">${meta?.pattern} · ${meta?.equipment}</div></div>
+      <button class="secondary sm" data-action="close-video">✕</button>
+    </div>
+    <div style="border-radius:16px;overflow:hidden;aspect-ratio:16/9;background:#000">
+      <iframe width="100%" height="100%" src="${url}?autoplay=1&rel=0" frameborder="0"
+        allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture"
+        allowfullscreen style="display:block"></iframe>
+    </div>
+    ${meta?.cue?`<div class="card section"><div class="muted small" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Coaching Cue</div><div style="font-size:15px;line-height:1.6;font-weight:500">"${meta.cue}"</div></div>`:''}
+  </div></div>`;
+}
+
+// ── Messaging ─────────────────────────────────────────────────────────────────
+const MSG_KEY = 'piq_messages';
+function lsGetMsgs(threadId){ return lsGet(MSG_KEY+'_'+threadId, []); }
+function lsSaveMsgs(threadId, msgs){ lsSet(MSG_KEY+'_'+threadId, msgs); }
+
+function messagingView(state) {
+  const profile = state.profile;
+  const isCoachMode = isCoach();
+  const threads = state.ui.msgThreads || [];
+  const activeThread = state.ui.activeMsgThread;
+
+  if (activeThread) {
+    const msgs = lsGetMsgs(activeThread.id);
+    const bubbles = msgs.length ? msgs.map(m => {
+      const isMine = m.sender_id === (profile?.id || 'solo');
+      return `<div style="display:flex;justify-content:${isMine?'flex-end':'flex-start'}">
+        <div>
+          ${!isMine?'<div class="muted" style="font-size:11px;margin-bottom:3px;padding-left:4px">'+m.sender_name+'</div>':''}
+          <div class="msg-bubble ${isMine?'sent':'received'}">${m.body}</div>
+          <div class="muted" style="font-size:10px;margin-top:3px;${isMine?'text-align:right':'padding-left:4px'}">${new Date(m.created_at).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+      </div>`;
+    }).join('') : '<div class="muted" style="text-align:center;padding:24px;font-size:13px">No messages yet. Say something.</div>';
+
+    return `<div class="screen">
+      <div class="topbar">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="secondary sm" data-action="close-msg-thread">← Back</button>
+          <div><div class="title-md">${activeThread.name}</div><div class="muted" style="font-size:12px">${activeThread.role||''}</div></div>
+        </div>
+      </div>
+      <div class="msg-thread section">${bubbles}</div>
+      <div class="msg-input-row">
+        <input id="msg-input" type="text" placeholder="Message…" autocomplete="off"
+          onkeydown="if(event.key==='Enter'){document.querySelector('[data-action=send-msg]')?.click()}"/>
+        <button class="sm" data-action="send-msg">Send</button>
+      </div>
+    </div>`;
+  }
+
+  // Thread list
+  const teamMembers = state.ui.teamMembers || [];
+  const threadItems = isCoachMode
+    ? teamMembers.map(m => {
+        const p = m.profiles; if(!p) return '';
+        const msgs = lsGetMsgs(p.id);
+        const last = msgs[msgs.length-1];
+        return `<div class="item space" style="cursor:pointer" data-action="open-msg-thread" data-thread-id="${p.id}" data-thread-name="${p.name||'Athlete'}" data-thread-role="${p.position||'Athlete'}">
+          <div>
+            <div style="font-weight:700;font-size:15px">${p.name||'Athlete'}</div>
+            <div class="muted small">${last?last.body.slice(0,40)+(last.body.length>40?'...':''):'No messages yet'}</div>
+          </div>
+          ${msgs.length?'':''}
+        </div>`;
+      }).join('')
+    : `<div class="item space" style="cursor:pointer" data-action="open-msg-thread" data-thread-id="coach" data-thread-name="Coach" data-thread-role="Head Coach">
+        <div><div style="font-weight:700;font-size:15px">Coach</div><div class="muted small">Tap to message your coach</div></div>
+      </div>`;
+
+  return `<div class="screen">
+    <div class="topbar"><div><div class="muted">Messages</div><div class="title-xl">Team Chat</div></div></div>
+    <div class="list section">${threadItems||'<div class="muted" style="padding:24px;text-align:center;font-size:13px">No teammates yet.</div>'}</div>
+  </div>`;
+}
+
+// ── Health Integration ────────────────────────────────────────────────────────
+const HealthKit = {
+  supported: typeof window !== 'undefined' && 'DeviceMotionEvent' in window,
+  async requestAppleHealth() {
+    // Apple Health via Web API (limited — HRV/sleep via HealthKit bridge on iOS PWA)
+    // On iOS 16.4+ installed PWAs can request health permissions
+    if (!window.webkit?.messageHandlers?.healthKit) {
+      return { success: false, reason: 'Apple Health requires iOS 16.4+ with app installed to home screen.' };
+    }
+    try {
+      window.webkit.messageHandlers.healthKit.postMessage({ action: 'requestPermissions', types: ['HRV','sleepAnalysis','activeEnergyBurned'] });
+      return { success: true };
+    } catch(e) { return { success: false, reason: e.message }; }
+  },
+  async requestGoogleFit() {
+    // Google Fit via Web OAuth (requires app registration)
+    // For now: guide user to manual entry with auto-fill
+    return { success: false, reason: 'Google Fit integration requires OAuth setup. Use manual HRV entry for now.' };
+  },
+  // Pull from Web APIs available in browser
+  async getBatteryLevel() {
+    try {
+      if ('getBattery' in navigator) {
+        const b = await navigator.getBattery();
+        return Math.round(b.level * 100);
+      }
+    } catch {}
+    return null;
+  }
+};
+
+function healthIntegrationCard() {
+  const battery_val = STATE.ui.deviceBattery;
+  const connected = STATE.ui.healthConnected;
+  return `<div class="card section">
+    <div class="title-md" style="margin-bottom:12px">Health Data Sources</div>
+    <div class="list" style="gap:8px">
+      <div class="health-source">
+        <div class="health-icon" style="background:rgba(255,107,53,.12)">🍎</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">Apple Health</div>
+          <div class="muted" style="font-size:12px">HRV, Sleep, Activity — iOS 16.4+ required</div>
+        </div>
+        <button class="secondary sm" data-action="connect-apple-health">Connect</button>
+      </div>
+      <div class="health-source">
+        <div class="health-icon" style="background:rgba(52,211,153,.12)">🏃</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">Google Fit</div>
+          <div class="muted" style="font-size:12px">Steps, Heart Rate, Sleep</div>
+        </div>
+        <button class="secondary sm" data-action="connect-google-fit">Connect</button>
+      </div>
+      <div class="health-source">
+        <div class="health-icon" style="background:rgba(83,181,255,.12)">🔋</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">Device Battery</div>
+          <div class="muted" style="font-size:12px">Auto-fills energy field in check-in</div>
+        </div>
+        <span style="font-weight:800;color:var(--accent)">${battery_val !== null && battery_val !== undefined ? battery_val+'%' : '—'}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── PR Detection ──────────────────────────────────────────────────────────────
+function checkAndRecordPR(exerciseId, weight, reps, athleteId) {
+  if (!weight || !reps) return false;
+  const w = parseFloat(weight), r = parseInt(reps);
+  if (isNaN(w) || isNaN(r) || w <= 0) return false;
+
+  // Estimate 1RM using Epley formula
+  const est1RM = r === 1 ? w : w * (1 + r / 30);
+
+  const existing = STATE.prs.filter(p => p.exercise_id === exerciseId);
+  const best = existing.reduce((max, p) => {
+    const e = p.value || 0;
+    return e > max ? e : max;
+  }, 0);
+
+  if (est1RM > best) {
+    const pr = {
+      exercise_id: exerciseId,
+      value: Math.round(est1RM * 10) / 10,
+      unit: 'lb',
+      label: w + 'lb × ' + r,
+      set_at: todayStr(),
+      athlete_id: athleteId || 'solo',
+    };
+    // Save PR
+    if (isSolo()) {
+      const all = lsGet('piq_prs', []);
+      all.unshift(pr);
+      lsSet('piq_prs', all);
+      STATE.prs = all;
+    } else {
+      DB.insertPR ? DB.insertPR(pr).catch(() => {}) : null;
+    }
+    return true; // New PR!
+  }
+  return false;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDER ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1596,7 +2006,7 @@ function nowBar(){if(STATE.ui.tab!=="session"||isCoach()||!STATE.workout)return"
 
 function bottomNav(){
   if(isCoach())return`<nav class="bottom-nav" style="grid-template-columns:repeat(5,1fr)">${teamNavBtn("team-home","🏠","Home")}${teamNavBtn("schedule","📅","Schedule")}${teamNavBtn("roster","👥","Roster")}${teamNavBtn("builder","🛠️","Builder")}${teamNavBtn("intelligence","🧠","Intel")}</nav>`;
-  return`<nav class="bottom-nav">${navBtn("today","🏠","Today")}${navBtn("session","🏋️","Train")}${navBtn("progress","📈","Progress")}${navBtn("profile","👤","Profile")}</nav>`;
+  return`<nav class="bottom-nav" style="grid-template-columns:repeat(5,1fr)">${navBtn("today","🏠","Today")}${navBtn("session","🏋️","Train")}${navBtn("videos","🎬","Videos")}${navBtn("progress","📈","Progress")}${navBtn("profile","👤","Profile")}</nav>`;
 }
 
 function teamScheduleView(state){const team=state.team;if(!team)return`<div class="screen"><div class="muted" style="padding:40px">No team.</div></div>`;const days=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];const todayMon=new Date().getDay()===0?6:new Date().getDay()-1;return`<div class="screen"><div class="topbar"><div><div class="muted">Schedule</div><div class="title-xl">Weekly Plan</div></div><span class="pill">${team.name}</span></div><div class="card section"><div class="grid" style="grid-template-columns:repeat(7,1fr);gap:6px">${days.map((d,i)=>`<div style="min-height:80px;border-radius:14px;padding:8px;background:${i===todayMon?"rgba(83,181,255,.1)":"var(--surface2)"};border:1px solid ${i===todayMon?"rgba(83,181,255,.35)":"var(--line)"}"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${i===todayMon?"var(--accent)":"var(--muted)"}">${d}</div></div>`).join("")}</div></div></div>`;}
@@ -1607,14 +2017,14 @@ function renderScreen(){
     switch(STATE.ui.teamTab){
       case"schedule":return teamScheduleView(STATE);
       case"roster":return rosterView(STATE);
-      case"intelligence":return coachIntelView(STATE);case"builder":return builderView(STATE);
+      case"intelligence":return coachIntelView(STATE);case"builder":return builderView(STATE);case"messages":return messagingView(STATE);
       default:return teamHomeView(STATE);
     }
   }
   switch(STATE.ui.tab){
     case"session":return sessionView(STATE);
     case"progress":return progressView(STATE);
-    case"profile":return profileView(STATE);
+    case"profile":return profileView(STATE);case"videos":return videoLibraryView(STATE);case"messages":return messagingView(STATE);
     default:return athleteHomeView(STATE);
   }
 }
@@ -1627,8 +2037,8 @@ function render(){
     const swapOptions=STATE.ui.activeSwapExerciseId?getSwapOptions(STATE.ui.activeSwapExerciseId,STATE.profile?.sport??"basketball"):[];
     const toast=STATE.ui.toast?`<div class="toast toast-${STATE.ui.toast.type}">${STATE.ui.toast.msg}</div>`:"";
     app.innerHTML=
-      `${offlineBanner()}<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>`+
-      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+templatePickerSheet(STATE)+toast;
+      `${offlineBanner()}<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>${restTimerBar()}`+
+      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+templatePickerSheet(STATE)+videoPlayerSheet(STATE)+toast;
     bindUI();
     requestAnimationFrame(()=>window.scrollTo(0,_scrollY));
   }catch(e){
@@ -2056,6 +2466,119 @@ function bindUI(){
   });
 
 
+
+  // ── Set logging ───────────────────────────────────────────────────────────
+  document.querySelectorAll('[data-log-ex]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      if (!STATE.workout) return;
+      const ei = inp.dataset.logEx;
+      const si = Number(inp.dataset.logSet);
+      const field = inp.dataset.logField;
+      const ex = STATE.workout.exercises?.find(x => x.id === ei);
+      if (!ex || !ex.sets[si]) return;
+      ex.sets[si][field] = inp.value;
+    });
+  });
+
+  // ── Log set done + PR check + rest timer ──────────────────────────────────
+  document.querySelectorAll("[data-action='log-set-done']").forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!STATE.workout) return;
+      const exId = btn.dataset.ex;
+      const si = Number(btn.dataset.set);
+      const ex = STATE.workout.exercises?.find(x => x.id === exId);
+      if (!ex || !ex.sets[si]) return;
+
+      // Read current input values
+      const rowEls = btn.closest('.set-log-row');
+      const weightEl = rowEls?.querySelector('[data-log-field="weight"]');
+      const repsEl = rowEls?.querySelector('[data-log-field="reps"]');
+      const rpeEl = rowEls?.querySelector('[data-log-field="rpe"]');
+      if (weightEl) ex.sets[si].weight = weightEl.value;
+      if (repsEl) ex.sets[si].reps = repsEl.value;
+      if (rpeEl) ex.sets[si].rpe = rpeEl.value;
+
+      ex.sets[si].done = !ex.sets[si].done;
+
+      if (ex.sets[si].done) {
+        // PR check
+        const isPR = checkAndRecordPR(exId, ex.sets[si].weight, ex.sets[si].reps, STATE.session?.user.id || 'solo');
+        if (isPR) {
+          ex.sets[si].is_pr = true;
+          setToast('🏆 New PR! ' + ex.sets[si].weight + 'lb × ' + ex.sets[si].reps, 'success');
+          PWA.notify('New PR! 🏆', getExercise(exId)?.title + ' — ' + ex.sets[si].weight + 'lb × ' + ex.sets[si].reps);
+        }
+        // Start rest timer
+        const restSec = ex.rest_sec || 60;
+        RestTimer.start(restSec);
+      }
+
+      // Save progress
+      if (isSolo()) solo.saveWorkoutProgress(STATE.workout.id, STATE.workout.exercises);
+      else { try { await DB.updateWorkout(STATE.workout.id, {exercises: STATE.workout.exercises}); } catch {} }
+      render();
+    });
+  });
+
+  // ── Video library ─────────────────────────────────────────────────────────
+  on("[data-action='open-video']", b => { STATE.ui.activeVideoId = b.dataset.videoId; render(); });
+  on("[data-action='close-video']", () => { STATE.ui.activeVideoId = null; render(); });
+
+  // ── Messaging ─────────────────────────────────────────────────────────────
+  document.querySelectorAll("[data-action='open-msg-thread']").forEach(el => {
+    el.addEventListener('click', () => {
+      STATE.ui.activeMsgThread = {
+        id: el.dataset.threadId,
+        name: el.dataset.threadName,
+        role: el.dataset.threadRole,
+      };
+      render();
+      // Scroll to bottom
+      setTimeout(() => {
+        const thread = document.querySelector('.msg-thread');
+        if (thread) thread.scrollTop = thread.scrollHeight;
+      }, 100);
+    });
+  });
+  on("[data-action='close-msg-thread']", () => { STATE.ui.activeMsgThread = null; render(); });
+  document.querySelector("[data-action='send-msg']")?.addEventListener('click', () => {
+    const inp = document.getElementById('msg-input');
+    if (!inp || !inp.value.trim() || !STATE.ui.activeMsgThread) return;
+    const thread = STATE.ui.activeMsgThread;
+    const msgs = lsGetMsgs(thread.id);
+    msgs.push({
+      id: Date.now(),
+      thread_id: thread.id,
+      sender_id: STATE.profile?.id || 'solo',
+      sender_name: STATE.profile?.name || 'You',
+      body: inp.value.trim(),
+      created_at: new Date().toISOString(),
+    });
+    lsSaveMsgs(thread.id, msgs);
+    inp.value = '';
+    render();
+    setTimeout(() => {
+      const t = document.querySelector('.msg-thread');
+      if (t) t.scrollTop = t.scrollHeight;
+    }, 50);
+  });
+
+  // ── Health integrations ───────────────────────────────────────────────────
+  on("[data-action='connect-apple-health']", async () => {
+    const r = await HealthKit.requestAppleHealth();
+    setToast(r.success ? 'Apple Health connected!' : r.reason, r.success ? 'success' : 'error');
+  });
+  on("[data-action='connect-google-fit']", async () => {
+    const r = await HealthKit.requestGoogleFit();
+    setToast(r.reason, 'error');
+  });
+
+  // ── PDF Export ────────────────────────────────────────────────────────────
+  on("[data-action='export-pdf']", () => {
+    setToast('Preparing report…', 'success');
+    setTimeout(() => window.print(), 400);
+  });
+
   // ── PWA bindings ─────────────────────────────────────────────────────────
   on("[data-action='request-notify']",async()=>{
     const result=await PWA.requestNotifyPermission();
@@ -2146,21 +2669,23 @@ async function signUpSupabase(email,password,role){
 // BOOT
 // ─────────────────────────────────────────────────────────────────────────────
 async function boot(){
-  // Init PWA subsystems immediately
   PWA.initNetworkDetection();
   PWA.initInstallPrompt();
   PWA.registerSW();
-  app.innerHTML='<div style="min-height:100vh;display:grid;place-items:center"><div class="loading-spinner"></div></div>';
+  showPremiumLoader('Initialising…');
   const session=await DB.getSession();
   if(session){
-    STATE.session=session;STATE.mode='cloud';STATE.ui.loading=true;render();
+    updateLoaderStatus('Syncing your data…');
+    STATE.session=session;STATE.mode='cloud';
     await loadCloudData(session.user.id);
-    STATE.ui.loading=false;
   } else {
+    updateLoaderStatus('Loading offline data…');
     STATE.mode='solo';
     loadSoloData();
     if(!STATE.profile){STATE.ui.onboardingStep=1;STATE.ui.onboardingDraft={};}
   }
+  // Get device battery level
+  HealthKit.getBatteryLevel().then(b=>{ if(b!==null){STATE.ui.deviceBattery=b;} });
   await loadTemplates();
   refreshIntelReport();
   // Schedule reminder if permission already granted
