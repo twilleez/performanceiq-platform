@@ -252,17 +252,40 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     }
   }
 });
+
+// ── DB Error Classifier ───────────────────────────────────────────────────────
+function classifyDBError(e, context) {
+  const msg = e?.message || String(e);
+  const code = e?.code || '';
+  if (code === 'PGRST116') return null; // not found — not an error
+  if (msg.includes('JWT') || msg.includes('auth')) return { type: 'auth', user: 'Session expired. Please sign in again.', raw: msg };
+  if (msg.includes('network') || msg.includes('fetch')) return { type: 'network', user: 'Network error — working offline.', raw: msg };
+  if (msg.includes('duplicate') || code === '23505') return { type: 'duplicate', user: 'This record already exists.', raw: msg };
+  if (msg.includes('permission') || code === '42501') return { type: 'permission', user: 'You do not have permission to do that.', raw: msg };
+  return { type: 'unknown', user: 'Something went wrong. Try again.', raw: msg };
+}
+
+function handleDBError(e, context, silent = false) {
+  const classified = classifyDBError(e, context);
+  if (!classified) return null; // not-found is not an error
+  console.error('[PIQ DB]', context, classified.raw);
+  if (!silent) setToast(classified.user, 'error');
+  if (classified.type === 'auth') {
+    STATE.session = null; STATE.mode = 'solo'; loadSoloData(); render();
+  }
+  return classified;
+}
 const DB = {
   async signIn(email,password){const{data,error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;return data;},
   async signUp(email,password,role){const{data,error}=await sb.auth.signUp({email,password,options:{data:{role}}});if(error)throw error;return data;},
   async signOut(){await sb.auth.signOut();},
   async getSession(){const{data}=await sb.auth.getSession();return data.session;},
-  async getProfile(userId){const{data,error}=await sb.from('profiles').select('*').eq('id',userId).single();if(error&&error.code!=='PGRST116')throw error;return data;},
+  async getProfile(userId){try{const{data,error}=await sb.from('profiles').select('*').eq('id',userId).single();if(error&&error.code!=='PGRST116')throw error;return data;}catch(e){handleDBError(e,'getProfile',true);return null;}},
   async upsertProfile(p){const{data,error}=await sb.from('profiles').upsert(p,{onConflict:'id'}).select().single();if(error)throw error;return data;},
   async getTodaysReadiness(userId){const today=todayStr();const{data,error}=await sb.from('readiness_logs').select('*').eq('athlete_id',userId).eq('log_date',today).single();if(error&&error.code!=='PGRST116')throw error;return data;},
   async upsertReadiness(entry){const{data,error}=await sb.from('readiness_logs').upsert(entry,{onConflict:'athlete_id,log_date'}).select().single();if(error)throw error;return data;},
   async getReadinessTrend(userId,days=14){const since=new Date(Date.now()-days*86400000).toISOString().split('T')[0];const{data,error}=await sb.from('readiness_logs').select('*').eq('athlete_id',userId).gte('log_date',since).order('log_date',{ascending:true});if(error)throw error;return data??[];},
-  async getTodaysWorkout(userId){const today=todayStr();const{data,error}=await sb.from('workouts').select('*').eq('athlete_id',userId).eq('scheduled_date',today).order('created_at',{ascending:false}).limit(1);if(error)throw error;return data?.[0]??null;},
+  async getTodaysWorkout(userId){try{const today=todayStr();const{data,error}=await sb.from('workouts').select('*').eq('athlete_id',userId).eq('scheduled_date',today).order('created_at',{ascending:false}).limit(1);if(error)throw error;return data?.[0]??null;}catch(e){handleDBError(e,'getTodaysWorkout',true);return null;}},
   async createWorkout(payload){const{data,error}=await sb.from('workouts').insert(payload).select().single();if(error)throw error;return data;},
   async updateWorkout(id,updates){const{data,error}=await sb.from('workouts').update(updates).eq('id',id).select().single();if(error)throw error;return data;},
   async getRecentWorkouts(userId,days=30){const since=new Date(Date.now()-days*86400000).toISOString().split('T')[0];const{data,error}=await sb.from('workouts').select('*').eq('athlete_id',userId).gte('scheduled_date',since).order('scheduled_date',{ascending:false});if(error)throw error;return data??[];},
@@ -273,6 +296,43 @@ const DB = {
   async getTemplates(coachId){const{data,error}=await sb.from('workout_templates').select('*').eq('created_by',coachId).order('created_at',{ascending:false});if(error)throw error;return data??[];},
   async assignWorkout(payload){const{data,error}=await sb.from('workouts').insert(payload).select().single();if(error)throw error;return data;},
   async getTeamMembers(teamId){const{data,error}=await sb.from('team_members').select('athlete_id, profiles(id,name,position,sport)').eq('team_id',teamId);if(error)throw error;return data??[];},
+  // ── Org methods ────────────────────────────────────────────────────────
+  async getOrCreateOrg(name, adminId) {
+    const { data, error } = await sb.from('organizations').upsert({ name, admin_id: adminId }, { onConflict: 'admin_id' }).select().single();
+    if (error) throw error; return data;
+  },
+  async getOrgForUser(userId) {
+    // Coach org
+    const { data: coach } = await sb.from('organizations').select('*').eq('admin_id', userId).single();
+    if (coach) return { ...coach, role_in_org: 'admin' };
+    // Member org
+    const { data: member } = await sb.from('org_members').select('org_id, organizations(*)').eq('user_id', userId).single();
+    if (member?.organizations) return { ...member.organizations, role_in_org: 'member' };
+    return null;
+  },
+  async createTeamWithCode(name, sport, coachId, orgId) {
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const { data, error } = await sb.from('teams').insert({ name, sport, coach_id: coachId, org_id: orgId || null, join_code: code }).select().single();
+    if (error) throw error; return data;
+  },
+  async joinTeamByCode(code, athleteId) {
+    const { data: team, error: te } = await sb.from('teams').select('*').eq('join_code', code.toUpperCase()).single();
+    if (te) throw new Error('Team not found. Check the code and try again.');
+    const { error: me } = await sb.from('team_members').insert({ team_id: team.id, athlete_id: athleteId });
+    if (me && me.code !== '23505') throw me; // ignore duplicate
+    return team;
+  },
+  async getOrgSummary(orgId) {
+    const { data: teams } = await sb.from('teams').select('id, name, sport').eq('org_id', orgId);
+    if (!teams?.length) return { teams: [], athleteCount: 0, avgReadiness: null };
+    const teamIds = teams.map(t => t.id);
+    const { data: members } = await sb.from('team_members').select('athlete_id').in('team_id', teamIds);
+    const athleteIds = [...new Set((members||[]).map(m => m.athlete_id))];
+    const today = todayStr();
+    const { data: readiness } = await sb.from('readiness_logs').select('score').in('athlete_id', athleteIds).eq('log_date', today);
+    const avgReadiness = readiness?.length ? Math.round(readiness.reduce((s,r)=>s+r.score,0)/readiness.length) : null;
+    return { teams, athleteCount: athleteIds.length, avgReadiness };
+  },
   async migrateSoloData(userId,d){
     const r={profile:false,readiness:0,workouts:0,prs:0};
     try{
@@ -537,6 +597,30 @@ const INTEL = {
     const trends = this.analyzeTrends(readinessTrend, recentWorkouts);
     const recs = this.generateRecommendations(profile, readiness, readinessTrend, recentWorkouts, risk, load);
     return { risk, load, trends, recs, generatedAt: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) };
+  },
+
+  generateCoachReport(team, teamReadiness, recentWorkouts) {
+    const tr = teamReadiness || [];
+    const flagged = tr.filter(r => r.score < 65);
+    const ready = tr.filter(r => r.score >= 80);
+    const moderate = tr.filter(r => r.score >= 65 && r.score < 80);
+    const avgScore = tr.length ? Math.round(tr.reduce((s,r)=>s+r.score,0)/tr.length) : null;
+    const athleteRisks = tr.map(r => ({
+      name: r.profiles&&r.profiles.name ? r.profiles.name : 'Athlete',
+      score: r.score,
+      risk: r.score < 65 ? 'High' : r.score < 80 ? 'Medium' : 'Low',
+      flags: [r.sleep_hrs < 6 && 'Low sleep', r.soreness === 'High' && 'High soreness', r.body_battery < 40 && 'Low energy'].filter(Boolean),
+    }));
+    const load = this.analyzeLoad(recentWorkouts || []);
+    const signals = [];
+    if (flagged.length >= Math.ceil(tr.length * 0.4) && tr.length > 0)
+      signals.push({ level: 'high', msg: Math.round((flagged.length/tr.length)*100)+'% of team below threshold.' });
+    if (flagged.length > 0 && flagged.length < Math.ceil(tr.length * 0.4))
+      signals.push({ level: 'medium', msg: flagged.length+' athlete'+(flagged.length>1?'s':'')+' flagged for modified sessions.' });
+    if (ready.length === tr.length && tr.length > 0)
+      signals.push({ level: 'low', msg: 'Full team at capacity. High-intensity session appropriate.' });
+    if (!signals.length) signals.push({ level: 'info', msg: 'Awaiting check-ins.' });
+    return { avgScore, flagged, ready, moderate, load, signals, athleteRisks };
   }
 };
 
@@ -581,7 +665,7 @@ const STATE={
   session:null,profile:null,mode:"solo",syncStatus:"offline",
   workout:null,readiness:null,prs:[],readinessTrend:[],recentWorkouts:[],team:null,teamReadiness:[],
   intelReport:null,
-  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,builderOpen:false,builderStep:1,builderDraft:null,templatePickerOpen:false,assignSheetOpen:false,savedTemplates:[],isOnline:true,offlineQueue:[],swRegistered:false,notifyPermission:'default',restTimerActive:false,restTimerRemaining:0,restTimerTotal:60,activeVideoId:null,activeMsgThread:null,msgThreads:[],deviceBattery:null,healthConnected:false,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
+  ui:{tab:"today",teamTab:"team-home",activeSetExerciseId:null,activeSwapExerciseId:null,activeDetailExerciseId:null,activeReadinessSheet:false,intelSheetOpen:false,migrationSheetOpen:false,migrationResults:null,builderOpen:false,builderStep:1,builderDraft:null,templatePickerOpen:false,assignSheetOpen:false,savedTemplates:[],isOnline:true,offlineQueue:[],swRegistered:false,notifyPermission:'default',restTimerActive:false,restTimerRemaining:0,restTimerTotal:60,activeVideoId:null,activeMsgThread:null,msgThreads:[],deviceBattery:null,healthConnected:false,org:null,orgTeams:[],orgAthletes:[],teamJoinCode:null,teamCreateOpen:false,teamJoinOpen:false,intelCache:{},lastIntelKey:null,orgSummary:null,onboardingStep:null,onboardingDraft:null,loading:false,error:null,toast:null},
 };
 function setToast(msg,type="success"){STATE.ui.toast={msg,type};setTimeout(()=>{STATE.ui.toast=null;render();},3200);}
 function isCoach(){return STATE.profile?.role==="coach";}
@@ -590,23 +674,27 @@ function clearError(){STATE.ui.error=null;}
 function setError(m){STATE.ui.error=m;}
 
 function refreshIntelReport(){
-  if(STATE.profile){
-    STATE.intelReport=INTEL.generateReport(STATE.profile,STATE.readiness,STATE.readinessTrend,STATE.recentWorkouts);
-  }
+  if(!STATE.profile) return;
+  const key=[STATE.readiness?.score,STATE.readinessTrend.length,STATE.recentWorkouts.filter(w=>w.completed_at).length,STATE.profile.sport].join('|');
+  if(STATE.ui.lastIntelKey===key&&STATE.intelReport) return;
+  STATE.intelReport=INTEL.generateReport(STATE.profile,STATE.readiness,STATE.readinessTrend,STATE.recentWorkouts);
+  STATE.ui.lastIntelKey=key;
+  STATE.ui.intelCache[STATE.profile.id||'solo']=STATE.intelReport;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SPARKLINE
 // ─────────────────────────────────────────────────────────────────────────────
-function sparkline(values,color="#53b5ff",h=44){
+function sparkline(values,color="#53b5ff",ht=44){
   if(!values||values.length<2)return"";
   const w=260,pad=4,min=Math.min(...values),max=Math.max(...values),range=max-min||1;
-  const pts=values.map((v,i)=>`${(pad+(i/(values.length-1))*(w-pad*2)).toFixed(1)},${(h-pad-((v-min)/range)*(h-pad*2)).toFixed(1)}`);
+  const pts=values.map((v,i)=>`${(pad+(i/(values.length-1))*(w-pad*2)).toFixed(1)},${(ht-pad-((v-min)/range)*(ht-pad*2)).toFixed(1)}`);
   const[lx,ly]=pts[pts.length-1].split(",");
-  const area=`M${pts[0].split(",")[0]},${h} L${pts.join(" L")} L${lx},${h} Z`;
+  const area=`M${pts[0].split(",")[0]},${ht} L${pts.join(" L")} L${lx},${ht} Z`;
   const gid="sg"+color.replace("#","");
-  return`<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;margin-top:10px;height:${h}px"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".22"/><stop offset="100%" stop-color="${color}" stop-opacity=".01"/></linearGradient></defs><path d="${area}" fill="url(#${gid})"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${lx}" cy="${ly}" r="4" fill="${color}" opacity=".9"/></svg>`;
+  return`<svg width="100%" viewBox="0 0 ${w} ${ht}" preserveAspectRatio="none" style="display:block;margin-top:10px;height:${ht}px"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity=".22"/><stop offset="100%" stop-color="${color}" stop-opacity=".01"/></linearGradient></defs><path d="${area}" fill="url(#${gid})"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${lx}" cy="${ly}" r="4" fill="${color}" opacity=".9"/></svg>`;
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INTELLIGENCE PANEL (inline, Today tab)
@@ -1056,7 +1144,7 @@ function progressView(state){
   const trendCard=readinessTrend.length>=2?`<div class="card section"><div class="space"><div class="title-md">Readiness Trend</div><span class="muted small">14 days</span></div>${sparkline(trendVals)}<div class="row" style="justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:6px"><span class="stat-chip" style="font-size:11px">Low ${Math.min(...trendVals)}</span><span class="stat-chip" style="font-size:11px">High ${Math.max(...trendVals)}</span><span class="stat-chip" style="font-size:11px">Avg ${avg}</span><span class="stat-chip" style="font-size:11px">${trendVals.length} logs</span></div></div>`:`<div class="card section" style="opacity:.6;text-align:center;padding:24px 16px"><div style="font-size:32px;margin-bottom:8px">📈</div><div class="title-md">No Trend Yet</div><div class="muted" style="font-size:13px;margin-top:6px">Log readiness on 2+ days to see your trend chart.</div></div>`;
   const history=completed.length?completed.slice(0,8).map(w=>{const date=new Date(w.scheduled_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});const ex=w.exercises?.length??0;const c={power:"#fbbf24",recovery:"#34d399",build:"#53b5ff"}[w.day_type]??"var(--muted)";return`<div class="item space"><div><div style="font-weight:600;font-size:14px">${w.title}</div><div class="muted small">${date} · ${ex} exercise${ex!==1?"s":""}</div></div><span class="pill" style="font-size:11px;color:${c};border-color:${c}33">${w.day_type??"session"}</span></div>`;}).join(""):`<div class="item muted" style="text-align:center;padding:20px">No completed sessions yet.</div>`;
   const prItems=prs.length?prs.slice(0,10).map(pr=>`<div class="item space"><div><div style="font-weight:600">${pr.exercise_id.replace(/_/g," ")}</div><div class="muted small">${pr.label}</div></div><div style="text-align:right"><div style="font-weight:700;color:#34d399">${pr.value} ${pr.unit??""}</div><div class="muted small">${pr.set_at}</div></div></div>`).join(""):`<div class="item muted" style="text-align:center;padding:20px">No PRs logged yet.</div>`;
-  return`<div class="screen"><div class="topbar"><div><div class="muted">Progress</div><div class="title-xl">Depth Over Noise</div></div><button class="secondary sm" data-action="export-pdf" style="flex-shrink:0">⬇ Export</button></div><div class="grid three section">${pillarCards}</div>${trendCard}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Session History</div><span class="muted small">${completed.length} sessions</span></div><div class="list">${history}</div></div><div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Personal Records</div><span class="muted small">${prs.length} recorded</span></div><div class="list">${prItems}</div></div></div>`;
+  return`<div class="screen"><div class="topbar"><div><div class="muted">Progress</div><div class="title-xl">Depth Over Noise</div></div><div class="row" style="gap:6px"><button class="secondary sm" data-action="export-csv-readiness">📊 CSV</button><button class="secondary sm" data-action="export-csv-sessions">🏋️ CSV</button><button class="secondary sm" data-action="export-pdf">📄 PDF</button></div></div><div class="grid three section">${pillarCards}</div>${microcycleTemplatesCard(state.profile)}${trendCard}<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Session History</div><span class="muted small">${completed.length} sessions</span></div><div class="list">${history}</div></div><div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">Personal Records</div><div class="row" style="gap:6px"><span class="muted small">${prs.length} recorded</span><button class="secondary sm" data-action="export-prs-csv" style="font-size:10px">⬇ CSV</button></div></div><div class="list">${prItems}</div></div></div>`;
 }
 
 function profileView(state){
@@ -1088,7 +1176,8 @@ function profileView(state){
       <div class="title-md" style="margin-bottom:12px">Account</div>
       ${isSoloMode?`<div class="banner" style="margin-bottom:14px;font-size:13px"><strong>Solo Mode</strong> — data stored on this device only.</div><button class="secondary" style="width:100%;margin-bottom:8px" data-action="sign-in-prompt">Create Account / Sign In</button>`:`<button class="secondary sm" style="margin-top:4px;width:100%" data-action="sign-out">Sign Out</button>`}
     </div>
-    ${healthIntegrationCard()}${notifyPromptCard()}${installPromptCard()}${isSoloMode?`<div class="card section" style="border-color:rgba(248,113,113,.2)"><div class="title-md" style="margin-bottom:8px;color:#f87171">Reset Data</div><div class="muted" style="font-size:13px;margin-bottom:12px">Clears all workouts, readiness logs, and PRs on this device.</div><button class="secondary sm" style="border-color:rgba(248,113,113,.3);color:#f87171" data-action="reset-solo">Clear All Local Data</button></div>`:""}
+    ${healthIntegrationCard()}${!isSoloMode&&!isCoach()?'<div class="card section"><div class="title-md" style="margin-bottom:12px">Team</div><div class="banner" style="margin-bottom:12px;font-size:13px">'+(STATE.team?STATE.team.name:"Not on a team yet.")+'</div><button class="secondary" style="width:100%" data-action="open-team-join">Join Team with Code</button></div>':""}
+    ${notifyPromptCard()}${installPromptCard()}${isSoloMode?`<div class="card section" style="border-color:rgba(248,113,113,.2)"><div class="title-md" style="margin-bottom:8px;color:#f87171">Reset Data</div><div class="muted" style="font-size:13px;margin-bottom:12px">Clears all workouts, readiness logs, and PRs on this device.</div><button class="secondary sm" style="border-color:rgba(248,113,113,.3);color:#f87171" data-action="reset-solo">Clear All Local Data</button></div>`:""}
   </div>`;
 }
 
@@ -1484,7 +1573,12 @@ const PWA = {
   },
 
   // ── Show local notification (no server push needed) ──────────────────────
+  isQuietHours() {
+    const h = new Date().getHours();
+    return h < 7 || h >= 22; // 10pm – 7am quiet
+  },
   async notify(title, body, tag = 'piq', url = './') {
+    if (this.isQuietHours() && !tag.includes('risk') && !tag.includes('complete')) return; // suppress non-urgent during quiet hours
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
     try {
@@ -1576,28 +1670,28 @@ const PWA = {
   // ── Offline queue flush ───────────────────────────────────────────────────
   async flushOfflineQueue() {
     if (isSolo() || !STATE.session) return;
-    const queue = solo.getOfflineQueue();
+    const queue = lsGet('piq_offline_queue', []);
     if (!queue.length) return;
-    let flushed = 0;
+    let flushed = 0, failed = 0;
+    const remaining = [];
     for (const op of queue) {
       try {
-        if (op.type === 'upsert_readiness') {
-          await DB.upsertReadiness(op.data);
-        } else if (op.type === 'create_workout') {
-          await DB.createWorkout(op.data);
-        } else if (op.type === 'update_workout') {
-          await DB.updateWorkout(op.data.id, op.data.updates);
-        } else if (op.type === 'upsert_profile') {
-          await DB.upsertProfile(op.data);
-        }
+        if (op.type === QUEUE_OPS.UPSERT_READINESS) await DB.upsertReadiness(op.data);
+        else if (op.type === QUEUE_OPS.CREATE_WORKOUT) await DB.createWorkout(op.data);
+        else if (op.type === QUEUE_OPS.UPDATE_WORKOUT) await DB.updateWorkout(op.data.id, op.data.updates);
+        else if (op.type === QUEUE_OPS.UPSERT_PROFILE) await DB.upsertProfile(op.data);
+        else if (op.type === QUEUE_OPS.ASSIGN_WORKOUT) await DB.assignWorkout(op.data);
         flushed++;
       } catch (e) {
-        console.warn('[PIQ] Queue flush error:', op.type, e);
+        console.warn('[PIQ] Queue flush error:', op.type, e.message);
+        failed++;
+        remaining.push(op); // keep failed ops for retry
       }
     }
+    lsSet('piq_offline_queue', remaining);
+    STATE.ui.offlineQueue = remaining;
     if (flushed > 0) {
-      solo.clearQueue();
-      setToast(flushed + ' offline change' + (flushed !== 1 ? 's' : '') + ' synced.', 'success');
+      setToast(flushed + ' change' + (flushed !== 1 ? 's' : '') + ' synced' + (failed ? ', ' + failed + ' pending' : '') + '.', 'success');
       await loadCloudData(STATE.session.user.id);
       render();
     }
@@ -1635,11 +1729,7 @@ const PWA = {
 };
 
 // ── Offline banner (rendered inline) ────────────────────────────────────────
-function offlineBanner() {
-  if (STATE.ui.isOnline) return '';
-  const qLen = solo.getOfflineQueue().length;
-  return '<div class="offline-banner">📡 Offline' + (qLen ? ' · ' + qLen + ' change' + (qLen !== 1 ? 's' : '') + ' queued' : '') + '</div>';
-}
+function offlineBanner() { return STATE.ui.isOnline ? '' : offlineQueueStatus(); }
 
 // ── Notification prompt card (shown in profile) ──────────────────────────────
 function notifyPromptCard() {
@@ -1985,6 +2075,114 @@ function checkAndRecordPR(exerciseId, weight, reps, athleteId) {
   }
   return false;
 }
+
+// ── Team Creation & Join Flows ────────────────────────────────────────────────
+function teamCreateSheet(state) {
+  if (!state.ui.teamCreateOpen) return "";
+  const code = state.ui.teamJoinCode;
+  const sports = ["basketball","football","soccer","baseball","volleyball","track"];
+  const sportOpts = sports.map(s=>"<option value=\""+s+"\">"+s[0].toUpperCase()+s.slice(1)+"</option>").join("");
+  const codeBlock = code ? "<div class=\"card section\" style=\"text-align:center;background:rgba(52,211,153,.07);border-color:rgba(52,211,153,.2)\"><div class=\"muted small\" style=\"margin-bottom:8px\">Share this code with your athletes</div><div style=\"font-size:36px;font-weight:900;letter-spacing:.15em;color:#34d399\">"+code+"</div><div class=\"muted\" style=\"font-size:12px;margin-top:8px\">Athletes enter this in Profile → Join Team</div></div>" : "";
+  return "<div class=\"sheet-backdrop\" data-action=\"close-team-create\"><div class=\"sheet\" onclick=\"event.stopPropagation()\"><div class=\"handle\"></div><div class=\"space\" style=\"margin-bottom:16px\"><div><div class=\"title-lg\">Create Team</div><div class=\"muted\">Athletes join using the code you get after creating.</div></div><button class=\"secondary sm\" data-action=\"close-team-create\">&#x2715;</button></div><div class=\"card\"><div class=\"list\" style=\"gap:10px\"><label class=\"input-row\"><span style=\"font-weight:500;min-width:80px\">Team Name</span><input id=\"tc-name\" type=\"text\" placeholder=\"e.g. Westside Hoops\" style=\"text-align:right;border:none;background:transparent;padding:4px 0\"/></label><label class=\"input-row\"><span style=\"font-weight:500;min-width:80px\">Sport</span><select id=\"tc-sport\" class=\"select-input\">"+sportOpts+"</select></label></div><button style=\"width:100%;margin-top:14px\" data-action=\"create-team-submit\">Create Team</button></div>"+codeBlock+"</div></div>";
+}
+
+function teamJoinSheet(state) {
+  if (!state.ui.teamJoinOpen) return "";
+  return "<div class=\"sheet-backdrop\" data-action=\"close-team-join\"><div class=\"sheet\" onclick=\"event.stopPropagation()\"><div class=\"handle\"></div><div class=\"space\" style=\"margin-bottom:16px\"><div><div class=\"title-lg\">Join a Team</div><div class=\"muted\">Enter the 6-character code from your coach.</div></div><button class=\"secondary sm\" data-action=\"close-team-join\">&#x2715;</button></div><div class=\"card\"><input id=\"tj-code\" type=\"text\" placeholder=\"ABC123\" maxlength=\"6\" style=\"text-transform:uppercase;font-size:24px;font-weight:800;text-align:center;letter-spacing:.15em\"/><button style=\"width:100%;margin-top:14px\" data-action=\"join-team-submit\">Join Team</button></div></div></div>";
+}
+
+function orgAdminView(state) {
+  const org = state.org;
+  const teams = state.orgTeams || [];
+  const summary = state.ui.orgSummary || {};
+  const avgR = summary.avgReadiness;
+  const color = avgR===null||avgR===undefined?"var(--muted)":avgR>=80?"#34d399":avgR>=65?"#fbbf24":"#f87171";
+  const teamCards = teams.length ? teams.map(t=>"<div class=\"card\"><div class=\"space\"><div><div style=\"font-weight:700;font-size:15px\">"+t.name+"</div><div class=\"muted small\">"+t.sport+"</div></div><span class=\"pill\" style=\"font-size:11px\">"+(t.member_count||0)+" athletes</span></div></div>").join("") : "<div class=\"muted\" style=\"padding:24px;text-align:center;font-size:13px\">No teams yet. Create your first team.</div>";
+  return "<div class=\"screen\"><div class=\"topbar\"><div><div class=\"muted\">"+(org&&org.name?org.name:"Organization")+"</div><div class=\"title-xl\">Org Overview</div></div><button class=\"secondary sm\" data-action=\"open-team-create\">+ New Team</button></div><div class=\"grid three section\"><div class=\"card\" style=\"text-align:center\"><div class=\"metric-sm\" style=\"color:var(--accent)\">"+teams.length+"</div><div class=\"muted small\">Teams</div></div><div class=\"card\" style=\"text-align:center\"><div class=\"metric-sm\" style=\"color:#ff6b35\">"+(summary.athleteCount||0)+"</div><div class=\"muted small\">Athletes</div></div><div class=\"card\" style=\"text-align:center\"><div class=\"metric-sm\" style=\"color:"+color+"\">"+( avgR!==null&&avgR!==undefined?avgR:"\u2014")+"</div><div class=\"muted small\">Avg Readiness</div></div></div><div class=\"section\"><div class=\"space\" style=\"margin-bottom:12px\"><div class=\"title-md\">Teams</div></div><div class=\"list\">"+teamCards+"</div></div></div>";
+}
+
+// ── Typed Offline Queue Operations ────────────────────────────────────────────
+const QUEUE_OPS = {
+  UPSERT_READINESS: 'upsert_readiness',
+  CREATE_WORKOUT: 'create_workout',
+  UPDATE_WORKOUT: 'update_workout',
+  UPSERT_PROFILE: 'upsert_profile',
+  ASSIGN_WORKOUT: 'assign_workout',
+  SAVE_MESSAGE: 'save_message',
+};
+
+function queueOperation(type, data, description) {
+  const op = { type, data, description: description || type, queuedAt: new Date().toISOString(), id: Date.now() };
+  const q = lsGet('piq_offline_queue', []);
+  q.push(op);
+  lsSet('piq_offline_queue', q);
+  STATE.ui.offlineQueue = q;
+  return op;
+}
+
+function offlineQueueStatus() {
+  const q = lsGet('piq_offline_queue', []);
+  if (!q.length || STATE.ui.isOnline) return '';
+  return '<div class="offline-banner" style="flex-direction:column;align-items:flex-start;gap:6px"><div style="display:flex;align-items:center;gap:8px;width:100%">&#128225; Offline &mdash; '+q.length+' change'+(q.length!==1?'s':'')+' queued<span style="margin-left:auto;font-size:11px">Will sync when reconnected</span></div><div style="width:100%;height:2px;border-radius:2px;background:rgba(251,191,36,.2)"><div style="width:'+(Math.min(100,q.length*10))+'%;height:100%;border-radius:2px;background:#fbbf24"></div></div></div>';
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function exportReadinessCSV() {
+  const rows = STATE.readinessTrend;
+  if (!rows.length) { setToast('No readiness data to export.', 'error'); return; }
+  const header = ['Date','Score','Sleep (hrs)','Soreness','Hydration','Energy (%)','HRV'];
+  const csv = [header, ...rows.map(r => [
+    r.log_date, r.score, r.sleep_hrs, r.soreness, r.hydration, r.body_battery, r.hrv || ''
+  ])].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'piq_readiness_' + todayStr() + '.csv';
+  a.click();
+  setToast('Readiness data exported.', 'success');
+}
+
+function exportWorkoutsCSV() {
+  const rows = STATE.recentWorkouts.filter(w => w.completed_at);
+  if (!rows.length) { setToast('No completed sessions to export.', 'error'); return; }
+  const header = ['Date','Title','Sport','Type','Exercises','Completed'];
+  const csv = [header, ...rows.map(w => [
+    w.scheduled_date, '"'+w.title+'"', w.sport, w.day_type,
+    (w.exercises||[]).length, w.completed_at ? 'Yes' : 'No'
+  ])].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'piq_sessions_' + todayStr() + '.csv';
+  a.click();
+  setToast('Session data exported.', 'success');
+}
+
+function exportPRsCSV() {
+  const rows = STATE.prs;
+  if (!rows.length) { setToast('No PRs to export.', 'error'); return; }
+  const header = ['Exercise','Value','Unit','Label','Date'];
+  const csv = [header, ...rows.map(p => [
+    p.exercise_id, p.value, p.unit || 'lb', '"'+(p.label||'')+'"', p.set_at
+  ])].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'piq_prs_' + todayStr() + '.csv';
+  a.click();
+  setToast('PR data exported.', 'success');
+}
+
+function microcycleTemplatesCard(profile) {
+  if (!profile) return '';
+  const sport = profile.sport || 'basketball';
+  const micro = buildMicrocycle(sport);
+  const days = micro.map(d => {
+    const c = d.status === 'today' ? 'var(--accent)' : d.status === 'done' ? 'var(--muted2)' : 'var(--muted)';
+    return '<div class="day-card' + (d.status === 'today' ? ' today' : '') + '" style="' + (d.status === 'done' ? 'opacity:.4' : '') + '"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;color:' + c + '">' + (d.status === 'today' ? 'Today' : d.status === 'done' ? 'Done' : d.day) + '</div><div style="font-weight:600;font-size:12px">' + d.label + '</div></div>';
+  }).join('');
+  return '<div class="card section"><div class="space" style="margin-bottom:12px"><div class="title-md">This Week&#39;s Plan</div><span class="pill" style="font-size:11px">' + sport[0].toUpperCase() + sport.slice(1) + '</span></div><div class="grid" style="grid-template-columns:repeat(5,1fr);gap:6px">' + days + '</div></div>';
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDER ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2005,7 +2203,7 @@ function teamNavBtn(key,icon,label){const active=STATE.ui.teamTab===key;const is
 function nowBar(){if(STATE.ui.tab!=="session"||isCoach()||!STATE.workout)return"";return`<div class="now-bar"><div><strong style="font-size:14px">${STATE.workout.title}</strong><div class="muted small">Active session</div></div><button class="sm" data-action="end-session" style="background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3)">Finish</button></div>`;}
 
 function bottomNav(){
-  if(isCoach())return`<nav class="bottom-nav" style="grid-template-columns:repeat(5,1fr)">${teamNavBtn("team-home","🏠","Home")}${teamNavBtn("schedule","📅","Schedule")}${teamNavBtn("roster","👥","Roster")}${teamNavBtn("builder","🛠️","Builder")}${teamNavBtn("intelligence","🧠","Intel")}</nav>`;
+  if(isCoach())return`<nav class="bottom-nav" style="grid-template-columns:repeat(6,1fr)">${teamNavBtn("team-home","🏠","Home")}${teamNavBtn("org","🏢","Org")}${teamNavBtn("roster","👥","Roster")}${teamNavBtn("builder","🛠️","Builder")}${teamNavBtn("messages","💬","Chat")}${teamNavBtn("intelligence","🧠","Intel")}</nav>`;
   return`<nav class="bottom-nav" style="grid-template-columns:repeat(5,1fr)">${navBtn("today","🏠","Today")}${navBtn("session","🏋️","Train")}${navBtn("videos","🎬","Videos")}${navBtn("progress","📈","Progress")}${navBtn("profile","👤","Profile")}</nav>`;
 }
 
@@ -2017,7 +2215,7 @@ function renderScreen(){
     switch(STATE.ui.teamTab){
       case"schedule":return teamScheduleView(STATE);
       case"roster":return rosterView(STATE);
-      case"intelligence":return coachIntelView(STATE);case"builder":return builderView(STATE);case"messages":return messagingView(STATE);
+      case"intelligence":return coachIntelView(STATE);case"builder":return builderView(STATE);case"messages":return messagingView(STATE);case"org":return orgAdminView(STATE);
       default:return teamHomeView(STATE);
     }
   }
@@ -2038,7 +2236,7 @@ function render(){
     const toast=STATE.ui.toast?`<div class="toast toast-${STATE.ui.toast.type}">${STATE.ui.toast.msg}</div>`:"";
     app.innerHTML=
       `${offlineBanner()}<div class="app-shell">${renderScreen()}${nowBar()}${bottomNav()}</div>${restTimerBar()}`+
-      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+templatePickerSheet(STATE)+videoPlayerSheet(STATE)+toast;
+      readinessSheet(STATE)+setLoggingSheet(STATE)+swapSheet(STATE,swapOptions)+detailSheet(STATE)+onboardingSheet(STATE)+intelSheet(STATE)+migrationSheet(STATE)+templatePickerSheet(STATE)+videoPlayerSheet(STATE)+teamCreateSheet(STATE)+teamJoinSheet(STATE)+toast;
     bindUI();
     requestAnimationFrame(()=>window.scrollTo(0,_scrollY));
   }catch(e){
@@ -2579,6 +2777,52 @@ function bindUI(){
     setTimeout(() => window.print(), 400);
   });
 
+
+  // ── Team create / join ────────────────────────────────────────────────────
+  on("[data-action='open-team-create']",()=>{STATE.ui.teamCreateOpen=true;STATE.ui.teamJoinCode=null;render();});
+  on("[data-action='close-team-create']",()=>{STATE.ui.teamCreateOpen=false;render();});
+  on("[data-action='open-team-join']",()=>{STATE.ui.teamJoinOpen=true;render();});
+  on("[data-action='close-team-join']",()=>{STATE.ui.teamJoinOpen=false;render();});
+  document.querySelector("[data-action='create-team-submit']")?.addEventListener('click',async()=>{
+    const name=document.getElementById('tc-name')?.value?.trim();
+    const sport=document.getElementById('tc-sport')?.value||'basketball';
+    if(!name){setToast('Enter a team name.','error');return;}
+    const btn=document.querySelector("[data-action='create-team-submit']");
+    if(btn){btn.disabled=true;btn.textContent='Creating...';}
+    try{
+      const team=await DB.createTeamWithCode(name,sport,STATE.session?.user.id,STATE.org?.id||null);
+      STATE.team=team;STATE.ui.teamJoinCode=team.join_code;
+      setToast('Team created! Code: '+team.join_code,'success');
+    }catch(e){handleDBError(e,'createTeam');}
+    finally{if(btn){btn.disabled=false;btn.textContent='Create Team';}}
+    render();
+  });
+  document.querySelector("[data-action='join-team-submit']")?.addEventListener('click',async()=>{
+    const code=document.getElementById('tj-code')?.value?.trim();
+    if(!code||code.length<4){setToast('Enter a valid team code.','error');return;}
+    const btn=document.querySelector("[data-action='join-team-submit']");
+    if(btn){btn.disabled=true;btn.textContent='Joining...';}
+    try{
+      const team=await DB.joinTeamByCode(code,STATE.session?.user.id);
+      STATE.team=team;STATE.ui.teamJoinOpen=false;
+      setToast('Joined '+team.name+'!','success');
+    }catch(e){handleDBError(e,'joinTeam');}
+    finally{if(btn){btn.disabled=false;btn.textContent='Join Team';}}
+    render();
+  });
+  const orgNavEl=document.querySelector("[data-team-nav='org']");
+  if(orgNavEl){orgNavEl.addEventListener('click',async()=>{
+    if(!STATE.org||isSolo())return;
+    try{const s=await DB.getOrgSummary(STATE.org.id);STATE.ui.orgSummary=s;STATE.orgTeams=s.teams||[];}
+    catch(e){handleDBError(e,'orgSummary',true);}
+    render();
+  });}
+
+
+  on("[data-action='export-csv-readiness']",()=>exportReadinessCSV());
+  on("[data-action='export-csv-sessions']",()=>exportWorkoutsCSV());
+  on("[data-action='export-prs-csv']",()=>exportPRsCSV());
+
   // ── PWA bindings ─────────────────────────────────────────────────────────
   on("[data-action='request-notify']",async()=>{
     const result=await PWA.requestNotifyPermission();
@@ -2687,6 +2931,10 @@ async function boot(){
   // Get device battery level
   HealthKit.getBatteryLevel().then(b=>{ if(b!==null){STATE.ui.deviceBattery=b;} });
   await loadTemplates();
+  // Load org for coach
+  if(STATE.session&&isCoach()){
+    try{STATE.org=await DB.getOrgForUser(STATE.session.user.id);}catch{}
+  }
   refreshIntelReport();
   // Schedule reminder if permission already granted
   if(PWA.getNotifyPermission()==='granted') PWA.scheduleDailyReminder();
