@@ -558,93 +558,6 @@ body{font-family:'DM Sans',sans-serif;background:#fff;color:var(--body);overflow
 }
 .btn-action-secondary:hover { background: var(--g100); }
 
-
-/* ══ THEME TOGGLE + DARK MODE ══ */
-.theme-toggle{
-  width:38px;height:38px;border-radius:10px;border:1px solid var(--g200);background:#fff;color:var(--navy);
-  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .2s;
-}
-.theme-toggle:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(13,27,62,.12);}
-.toast-stack{position:fixed;right:18px;bottom:18px;z-index:1200;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
-.toast{
-  min-width:240px;max-width:320px;background:rgba(13,27,62,.96);color:#fff;border:1px solid rgba(255,255,255,.08);
-  border-radius:12px;padding:12px 14px;box-shadow:0 18px 40px rgba(13,27,62,.22);font-size:13px;line-height:1.4;
-  animation:fadeUp .22s ease;
-}
-.toast strong{color:var(--green);}
-.hidden-by-role{display:none !important;}
-
-body[data-theme="dark"]{
-  background:#070b12;color:#dbe5f3;
-}
-body[data-theme="dark"] #navbar,
-body[data-theme="dark"] .sidebar{
-  background:#0b1220;border-color:rgba(255,255,255,.06);
-}
-body[data-theme="dark"] .page-main{background:#08111d;}
-body[data-theme="dark"] .page-header h1,
-body[data-theme="dark"] .panel-title,
-body[data-theme="dark"] .kpi-val,
-body[data-theme="dark"] .w-name,
-body[data-theme="dark"] .athlete-name,
-body[data-theme="dark"] .sched-title,
-body[data-theme="dark"] .builder-tpl-trigger-title,
-body[data-theme="dark"] .builder-loaded-title,
-body[data-theme="dark"] .builder-ex-name,
-body[data-theme="dark"] .tpl-picker-title,
-body[data-theme="dark"] .tpl-picker-row-title,
-body[data-theme="dark"] .macro-num{color:#f8fbff;}
-body[data-theme="dark"] .page-header p,
-body[data-theme="dark"] .panel-sub,
-body[data-theme="dark"] .w-meta,
-body[data-theme="dark"] .athlete-meta,
-body[data-theme="dark"] .sched-desc,
-body[data-theme="dark"] .macro,
-body[data-theme="dark"] .macro-unit,
-body[data-theme="dark"] .builder-tpl-trigger-sub,
-body[data-theme="dark"] .builder-loaded-sub,
-body[data-theme="dark"] .builder-field-label,
-body[data-theme="dark"] .builder-ex-meta,
-body[data-theme="dark"] .tpl-picker-row-meta{color:#93a4bd;}
-body[data-theme="dark"] .panel,
-body[data-theme="dark"] .kpi-card,
-body[data-theme="dark"] .tpl-picker-sheet{
-  background:#101a2a;border-color:rgba(255,255,255,.08);box-shadow:none;
-}
-body[data-theme="dark"] .w-row,
-body[data-theme="dark"] .athlete-row,
-body[data-theme="dark"] .sched-row,
-body[data-theme="dark"] .meal-block,
-body[data-theme="dark"] .builder-ex-row,
-body[data-theme="dark"] .tpl-picker-header,
-body[data-theme="dark"] .tpl-picker-filters{border-color:rgba(255,255,255,.08);}
-body[data-theme="dark"] .rf-bar-bg,
-body[data-theme="dark"] .chart-bar-wrap,
-body[data-theme="dark"] .prog-bg,
-body[data-theme="dark"] .macro-circle circle:first-child,
-body[data-theme="dark"] .divider{background:#1d2a3d;}
-body[data-theme="dark"] .theme-toggle,
-body[data-theme="dark"] .builder-input,
-body[data-theme="dark"] .builder-select,
-body[data-theme="dark"] .builder-mini-input,
-body[data-theme="dark"] .tpl-picker-close,
-body[data-theme="dark"] .tpl-filter-chip,
-body[data-theme="dark"] .btn-action-secondary{
-  background:#0d1625;border-color:#243248;color:#e8eef8;
-}
-body[data-theme="dark"] .tpl-picker-close:hover,
-body[data-theme="dark"] .btn-action-secondary:hover,
-body[data-theme="dark"] .tpl-filter-chip:hover{background:#142034;}
-body[data-theme="dark"] .builder-tpl-trigger{
-  background:linear-gradient(135deg, rgba(42,157,244,.09), rgba(34,201,85,.08));
-  border-color:rgba(42,157,244,.25);
-}
-body[data-theme="dark"] .builder-loaded-banner{
-  background:rgba(34,201,85,.08);border-color:rgba(34,201,85,.28);
-}
-body[data-theme="dark"] .tpl-picker-row:hover{background:#142034;border-color:#233147;}
-body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);}
-
 /* ══ RESPONSIVE ══ */
 @media(max-width:860px){
   .kpi-row{grid-template-columns:repeat(2,1fr);}
@@ -654,9 +567,69 @@ body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);
   #navbar{padding:0 16px;}
   .nav-links{display:none;}
 }
+
+/* ══ PHASE 15B: ONBOARDING WIZARD ══ */
+.onboard-overlay{position:fixed;inset:0;z-index:10000;background:rgba(13,27,62,.96);display:flex;align-items:center;justify-content:center;animation:fadeUp .4s both;}
+.onboard-card{background:#fff;border-radius:20px;padding:40px 48px;width:480px;max-width:94vw;}
+.onboard-card h2{font-family:'Oswald',sans-serif;font-size:20px;font-weight:700;color:var(--navy);margin-bottom:6px;}
+.onboard-card .sub{font-size:13px;color:var(--g400);margin-bottom:24px;}
+.onboard-steps{display:flex;gap:8px;margin-bottom:28px;}
+.onboard-dot{width:28px;height:4px;border-radius:2px;background:var(--g200);}
+.onboard-dot.active{background:var(--green);}
+.onboard-dot.done{background:var(--green-dark);}
+.onboard-field{margin-bottom:16px;}
+.onboard-field label{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--g400);display:block;margin-bottom:6px;}
+.onboard-field input,.onboard-field select{width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--navy);background:#fff;outline:none;}
+.onboard-field input:focus,.onboard-field select:focus{border-color:var(--green);}
+.onboard-goals{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.onboard-goal{padding:10px 12px;border:1.5px solid var(--g200);border-radius:10px;font-size:13px;color:var(--navy);cursor:pointer;text-align:center;transition:all .15s;}
+.onboard-goal.sel{border-color:var(--green);background:rgba(57,230,107,.08);color:var(--green-dark);font-weight:600;}
+.onboard-nav{display:flex;justify-content:space-between;align-items:center;margin-top:24px;}
+.onboard-back{background:none;border:none;color:var(--g400);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.onboard-next{background:var(--green);color:var(--navy);border:none;border-radius:10px;padding:11px 28px;font-family:'Oswald',sans-serif;font-size:13px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;}
+
+/* ══ PHASE 15B: CONFIRM MODAL ══ */
+.modal-overlay{position:fixed;inset:0;z-index:9000;background:rgba(13,27,62,.7);display:flex;align-items:center;justify-content:center;}
+.modal-overlay.hidden{display:none;}
+.modal-card{background:#fff;border-radius:18px;padding:32px 36px;width:400px;max-width:92vw;}
+.modal-card h3{font-family:'Oswald',sans-serif;font-size:18px;font-weight:700;color:var(--navy);margin-bottom:8px;}
+.modal-card p{font-size:13px;color:var(--g600);margin-bottom:20px;line-height:1.5;}
+.modal-detail{background:var(--g100);border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:var(--navy);}
+.modal-detail div{margin-bottom:6px;} .modal-detail div:last-child{margin-bottom:0;}
+.modal-detail span{font-weight:600;}
+.modal-athlete-list{margin-top:8px;}
+.modal-athlete-check{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--g200);cursor:pointer;}
+.modal-athlete-check:last-child{border-bottom:none;}
+.mac-cb{width:16px;height:16px;border:2px solid var(--g200);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;}
+.mac-cb.checked{background:var(--green);border-color:var(--green);}
+.mac-cb.checked::after{content:'✓';font-size:10px;color:var(--navy);font-weight:900;}
+.modal-btns{display:flex;gap:10px;justify-content:flex-end;}
+.modal-cancel{background:none;border:1.5px solid var(--g200);border-radius:10px;padding:9px 20px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--g600);cursor:pointer;}
+.modal-confirm{background:var(--green);border:none;border-radius:10px;padding:10px 22px;font-family:'Oswald',sans-serif;font-size:13px;font-weight:700;letter-spacing:.8px;color:var(--navy);cursor:pointer;}
+
+/* ══ PHASE 15B: ROLE-BASED DASHBOARD ══ */
+.dash-greeting{font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;color:var(--navy);margin-bottom:4px;}
+.dash-sub{font-size:13px;color:var(--g400);margin-bottom:24px;}
+.readiness-explain{font-size:12px;color:var(--g600);margin-top:8px;line-height:1.5;font-style:italic;}
+.coach-team-card{background:var(--g100);border-radius:12px;padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;border:1.5px solid var(--g200);}
+.coach-team-card .athlete-status{margin-left:auto;}
+.alert-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-family:'Barlow Condensed',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:1px;}
+.alert-caution{background:#fef3c7;color:#d97706;}
+.alert-ready{background:rgba(57,230,107,.15);color:var(--green-dark);}
+
+/* ══ NUTRITION FOOD LOGGER ══ */
+.food-log-row{display:flex;gap:10px;margin-bottom:14px;}
+.food-log-input{flex:1;padding:9px 13px;border:1.5px solid var(--g200);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+.food-log-input:focus{border-color:var(--green);}
+.food-log-btn{padding:9px 18px;background:var(--green);border:none;border-radius:10px;font-family:'Oswald',sans-serif;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--navy);cursor:pointer;}
+.logged-food-list{max-height:160px;overflow-y:auto;}
+.logged-food-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--g200);font-size:13px;color:var(--navy);}
+.logged-food-item .macros{font-size:11px;color:var(--g400);}
+.food-remove{background:none;border:none;color:var(--g400);cursor:pointer;font-size:16px;padding:0 4px;}
+
 </style>
 </head>
-<body data-theme="light">
+<body>
 
 <!-- ════════════ SPLASH ════════════ -->
 <div id="splash">
@@ -667,11 +640,10 @@ body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);
   <div class="splash-card">
     <h2>Sign In</h2>
     <div class="role-tabs">
-      <button class="role-tab active" onclick="setRole(this,'Player')">🏃 Player</button>
+      <button class="role-tab active" onclick="setRole(this,'Athlete')">🏃 Athlete</button>
       <button class="role-tab" onclick="setRole(this,'Coach')">📋 Coach</button>
       <button class="role-tab" onclick="setRole(this,'Parent')">👨‍👧 Parent</button>
       <button class="role-tab" onclick="setRole(this,'Admin')">🏫 Admin</button>
-      <button class="role-tab" onclick="setRole(this,'Solo')">🎯 Solo</button>
     </div>
     <div class="input-group">
       <div class="input-wrap"><input type="email" placeholder="Email address" id="loginEmail"></div>
@@ -683,6 +655,132 @@ body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);
 </div>
 
 <!-- ════════════ APP ════════════ -->
+<!-- ════════════ ONBOARDING WIZARD ════════════ -->
+<div id="onboard-overlay" class="onboard-overlay" style="display:none;">
+  <div class="onboard-card">
+    <div class="onboard-steps">
+      <div class="onboard-dot active" id="od1"></div>
+      <div class="onboard-dot" id="od2"></div>
+      <div class="onboard-dot" id="od3"></div>
+    </div>
+    <!-- STEP 1 -->
+    <div id="ob-step1">
+      <h2>Welcome to PerformanceIQ</h2>
+      <p class="sub">Let's set up your account in 3 quick steps.</p>
+      <div class="onboard-field">
+        <label>Your Name</label>
+        <input type="text" id="ob-name" placeholder="e.g. Willie Lee" />
+      </div>
+      <div class="onboard-field">
+        <label>Role</label>
+        <select id="ob-role">
+          <option value="Athlete">Athlete</option>
+          <option value="Coach">Coach</option>
+          <option value="Parent">Parent</option>
+          <option value="Admin">Admin</option>
+        </select>
+      </div>
+      <div class="onboard-nav">
+        <span></span>
+        <button class="onboard-next" onclick="obNext(1)">Next →</button>
+      </div>
+    </div>
+    <!-- STEP 2 -->
+    <div id="ob-step2" style="display:none;">
+      <h2 id="ob-step2-title">Your Sport & Team</h2>
+      <p class="sub" id="ob-step2-sub">Tell us what you're training for.</p>
+      <div id="ob-step2-athlete">
+        <div class="onboard-field">
+          <label>Primary Sport</label>
+          <select id="ob-sport">
+            <option value="basketball">🏀 Basketball</option>
+            <option value="football">🏈 Football</option>
+            <option value="soccer">⚽ Soccer</option>
+            <option value="baseball">⚾ Baseball</option>
+            <option value="volleyball">🏐 Volleyball</option>
+            <option value="track">🏃 Track & Field</option>
+          </select>
+        </div>
+        <div class="onboard-field">
+          <label>Level</label>
+          <select id="ob-level">
+            <option value="youth">Youth</option>
+            <option value="high_school">High School</option>
+            <option value="college">College</option>
+            <option value="pro">Professional</option>
+          </select>
+        </div>
+        <div class="onboard-field">
+          <label>Team / Club (optional)</label>
+          <input type="text" id="ob-team" placeholder="e.g. Lincoln HS Varsity" />
+        </div>
+      </div>
+      <div id="ob-step2-coach" style="display:none;">
+        <div class="onboard-field">
+          <label>Team Name</label>
+          <input type="text" id="ob-coach-team" placeholder="e.g. Westside Ballers" />
+        </div>
+        <div class="onboard-field">
+          <label>Primary Sport</label>
+          <select id="ob-coach-sport">
+            <option value="basketball">🏀 Basketball</option>
+            <option value="football">🏈 Football</option>
+            <option value="soccer">⚽ Soccer</option>
+            <option value="baseball">⚾ Baseball</option>
+            <option value="volleyball">🏐 Volleyball</option>
+            <option value="track">🏃 Track & Field</option>
+          </select>
+        </div>
+      </div>
+      <div id="ob-step2-parent" style="display:none;">
+        <div class="onboard-field">
+          <label>Athlete Code (optional)</label>
+          <input type="text" id="ob-parent-code" placeholder="Enter code from your athlete's profile" />
+        </div>
+        <div class="onboard-field">
+          <label>Athlete's Name</label>
+          <input type="text" id="ob-parent-athlete" placeholder="e.g. Jordan Lee" />
+        </div>
+      </div>
+      <div class="onboard-nav">
+        <button class="onboard-back" onclick="obBack(2)">← Back</button>
+        <button class="onboard-next" onclick="obNext(2)">Next →</button>
+      </div>
+    </div>
+    <!-- STEP 3 -->
+    <div id="ob-step3" style="display:none;">
+      <h2>Training Goals</h2>
+      <p class="sub">Select all that apply — this shapes your dashboard.</p>
+      <div class="onboard-goals" id="ob-goals-grid">
+        <div class="onboard-goal" onclick="toggleGoal(this)" data-g="strength">💪 Build Strength</div>
+        <div class="onboard-goal" onclick="toggleGoal(this)" data-g="speed">⚡ Increase Speed</div>
+        <div class="onboard-goal" onclick="toggleGoal(this)" data-g="endurance">🏃 Improve Endurance</div>
+        <div class="onboard-goal" onclick="toggleGoal(this)" data-g="flexibility">🧘 Flexibility</div>
+        <div class="onboard-goal" onclick="toggleGoal(this)" data-g="conditioning">🔥 Conditioning</div>
+        <div class="onboard-goal" onclick="toggleGoal(this)" data-g="recovery">😴 Recovery</div>
+      </div>
+      <div class="onboard-nav" style="margin-top:28px;">
+        <button class="onboard-back" onclick="obBack(3)">← Back</button>
+        <button class="onboard-next" onclick="obFinish()">Let's Go 🚀</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ CONFIRM ASSIGN MODAL ════════════ -->
+<div id="assign-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>Confirm Workout Assignment</h3>
+    <p>You're about to assign this workout. Select athletes to receive it, then confirm.</p>
+    <div class="modal-detail" id="assign-modal-detail"></div>
+    <div class="modal-athlete-list" id="assign-modal-athletes"></div>
+    <div class="modal-btns" style="margin-top:20px;">
+      <button class="modal-cancel" onclick="closeAssignModal()">Cancel</button>
+      <button class="modal-confirm" onclick="confirmAssign()">✓ Confirm & Assign</button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
 
   <nav id="navbar">
@@ -695,9 +793,8 @@ body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);
       <li><a onclick="nav('team',this)">Team</a></li>
     </ul>
     <div class="nav-right">
-      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">🌙</button>
-      <span class="nav-badge" id="navRole">Player</span>
-      <div class="nav-avatar" id="navInitials" onclick="showProfileSummary()" title="Profile">WL</div>
+      <span class="nav-badge" id="navRole">Athlete</span>
+      <div class="nav-avatar" id="navInitials">WL</div>
     </div>
   </nav>
 
@@ -719,38 +816,11 @@ body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);
     </nav>
     <main class="page-main">
       <div class="page-header">
-        <h1>Welcome back, <span>Willie</span> 👋</h1>
-        <p>Sunday, March 15 · Basketball · Week 8 of 12</p>
+        <h1 id="dash-greeting">Welcome back 👋</h1>
+        <p id="dash-subline">Loading your dashboard…</p>
       </div>
       <div class="kpi-row">
-        <div class="kpi-card"><div class="kpi-lbl">PIQ Score</div><div class="kpi-val g">87</div><div class="kpi-chg">↑ +4 this week</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Readiness</div><div class="kpi-val">82%</div><div class="kpi-chg">↑ High</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Workouts</div><div class="kpi-val b">24</div><div class="kpi-chg">This month</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Streak</div><div class="kpi-val">🔥 7</div><div class="kpi-chg">Days active</div></div>
-      </div>
-      <div class="panels-2">
-        <div class="panel">
-          <div class="panel-title">Today's Training Plan</div>
-          <div class="w-row"><div class="w-icon">🏀</div><div class="w-info"><div class="w-name">Explosive Footwork Drills</div><div class="w-meta">40 min · High Intensity · Basketball</div></div><span class="w-badge">NEXT</span></div>
-          <div class="w-row"><div class="w-icon">💪</div><div class="w-info"><div class="w-name">Lower Body Power — Phase 2</div><div class="w-meta">35 min · Moderate · Strength</div></div><span class="w-badge gray">LATER</span></div>
-          <div class="w-row"><div class="w-icon">🧘</div><div class="w-info"><div class="w-name">Recovery Mobility Flow</div><div class="w-meta">20 min · Low · Recovery</div></div><span class="w-badge gray">PM</span></div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">Readiness Engine</div>
-          <div class="ring-wrap">
-            <svg width="110" height="110" viewBox="0 0 110 110">
-              <circle cx="55" cy="55" r="46" fill="none" stroke="#e2e8f0" stroke-width="9"/>
-              <circle cx="55" cy="55" r="46" fill="none" stroke="#22c955" stroke-width="9" stroke-dasharray="289" stroke-dashoffset="52" stroke-linecap="round" transform="rotate(-90 55 55)"/>
-            </svg>
-            <div class="ring-num">82</div>
-            <div class="ring-lbl">Readiness Score</div>
-          </div>
-          <div class="rf-row"><span class="rf-lbl">Sleep</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:88%"></div></div><span class="rf-num">88</span></div>
-          <div class="rf-row"><span class="rf-lbl">Nutrition</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:75%"></div></div><span class="rf-num">75</span></div>
-          <div class="rf-row"><span class="rf-lbl">Load</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:80%"></div></div><span class="rf-num">80</span></div>
-          <div class="rf-row"><span class="rf-lbl">Mood</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:85%"></div></div><span class="rf-num">85</span></div>
-        </div>
-      </div>
+      <div id="dash-dynamic-content"><!-- rendered by JS --></div>
     </main>
   </div>
 
@@ -798,6 +868,16 @@ body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);
       <div class="panels-2">
         <div class="panel">
           <div class="panel-title">Today's Meal Plan</div>
+          <!-- Food Logger -->
+          <div style="margin-bottom:16px;padding:12px;background:rgba(57,230,107,.06);border-radius:10px;border:1.5px solid rgba(57,230,107,.2);">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--g400);margin-bottom:8px;">LOG FOOD</div>
+            <div class="food-log-row">
+              <input type="text" class="food-log-input" id="food-input" placeholder="e.g. chicken breast, banana, oats…" list="food-suggestions" autocomplete="off" />
+              <datalist id="food-suggestions"></datalist>
+              <button class="food-log-btn" onclick="logFood()">+ Log</button>
+            </div>
+            <div class="logged-food-list" id="food-log-list"></div>
+          </div>
           <div class="meal-block"><div class="meal-name">🌅 Breakfast (7:00 AM)</div><div class="meal-desc">Oatmeal with banana, honey & almonds · 2 scrambled eggs · Orange juice</div><div class="macro-row"><span class="macro">CAL <span>620</span></span><span class="macro">PRO <span>28g</span></span><span class="macro">CHO <span>95g</span></span><span class="macro">FAT <span>14g</span></span></div></div>
           <div class="meal-block"><div class="meal-name">🥗 Lunch (12:30 PM)</div><div class="meal-desc">Grilled chicken breast · Brown rice · Steamed broccoli & bell peppers · Olive oil drizzle</div><div class="macro-row"><span class="macro">CAL <span>780</span></span><span class="macro">PRO <span>55g</span></span><span class="macro">CHO <span>85g</span></span><span class="macro">FAT <span>18g</span></span></div></div>
           <div class="meal-block"><div class="meal-name">⚡ Pre-Game (3:00 PM)</div><div class="meal-desc">Whole grain toast with peanut butter · Banana · Sports drink</div><div class="macro-row"><span class="macro">CAL <span>420</span></span><span class="macro">PRO <span>14g</span></span><span class="macro">CHO <span>68g</span></span><span class="macro">FAT <span>12g</span></span></div></div>
@@ -917,7 +997,6 @@ body[data-theme="dark"] .tpl-picker-row.selected{background:rgba(34,201,85,.12);
 
 <!-- Template picker sheet (portal — rendered here by JS) -->
 <div id="tpl-picker-root"></div>
-<div id="toastStack" class="toast-stack"></div>
 
 <script>
 // ════════════════════════════════════════════════════════
@@ -935,11 +1014,22 @@ function setRole(btn, role) {
 function doLogin() {
   document.getElementById('splash').classList.add('hidden');
   document.getElementById('app').style.display = 'block';
-  document.getElementById('navRole').textContent = currentRole;
   const raw = document.getElementById('loginEmail').value || 'Willie Lee';
-  const initials = raw.split('@')[0].split(/\s+/).map(w => w[0]?.toUpperCase()).slice(0,2).join('') || 'WL';
-  document.getElementById('navInitials').textContent = initials;
-  renderTrainingView('plan');
+  PIQ_STATE.user.email = raw;
+  const namePart = raw.includes('@') ? raw.split('@')[0] : raw;
+  const parts = namePart.split(/\s+/);
+  PIQ_STATE.user.name = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+  PIQ_STATE.user.initials = parts.map(w => w[0]?.toUpperCase()).slice(0,2).join('') || 'WL';
+  PIQ_STATE.role = currentRole;
+  saveToState();
+  document.getElementById('navRole').textContent = currentRole;
+  document.getElementById('navInitials').textContent = PIQ_STATE.user.initials;
+  if (!PIQ_STATE.onboardingDone) {
+    showOnboarding();
+  } else {
+    renderDashboard();
+    renderTrainingView('plan');
+  }
 }
 function nav(view, linkEl) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
@@ -1412,17 +1502,30 @@ function assignWorkout() {
     titleEl?.style && (titleEl.style.borderColor = '#ef4444');
     return;
   }
-  // Persist title back to draft before alert
   if (BS.draft) BS.draft.title = title;
-
-  // Simulate successful assignment
   const exCount = BS.draft?.exercises?.length || 0;
-  alert(`✅ Workout assigned!\n\n"${title}"\n${exCount} exercises · ${BS.draft?.sport || ''} · ${BS.draft?.day_type || ''}\n\nAssigned to team for ${document.getElementById('b-date')?.value || 'today'}.`);
+  const date = document.getElementById('b-date')?.value || 'today';
+  const sport = BS.draft?.sport || PIQ_STATE.athleteProfile.sport || '';
+  const dayType = BS.draft?.day_type || '';
 
-  // Reset
-  BS.draft = null;
-  BS.loadedTemplateId = null;
-  renderTrainingView('builder');
+  // Populate confirm modal
+  document.getElementById('assign-modal-detail').innerHTML = `
+    <div>📋 <span>${title}</span></div>
+    <div>🏅 <span>${exCount} exercise${exCount !== 1 ? 's' : ''}</span> · ${sport} · ${dayType}</div>
+    <div>📅 Scheduled for <span>${date}</span></div>`;
+
+  // Build athlete checkboxes from roster
+  const roster = PIQ_STATE.roster || DEFAULT_ROSTER;
+  document.getElementById('assign-modal-athletes').innerHTML =
+    '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--g400);margin-bottom:8px;">SELECT ATHLETES</div>' +
+    roster.map((a, i) => `
+      <div class="modal-athlete-check" onclick="toggleAthleteCheck(this,${i})">
+        <div class="mac-cb checked" id="acb-${i}"><\/div>
+        <span style="font-size:13px;color:var(--navy);">${a.name}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--g400);">${a.position || ''}</span>
+      </div>`).join('');
+
+  document.getElementById('assign-modal').classList.remove('hidden');
 }
 
 function saveAsDraft() {
@@ -1431,218 +1534,546 @@ function saveAsDraft() {
   const title = BS.draft?.title || '(untitled)';
   alert(`💾 Draft saved: "${title}"`);
 }
+// ════════════════════════════════════════════════════════
+// PHASE 15B — FOUNDATION: PERSISTENCE + ROLE ROUTING + ONBOARDING
+// ════════════════════════════════════════════════════════
 
-// ════════════════════════════════════════════════════════
-// APP ENHANCEMENTS — theme, role-based screens, working buttons
-// ════════════════════════════════════════════════════════
-const ROLE_CONFIG = {
-  Player: {
-    homeLabel: 'My Progress',
-    teamLabel: 'My Team',
-    dashboardTitle: 'Player Dashboard',
-    dashboardText: 'Your training, readiness, and performance for this week.',
-    nutritionTitle: 'Fuel Plan',
-    nutritionText: 'Daily fueling plan built around player readiness and performance.',
-    analyticsTitle: 'My Analytics',
-    analyticsText: 'Personal PIQ trends, readiness, and performance breakdown.',
-    teamTitle: 'Team Hub',
-    teamText: 'Roster status, schedule, and team context from a player view.',
-    hideTopTeam: false,
-  },
-  Coach: {
-    homeLabel: 'Team Command',
-    teamLabel: 'Roster',
-    dashboardTitle: 'Coach Dashboard',
-    dashboardText: 'Team readiness, daily priorities, and practice management.',
-    nutritionTitle: 'Team Fueling',
-    nutritionText: 'Nutrition targets, hydration, and meal planning for your athletes.',
-    analyticsTitle: 'Team Analytics',
-    analyticsText: 'Track PIQ trends, compliance, and readiness across the roster.',
-    teamTitle: 'Roster Management',
-    teamText: 'Monitor athlete status, schedule, and communication from the coach seat.',
-    hideTopTeam: false,
-  },
-  Parent: {
-    homeLabel: 'Family View',
-    teamLabel: 'Schedule',
-    dashboardTitle: 'Parent Dashboard',
-    dashboardText: 'See today’s plan, readiness snapshot, and what needs support at home.',
-    nutritionTitle: 'Family Nutrition',
-    nutritionText: 'Simple meal guidance, hydration, and recovery support for your athlete.',
-    analyticsTitle: 'Progress Snapshot',
-    analyticsText: 'A parent-friendly view of progress, consistency, and recovery.',
-    teamTitle: 'Family Schedule',
-    teamText: 'Upcoming sessions, games, and athlete availability in one place.',
-    hideTopTeam: false,
-  },
-  Admin: {
-    homeLabel: 'Program Ops',
-    teamLabel: 'Programs',
-    dashboardTitle: 'Admin Dashboard',
-    dashboardText: 'Program-wide visibility across users, teams, and compliance.',
-    nutritionTitle: 'Program Nutrition',
-    nutritionText: 'Review nutrition adoption, guidance, and overall athlete support.',
-    analyticsTitle: 'Program Analytics',
-    analyticsText: 'See performance adoption, engagement, and readiness at scale.',
-    teamTitle: 'Program Management',
-    teamText: 'Teams, schedules, and operational monitoring from the admin seat.',
-    hideTopTeam: false,
-  },
-  Solo: {
-    homeLabel: 'My Plan',
-    teamLabel: 'Schedule',
-    dashboardTitle: 'Solo Dashboard',
-    dashboardText: 'Your personal training plan, readiness, and progress without team tools.',
-    nutritionTitle: 'Solo Nutrition',
-    nutritionText: 'Meal guidance and hydration targets built for a solo athlete.',
-    analyticsTitle: 'Solo Analytics',
-    analyticsText: 'Track PIQ, consistency, and progress from your independent plan.',
-    teamTitle: 'Personal Schedule',
-    teamText: 'Your sessions, check-ins, and recovery timeline in one place.',
-    hideTopTeam: true,
-  }
+// ── DEFAULT ROSTER (used when no state exists) ──────────
+const DEFAULT_ROSTER = [
+  {name:'Marcus T.',position:'PG',sport:'basketball',readiness:88,piq:84,streak:6},
+  {name:'Devon W.',position:'SG',sport:'basketball',readiness:72,piq:79,streak:3},
+  {name:'Jamal R.',position:'SF',sport:'basketball',readiness:91,piq:90,streak:9},
+  {name:'Chris M.',position:'PF',sport:'basketball',readiness:55,piq:71,streak:1},
+  {name:'Tae S.',position:'C', sport:'basketball',readiness:83,piq:82,streak:5},
+  {name:'Rondell B.',position:'PG',sport:'basketball',readiness:68,piq:76,streak:2},
+  {name:'Aliyah N.',position:'SF',sport:'basketball',readiness:94,piq:92,streak:11},
+  {name:'Darius E.',position:'SG',sport:'basketball',readiness:47,piq:65,streak:0},
+  {name:'Kenji L.',position:'C', sport:'basketball',readiness:87,piq:86,streak:7},
+  {name:'Tre P.',position:'PF',sport:'basketball',readiness:79,piq:80,streak:4},
+  {name:'Simone H.',position:'PG',sport:'basketball',readiness:92,piq:89,streak:8},
+  {name:'Zach O.',position:'SG',sport:'basketball',readiness:63,piq:73,streak:2}
+];
+
+// ── PIQ_STATE SCHEMA ────────────────────────────────────
+const STATE_KEY = 'PIQ_STATE_v1';
+let PIQ_STATE = {
+  role: 'Athlete',
+  onboardingDone: false,
+  user: { name:'', initials:'WL', email:'' },
+  athleteProfile: { sport:'basketball', level:'high_school', team:'', goals:[] },
+  workoutLog: [],
+  draftWorkout: null,
+  nutrition: { meals:[], macros:{ cal:0, pro:0, cho:0, fat:0 } },
+  roster: DEFAULT_ROSTER,
+  linkedAthlete: null
 };
 
-function showToast(title, msg){
-  const stack = document.getElementById('toastStack');
-  if(!stack) return;
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.innerHTML = `<strong>${title}</strong><div>${msg}</div>`;
-  stack.appendChild(el);
-  setTimeout(() => {
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(6px)';
-    el.style.transition = 'all .18s ease';
-    setTimeout(() => el.remove(), 180);
-  }, 2400);
+function saveToState() {
+  try { localStorage.setItem(STATE_KEY, JSON.stringify(PIQ_STATE)); } catch(e) {}
 }
 
-function setTheme(theme){
-  const next = theme === 'dark' ? 'dark' : 'light';
-  document.body.setAttribute('data-theme', next);
-  localStorage.setItem('piq-theme', next);
-  const btn = document.getElementById('themeToggle');
-  if(btn){
-    btn.textContent = next === 'dark' ? '☀️' : '🌙';
-    btn.title = next === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-    btn.setAttribute('aria-label', btn.title);
-  }
-}
-function toggleTheme(){
-  const current = document.body.getAttribute('data-theme') || 'light';
-  setTheme(current === 'dark' ? 'light' : 'dark');
+function loadFromState() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      PIQ_STATE = Object.assign({}, PIQ_STATE, saved);
+      // ensure roster always populated
+      if (!PIQ_STATE.roster || !PIQ_STATE.roster.length) PIQ_STATE.roster = DEFAULT_ROSTER;
+    }
+  } catch(e) {}
 }
 
-function updateScreenCopy(selector, title, text){
-  const root = document.querySelector(selector);
-  if(!root) return;
-  const h1 = root.querySelector('.page-header h1');
-  const p = root.querySelector('.page-header p');
-  if(h1) h1.innerHTML = title;
-  if(p) p.textContent = text;
-}
+// ── FOOD LOOKUP TABLE (50 items) ────────────────────────
+const FOOD_DB = {
+  'chicken breast':    {cal:165, pro:31, cho:0,  fat:4},
+  'ground beef':       {cal:250, pro:26, cho:0,  fat:16},
+  'salmon':            {cal:208, pro:28, cho:0,  fat:10},
+  'tuna':              {cal:130, pro:28, cho:0,  fat:1},
+  'eggs':              {cal:155, pro:13, cho:1,  fat:11},
+  'egg whites':        {cal:52,  pro:11, cho:1,  fat:0},
+  'greek yogurt':      {cal:100, pro:17, cho:6,  fat:0},
+  'cottage cheese':    {cal:110, pro:12, cho:4,  fat:5},
+  'milk':              {cal:149, pro:8,  cho:12, fat:8},
+  'protein shake':     {cal:130, pro:25, cho:5,  fat:2},
+  'oats':              {cal:150, pro:5,  cho:27, fat:3},
+  'brown rice':        {cal:215, pro:5,  cho:45, fat:2},
+  'white rice':        {cal:200, pro:4,  cho:44, fat:0},
+  'sweet potato':      {cal:103, pro:2,  cho:24, fat:0},
+  'pasta':             {cal:220, pro:8,  cho:43, fat:1},
+  'bread':             {cal:80,  pro:3,  cho:15, fat:1},
+  'banana':            {cal:89,  pro:1,  cho:23, fat:0},
+  'apple':             {cal:52,  pro:0,  cho:14, fat:0},
+  'orange':            {cal:62,  pro:1,  cho:15, fat:0},
+  'blueberries':       {cal:84,  pro:1,  cho:21, fat:0},
+  'strawberries':      {cal:49,  pro:1,  cho:12, fat:0},
+  'avocado':           {cal:160, pro:2,  cho:9,  fat:15},
+  'broccoli':          {cal:34,  pro:3,  cho:7,  fat:0},
+  'spinach':           {cal:23,  pro:3,  cho:4,  fat:0},
+  'mixed greens':      {cal:15,  pro:1,  cho:2,  fat:0},
+  'almonds':           {cal:164, pro:6,  cho:6,  fat:14},
+  'peanut butter':     {cal:188, pro:8,  cho:6,  fat:16},
+  'olive oil':         {cal:119, pro:0,  cho:0,  fat:14},
+  'coconut water':     {cal:46,  pro:2,  cho:9,  fat:0},
+  'sports drink':      {cal:80,  pro:0,  cho:21, fat:0},
+  'orange juice':      {cal:112, pro:2,  cho:26, fat:0},
+  'granola bar':       {cal:190, pro:3,  cho:29, fat:7},
+  'bagel':             {cal:270, pro:10, cho:53, fat:2},
+  'turkey':            {cal:189, pro:28, cho:0,  fat:8},
+  'beef jerky':        {cal:116, pro:16, cho:3,  fat:4},
+  'hummus':            {cal:166, pro:8,  cho:18, fat:8},
+  'quinoa':            {cal:222, pro:8,  cho:39, fat:4},
+  'black beans':       {cal:227, pro:15, cho:41, fat:1},
+  'edamame':           {cal:122, pro:11, cho:10, fat:5},
+  'chocolate milk':    {cal:208, pro:8,  cho:32, fat:5},
+  'whey protein':      {cal:120, pro:24, cho:3,  fat:2},
+  'casein protein':    {cal:120, pro:24, cho:4,  fat:1},
+  'rice cakes':        {cal:35,  pro:1,  cho:7,  fat:0},
+  'whole milk':        {cal:149, pro:8,  cho:12, fat:8},
+  'trail mix':         {cal:173, pro:5,  cho:16, fat:11},
+  'grapes':            {cal:104, pro:1,  cho:27, fat:0},
+  'watermelon':        {cal:86,  pro:2,  cho:22, fat:0},
+  'canned tuna':       {cal:109, pro:25, cho:0,  fat:1},
+  'lentils':           {cal:230, pro:18, cho:40, fat:1},
+  'tofu':              {cal:76,  pro:8,  cho:2,  fat:4}
+};
 
-function setTeamVisibility(hidden){
-  const teamTop = Array.from(document.querySelectorAll('.nav-links a')).find(a => a.textContent.trim() === 'Team');
-  if(teamTop) teamTop.parentElement.classList.toggle('hidden-by-role', hidden);
-  document.querySelectorAll('[onclick*="nav(\'team\'"]').forEach(el => {
-    el.classList.toggle('hidden-by-role', hidden);
+// populate datalist
+function populateFoodSuggestions() {
+  const dl = document.getElementById('food-suggestions');
+  if (!dl) return;
+  Object.keys(FOOD_DB).forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    dl.appendChild(opt);
   });
 }
 
-function applyRoleUI(role){
-  const cfg = ROLE_CONFIG[role] || ROLE_CONFIG.Player;
-  document.getElementById('navRole').textContent = role;
-  const dashboardHeader = document.querySelector('#v-dashboard .page-header h1');
-  const dashboardSub = document.querySelector('#v-dashboard .page-header p');
-  if(dashboardHeader) dashboardHeader.innerHTML = `Welcome back, <span>${role === 'Coach' ? 'Coach Willie' : role === 'Admin' ? 'Admin Willie' : 'Willie'}</span> 👋`;
-  if(dashboardSub) dashboardSub.textContent = cfg.dashboardText;
+function logFood() {
+  const input = document.getElementById('food-input');
+  if (!input) return;
+  const query = input.value.toLowerCase().trim();
+  if (!query) return;
 
-  updateScreenCopy('#v-training', `Training <span>${role === 'Coach' ? 'Command' : role === 'Admin' ? 'Builder' : 'Plan'}</span>`, role === 'Solo' ? 'Independent training plan, schedule, and builder tools.' : role === 'Parent' ? 'Support your athlete with the current plan, workload, and schedule.' : role === 'Coach' ? 'Build, assign, and review sessions for your athletes.' : role === 'Admin' ? 'Oversee program training structure, templates, and usage.' : 'Daily player training plan, schedule, and builder access.');
-  updateScreenCopy('#v-nutrition', `Nutrition <span>${role === 'Coach' ? 'Support' : role === 'Admin' ? 'Insights' : 'Plan'}</span>`, cfg.nutritionText);
-  updateScreenCopy('#v-analytics', `${cfg.analyticsTitle.split(' ')[0]} <span>${cfg.analyticsTitle.split(' ').slice(1).join(' ') || 'Analytics'}</span>`, cfg.analyticsText);
-  updateScreenCopy('#v-team', `${cfg.teamTitle.split(' ')[0]} <span>${cfg.teamTitle.split(' ').slice(1).join(' ') || 'View'}</span>`, cfg.teamText);
+  // fuzzy match: exact first, then partial
+  let match = FOOD_DB[query];
+  if (!match) {
+    const key = Object.keys(FOOD_DB).find(k => k.includes(query) || query.includes(k));
+    if (key) match = FOOD_DB[key];
+  }
 
-  // update top nav labels
-  const topLinks = document.querySelectorAll('.nav-links a');
-  if(topLinks[0]) topLinks[0].textContent = cfg.homeLabel;
-  if(topLinks[4]) topLinks[4].textContent = cfg.teamLabel;
-  setTeamVisibility(!!cfg.hideTopTeam);
+  const label = match ? query : query;
+  const macros = match || {cal:150, pro:5, cho:20, fat:5};
 
-  // update KPI label examples
-  const dashLabels = document.querySelectorAll('#v-dashboard .kpi-lbl');
-  if(role === 'Coach' || role === 'Admin'){
-    if(dashLabels[0]) dashLabels[0].textContent = 'Team PIQ';
-    if(dashLabels[2]) dashLabels[2].textContent = 'Athletes / Users';
-    if(dashLabels[3]) dashLabels[3].textContent = 'Alerts';
+  const entry = { name: label, ...macros, ts: Date.now() };
+  PIQ_STATE.nutrition.meals.push(entry);
+  PIQ_STATE.nutrition.macros.cal += macros.cal;
+  PIQ_STATE.nutrition.macros.pro += macros.pro;
+  PIQ_STATE.nutrition.macros.cho += macros.cho;
+  PIQ_STATE.nutrition.macros.fat += macros.fat;
+  saveToState();
+
+  input.value = '';
+  renderFoodLog();
+}
+
+function renderFoodLog() {
+  const list = document.getElementById('food-log-list');
+  if (!list) return;
+  const meals = PIQ_STATE.nutrition.meals.slice(-6).reverse();
+  if (!meals.length) { list.innerHTML = '<div style="font-size:12px;color:var(--g400);padding:6px 0;">No foods logged yet today.</div>'; return; }
+  list.innerHTML = meals.map((m, i) => `
+    <div class="logged-food-item">
+      <span>${m.name}</span>
+      <span class="macros">${m.cal}kcal · P${m.pro}g C${m.cho}g F${m.fat}g</span>
+      <button class="food-remove" onclick="removeFood(${PIQ_STATE.nutrition.meals.length-1-i})" title="Remove">×</button>
+    </div>`).join('');
+}
+
+function removeFood(idx) {
+  const m = PIQ_STATE.nutrition.meals[idx];
+  if (!m) return;
+  PIQ_STATE.nutrition.macros.cal -= m.cal;
+  PIQ_STATE.nutrition.macros.pro -= m.pro;
+  PIQ_STATE.nutrition.macros.cho -= m.cho;
+  PIQ_STATE.nutrition.macros.fat -= m.fat;
+  PIQ_STATE.nutrition.meals.splice(idx, 1);
+  saveToState();
+  renderFoodLog();
+}
+
+// ── ONBOARDING WIZARD ───────────────────────────────────
+let _obGoals = [];
+
+function showOnboarding() {
+  const el = document.getElementById('onboard-overlay');
+  if (!el) return;
+  el.style.display = 'flex';
+  // Pre-fill from state
+  const nameEl = document.getElementById('ob-name');
+  if (nameEl && PIQ_STATE.user.name) nameEl.value = PIQ_STATE.user.name;
+  const roleEl = document.getElementById('ob-role');
+  if (roleEl) roleEl.value = PIQ_STATE.role || 'Athlete';
+  _obGoals = [];
+}
+
+function obNext(step) {
+  if (step === 1) {
+    const name = document.getElementById('ob-name')?.value?.trim();
+    const role = document.getElementById('ob-role')?.value || 'Athlete';
+    if (!name) { document.getElementById('ob-name').style.borderColor='#ef4444'; return; }
+    PIQ_STATE.user.name = name;
+    PIQ_STATE.role = role;
+    currentRole = role;
+    document.getElementById('navRole').textContent = role;
+    const parts = name.split(/\s+/);
+    PIQ_STATE.user.initials = parts.map(w=>w[0]?.toUpperCase()).slice(0,2).join('') || 'WL';
+    document.getElementById('navInitials').textContent = PIQ_STATE.user.initials;
+
+    // configure step 2 based on role
+    const s2title = document.getElementById('ob-step2-title');
+    const s2sub   = document.getElementById('ob-step2-sub');
+    ['ob-step2-athlete','ob-step2-coach','ob-step2-parent'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    if (role === 'Coach') {
+      if (s2title) s2title.textContent = 'Your Team';
+      if (s2sub)   s2sub.textContent   = 'Tell us about your team.';
+      const el = document.getElementById('ob-step2-coach');
+      if (el) el.style.display = 'block';
+    } else if (role === 'Parent') {
+      if (s2title) s2title.textContent = 'Link Your Athlete';
+      if (s2sub)   s2sub.textContent   = 'Connect with your athlete\'s account.';
+      const el = document.getElementById('ob-step2-parent');
+      if (el) el.style.display = 'block';
+    } else {
+      if (s2title) s2title.textContent = 'Your Sport & Team';
+      if (s2sub)   s2sub.textContent   = 'Tell us what you\'re training for.';
+      const el = document.getElementById('ob-step2-athlete');
+      if (el) el.style.display = 'block';
+    }
+
+    document.getElementById('ob-step1').style.display = 'none';
+    document.getElementById('ob-step2').style.display = 'block';
+    obDots(2);
+  } else if (step === 2) {
+    const role = PIQ_STATE.role;
+    if (role === 'Coach') {
+      PIQ_STATE.athleteProfile.team  = document.getElementById('ob-coach-team')?.value || '';
+      PIQ_STATE.athleteProfile.sport = document.getElementById('ob-coach-sport')?.value || 'basketball';
+    } else if (role === 'Parent') {
+      PIQ_STATE.linkedAthlete = {
+        code:  document.getElementById('ob-parent-code')?.value  || '',
+        name:  document.getElementById('ob-parent-athlete')?.value || 'Linked Athlete'
+      };
+    } else {
+      PIQ_STATE.athleteProfile.sport = document.getElementById('ob-sport')?.value || 'basketball';
+      PIQ_STATE.athleteProfile.level = document.getElementById('ob-level')?.value || 'high_school';
+      PIQ_STATE.athleteProfile.team  = document.getElementById('ob-team')?.value  || '';
+    }
+    document.getElementById('ob-step2').style.display = 'none';
+    document.getElementById('ob-step3').style.display = 'block';
+    obDots(3);
+  }
+}
+
+function obBack(step) {
+  if (step === 2) {
+    document.getElementById('ob-step2').style.display = 'none';
+    document.getElementById('ob-step1').style.display = 'block';
+    obDots(1);
+  } else if (step === 3) {
+    document.getElementById('ob-step3').style.display = 'none';
+    document.getElementById('ob-step2').style.display = 'block';
+    obDots(2);
+  }
+}
+
+function obDots(active) {
+  for (let i = 1; i <= 3; i++) {
+    const d = document.getElementById('od' + i);
+    if (!d) continue;
+    d.className = 'onboard-dot' + (i < active ? ' done' : i === active ? ' active' : '');
+  }
+}
+
+function toggleGoal(el) {
+  el.classList.toggle('sel');
+  const g = el.dataset.g;
+  if (el.classList.contains('sel')) {
+    if (!_obGoals.includes(g)) _obGoals.push(g);
   } else {
-    if(dashLabels[0]) dashLabels[0].textContent = 'PIQ Score';
-    if(dashLabels[2]) dashLabels[2].textContent = 'Workouts';
-    if(dashLabels[3]) dashLabels[3].textContent = 'Streak';
+    _obGoals = _obGoals.filter(x => x !== g);
   }
 }
 
-function setRole(btn, role) {
-  document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  currentRole = role;
-  showToast('Role selected', `${role} view is ready.`);
+function obFinish() {
+  PIQ_STATE.athleteProfile.goals = _obGoals;
+  PIQ_STATE.onboardingDone = true;
+  saveToState();
+  const el = document.getElementById('onboard-overlay');
+  if (el) el.style.display = 'none';
+  renderDashboard();
+  renderTrainingView('plan');
 }
 
-function doLogin() {
-  document.getElementById('splash').classList.add('hidden');
-  document.getElementById('app').style.display = 'block';
-  const raw = document.getElementById('loginEmail').value || 'Willie Lee';
-  const initials = raw.split('@')[0].split(/[\s._-]+/).map(w => w[0]?.toUpperCase()).slice(0,2).join('') || 'WL';
-  document.getElementById('navInitials').textContent = initials;
-  applyRoleUI(currentRole);
-  renderTrainingView(BS.activeTab || 'plan');
-  setTheme(localStorage.getItem('piq-theme') || 'light');
-  nav('dashboard', document.querySelector('.nav-links a'));
-  showToast('Signed in', `${currentRole} dashboard loaded.`);
-}
+// ── ROLE ROUTER ─────────────────────────────────────────
+function renderDashboard() {
+  const role = PIQ_STATE.role || 'Athlete';
+  const greeting = document.getElementById('dash-greeting');
+  const subline   = document.getElementById('dash-subline');
+  const content   = document.getElementById('dash-dynamic-content');
+  if (!content) return;
 
-function nav(view, linkEl) {
-  if(view === 'team' && currentRole === 'Solo'){
-    view = 'training';
-    linkEl = Array.from(document.querySelectorAll('.nav-links a')).find(a => a.textContent.trim() !== 'Schedule' && a.textContent.trim() !== 'My Team') || linkEl;
-    showToast('Solo mode', 'Team tools are hidden in solo view, so training was opened instead.');
+  const name  = PIQ_STATE.user.name || 'Athlete';
+  const fname = name.split(' ')[0];
+  const now   = new Date();
+  const dateStr = now.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'});
+
+  if (greeting) greeting.textContent = `Welcome back, ${fname} 👋`;
+
+  if (role === 'Coach') {
+    if (subline) subline.textContent = `${dateStr} · ${PIQ_STATE.athleteProfile.team || 'Your Team'} · Coach View`;
+    content.innerHTML = renderCoachDash();
+  } else if (role === 'Parent') {
+    const linkedName = PIQ_STATE.linkedAthlete?.name || 'Your Athlete';
+    if (subline) subline.textContent = `${dateStr} · Monitoring ${linkedName}`;
+    content.innerHTML = renderParentDash();
+  } else {
+    const sport = PIQ_STATE.athleteProfile.sport || 'basketball';
+    const SPORT_LABELS = {basketball:'Basketball',football:'Football',soccer:'Soccer',baseball:'Baseball',volleyball:'Volleyball',track:'Track & Field'};
+    if (subline) subline.textContent = `${dateStr} · ${SPORT_LABELS[sport] || sport} · Athlete View`;
+    content.innerHTML = renderAthleteDash();
   }
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-  const target = document.getElementById('v-' + view);
-  if(target) target.classList.add('active-view');
-  document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
-  if(linkEl) linkEl.classList.add('active');
-  if(view === 'training') renderTrainingView(BS.activeTab || 'plan');
+
+  // Render food log if on nutrition
+  renderFoodLog();
 }
 
-function showProfileSummary(){
-  showToast('Profile', `${currentRole} mode • ${document.body.getAttribute('data-theme') || 'light'} theme`);
+function calcReadiness() {
+  const log = PIQ_STATE.workoutLog;
+  if (!log.length) return 82; // default
+  const recent = log.slice(-5);
+  const avgRPE = recent.reduce((s, w) => s + (w.avgRPE || 5), 0) / recent.length;
+  const compliance = Math.min(100, (recent.filter(w => w.completed).length / 5) * 100);
+  const base = Math.round(100 - (avgRPE * 4) + (compliance * 0.2));
+  return Math.max(30, Math.min(99, base));
 }
 
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[href="#"]');
-  if(a){
-    e.preventDefault();
-    const label = (a.textContent || '').trim();
-    if(/Create one free/i.test(label)) showToast('Create account', 'Account setup flow would open here.');
-    else if(/Forgot password/i.test(label)) showToast('Reset password', 'Password recovery flow would open here.');
-  }
-  const inertSidebar = e.target.closest('.sidebar a:not([onclick])');
-  if(inertSidebar){
-    e.preventDefault();
-    showToast('Module', `${inertSidebar.textContent.trim()} is now linked as a stub action.`);
-  }
-});
+function calcPIQ() {
+  const log = PIQ_STATE.workoutLog;
+  if (!log.length) return 72;
+  const sessions = Math.min(log.length, 30);
+  const compliance = log.filter(w => w.completed).length / Math.max(1, log.length);
+  const base = Math.round(60 + sessions * 0.8 + compliance * 15);
+  return Math.max(50, Math.min(99, base));
+}
 
-window.addEventListener('load', () => {
-  document.querySelectorAll('img[src="LOGO_DATA"]').forEach(img => img.src = LOGO);
-  setTheme(localStorage.getItem('piq-theme') || 'light');
-  document.querySelectorAll('.role-tab').forEach(btn => {
-    if(btn.textContent.includes('Player')) btn.classList.add('active');
+function calcStreak() {
+  const log = PIQ_STATE.workoutLog;
+  if (!log.length) return 0;
+  let streak = 0;
+  const today = new Date().toDateString();
+  const sorted = [...log].sort((a, b) => b.ts - a.ts);
+  let current = new Date();
+  for (const w of sorted) {
+    const d = new Date(w.ts).toDateString();
+    if (d === current.toDateString()) { streak++; current.setDate(current.getDate()-1); }
+    else break;
+  }
+  return streak;
+}
+
+function readinessRingOffset(score) {
+  // circle r=46, circumference=289
+  return Math.round(289 - (score / 100) * 289);
+}
+
+function renderAthleteDash() {
+  const readiness = calcReadiness();
+  const piq       = calcPIQ();
+  const streak    = calcStreak();
+  const sessions  = PIQ_STATE.workoutLog.length;
+  const offset    = readinessRingOffset(readiness);
+  const ringColor = readiness >= 80 ? '#22c955' : readiness >= 60 ? '#f59e0b' : '#ef4444';
+  const goals     = PIQ_STATE.athleteProfile.goals;
+  const goalStr   = goals.length ? goals.slice(0,2).map(g => g.replace('_',' ')).join(' · ') : 'strength · speed';
+
+  const explain = readiness >= 80
+    ? 'Your body is primed — good sleep and load balance. Train hard today.'
+    : readiness >= 60
+    ? 'Moderate readiness. Consider a moderate intensity session.'
+    : 'Low readiness detected. Prioritize recovery today.';
+
+  return `
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-lbl">PIQ Score</div><div class="kpi-val g">${piq}</div><div class="kpi-chg">↑ +${Math.max(0,piq-68)} this month</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Readiness</div><div class="kpi-val">${readiness}%</div><div class="kpi-chg">${readiness>=80?'↑ High':readiness>=60?'→ Moderate':'↓ Low'}</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Sessions</div><div class="kpi-val b">${sessions}</div><div class="kpi-chg">Total logged</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Streak</div><div class="kpi-val">🔥 ${streak}</div><div class="kpi-chg">Days active</div></div>
+    </div>
+    <div class="panels-2">
+      <div class="panel">
+        <div class="panel-title">Today's Training Plan</div>
+        <div class="w-row"><div class="w-icon">🏀</div><div class="w-info"><div class="w-name">Explosive Footwork Drills</div><div class="w-meta">40 min · High · ${PIQ_STATE.athleteProfile.sport}</div></div><span class="w-badge">NEXT</span></div>
+        <div class="w-row"><div class="w-icon">💪</div><div class="w-info"><div class="w-name">Lower Body Power — Phase 2</div><div class="w-meta">35 min · Moderate · Strength</div></div><span class="w-badge gray">LATER</span></div>
+        <div class="w-row"><div class="w-icon">🧘</div><div class="w-info"><div class="w-name">Recovery Mobility Flow</div><div class="w-meta">20 min · Low · Recovery</div></div><span class="w-badge gray">PM</span></div>
+        <div style="margin-top:12px;font-size:12px;color:var(--g400);">Goals: ${goalStr}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Readiness Engine</div>
+        <div class="ring-wrap">
+          <svg width="110" height="110" viewBox="0 0 110 110">
+            <circle cx="55" cy="55" r="46" fill="none" stroke="#e2e8f0" stroke-width="9"/>
+            <circle cx="55" cy="55" r="46" fill="none" stroke="${ringColor}" stroke-width="9" stroke-dasharray="289" stroke-dashoffset="${offset}" stroke-linecap="round" transform="rotate(-90 55 55)"/>
+          </svg>
+          <div class="ring-num" style="color:${ringColor}">${readiness}</div>
+          <div class="ring-lbl">Readiness Score</div>
+        </div>
+        <p class="readiness-explain">${explain}</p>
+        <div class="rf-row"><span class="rf-lbl">Sleep</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.min(99,readiness+6)}%"></div></div><span class="rf-num">${Math.min(99,readiness+6)}</span></div>
+        <div class="rf-row"><span class="rf-lbl">Nutrition</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${PIQ_STATE.nutrition.meals.length ? Math.min(95,60+PIQ_STATE.nutrition.meals.length*5) : 75}%"></div></div><span class="rf-num">${PIQ_STATE.nutrition.meals.length ? Math.min(95,60+PIQ_STATE.nutrition.meals.length*5) : 75}</span></div>
+        <div class="rf-row"><span class="rf-lbl">Load</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.max(40,readiness-4)}%"></div></div><span class="rf-num">${Math.max(40,readiness-4)}</span></div>
+        <div class="rf-row"><span class="rf-lbl">Mood</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.min(98,readiness+3)}%"></div></div><span class="rf-num">${Math.min(98,readiness+3)}</span></div>
+      </div>
+    </div>`;
+}
+
+function renderCoachDash() {
+  const roster = PIQ_STATE.roster || DEFAULT_ROSTER;
+  const ready    = roster.filter(a => a.readiness >= 80).length;
+  const caution  = roster.filter(a => a.readiness < 60).length;
+  const avgPIQ   = Math.round(roster.reduce((s,a) => s+a.piq, 0) / roster.length);
+  const avgReady = Math.round(roster.reduce((s,a) => s+a.readiness, 0) / roster.length);
+
+  const rosterRows = roster.slice(0,8).map(a => `
+    <div class="coach-team-card">
+      <div class="w-icon" style="font-size:18px;">${SPORT_EMOJI[a.sport] || '🏅'}</div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--navy);">${a.name}</div>
+        <div style="font-size:11px;color:var(--g400);">${a.position || ''} · PIQ ${a.piq}</div>
+      </div>
+      <div class="athlete-status">
+        ${a.readiness >= 80
+          ? `<span class="alert-badge alert-ready">✓ Ready ${a.readiness}%</span>`
+          : a.readiness < 60
+          ? `<span class="alert-badge alert-caution">⚠ Caution ${a.readiness}%</span>`
+          : `<span class="alert-badge" style="background:var(--g100);color:var(--g600);">${a.readiness}%</span>`}
+      </div>
+    </div>`).join('');
+
+  return `
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-lbl">Roster Size</div><div class="kpi-val b">${roster.length}</div><div class="kpi-chg">Active athletes</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Ready Today</div><div class="kpi-val g">${ready}</div><div class="kpi-chg">≥80% readiness</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Caution</div><div class="kpi-val" style="color:#d97706;">${caution}</div><div class="kpi-chg">&lt;60% readiness</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Team Avg PIQ</div><div class="kpi-val">${avgPIQ}</div><div class="kpi-chg">Avg readiness ${avgReady}%</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-title">Athlete Readiness — Today</div>
+      ${rosterRows}
+      ${roster.length > 8 ? `<div style="font-size:12px;color:var(--g400);margin-top:8px;">+ ${roster.length-8} more athletes</div>` : ''}
+    </div>`;
+}
+
+function renderParentDash() {
+  const linked = PIQ_STATE.linkedAthlete?.name || 'Your Athlete';
+  const readiness = calcReadiness();
+  const piq = calcPIQ();
+  const sessions = PIQ_STATE.workoutLog.length;
+  const offset = readinessRingOffset(readiness);
+  const ringColor = readiness >= 80 ? '#22c955' : readiness >= 60 ? '#f59e0b' : '#ef4444';
+  const lastSessions = PIQ_STATE.workoutLog.slice(-5).reverse();
+  const sessionRows = lastSessions.length
+    ? lastSessions.map(w => `<div class="w-row"><div class="w-icon">🏋️</div><div class="w-info"><div class="w-name">${w.title||'Workout'}</div><div class="w-meta">${w.exercises||0} exercises · RPE ${w.avgRPE||'—'}</div></div><span class="w-badge ${w.completed?'':'gray'}">${w.completed?'DONE':'PARTIAL'}</span></div>`).join('')
+    : '<div style="font-size:13px;color:var(--g400);padding:8px 0;">No sessions logged yet.</div>';
+
+  return `
+    <div class="panels-2">
+      <div class="panel">
+        <div class="panel-title">${linked} — Summary</div>
+        <div style="display:flex;gap:16px;margin-bottom:16px;">
+          <div class="kpi-card" style="flex:1;"><div class="kpi-lbl">PIQ Score</div><div class="kpi-val g">${piq}</div></div>
+          <div class="kpi-card" style="flex:1;"><div class="kpi-lbl">Sessions</div><div class="kpi-val b">${sessions}</div></div>
+        </div>
+        <div class="panel-title" style="font-size:12px;margin-bottom:10px;">Recent Sessions</div>
+        ${sessionRows}
+      </div>
+      <div class="panel">
+        <div class="panel-title">Readiness Gauge</div>
+        <div class="ring-wrap">
+          <svg width="110" height="110" viewBox="0 0 110 110">
+            <circle cx="55" cy="55" r="46" fill="none" stroke="#e2e8f0" stroke-width="9"/>
+            <circle cx="55" cy="55" r="46" fill="none" stroke="${ringColor}" stroke-width="9" stroke-dasharray="289" stroke-dashoffset="${offset}" stroke-linecap="round" transform="rotate(-90 55 55)"/>
+          </svg>
+          <div class="ring-num" style="color:${ringColor}">${readiness}</div>
+          <div class="ring-lbl">Readiness Score</div>
+        </div>
+        <p class="readiness-explain">
+          ${readiness>=80 ? `${linked} is primed for training today.` : readiness>=60 ? `${linked} has moderate readiness — balanced training recommended.` : `${linked}'s readiness is low. Recovery focus recommended.`}
+        </p>
+        <div style="font-size:11px;color:var(--g400);margin-top:12px;padding:8px;background:var(--g100);border-radius:8px;">
+          🔒 Parent view is read-only. Health details require athlete consent.
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── ASSIGN MODAL HELPERS ─────────────────────────────────
+function toggleAthleteCheck(row, idx) {
+  const cb = document.getElementById('acb-' + idx);
+  if (cb) cb.classList.toggle('checked');
+}
+
+function closeAssignModal() {
+  document.getElementById('assign-modal').classList.add('hidden');
+}
+
+function confirmAssign() {
+  const title = BS.draft?.title || '(untitled)';
+  const exCount = BS.draft?.exercises?.length || 0;
+  const date = document.getElementById('b-date')?.value || new Date().toISOString().split('T')[0];
+
+  // Collect selected athletes
+  const roster = PIQ_STATE.roster || DEFAULT_ROSTER;
+  const selected = roster.filter((_, i) => {
+    const cb = document.getElementById('acb-' + i);
+    return cb && cb.classList.contains('checked');
+  }).map(a => a.name);
+
+  // Log the assignment
+  PIQ_STATE.workoutLog.push({
+    title,
+    exercises: exCount,
+    date,
+    assignedTo: selected,
+    completed: false,
+    avgRPE: null,
+    ts: Date.now()
   });
-});
+  saveToState();
+
+  closeAssignModal();
+
+  // Banner confirm
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:72px;left:50%;transform:translateX(-50%);background:var(--green);color:var(--navy);font-family:Oswald,sans-serif;font-size:13px;font-weight:700;letter-spacing:.8px;padding:12px 28px;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:9999;animation:fadeUp .3s both;';
+  banner.textContent = `✅ "${title}" assigned to ${selected.length || 'all'} athlete${selected.length!==1?'s':''}`;
+  document.body.appendChild(banner);
+  setTimeout(() => banner.remove(), 3000);
+
+  BS.draft = null;
+  BS.loadedTemplateId = null;
+  renderTrainingView('builder');
+}
+
+// ── BOOT ─────────────────────────────────────────────────
+(function boot() {
+  loadFromState();
+  populateFoodSuggestions();
+  renderFoodLog();
+})();
 
 </script>
 </body>
