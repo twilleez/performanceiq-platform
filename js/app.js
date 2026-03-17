@@ -136,7 +136,10 @@ const VIEW_MAP = {
   [ROUTES.COACH_ANALYTICS]:  ['./views/coach/analytics.js',       'renderCoachAnalytics'],
   [ROUTES.COACH_MESSAGES]:   ['./views/coach/messages.js',        'renderCoachMessages'],
   [ROUTES.COACH_CALENDAR]:   ['./views/coach/calendar.js',        'renderCoachCalendar'],
-  [ROUTES.COACH_SETTINGS]:   ['./views/coach/settings.js',        'renderCoachSettings'],
+  [ROUTES.COACH_SESSION]:    ['./views/coach/session.js',         'renderCoachSession'],
+  [ROUTES.COACH_LIBRARY]:    ['./views/coach/library.js',          'renderCoachLibrary'],
+  [ROUTES.COACH_REPORTS]:    ['./views/coach/reports.js',          'renderCoachReports'],
+  [ROUTES.COACH_SETTINGS]:   ['./views/coach/settings.js',         'renderCoachSettings'],
   // Player
   [ROUTES.PLAYER_HOME]:      ['./views/player/home.js',           'renderPlayerHome'],
   [ROUTES.PLAYER_TODAY]:     ['./views/player/todayWorkout.js',   'renderPlayerToday'],
@@ -145,6 +148,8 @@ const VIEW_MAP = {
   [ROUTES.PLAYER_SCORE]:     ['./views/player/score.js',          'renderPlayerScore'],
   [ROUTES.PLAYER_READINESS]: ['./views/player/readiness.js',      'renderPlayerReadiness'],
   [ROUTES.PLAYER_MESSAGES]:  ['./views/player/messages.js',       'renderPlayerMessages'],
+  [ROUTES.PLAYER_CALENDAR]:  ['./views/player/calendar.js',       'renderPlayerCalendar'],
+  [ROUTES.PLAYER_RECRUITING]:['./views/player/recruiting.js',     'renderPlayerRecruiting'],
   [ROUTES.PLAYER_SETTINGS]:  ['./views/player/settings.js',       'renderPlayerSettings'],
   // Parent
   [ROUTES.PARENT_HOME]:      ['./views/parent/home.js',           'renderParentHome'],
@@ -153,9 +158,18 @@ const VIEW_MAP = {
   [ROUTES.PARENT_PROGRESS]:  ['./views/parent/progress.js',       'renderParentProgress'],
   [ROUTES.PARENT_MESSAGES]:  ['./views/parent/messages.js',       'renderParentMessages'],
   [ROUTES.PARENT_BILLING]:   ['./views/parent/billing.js',        'renderParentBilling'],
+  [ROUTES.PARENT_WELLNESS]:  ['./views/parent/wellness.js',       'renderParentWellness'],
   [ROUTES.PARENT_SETTINGS]:  ['./views/parent/settings.js',       'renderParentSettings'],
   // Admin
   [ROUTES.ADMIN_HOME]:       ['./views/admin/home.js',            'renderAdminHome'],
+  [ROUTES.ADMIN_ORG]:        ['./views/admin/org.js',             'renderAdminOrg'],
+  [ROUTES.ADMIN_TEAMS]:      ['./views/admin/teams.js',           'renderAdminTeams'],
+  [ROUTES.ADMIN_COACHES]:    ['./views/admin/coaches.js',         'renderAdminCoaches'],
+  [ROUTES.ADMIN_ATHLETES]:   ['./views/admin/athletes.js',        'renderAdminAthletes'],
+  [ROUTES.ADMIN_ADOPTION]:   ['./views/admin/adoption.js',        'renderAdminAdoption'],
+  [ROUTES.ADMIN_REPORTS]:    ['./views/admin/reports.js',         'renderAdminReports'],
+  [ROUTES.ADMIN_COMPLIANCE]: ['./views/admin/compliance.js',      'renderAdminCompliance'],
+  [ROUTES.ADMIN_BILLING]:    ['./views/admin/billing.js',         'renderAdminBilling'],
   [ROUTES.ADMIN_SETTINGS]:   ['./views/admin/settings.js',        'renderAdminSettings'],
   // Solo
   [ROUTES.SOLO_HOME]:        ['./views/solo/home.js',             'renderSoloHome'],
@@ -166,6 +180,7 @@ const VIEW_MAP = {
   [ROUTES.SOLO_SCORE]:       ['./views/solo/score.js',            'renderSoloScore'],
   [ROUTES.SOLO_READINESS]:   ['./views/solo/readiness.js',        'renderSoloReadiness'],
   [ROUTES.SOLO_GOALS]:       ['./views/solo/goals.js',            'renderSoloGoals'],
+  [ROUTES.SOLO_SUBSCRIPTION]:['./views/solo/subscription.js',    'renderSoloSubscription'],
   [ROUTES.SOLO_SETTINGS]:    ['./views/solo/settings.js',         'renderSoloSettings'],
 };
 
