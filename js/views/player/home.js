@@ -1,156 +1,180 @@
 /**
- * Player Home Dashboard
+ * Player Home Dashboard v2
+ * Role-specific view: athlete-first design.
+ * PIQ Score, readiness, today's workout, nutrition, and mindset.
  */
-import { buildSidebar }              from '../../components/nav.js';
-import { getCurrentUser }            from '../../core/auth.js';
-import { getReadinessScore, getReadinessRingOffset,
-         getReadinessColor, getReadinessExplain,
-         getPIQScore, getWorkoutCount, getStreak } from '../../state/selectors.js';
-import { getNutrition, addMeal, removeMeal } from '../../state/state.js';
-import { FOOD_DB }                   from '../../data/exerciseLibrary.js';
+import { buildSidebar }          from '../../components/nav.js';
+import { getCurrentUser, getCurrentRole } from '../../core/auth.js';
+import { getAthleteProfile, getWorkoutLog } from '../../state/state.js';
+import { getPIQScore, getReadinessScore, getReadinessColor, getStreak, getScoreBreakdown } from '../../state/selectors.js';
+import { generateTodayWorkout }  from '../../data/workoutEngine.js';
+import { getMacroTargets }       from '../../state/selectors.js';
 
 export function renderPlayerHome() {
-  const user      = getCurrentUser();
-  const fname     = user?.name?.split(' ')[0] || 'Athlete';
-  const date      = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const user     = getCurrentUser() || {};
+  const role     = getCurrentRole() || 'player';
+  const fname    = user.name?.split(' ')[0] || 'Athlete';
+  const profile  = getAthleteProfile();
+  const piq      = getPIQScore();
   const readiness = getReadinessScore();
-  const piq       = getPIQScore();
-  const sessions  = getWorkoutCount();
-  const streak    = getStreak();
-  const offset    = getReadinessRingOffset(readiness);
-  const color     = getReadinessColor(readiness);
-  const explain   = getReadinessExplain(readiness);
-  const nutrition = getNutrition();
-  const meals     = nutrition.meals.slice(-4).reverse();
+  const rColor   = getReadinessColor(readiness);
+  const streak   = getStreak();
+  const sb       = getScoreBreakdown();
+  const log      = getWorkoutLog();
+  const dow      = new Date().getDay();
+  const workout  = generateTodayWorkout(
+    profile.sport || 'basketball',
+    profile.compPhase || 'in-season',
+    profile.trainingLevel || 'intermediate',
+    readiness, dow
+  );
+  const macros   = getMacroTargets();
+  const hour     = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const profilePct = sb.profile?.raw || 0;
 
   return `
 <div class="view-with-sidebar">
-  ${buildSidebar('player','player/home')}
+  ${buildSidebar(role, role + '/home')}
   <main class="page-main">
+
+    <!-- Header -->
     <div class="page-header">
-      <h1>Welcome back, <span>${fname}</span> 👋</h1>
-      <p>${date} · ${user?.sport||'Basketball'} · Player Dashboard</p>
+      <h1>${greeting}, <span>${fname}</span></h1>
+      <p>${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} · ${profile.sport ? profile.sport.charAt(0).toUpperCase()+profile.sport.slice(1) : 'Athlete'} ${profile.position ? '· ' + profile.position : ''} ${profile.team ? '· ' + profile.team : ''}</p>
     </div>
 
-    <div class="kpi-row">
-      <div class="kpi-card"><div class="kpi-lbl">PIQ Score</div><div class="kpi-val g">${piq}</div><div class="kpi-chg">↑ +${Math.max(0,piq-68)} this month</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Readiness</div><div class="kpi-val" style="color:${color}">${readiness}%</div><div class="kpi-chg">${readiness>=80?'↑ High':readiness>=60?'→ Moderate':'↓ Low'}</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Sessions</div><div class="kpi-val b">${sessions}</div><div class="kpi-chg">Total logged</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Streak</div><div class="kpi-val">🔥 ${streak}</div><div class="kpi-chg">Days active</div></div>
-    </div>
-
-    <div class="panels-2">
+    ${profilePct < 50 ? `
+    <div style="background:#f59e0b14;border:1px solid #f59e0b40;border-radius:12px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px;cursor:pointer" data-route="${role}/settings">
+      <span style="font-size:20px">⚠️</span>
       <div>
-        <!-- Today's workout -->
-        <div class="panel" style="margin-bottom:16px">
-          <div class="panel-title">Today's Training Plan</div>
-          <div class="w-row"><div class="w-icon">🏀</div><div class="w-info"><div class="w-name">Explosive Footwork Drills</div><div class="w-meta">40 min · High Intensity · ${user?.sport||'Basketball'}</div></div><span class="w-badge">NEXT</span></div>
-          <div class="w-row"><div class="w-icon">💪</div><div class="w-info"><div class="w-name">Lower Body Power — Phase 2</div><div class="w-meta">35 min · Moderate · Strength</div></div><span class="w-badge gray">LATER</span></div>
-          <div class="w-row"><div class="w-icon">🧘</div><div class="w-info"><div class="w-name">Recovery Mobility Flow</div><div class="w-meta">20 min · Low · Recovery</div></div><span class="w-badge gray">PM</span></div>
-          <div style="margin-top:14px;display:flex;gap:10px">
-            <button class="btn-primary" style="font-size:12.5px;padding:10px 18px" data-route="player/today">Start Workout</button>
-            <button class="btn-draft"   style="font-size:12.5px;padding:10px 18px" data-route="player/log">Log Session</button>
+        <div style="font-weight:700;font-size:13px;color:#f59e0b">Complete your profile for an accurate PIQ Score</div>
+        <div style="font-size:12px;color:var(--text-muted)">Profile is ${profilePct}% complete. Add your weight, height, and training details to unlock personalized programming.</div>
+      </div>
+      <span style="margin-left:auto;color:var(--text-muted);font-size:18px">→</span>
+    </div>` : ''}
+
+    <!-- Top KPI Row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+      ${_kpi('PIQ Score', piq, sb.tier, '#22c955', '🏅', `${role}/score`)}
+      ${_kpi('Readiness', readiness, readiness>=80?'High':readiness>=60?'Moderate':'Low', rColor, '💚', `${role}/readiness`)}
+      ${_kpi('Streak', streak + ' days', streak>=7?'On fire!':streak>=3?'Building':'Keep going', '#f59e0b', '🔥', `${role}/progress`)}
+      ${_kpi('Sessions', log.length, 'Total logged', '#60a5fa', '📊', `${role}/progress`)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px">
+      <div>
+        <!-- Today's Workout Preview -->
+        <div class="panel" style="margin-bottom:20px;background:linear-gradient(135deg,#0d1b3e 0%,#1a2f5e 100%);border:1px solid #22c95530">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--piq-green);letter-spacing:.08em">TODAY'S WORKOUT</div>
+              <div style="font-size:17px;font-weight:800;color:#fff;margin-top:4px">${workout.title}</div>
+              <div style="font-size:12px;color:#a0b4d0;margin-top:2px">Est. ${workout.estimatedDuration} min · RPE ${workout.rpeTarget || '6-8'} · ${workout.badge?.label || 'Full Intensity'}</div>
+            </div>
+            <span style="padding:5px 12px;border-radius:20px;background:${workout.badge?.color || '#22c955'}22;color:${workout.badge?.color || '#22c955'};font-size:11px;font-weight:700;border:1px solid ${workout.badge?.color || '#22c955'}40;flex-shrink:0">${workout.badge?.label || 'Full Intensity'}</span>
+          </div>
+          ${workout.mindsetNote ? `
+          <div style="padding:10px 12px;background:#ffffff08;border-radius:8px;border-left:3px solid var(--piq-green);margin-bottom:14px">
+            <div style="font-size:11px;color:var(--piq-green);font-weight:700;margin-bottom:2px">MINDSET</div>
+            <div style="font-size:12px;color:#c8d8e8;font-style:italic">"${workout.mindsetNote}"</div>
+          </div>` : ''}
+          <div style="display:flex;gap:8px">
+            <button class="btn-primary" style="flex:1;font-size:13px;padding:11px" data-route="${role}/today">Start Workout</button>
+            <button class="btn-draft" style="padding:11px 16px;font-size:13px" data-route="${role}/readiness">Check In</button>
           </div>
         </div>
 
-        <!-- Nutrition logger -->
-        <div class="panel">
-          <div class="panel-title">Food Log</div>
-          <div style="margin-bottom:12px;padding:12px;background:rgba(57,230,107,.05);border-radius:10px;border:1.5px solid rgba(57,230,107,.15)">
-            <div class="food-log-row">
-              <input type="text" class="food-log-input" id="food-input" placeholder="e.g. chicken breast, banana…" list="food-suggestions" autocomplete="off">
-              <datalist id="food-suggestions">
-                ${Object.keys(FOOD_DB).map(k=>`<option value="${k}">`).join('')}
-              </datalist>
-              <button class="food-log-btn" id="log-food-btn">+ Log</button>
+        <!-- PIQ Score Breakdown -->
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-title">PIQ Score Breakdown</div>
+          <div style="font-size:12px;color:var(--text-muted);margin:6px 0 14px">Your ${piq} PIQ Score is calculated from 5 weighted pillars:</div>
+          ${[
+            [sb.consistency, '🏋️'],
+            [sb.readiness,   '💚'],
+            [sb.compliance,  '✅'],
+            [sb.load,        '⚖️'],
+            [sb.profile,     '👤'],
+          ].map(([pillar, icon]) => pillar ? `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${icon} ${pillar.label}</span>
+              <span style="font-size:12px;font-weight:700;color:var(--piq-green)">${pillar.raw}/100 <span style="color:var(--text-muted);font-weight:400">(${Math.round(pillar.weight*100)}%)</span></span>
             </div>
-            <div id="food-log-list">
-              ${meals.length ? meals.map((m,i)=>`
-              <div class="logged-food-item">
-                <span style="text-transform:capitalize">${m.name}</span>
-                <span class="macros">${m.cal}kcal · P${m.pro}g C${m.cho}g F${m.fat}g</span>
-                <button class="food-remove" data-mi="${nutrition.meals.length-1-i}">×</button>
-              </div>`).join('') : '<div style="font-size:12px;color:var(--text-muted);padding:4px 0">No foods logged yet today.</div>'}
+            <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pillar.raw}%;background:${pillar.raw>=80?'#22c955':pillar.raw>=60?'#f59e0b':'#ef4444'};border-radius:3px;transition:width 600ms ease"></div>
             </div>
-          </div>
-          <div style="display:flex;gap:16px;font-family:\'Barlow Condensed\',sans-serif">
-            <span>CAL <strong style="color:var(--text-primary)">${nutrition.macros.cal}</strong></span>
-            <span>PRO <strong style="color:var(--text-primary)">${nutrition.macros.pro}g</strong></span>
-            <span>CARB <strong style="color:var(--text-primary)">${nutrition.macros.cho}g</strong></span>
-            <span>FAT <strong style="color:var(--text-primary)">${nutrition.macros.fat}g</strong></span>
-          </div>
+          </div>` : '').join('')}
+          <button class="btn-draft" style="width:100%;margin-top:8px;font-size:12px" data-route="${role}/score">View Full Score Report</button>
         </div>
       </div>
 
-      <!-- Readiness ring -->
-      <div class="panel">
-        <div class="panel-title">Readiness Engine</div>
-        <div class="ring-wrap">
-          <svg width="110" height="110" viewBox="0 0 110 110">
-            <circle cx="55" cy="55" r="46" fill="none" stroke="var(--border)" stroke-width="9"/>
-            <circle cx="55" cy="55" r="46" fill="none" stroke="${color}" stroke-width="9"
-              stroke-dasharray="289" stroke-dashoffset="${offset}" stroke-linecap="round" transform="rotate(-90 55 55)"/>
+      <div>
+        <!-- Readiness Ring -->
+        <div class="panel" style="margin-bottom:16px;text-align:center">
+          <div class="panel-title">Readiness</div>
+          <svg width="120" height="120" viewBox="0 0 120 120" style="margin:12px auto;display:block">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="var(--surface-2)" stroke-width="10"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="${rColor}" stroke-width="10"
+              stroke-dasharray="289" stroke-dashoffset="${Math.round(289-(readiness/100)*289)}"
+              stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 800ms ease"/>
+            <text x="60" y="56" text-anchor="middle" font-size="22" font-weight="900" fill="${rColor}">${readiness}</text>
+            <text x="60" y="72" text-anchor="middle" font-size="10" fill="var(--text-muted)">READINESS</text>
           </svg>
-          <div class="ring-num" style="color:${color}">${readiness}</div>
-          <div class="ring-lbl">Readiness Score</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${readiness>=80?'High — Train hard today':readiness>=60?'Moderate — Quality focus':'Low — Recovery day'}</div>
+          <button class="btn-draft" style="width:100%;font-size:12px" data-route="${role}/readiness">Update Check-In</button>
         </div>
-        <p class="readiness-explain">${explain}</p>
-        <div class="rf-row"><span class="rf-lbl">Sleep</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.min(99,readiness+6)}%"></div></div><span class="rf-num">${Math.min(99,readiness+6)}</span></div>
-        <div class="rf-row"><span class="rf-lbl">Nutrition</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.min(95,60+getNutrition().meals.length*5)}%"></div></div><span class="rf-num">${Math.min(95,60+getNutrition().meals.length*5)}</span></div>
-        <div class="rf-row"><span class="rf-lbl">Load</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.max(40,readiness-4)}%"></div></div><span class="rf-num">${Math.max(40,readiness-4)}</span></div>
-        <div class="rf-row"><span class="rf-lbl">Mood</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.min(98,readiness+3)}%"></div></div><span class="rf-num">${Math.min(98,readiness+3)}</span></div>
-        <div style="margin-top:14px">
-          <button class="btn-primary" style="font-size:12.5px;padding:10px 18px" data-route="player/score">View PIQ Score →</button>
+
+        <!-- Nutrition Targets -->
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-title">Today's Nutrition Targets</div>
+          <div style="font-size:11px;color:var(--text-muted);margin:4px 0 12px">Based on your body weight and training phase (ISSN guidelines)</div>
+          ${[
+            { label: 'Calories', val: macros.cal, unit: 'kcal', color: '#f59e0b' },
+            { label: 'Protein',  val: macros.pro, unit: 'g',    color: '#22c955' },
+            { label: 'Carbs',    val: macros.cho, unit: 'g',    color: '#60a5fa' },
+            { label: 'Fat',      val: macros.fat, unit: 'g',    color: '#a78bfa' },
+          ].map(m => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:12px;color:var(--text-muted)">${m.label}</span>
+            <span style="font-size:13px;font-weight:700;color:${m.color}">${m.val} ${m.unit}</span>
+          </div>`).join('')}
+          ${profilePct < 50 ? `<div style="font-size:11px;color:#f59e0b;margin-top:8px">Complete your profile for personalized targets</div>` : ''}
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="panel">
+          <div class="panel-title">Quick Actions</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+            ${[
+              ['⚡', 'Start Today\'s Workout', `${role}/today`],
+              ['💚', 'Daily Check-In', `${role}/readiness`],
+              ['📈', 'View Progress', `${role}/progress`],
+              ['🏅', 'PIQ Score Report', `${role}/score`],
+              ['⚙️', 'Update Profile', `${role}/settings`],
+            ].map(([icon, label, route]) => `
+            <button class="btn-draft" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;font-size:13px" data-route="${route}">
+              <span style="font-size:16px">${icon}</span> ${label}
+            </button>`).join('')}
+          </div>
         </div>
       </div>
     </div>
+
   </main>
 </div>`;
 }
 
-// Wire food logger
-document.addEventListener('piq:viewRendered', () => {
-  document.getElementById('log-food-btn')?.addEventListener('click', doLogFood);
-  document.getElementById('food-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') doLogFood();
-  });
-  document.querySelectorAll('.food-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      removeMeal(+btn.dataset.mi);
-      // Refresh panel without full re-render
-      
-    });
-  });
-});
-
-function doLogFood() {
-  const input = document.getElementById('food-input');
-  if (!input) return;
-  const query = input.value.toLowerCase().trim();
-  if (!query) return;
-
-  let match = FOOD_DB[query];
-  if (!match) {
-    const key = Object.keys(FOOD_DB).find(k => k.includes(query) || query.includes(k));
-    if (key) match = FOOD_DB[key];
-  }
-  const item = match || { cal:150, pro:5, cho:20, fat:5 };
-  addMeal({ name:query, ...item });
-  input.value = '';
-
-  // Refresh food list in DOM
-  const list = document.getElementById('food-log-list');
-  if (list) {
-    const meals = getNutrition().meals.slice(-4).reverse();
-    list.innerHTML = meals.map((m,i)=>`
-    <div class="logged-food-item">
-      <span style="text-transform:capitalize">${m.name}</span>
-      <span class="macros">${m.cal}kcal · P${m.pro}g C${m.cho}g F${m.fat}g</span>
-      <button class="food-remove" data-mi="${getNutrition().meals.length-1-i}">×</button>
-    </div>`).join('');
-    // Re-wire remove buttons
-    list.querySelectorAll('.food-remove').forEach(btn => {
-      btn.addEventListener('click', () => { removeMeal(+btn.dataset.mi); doLogFood(); });
-    });
-  }
+function _kpi(label, value, sub, color, icon, route) {
+  return `
+<div class="panel" style="cursor:pointer;border-bottom:3px solid ${color}" data-route="${route}">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between">
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">${label}</div>
+      <div style="font-size:24px;font-weight:900;color:${color};margin:4px 0 2px">${value}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${sub}</div>
+    </div>
+    <span style="font-size:22px">${icon}</span>
+  </div>
+</div>`;
 }
