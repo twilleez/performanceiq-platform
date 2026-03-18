@@ -32,12 +32,35 @@ async function init() {
 
   navigate(start);
 
-  // Hide loader after first render — always, even on error
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
+  // Show loader for minimum 1 second for branded splash experience
+  const _loaderStart = Date.now();
+  const _hideLoader = () => {
+    const elapsed = Date.now() - _loaderStart;
+    const remaining = Math.max(0, 1000 - elapsed);
+    // Animate progress bar to 100% then fade out
+    const bar   = document.getElementById('splash-bar');
+    const label = document.getElementById('splash-label');
+    if (bar)   bar.style.width = '100%';
+    if (label) label.textContent = 'Ready!';
+    setTimeout(() => {
       document.getElementById('piq-loader')?.classList.add('hidden');
-    });
+    }, remaining + 300); // extra 300ms to show "Ready!" state
+  };
+  // Kick off progress bar animation steps
+  const _progressSteps = [
+    { pct: 30, label: 'Loading profile…',   delay: 100  },
+    { pct: 60, label: 'Building your plan…', delay: 350 },
+    { pct: 85, label: 'Almost ready…',       delay: 650 },
+  ];
+  _progressSteps.forEach(({ pct, label, delay }) => {
+    setTimeout(() => {
+      const bar = document.getElementById('splash-bar');
+      const lbl = document.getElementById('splash-label');
+      if (bar) bar.style.width = pct + '%';
+      if (lbl) lbl.textContent = label;
+    }, delay);
   });
+  requestAnimationFrame(() => { requestAnimationFrame(_hideLoader); });
 }
 
 // ── SHELL HTML ────────────────────────────────────────────────
