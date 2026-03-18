@@ -1,206 +1,172 @@
-/**
- * Player — Today's Workout View v2
- * Elite programming powered by TB12 Method + NSCA periodization.
- * Readiness-adaptive intensity. Pliability protocols integrated.
- */
-import { buildSidebar }          from '../../components/nav.js';
-import { getCurrentRole }        from '../../core/auth.js';
-import { getAthleteProfile, addWorkoutLog } from '../../state/state.js';
-import { getReadinessScore, getReadinessColor, getReadinessExplain } from '../../state/selectors.js';
-import { generateTodayWorkout, PLIABILITY_PROTOCOLS, WARMUP_PROTOCOLS } from '../../data/workoutEngine.js';
+import { buildSidebar }    from '../../components/nav.js';
+import { getState, addWorkoutLog } from '../../state/state.js';
+import { getCurrentUser }  from '../../core/auth.js';
+import { navigate }        from '../../router.js';
+import { showToast }       from '../../core/notifications.js';
+import { TRAINING_TEMPLATES, SPORT_EMOJI } from '../../data/exerciseLibrary.js';
 
 export function renderPlayerToday() {
-  const role     = getCurrentRole() || 'player';
-  const profile  = getAthleteProfile();
-  const readiness = getReadinessScore();
-  const rColor   = getReadinessColor(readiness);
-  const rExplain = getReadinessExplain(readiness);
-  const dow      = new Date().getDay();
+  const user   = getCurrentUser();
+  const sport  = user?.sport || 'basketball';
+  const log    = getState().workoutLog;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const doneTodayCount = log.filter(w => w.date === todayStr).length;
 
-  const workout  = generateTodayWorkout(
-    profile.sport || 'basketball',
-    profile.compPhase || 'in-season',
-    profile.trainingLevel || 'intermediate',
-    readiness,
-    dow
-  );
+  // Pick a template matching sport, or fallback
+  const tmpl = TRAINING_TEMPLATES.find(t => t.sport === sport && t.popular)
+            || TRAINING_TEMPLATES[0];
+  const exercises = tmpl.exercises;
 
-  const isRecovery = workout.isRecoveryDay;
-  const badge = workout.badge || { label: 'Full Intensity', color: '#22c955' };
-  const pliabilityPre  = workout.pliabilityProtocol;
-  const warmup         = workout.warmupProtocol;
-  const pliabilityPost = workout.cooldownProtocol;
+  const exRows = exercises.map((name, i) => `
+  <div class="ex-check-row" id="ecr-${i}" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer" data-idx="${i}">
+    <div class="ex-check-box" id="ecb-${i}" style="width:22px;height:22px;border-radius:5px;border:2px solid var(--border-strong);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .2s"></div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13.5px;color:var(--text-primary)">${name}</div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">3 sets × 8 reps · 60s rest</div>
+    </div>
+    <span class="w-badge gray ex-status-badge" id="esb-${i}">TODO</span>
+  </div>`).join('');
 
   return `
 <div class="view-with-sidebar">
-  ${buildSidebar(role, role + '/today')}
+  ${buildSidebar('player','player/today')}
   <main class="page-main">
     <div class="page-header">
       <h1>Today's <span>Workout</span></h1>
-      <p>${new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })}</p>
+      <p>${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} · ${tmpl.focus}</p>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div class="panel" style="border-left:4px solid ${rColor}">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="font-size:28px;font-weight:900;color:${rColor}">${readiness}</div>
-          <div>
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.06em">READINESS SCORE</div>
-            <div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-top:2px">${rExplain}</div>
-          </div>
-        </div>
-      </div>
-      <div class="panel" style="border-left:4px solid ${badge.color}">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:42px;height:42px;border-radius:10px;background:${badge.color}22;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${isRecovery?'💚':'⚡'}</div>
-          <div>
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.06em">TODAY'S INTENSITY</div>
-            <div style="font-size:13px;font-weight:700;color:${badge.color};margin-top:2px">${badge.label}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${workout.intensityNote}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="panel" style="background:linear-gradient(135deg,#0d1b3e 0%,#1a2f5e 100%);border:1px solid #22c95530;margin-bottom:20px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-size:11px;font-weight:700;color:var(--piq-green);letter-spacing:.08em;text-transform:uppercase">${profile.sport?.toUpperCase() || 'BASKETBALL'} · ${(profile.compPhase||'in-season').replace('-',' ').toUpperCase()}</div>
-          <h2 style="font-size:20px;font-weight:800;color:#fff;margin:6px 0 4px">${workout.title}</h2>
-          <div style="font-size:13px;color:#a0b4d0">Est. ${workout.estimatedDuration} min · RPE Target: ${workout.rpeTarget || '6-8'}</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <span style="padding:5px 12px;border-radius:20px;background:#22c95520;color:#22c955;font-size:11px;font-weight:700;border:1px solid #22c95540">${(profile.trainingLevel||'intermediate').toUpperCase()}</span>
-          <span style="padding:5px 12px;border-radius:20px;background:#3b82f620;color:#60a5fa;font-size:11px;font-weight:700;border:1px solid #3b82f640">TB12 METHOD</span>
-        </div>
-      </div>
-      ${workout.mindsetNote ? `
-      <div style="margin-top:14px;padding:12px 14px;background:#ffffff08;border-radius:8px;border-left:3px solid var(--piq-green)">
-        <div style="font-size:11px;font-weight:700;color:var(--piq-green);margin-bottom:4px">MINDSET FOCUS</div>
-        <div style="font-size:13px;color:#c8d8e8;font-style:italic">"${workout.mindsetNote}"</div>
-      </div>` : ''}
-    </div>
-    ${isRecovery ? _renderRecoveryDay(pliabilityPre) : _renderFullWorkout(pliabilityPre, warmup, workout.exercises, pliabilityPost)}
-    <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
-      <button class="btn-primary" style="width:auto;padding:13px 28px;font-size:14px" id="log-workout-btn">
-        Mark Workout Complete
-      </button>
-      <button class="btn-draft" style="padding:13px 20px" data-route="${role}/readiness">Update Readiness</button>
-    </div>
-    <p id="workout-logged" style="color:var(--piq-green-dark);font-size:13px;margin-top:10px;display:none">
-      Workout logged! Your PIQ Score and streak have been updated.
-    </p>
-  </main>
-</div>
-<style>
-.exercise-card { background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:border-color 200ms; }
-.exercise-card:hover { border-color:var(--piq-green); }
-.ex-sets-badge { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;background:#22c95520;color:var(--piq-green);font-size:11px;font-weight:700;border:1px solid #22c95540; }
-.pliability-card { background:#22c95510;border:1px solid #22c95530;border-radius:10px;padding:14px 16px; }
-.section-label { font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px; }
-.section-label::after { content:'';flex:1;height:1px;background:var(--border); }
-</style>`;
-}
 
-function _renderRecoveryDay(pliabilityPre) {
-  const proto = pliabilityPre || PLIABILITY_PROTOCOLS.daily_maintenance;
-  return `
-<div class="panel" style="border:1px solid #22c95540;background:#22c95508">
-  <div style="font-size:16px;font-weight:700;color:var(--piq-green);margin-bottom:6px">Recovery Day Protocol</div>
-  <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Your readiness score indicates your body needs recovery today. This is smart training. TB12: "Recovery is training."</div>
-  ${_renderPliabilitySection(proto)}
-</div>`;
-}
-
-function _renderFullWorkout(pliabilityPre, warmup, exercises, pliabilityPost) {
-  return `
-    ${pliabilityPre ? `
-    <div style="margin-bottom:20px">
-      <div class="section-label">Phase 1 — Pre-Workout Pliability (TB12)</div>
-      ${_renderPliabilitySection(pliabilityPre)}
+    ${doneTodayCount > 0 ? `
+    <div style="background:rgba(57,230,107,.1);border:1.5px solid rgba(57,230,107,.3);border-radius:12px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">🎉</span>
+      <span style="font-size:13.5px;color:var(--piq-green-dark);font-weight:600">You logged ${doneTodayCount} session${doneTodayCount>1?'s':''} today! Great work.</span>
     </div>` : ''}
-    ${warmup ? `
-    <div style="margin-bottom:20px">
-      <div class="section-label">Phase 2 — Warm-Up (${warmup.duration})</div>
-      <div class="panel" style="padding:14px 16px">
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">${warmup.label} — Never skip the warm-up. It primes the nervous system and reduces injury risk.</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          ${(warmup.exercises||[]).map(ex => `
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-            <div style="width:28px;height:28px;border-radius:6px;background:#3b82f620;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">🏃</div>
+
+    <div class="panels-2">
+      <div class="panel">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
+          <div>
+            <div class="panel-title" style="margin-bottom:4px">${SPORT_EMOJI[sport]} ${tmpl.title}</div>
+            <div style="font-size:12.5px;color:var(--text-muted)">${tmpl.duration}wk program · ${tmpl.sessions_per_week}x/wk · <span class="tag tag-green">${tmpl.level}</span></div>
+          </div>
+          <span class="w-badge blue">IN PROGRESS</span>
+        </div>
+
+        <!-- Phase bar -->
+        <div style="display:flex;gap:3px;height:6px;border-radius:4px;overflow:hidden;margin-bottom:20px">
+          ${tmpl.phases.map(ph => `<div style="flex:${ph.weeks};background:${ph.color}" title="${ph.label}"></div>`).join('')}
+        </div>
+
+        <div id="ex-checklist">${exRows}</div>
+
+        <div id="workout-complete-banner" style="display:none;margin-top:12px;background:rgba(57,230,107,.08);border:1.5px solid rgba(57,230,107,.25);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--piq-green-dark);font-weight:600">
+          ✅ All exercises checked! Log your RPE to save.
+        </div>
+
+        <!-- RPE + submit -->
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+          <label style="font-size:12.5px;font-weight:600;color:var(--text-secondary)">
+            Session RPE — <strong id="today-rpe-val" style="color:var(--piq-green-dark)">6</strong>/10
+          </label>
+          <input type="range" id="today-rpe" min="1" max="10" value="6" style="width:100%;margin-top:8px;accent-color:var(--piq-green)">
+          <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+            <button class="btn-assign" id="today-complete-btn">💪 Complete Workout</button>
+            <button class="btn-draft" data-route="player/log">Log Different Session</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info panel -->
+      <div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-title">Session Notes</div>
+          <textarea id="today-notes" placeholder="How are you feeling? Any modifications?" rows="3"
+            style="width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--bg-input);color:var(--text-primary);font-family:inherit;font-size:13px;resize:vertical;outline:none"></textarea>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Program Phases</div>
+          ${tmpl.phases.map(ph => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="width:12px;height:12px;border-radius:2px;background:${ph.color};flex-shrink:0"></div>
             <div>
-              <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${ex.name}</div>
-              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${ex.sets || ex.duration || ''} · ${ex.cue}</div>
+              <div style="font-size:13px;font-weight:600;color:var(--text-primary)">${ph.label}</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">${ph.weeks} week${ph.weeks>1?'s':''}</div>
             </div>
           </div>`).join('')}
         </div>
       </div>
-    </div>` : ''}
-    <div style="margin-bottom:20px">
-      <div class="section-label">Phase 3 — Main Training Block</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${(exercises || []).map((ex, i) => `
-        <div class="exercise-card">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-            <div style="flex:1">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                <span style="width:24px;height:24px;border-radius:50%;background:var(--piq-green);color:#0d1b3e;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</span>
-                <span style="font-size:14px;font-weight:700;color:var(--text-primary)">${ex.name}</span>
-              </div>
-              <div style="font-size:12px;color:var(--text-muted);margin-left:32px;line-height:1.5">
-                <span class="ex-sets-badge">${ex.sets} x ${ex.reps}</span>
-                ${ex.load ? `<span style="margin-left:8px;color:var(--text-muted)">Load: ${ex.load}</span>` : ''}
-              </div>
-              ${ex.cue ? `<div style="font-size:12px;color:#60a5fa;margin-top:6px;margin-left:32px;font-style:italic;line-height:1.5">Coaching Cue: ${ex.cue}</div>` : ''}
-            </div>
-          </div>
-        </div>`).join('')}
-      </div>
     </div>
-    ${pliabilityPost ? `
-    <div style="margin-bottom:20px">
-      <div class="section-label">Phase 4 — Post-Workout Pliability (TB12)</div>
-      ${_renderPliabilitySection(pliabilityPost)}
-    </div>` : ''}`;
-}
-
-function _renderPliabilitySection(proto) {
-  if (!proto) return '';
-  return `
-<div class="pliability-card">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-    <span style="font-size:18px">🌊</span>
-    <div>
-      <div style="font-size:13px;font-weight:700;color:var(--piq-green)">${proto.label}</div>
-      <div style="font-size:11px;color:var(--text-muted)">${proto.duration} · ${proto.description}</div>
-    </div>
-  </div>
-  ${proto.note ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-bottom:10px;padding:8px;background:#22c95508;border-radius:6px">${proto.note}</div>` : ''}
-  <div style="display:flex;flex-direction:column;gap:6px">
-    ${(proto.exercises || []).map(ex => `
-    <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #22c95520">
-      <span style="color:var(--piq-green);font-size:12px;margin-top:1px;flex-shrink:0">●</span>
-      <div>
-        <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${ex.name}</span>
-        <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${ex.sets ? ex.sets+' x' : ''} ${ex.duration || ex.reps || ''}</span>
-        ${ex.cue ? `<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:2px">${ex.cue}</div>` : ''}
-      </div>
-    </div>`).join('')}
-  </div>
+  </main>
 </div>`;
 }
 
-document.addEventListener('piq:viewRendered', () => {
-  document.getElementById('log-workout-btn')?.addEventListener('click', () => {
-    const profile = getAthleteProfile();
-    addWorkoutLog({
-      title: "Today's Session",
-      sport: profile.sport || 'basketball',
-      completed: true,
-      avgRPE: 7,
-      duration: 45,
+document.addEventListener('piq:viewRendered', wireTodayWorkout);
+
+function wireTodayWorkout() {
+  if (!document.getElementById('today-complete-btn')) return;
+  const completed = new Set();
+  const total = document.querySelectorAll('.ex-check-row').length;
+
+  // Toggle exercises
+  document.querySelectorAll('.ex-check-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const idx  = +row.dataset.idx;
+      const box  = document.getElementById('ecb-' + idx);
+      const badge= document.getElementById('esb-' + idx);
+      if (completed.has(idx)) {
+        completed.delete(idx);
+        box.textContent = '';
+        box.style.background = 'transparent';
+        box.style.borderColor = 'var(--border-strong)';
+        badge.textContent = 'TODO';
+        badge.className = 'w-badge gray ex-status-badge';
+      } else {
+        completed.add(idx);
+        box.textContent = '✓';
+        box.style.background = 'var(--piq-green)';
+        box.style.borderColor = 'var(--piq-green)';
+        box.style.color = 'var(--piq-navy)';
+        badge.textContent = 'DONE';
+        badge.className = 'w-badge ex-status-badge';
+      }
+      document.getElementById('workout-complete-banner').style.display =
+        completed.size === total ? 'block' : 'none';
     });
-    const msg = document.getElementById('workout-logged');
-    if (msg) { msg.style.display = 'block'; }
-    const btn = document.getElementById('log-workout-btn');
-    if (btn) { btn.textContent = 'Workout Logged'; btn.disabled = true; }
   });
-});
+
+  // RPE display
+  document.getElementById('today-rpe')?.addEventListener('input', e => {
+    const v = +e.target.value;
+    const el = document.getElementById('today-rpe-val');
+    el.textContent = v;
+    el.style.color = v >= 9 ? '#ef4444' : v >= 7 ? '#f59e0b' : 'var(--piq-green-dark)';
+  });
+
+  // Complete
+  document.getElementById('today-complete-btn')?.addEventListener('click', () => {
+    const user  = getCurrentUser();
+    const sport = user?.sport || 'basketball';
+    const tmpl  = TRAINING_TEMPLATES.find(t => t.sport === sport && t.popular) || TRAINING_TEMPLATES[0];
+    const rpe   = +(document.getElementById('today-rpe')?.value || 6);
+
+    addWorkoutLog({
+      title:     tmpl.title,
+      date:      new Date().toISOString().split('T')[0],
+      sport,
+      duration:  45,
+      avgRPE:    rpe,
+      exercises: tmpl.exercises.length,
+      exerciseList: tmpl.exercises.map(name => ({ name, sets: 3, reps: 8 })),
+      notes:     document.getElementById('today-notes')?.value.trim(),
+      completed: completed.size === document.querySelectorAll('.ex-check-row').length,
+      checkedCount: completed.size,
+    });
+
+    showToast(`🏆 Workout logged! RPE ${rpe} — great session.`);
+    navigate('player/progress');
+  });
+}
+
+function getCurrentUser() {
+  return JSON.parse(localStorage.getItem('piq_session_v2') || '{}')?.user || {};
+}
