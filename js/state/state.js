@@ -26,7 +26,7 @@ function defaultState() {
       sport: 'basketball', level: 'high_school', team: '', goals: [], position: '', gradYear: '',
       age: '', weightLbs: '', heightFt: '', heightIn: '',
       trainingLevel: 'intermediate', daysPerWeek: 4, sleepHours: 7,
-      compPhase: 'in-season', primaryGoal: '', injuryHistory: 'none',
+      compPhase: 'in-season', primaryGoal: '', secondaryGoals: [], injuryHistory: 'none',
       mindsetScore: 0, hydrationOz: 0, pliabilityDone: false, recoveryNotes: '',
     },
     workoutLog: [],
