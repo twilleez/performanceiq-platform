@@ -1,41 +1,31 @@
-/**
- * Coach Roster View — detailed athlete management
- */
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster }    from '../../state/state.js';
-
-const SPORT_EMOJI = {basketball:'🏀',football:'🏈',soccer:'⚽',baseball:'⚾',volleyball:'🏐',track:'🏃'};
+import { navigate }     from '../../router.js';
+import { SPORT_EMOJI }  from '../../data/exerciseLibrary.js';
 
 export function renderCoachRoster() {
   const roster = getRoster();
+  const ready    = roster.filter(a => a.readiness >= 80);
+  const caution  = roster.filter(a => a.readiness < 60);
+  const full     = roster.filter(a => a.readiness >= 60 && a.readiness < 80);
 
-  const cards = roster.map(a => `
-  <div class="panel" style="padding:16px;margin-bottom:0">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-      <div style="width:42px;height:42px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:20px">${SPORT_EMOJI[a.sport]||'🏅'}</div>
-      <div style="flex:1">
-        <div style="font-weight:700;font-size:14px;color:var(--text-primary)">${a.name}</div>
-        <div style="font-size:12px;color:var(--text-muted)">${a.position||'—'} · ${a.sport||'—'}</div>
-      </div>
-      ${a.readiness>=80
-        ? `<span class="alert-badge alert-ready">Ready</span>`
-        : a.readiness<60
-        ? `<span class="alert-badge alert-caution">Caution</span>`
-        : `<span class="alert-badge" style="background:var(--g200);color:var(--g600)">Moderate</span>`}
+  const athleteCards = roster.map(a => `
+  <div class="coach-team-card" style="cursor:pointer" data-id="${a.id}">
+    <div class="athlete-avatar">${a.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13.5px;color:var(--text-primary)">${a.name}</div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">${a.position} · ${SPORT_EMOJI[a.sport]||''} ${a.sport} · Streak 🔥${a.streak}d</div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
-      <div style="text-align:center;padding:8px;background:var(--surface-2);border-radius:8px">
-        <div style="color:var(--text-muted);margin-bottom:2px">Readiness</div>
-        <div style="font-weight:700;font-size:16px;color:${a.readiness>=80?'var(--piq-green)':a.readiness<60?'#ef4444':'#f59e0b'}">${a.readiness}%</div>
-      </div>
-      <div style="text-align:center;padding:8px;background:var(--surface-2);border-radius:8px">
-        <div style="color:var(--text-muted);margin-bottom:2px">PIQ Score</div>
-        <div style="font-weight:700;font-size:16px;color:var(--text-primary)">${a.piq}</div>
-      </div>
-      <div style="text-align:center;padding:8px;background:var(--surface-2);border-radius:8px">
-        <div style="color:var(--text-muted);margin-bottom:2px">Streak</div>
-        <div style="font-weight:700;font-size:16px">🔥 ${a.streak}d</div>
-      </div>
+    <div style="text-align:right">
+      <div class="athlete-piq">${a.piq}</div>
+      <div style="font-size:10px;color:var(--text-muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px">PIQ</div>
+    </div>
+    <div class="athlete-status">
+      ${a.readiness >= 80
+        ? `<span class="alert-badge alert-ready">✓ Ready ${a.readiness}%</span>`
+        : a.readiness < 60
+        ? `<span class="alert-badge alert-caution">⚠ Caution ${a.readiness}%</span>`
+        : `<span class="alert-badge" style="background:var(--g200);color:var(--g600)">${a.readiness}%</span>`}
     </div>
   </div>`).join('');
 
@@ -44,12 +34,45 @@ export function renderCoachRoster() {
   ${buildSidebar('coach','coach/roster')}
   <main class="page-main">
     <div class="page-header">
-      <h1>Roster Management</h1>
-      <p>${roster.length} athletes · Individual performance profiles</p>
+      <h1>Team <span>Roster</span></h1>
+      <p>${roster.length} athletes · ${ready.length} ready · ${caution.length} caution</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
-      ${cards}
+
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-lbl">Total Athletes</div><div class="kpi-val b">${roster.length}</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Ready</div><div class="kpi-val g">${ready.length}</div><div class="kpi-chg">≥80%</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Moderate</div><div class="kpi-val">${full.length}</div><div class="kpi-chg">60–79%</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Caution</div><div class="kpi-val" style="color:#d97706">${caution.length}</div><div class="kpi-chg">&lt;60%</div></div>
     </div>
+
+    <!-- Filters -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="tpl-sport-btn active" id="rf-all" data-filter="all">All (${roster.length})</button>
+      <button class="tpl-sport-btn" data-filter="ready">✅ Ready (${ready.length})</button>
+      <button class="tpl-sport-btn" data-filter="caution">⚠ Caution (${caution.length})</button>
+    </div>
+
+    <div class="panel" id="roster-list">${athleteCards}</div>
   </main>
 </div>`;
 }
+
+document.addEventListener('piq:viewRendered', () => {
+  // Filter buttons
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const f = btn.dataset.filter;
+      document.querySelectorAll('#roster-list .coach-team-card').forEach(card => {
+        const id = +card.dataset.id;
+        const a  = getRoster().find(x => x.id === id);
+        if (!a) return;
+        const show = f === 'all'
+          || (f === 'ready' && a.readiness >= 80)
+          || (f === 'caution' && a.readiness < 60);
+        card.style.display = show ? 'flex' : 'none';
+      });
+    });
+  });
+});
