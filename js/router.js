@@ -45,7 +45,8 @@ export const ROUTES = {
   PLAYER_MESSAGES:  'player/messages',
   PLAYER_CALENDAR:  'player/calendar',
   PLAYER_RECRUITING:'player/recruiting',
-  PLAYER_SETTINGS:  'player/settings',
+  PLAYER_SETTINGS:   'player/settings',
+  PLAYER_NUTRITION:  'player/nutrition',
 
   // Parent workspace
   PARENT_HOME:     'parent/home',
@@ -80,6 +81,7 @@ export const ROUTES = {
   SOLO_GOALS:        'solo/goals',
   SOLO_SUBSCRIPTION: 'solo/subscription',
   SOLO_SETTINGS:     'solo/settings',
+  SOLO_NUTRITION:    'solo/nutrition',
 };
 
 // ── ROLE DEFAULT ROUTES ──────────────────────────────────────

@@ -151,6 +151,7 @@ const VIEW_MAP = {
   [ROUTES.PLAYER_CALENDAR]:  ['./views/player/calendar.js',       'renderPlayerCalendar'],
   [ROUTES.PLAYER_RECRUITING]:['./views/player/recruiting.js',     'renderPlayerRecruiting'],
   [ROUTES.PLAYER_SETTINGS]:  ['./views/player/settings.js',       'renderPlayerSettings'],
+  [ROUTES.PLAYER_NUTRITION]: ['./views/player/nutrition.js',     'renderPlayerNutrition'],
   // Parent
   [ROUTES.PARENT_HOME]:      ['./views/parent/home.js',           'renderParentHome'],
   [ROUTES.PARENT_CHILD]:     ['./views/parent/childOverview.js',  'renderParentChild'],
@@ -182,6 +183,7 @@ const VIEW_MAP = {
   [ROUTES.SOLO_GOALS]:       ['./views/solo/goals.js',            'renderSoloGoals'],
   [ROUTES.SOLO_SUBSCRIPTION]:['./views/solo/subscription.js',    'renderSoloSubscription'],
   [ROUTES.SOLO_SETTINGS]:    ['./views/solo/settings.js',         'renderSoloSettings'],
+  [ROUTES.SOLO_NUTRITION]:   ['./views/solo/nutrition.js',       'renderSoloNutrition'],
 };
 
 async function renderRoute(route) {
