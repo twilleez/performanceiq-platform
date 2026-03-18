@@ -1,62 +1,51 @@
-/**
- * Coach Calendar View — training schedule
- */
 import { buildSidebar } from '../../components/nav.js';
 
 export function renderCoachCalendar() {
   const today = new Date();
+  const days  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const month = today.toLocaleDateString('en-US',{month:'long',year:'numeric'});
-  const dayOfWeek = today.getDay();
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() - dayOfWeek);
 
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const weekDays = days.map((d,i) => {
-    const date = new Date(startOfWeek);
-    date.setDate(startOfWeek.getDate() + i);
-    const isToday = date.toDateString() === today.toDateString();
-    return `
-    <div style="flex:1;text-align:center;padding:10px 4px;border-radius:10px;background:${isToday?'var(--piq-green)':'transparent'}">
-      <div style="font-size:11px;color:${isToday?'#0d1b3e':'var(--text-muted)'};margin-bottom:4px">${d}</div>
-      <div style="font-size:16px;font-weight:700;color:${isToday?'#0d1b3e':'var(--text-primary)'}">${date.getDate()}</div>
-    </div>`;
-  }).join('');
+  // Build mini calendar for current month
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).getDay();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+  let calCells = Array(firstDay).fill('').concat([...Array(daysInMonth)].map((_,i)=>i+1));
+  while (calCells.length % 7 !== 0) calCells.push('');
 
-  const events = [
-    { day: 'Monday', time: '7:00 AM', title: 'Morning Conditioning', type: 'practice', color: '#3b82f6' },
-    { day: 'Monday', time: '3:30 PM', title: 'Skill Development Session', type: 'practice', color: '#3b82f6' },
-    { day: 'Tuesday', time: '7:00 AM', title: 'Strength & Power Block', type: 'strength', color: '#22c955' },
-    { day: 'Wednesday', time: '3:30 PM', title: 'Scrimmage — Full Team', type: 'game', color: '#f59e0b' },
-    { day: 'Thursday', time: '7:00 AM', title: 'Recovery & Mobility', type: 'recovery', color: '#a78bfa' },
-    { day: 'Friday', time: '3:30 PM', title: 'Pre-Game Walkthrough', type: 'practice', color: '#3b82f6' },
-    { day: 'Saturday', time: '10:00 AM', title: 'Game Day', type: 'game', color: '#f59e0b' },
+  const scheduleItems = [
+    { time:'9:00 AM', title:'Morning Weights', desc:'Full team · Strength & Conditioning', color:'var(--piq-green)' },
+    { time:'11:30 AM', title:'Film Session', desc:'Game prep · Opponent scouting', color:'var(--piq-blue)' },
+    { time:'2:00 PM', title:'Practice', desc:'Skill work + 5v5 scrimmage · 90 min', color:'var(--piq-green)' },
+    { time:'5:00 PM', title:'Recovery', desc:'Ice bath, stretching, optional', color:'var(--g400)' },
   ];
-
-  const eventList = events.map(e => `
-  <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
-    <div style="width:4px;height:40px;border-radius:2px;background:${e.color};flex-shrink:0"></div>
-    <div style="flex:1">
-      <div style="font-weight:600;font-size:13.5px;color:var(--text-primary)">${e.title}</div>
-      <div style="font-size:12px;color:var(--text-muted)">${e.day} · ${e.time}</div>
-    </div>
-    <span style="font-size:11px;padding:3px 8px;border-radius:20px;background:${e.color}22;color:${e.color};font-weight:600;text-transform:uppercase">${e.type}</span>
-  </div>`).join('');
 
   return `
 <div class="view-with-sidebar">
   ${buildSidebar('coach','coach/calendar')}
   <main class="page-main">
-    <div class="page-header">
-      <h1>Team Calendar</h1>
-      <p>${month}</p>
-    </div>
-    <div class="panel" style="margin-bottom:16px">
-      <div class="panel-title">This Week</div>
-      <div style="display:flex;gap:4px;margin-top:8px">${weekDays}</div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Upcoming Events</div>
-      ${eventList}
+    <div class="page-header"><h1>Team <span>Calendar</span></h1><p>${month}</p></div>
+    <div class="panels-2">
+      <div class="panel">
+        <div class="panel-title">Today's Schedule</div>
+        ${scheduleItems.map(s=>`
+        <div class="sched-row">
+          <span class="sched-time">${s.time}</span>
+          <div style="width:10px;height:10px;border-radius:50%;background:${s.color};flex-shrink:0;margin-top:4px"></div>
+          <div><div class="sched-title">${s.title}</div><div class="sched-desc">${s.desc}</div></div>
+        </div>`).join('')}
+      </div>
+      <div class="panel">
+        <div class="panel-title">${month}</div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center">
+          ${days.map(d=>`<div style="font-size:11px;font-weight:700;color:var(--text-muted);padding:4px">${d}</div>`).join('')}
+          ${calCells.map(d => d === '' ? '<div></div>' : `
+          <div style="padding:6px 4px;border-radius:6px;font-size:12.5px;font-weight:${d===today.getDate()?'700':'400'};
+            background:${d===today.getDate()?'var(--piq-green)':'transparent'};
+            color:${d===today.getDate()?'var(--piq-navy)':'var(--text-primary)'};cursor:pointer">${d}</div>`).join('')}
+        </div>
+        <div style="margin-top:16px;font-size:12.5px;color:var(--text-muted)">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--piq-green);margin-right:5px"></span>Today
+        </div>
+      </div>
     </div>
   </main>
 </div>`;

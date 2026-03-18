@@ -1,73 +1,44 @@
-/**
- * Coach Team View — full roster with readiness overview
- */
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster }    from '../../state/state.js';
-
-const SPORT_EMOJI = {basketball:'🏀',football:'🏈',soccer:'⚽',baseball:'⚾',volleyball:'🏐',track:'🏃'};
+import { SPORT_EMOJI }  from '../../data/exerciseLibrary.js';
 
 export function renderCoachTeam() {
   const roster = getRoster();
-  const ready    = roster.filter(a => a.readiness >= 80).length;
-  const caution  = roster.filter(a => a.readiness < 60).length;
-  const moderate = roster.length - ready - caution;
-
-  const rows = roster.map(a => `
-  <tr>
-    <td style="padding:10px 12px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:34px;height:34px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:16px">${SPORT_EMOJI[a.sport]||'🏅'}</div>
-        <div>
-          <div style="font-weight:600;font-size:13.5px;color:var(--text-primary)">${a.name}</div>
-          <div style="font-size:11.5px;color:var(--text-muted)">${a.position||'—'} · ${a.sport||'—'}</div>
-        </div>
-      </div>
-    </td>
-    <td style="padding:10px 12px;text-align:center">
-      <span style="font-weight:700;font-size:15px;color:${a.readiness>=80?'var(--piq-green)':a.readiness<60?'#ef4444':'#f59e0b'}">${a.readiness}%</span>
-    </td>
-    <td style="padding:10px 12px;text-align:center">
-      <span style="font-weight:700;font-size:15px;color:var(--text-primary)">${a.piq}</span>
-    </td>
-    <td style="padding:10px 12px;text-align:center">🔥 ${a.streak}d</td>
-    <td style="padding:10px 12px;text-align:center">
-      ${a.readiness>=80
-        ? `<span class="alert-badge alert-ready">Ready</span>`
-        : a.readiness<60
-        ? `<span class="alert-badge alert-caution">Caution</span>`
-        : `<span class="alert-badge" style="background:var(--g200);color:var(--g600)">Moderate</span>`}
-    </td>
-  </tr>`).join('');
-
   return `
 <div class="view-with-sidebar">
   ${buildSidebar('coach','coach/team')}
   <main class="page-main">
     <div class="page-header">
-      <h1>Team Overview</h1>
-      <p>Full roster readiness and performance snapshot</p>
+      <h1>My <span>Team</span></h1>
+      <p>${roster.length} athletes · Basketball</p>
     </div>
-    <div class="kpi-row">
-      <div class="kpi-card"><div class="kpi-lbl">Total Athletes</div><div class="kpi-val b">${roster.length}</div><div class="kpi-chg">On roster</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Ready</div><div class="kpi-val g">${ready}</div><div class="kpi-chg">≥80% readiness</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Moderate</div><div class="kpi-val" style="color:#f59e0b">${moderate}</div><div class="kpi-chg">60–79%</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Caution</div><div class="kpi-val" style="color:#ef4444">${caution}</div><div class="kpi-chg">&lt;60% readiness</div></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Roster — Readiness Today</div>
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="border-bottom:1px solid var(--border)">
-              <th style="padding:8px 12px;text-align:left;font-size:11.5px;color:var(--text-muted);font-weight:600">ATHLETE</th>
-              <th style="padding:8px 12px;text-align:center;font-size:11.5px;color:var(--text-muted);font-weight:600">READINESS</th>
-              <th style="padding:8px 12px;text-align:center;font-size:11.5px;color:var(--text-muted);font-weight:600">PIQ</th>
-              <th style="padding:8px 12px;text-align:center;font-size:11.5px;color:var(--text-muted);font-weight:600">STREAK</th>
-              <th style="padding:8px 12px;text-align:center;font-size:11.5px;color:var(--text-muted);font-weight:600">STATUS</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+    <div class="panels-2">
+      <div class="panel">
+        <div class="panel-title">Roster Overview</div>
+        ${roster.map(a=>`
+        <div class="athlete-row">
+          <div class="athlete-avatar">${a.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+          <div class="athlete-info">
+            <div class="athlete-name">${a.name}</div>
+            <div class="athlete-meta">${a.position} · ${SPORT_EMOJI[a.sport]} · PIQ ${a.piq}</div>
+          </div>
+          <div>${a.readiness>=80?`<span class="alert-badge alert-ready">Ready</span>`:a.readiness<60?`<span class="alert-badge alert-caution">⚠ Caution</span>`:`<span class="alert-badge" style="background:var(--g200);color:var(--g600)">${a.readiness}%</span>`}</div>
+        </div>`).join('')}
+      </div>
+      <div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-title">Quick Actions</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn-primary" style="font-size:13px" data-route="coach/program">📐 Assign Workout</button>
+            <button class="btn-draft" style="font-size:13px" data-route="coach/roster">📋 Full Roster</button>
+            <button class="btn-draft" style="font-size:13px" data-route="coach/readiness">💚 Readiness Report</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Team Stats</div>
+          <div class="kpi-card" style="margin-bottom:10px"><div class="kpi-lbl">Avg PIQ</div><div class="kpi-val g">${Math.round(roster.reduce((s,a)=>s+a.piq,0)/roster.length)}</div></div>
+          <div class="kpi-card"><div class="kpi-lbl">Avg Readiness</div><div class="kpi-val">${Math.round(roster.reduce((s,a)=>s+a.readiness,0)/roster.length)}%</div></div>
+        </div>
       </div>
     </div>
   </main>
