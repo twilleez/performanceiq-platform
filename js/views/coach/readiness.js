@@ -1,52 +1,88 @@
-/**
- * Coach Readiness View — team readiness monitoring
- */
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster }    from '../../state/state.js';
+import { SPORT_EMOJI }  from '../../data/exerciseLibrary.js';
 
 export function renderCoachReadiness() {
   const roster = getRoster();
-  const sorted = [...roster].sort((a,b) => b.readiness - a.readiness);
   const avgRdy = Math.round(roster.reduce((s,a)=>s+a.readiness,0)/roster.length);
+  const sorted = [...roster].sort((a,b) => b.readiness - a.readiness);
 
-  const bars = sorted.map(a => {
-    const color = a.readiness>=80?'var(--piq-green)':a.readiness<60?'#ef4444':'#f59e0b';
-    return `
-    <div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-        <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${a.name}</span>
-        <span style="font-size:13px;font-weight:700;color:${color}">${a.readiness}%</span>
-      </div>
-      <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden">
-        <div style="height:100%;width:${a.readiness}%;background:${color};border-radius:4px;transition:width .4s"></div>
-      </div>
-    </div>`;
-  }).join('');
-
-  const ready    = roster.filter(a=>a.readiness>=80).length;
-  const moderate = roster.filter(a=>a.readiness>=60&&a.readiness<80).length;
-  const caution  = roster.filter(a=>a.readiness<60).length;
+  // Readiness distribution
+  const bands = [
+    { label:'90–100', color:'#22c955', count: roster.filter(a=>a.readiness>=90).length },
+    { label:'80–89',  color:'#4ade80', count: roster.filter(a=>a.readiness>=80&&a.readiness<90).length },
+    { label:'70–79',  color:'#f59e0b', count: roster.filter(a=>a.readiness>=70&&a.readiness<80).length },
+    { label:'60–69',  color:'#fb923c', count: roster.filter(a=>a.readiness>=60&&a.readiness<70).length },
+    { label:'<60',    color:'#ef4444', count: roster.filter(a=>a.readiness<60).length },
+  ];
+  const maxBand = Math.max(...bands.map(b=>b.count), 1);
 
   return `
 <div class="view-with-sidebar">
   ${buildSidebar('coach','coach/readiness')}
   <main class="page-main">
     <div class="page-header">
-      <h1>Team Readiness</h1>
-      <p>Daily readiness index for all athletes</p>
+      <h1>Team <span>Readiness</span></h1>
+      <p>Today's training capacity for every athlete</p>
     </div>
-    <div class="kpi-row">
-      <div class="kpi-card"><div class="kpi-lbl">Team Average</div><div class="kpi-val" style="color:${avgRdy>=80?'var(--piq-green)':avgRdy<60?'#ef4444':'#f59e0b'}">${avgRdy}%</div><div class="kpi-chg">Readiness index</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Ready</div><div class="kpi-val g">${ready}</div><div class="kpi-chg">≥80%</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Moderate</div><div class="kpi-val" style="color:#f59e0b">${moderate}</div><div class="kpi-chg">60–79%</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Caution</div><div class="kpi-val" style="color:#ef4444">${caution}</div><div class="kpi-chg">&lt;60%</div></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Individual Readiness Scores</div>
-      <div style="margin-top:8px">${bars}</div>
-      <div style="margin-top:16px;padding:12px;background:var(--surface-2);border-radius:10px;font-size:12.5px;color:var(--text-muted)">
-        <strong style="color:var(--text-primary)">Readiness Index</strong> is calculated from recent RPE trends, workout compliance, and training load. Scores ≥80% indicate the athlete is primed for high-intensity work; scores &lt;60% suggest prioritising recovery.
+
+    <!-- Team avg ring + dist -->
+    <div class="panels-2" style="margin-bottom:20px">
+      <div class="panel">
+        <div class="panel-title">Team Average</div>
+        <div class="ring-wrap">
+          <svg width="110" height="110" viewBox="0 0 110 110">
+            <circle cx="55" cy="55" r="46" fill="none" stroke="var(--border)" stroke-width="9"/>
+            <circle cx="55" cy="55" r="46" fill="none"
+              stroke="${avgRdy>=80?'#22c955':avgRdy>=60?'#f59e0b':'#ef4444'}"
+              stroke-width="9" stroke-dasharray="289"
+              stroke-dashoffset="${Math.round(289-(avgRdy/100)*289)}"
+              stroke-linecap="round" transform="rotate(-90 55 55)"/>
+          </svg>
+          <div class="ring-num" style="color:${avgRdy>=80?'var(--piq-green-dark)':avgRdy>=60?'#d97706':'#ef4444'}">${avgRdy}</div>
+          <div class="ring-lbl">Team Avg Readiness</div>
+        </div>
+        <p class="readiness-explain" style="text-align:center">
+          ${avgRdy>=80?'Team is primed — great day for high-intensity work.':avgRdy>=60?'Moderate readiness — consider a technique-focused session.':'Low team readiness — recovery or light work recommended.'}
+        </p>
       </div>
+      <div class="panel">
+        <div class="panel-title">Readiness Distribution</div>
+        ${bands.map(b => `
+        <div class="chart-bar-row">
+          <span class="chart-bar-lbl" style="font-size:11.5px">${b.label}</span>
+          <div class="chart-bar-wrap">
+            <div class="chart-bar-fill" style="width:${b.count?Math.round(b.count/maxBand*100):0}%;background:${b.color}">
+              ${b.count > 0 ? `<span class="chart-bar-val">${b.count}</span>` : ''}
+            </div>
+          </div>
+          <span style="font-size:12px;color:var(--text-muted);width:14px;text-align:right">${b.count}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Full roster readiness -->
+    <div class="panel">
+      <div class="panel-title">Individual Readiness — Today</div>
+      ${sorted.map(a => `
+      <div class="athlete-row">
+        <div class="athlete-avatar">${a.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+        <div class="athlete-info">
+          <div class="athlete-name">${a.name}</div>
+          <div class="athlete-meta">${a.position} · PIQ ${a.piq} · Streak 🔥${a.streak}d</div>
+        </div>
+        <div style="flex:1;max-width:200px;margin:0 16px">
+          <div class="prog-bg">
+            <div class="prog-fill" style="width:${a.readiness}%;background:${a.readiness>=80?'var(--piq-green-dark)':a.readiness>=60?'#f59e0b':'#ef4444'}"></div>
+          </div>
+        </div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;min-width:36px;text-align:right;color:${a.readiness>=80?'var(--piq-green-dark)':a.readiness>=60?'#d97706':'#ef4444'}">${a.readiness}%</div>
+        ${a.readiness >= 80
+          ? `<span class="alert-badge alert-ready" style="margin-left:8px">Ready</span>`
+          : a.readiness < 60
+          ? `<span class="alert-badge alert-caution" style="margin-left:8px">Caution</span>`
+          : `<span class="alert-badge" style="margin-left:8px;background:var(--g200);color:var(--g600)">Moderate</span>`}
+      </div>`).join('')}
     </div>
   </main>
 </div>`;
