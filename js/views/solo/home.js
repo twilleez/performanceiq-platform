@@ -1,78 +1,182 @@
 /**
- * Solo Home Dashboard
+ * Solo Home Dashboard v2
+ * Designed for the independent athlete.
+ * Full PIQ Score, readiness, today's workout, nutrition targets, and mindset.
  */
-import { buildSidebar }              from '../../components/nav.js';
-import { getCurrentUser }            from '../../core/auth.js';
-import { getReadinessScore, getReadinessRingOffset,
-         getReadinessColor, getReadinessExplain,
-         getPIQScore, getWorkoutCount, getStreak } from '../../state/selectors.js';
+import { buildSidebar }          from '../../components/nav.js';
+import { getCurrentUser, getCurrentRole } from '../../core/auth.js';
+import { getAthleteProfile, getWorkoutLog } from '../../state/state.js';
+import { getPIQScore, getReadinessScore, getReadinessColor, getReadinessRingOffset,
+         getStreak, getScoreBreakdown, getMacroTargets } from '../../state/selectors.js';
+import { generateTodayWorkout }  from '../../data/workoutEngine.js';
 
 export function renderSoloHome() {
-  const user      = getCurrentUser();
-  const fname     = user?.name?.split(' ')[0] || 'Athlete';
-  const date      = new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const user     = getCurrentUser() || {};
+  const role     = 'solo';
+  const fname    = user.name?.split(' ')[0] || 'Athlete';
+  const profile  = getAthleteProfile();
+  const piq      = getPIQScore();
   const readiness = getReadinessScore();
-  const piq       = getPIQScore();
-  const sessions  = getWorkoutCount();
-  const streak    = getStreak();
-  const offset    = getReadinessRingOffset(readiness);
-  const color     = getReadinessColor(readiness);
-  const explain   = getReadinessExplain(readiness);
+  const rColor   = getReadinessColor(readiness);
+  const offset   = getReadinessRingOffset(readiness);
+  const streak   = getStreak();
+  const sb       = getScoreBreakdown();
+  const log      = getWorkoutLog();
+  const dow      = new Date().getDay();
+  const workout  = generateTodayWorkout(
+    profile.sport || 'basketball',
+    profile.compPhase || 'off-season',
+    profile.trainingLevel || 'intermediate',
+    readiness, dow
+  );
+  const macros   = getMacroTargets();
+  const hour     = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const profilePct = sb.profile?.raw || 0;
 
   return `
 <div class="view-with-sidebar">
-  ${buildSidebar('solo','solo/home')}
+  ${buildSidebar(role, role + '/home')}
   <main class="page-main">
+
     <div class="page-header">
-      <h1>Welcome back, <span>${fname}</span> 👋</h1>
-      <p>${date} · ${user?.sport||'Solo'} · Solo Training</p>
+      <h1>${greeting}, <span>${fname}</span></h1>
+      <p>${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} · ${profile.sport ? profile.sport.charAt(0).toUpperCase()+profile.sport.slice(1) : 'Solo'} Training</p>
     </div>
 
-    <div class="kpi-row">
-      <div class="kpi-card"><div class="kpi-lbl">PIQ Score</div><div class="kpi-val g">${piq}</div><div class="kpi-chg">↑ Training Intelligence</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Readiness</div><div class="kpi-val" style="color:${color}">${readiness}%</div><div class="kpi-chg">${readiness>=80?'↑ High':readiness>=60?'→ Moderate':'↓ Low'}</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Sessions</div><div class="kpi-val b">${sessions}</div><div class="kpi-chg">Logged total</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Streak</div><div class="kpi-val">🔥 ${streak}</div><div class="kpi-chg">Days active</div></div>
+    ${profilePct < 50 ? `
+    <div style="background:#f59e0b14;border:1px solid #f59e0b40;border-radius:12px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px;cursor:pointer" data-route="solo/settings">
+      <span style="font-size:20px">⚠️</span>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px;color:#f59e0b">Complete your profile for an accurate PIQ Score</div>
+        <div style="font-size:12px;color:var(--text-muted)">Profile is ${profilePct}% complete. Add your weight, height, and training details to unlock personalized programming and accurate macro targets.</div>
+      </div>
+      <span style="color:var(--text-muted);font-size:18px">→</span>
+    </div>` : ''}
+
+    <!-- KPI Row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+      ${_kpi('PIQ Score', piq, sb.tier, '#22c955', '🏅', 'solo/score')}
+      ${_kpi('Readiness', readiness, readiness>=80?'High':readiness>=60?'Moderate':'Low', rColor, '💚', 'solo/readiness')}
+      ${_kpi('Streak', streak + ' days', streak>=7?'On fire!':streak>=3?'Building':'Keep going', '#f59e0b', '🔥', 'solo/progress')}
+      ${_kpi('Sessions', log.length, 'Total logged', '#60a5fa', '📊', 'solo/progress')}
     </div>
 
-    <div class="panels-2">
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px">
       <div>
-        <div class="panel" style="margin-bottom:16px">
-          <div class="panel-title">Today's Plan</div>
-          <div class="w-row"><div class="w-icon">⚡</div><div class="w-info"><div class="w-name">Speed & Agility Circuit</div><div class="w-meta">35 min · High · ${user?.sport||'Track'}</div></div><span class="w-badge">NOW</span></div>
-          <div class="w-row"><div class="w-icon">💪</div><div class="w-info"><div class="w-name">Lower Body Strength</div><div class="w-meta">40 min · Moderate</div></div><span class="w-badge gray">PM</span></div>
-          <div style="margin-top:14px;display:flex;gap:10px">
-            <button class="btn-primary" style="font-size:12.5px;padding:10px 18px" data-route="solo/today">Start</button>
-            <button class="btn-draft"   style="font-size:12.5px;padding:10px 18px" data-route="solo/builder">Builder</button>
+        <!-- Today's Workout Preview -->
+        <div class="panel" style="margin-bottom:20px;background:linear-gradient(135deg,#0d1b3e 0%,#1a2f5e 100%);border:1px solid #22c95530">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--piq-green);letter-spacing:.08em">TODAY'S WORKOUT</div>
+              <div style="font-size:17px;font-weight:800;color:#fff;margin-top:4px">${workout.title}</div>
+              <div style="font-size:12px;color:#a0b4d0;margin-top:2px">Est. ${workout.estimatedDuration} min · RPE ${workout.rpeTarget || '6-8'} · ${workout.badge?.label || 'Full Intensity'}</div>
+            </div>
+            <span style="padding:5px 12px;border-radius:20px;background:${workout.badge?.color || '#22c955'}22;color:${workout.badge?.color || '#22c955'};font-size:11px;font-weight:700;border:1px solid ${workout.badge?.color || '#22c955'}40;flex-shrink:0">${workout.badge?.label || 'Full Intensity'}</span>
+          </div>
+          ${workout.mindsetNote ? `
+          <div style="padding:10px 12px;background:#ffffff08;border-radius:8px;border-left:3px solid var(--piq-green);margin-bottom:14px">
+            <div style="font-size:11px;color:var(--piq-green);font-weight:700;margin-bottom:2px">MINDSET</div>
+            <div style="font-size:12px;color:#c8d8e8;font-style:italic">"${workout.mindsetNote}"</div>
+          </div>` : ''}
+          <div style="display:flex;gap:8px">
+            <button class="btn-primary" style="flex:1;font-size:13px;padding:11px" data-route="solo/today">Start Workout</button>
+            <button class="btn-draft" style="padding:11px 16px;font-size:13px" data-route="solo/readiness">Check In</button>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-title">Quick Access</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <button class="btn-draft" style="text-align:left;padding:10px 14px" data-route="solo/score">🏅 View PIQ Score</button>
-            <button class="btn-draft" style="text-align:left;padding:10px 14px" data-route="solo/progress">📈 Progress Charts</button>
-            <button class="btn-draft" style="text-align:left;padding:10px 14px" data-route="solo/goals">🎯 My Goals</button>
-            <button class="btn-draft" style="text-align:left;padding:10px 14px" data-route="solo/library">📚 Exercise Library</button>
-          </div>
+
+        <!-- PIQ Score Breakdown -->
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-title">PIQ Score Breakdown</div>
+          <div style="font-size:12px;color:var(--text-muted);margin:6px 0 14px">Your ${piq} PIQ Score is calculated from 5 weighted pillars:</div>
+          ${[
+            [sb.consistency, '🏋️'],
+            [sb.readiness,   '💚'],
+            [sb.compliance,  '✅'],
+            [sb.load,        '⚖️'],
+            [sb.profile,     '👤'],
+          ].map(([pillar, icon]) => pillar ? `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${icon} ${pillar.label}</span>
+              <span style="font-size:12px;font-weight:700;color:var(--piq-green)">${pillar.raw}/100 <span style="color:var(--text-muted);font-weight:400">(${Math.round(pillar.weight*100)}%)</span></span>
+            </div>
+            <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pillar.raw}%;background:${pillar.raw>=80?'#22c955':pillar.raw>=60?'#f59e0b':'#ef4444'};border-radius:3px;transition:width 600ms ease"></div>
+            </div>
+          </div>` : '').join('')}
+          <button class="btn-draft" style="width:100%;margin-top:8px;font-size:12px" data-route="solo/score">View Full Score Report</button>
         </div>
       </div>
-      <div class="panel">
-        <div class="panel-title">Readiness Engine</div>
-        <div class="ring-wrap">
-          <svg width="110" height="110" viewBox="0 0 110 110">
-            <circle cx="55" cy="55" r="46" fill="none" stroke="var(--border)" stroke-width="9"/>
-            <circle cx="55" cy="55" r="46" fill="none" stroke="${color}" stroke-width="9"
-              stroke-dasharray="289" stroke-dashoffset="${offset}" stroke-linecap="round" transform="rotate(-90 55 55)"/>
+
+      <div>
+        <!-- Readiness Ring -->
+        <div class="panel" style="margin-bottom:16px;text-align:center">
+          <div class="panel-title">Readiness</div>
+          <svg width="120" height="120" viewBox="0 0 120 120" style="margin:12px auto;display:block">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="var(--surface-2)" stroke-width="10"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="${rColor}" stroke-width="10"
+              stroke-dasharray="289" stroke-dashoffset="${offset}"
+              stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 800ms ease"/>
+            <text x="60" y="56" text-anchor="middle" font-size="22" font-weight="900" fill="${rColor}">${readiness}</text>
+            <text x="60" y="72" text-anchor="middle" font-size="10" fill="var(--text-muted)">READINESS</text>
           </svg>
-          <div class="ring-num" style="color:${color}">${readiness}</div>
-          <div class="ring-lbl">Readiness Score</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${readiness>=80?'High — Train hard today':readiness>=60?'Moderate — Quality focus':'Low — Recovery day'}</div>
+          <button class="btn-draft" style="width:100%;font-size:12px" data-route="solo/readiness">Update Check-In</button>
         </div>
-        <p class="readiness-explain">${explain}</p>
-        <div class="rf-row"><span class="rf-lbl">Sleep</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.min(99,readiness+6)}%"></div></div><span class="rf-num">${Math.min(99,readiness+6)}</span></div>
-        <div class="rf-row"><span class="rf-lbl">Load</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.max(40,readiness-4)}%"></div></div><span class="rf-num">${Math.max(40,readiness-4)}</span></div>
-        <div class="rf-row"><span class="rf-lbl">Recovery</span><div class="rf-bar-bg"><div class="rf-bar-fill" style="width:${Math.min(98,readiness+3)}%"></div></div><span class="rf-num">${Math.min(98,readiness+3)}</span></div>
+
+        <!-- Nutrition Targets -->
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-title">Today's Nutrition Targets</div>
+          <div style="font-size:11px;color:var(--text-muted);margin:4px 0 12px">Based on your body weight and training phase (ISSN guidelines)</div>
+          ${[
+            { label: 'Calories', val: macros.cal, unit: 'kcal', color: '#f59e0b' },
+            { label: 'Protein',  val: macros.pro, unit: 'g',    color: '#22c955' },
+            { label: 'Carbs',    val: macros.cho, unit: 'g',    color: '#60a5fa' },
+            { label: 'Fat',      val: macros.fat, unit: 'g',    color: '#a78bfa' },
+          ].map(m => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:12px;color:var(--text-muted)">${m.label}</span>
+            <span style="font-size:13px;font-weight:700;color:${m.color}">${m.val} ${m.unit}</span>
+          </div>`).join('')}
+          <button class="btn-draft" style="width:100%;margin-top:10px;font-size:12px" data-route="solo/nutrition">Open Nutrition Hub</button>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="panel">
+          <div class="panel-title">Quick Actions</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+            ${[
+              ['⚡', 'Start Today\'s Workout', 'solo/today'],
+              ['💚', 'Daily Check-In', 'solo/readiness'],
+              ['🥗', 'Nutrition Hub', 'solo/nutrition'],
+              ['📐', 'Build Workout', 'solo/builder'],
+              ['📈', 'View Progress', 'solo/progress'],
+              ['🏅', 'PIQ Score Report', 'solo/score'],
+              ['⚙️', 'Update Profile', 'solo/settings'],
+            ].map(([icon, label, route]) => `
+            <button class="btn-draft" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;font-size:13px" data-route="${route}">
+              <span style="font-size:16px">${icon}</span> ${label}
+            </button>`).join('')}
+          </div>
+        </div>
       </div>
     </div>
+
   </main>
+</div>`;
+}
+
+function _kpi(label, value, sub, color, icon, route) {
+  return `
+<div class="panel" style="cursor:pointer;border-bottom:3px solid ${color}" data-route="${route}">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between">
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">${label}</div>
+      <div style="font-size:24px;font-weight:900;color:${color};margin:4px 0 2px">${value}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${sub}</div>
+    </div>
+    <span style="font-size:22px">${icon}</span>
+  </div>
 </div>`;
 }
