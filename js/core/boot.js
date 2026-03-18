@@ -1,7 +1,7 @@
 /**
  * PerformanceIQ Boot
- * Initial load, state hydration, PWA hooks.
- * Called once by app.js before anything renders.
+ * initAuth is now async (Supabase session restore).
+ * Everything else unchanged.
  */
 
 import { initTheme }  from './theme.js';
@@ -14,24 +14,26 @@ export async function boot() {
   if (_booted) return;
   _booted = true;
 
-  // 1. Theme — apply before any paint to avoid flash
+  // 1. Theme first — prevents flash before any auth check
   initTheme();
 
-  // 2. Auth session — restore from localStorage
-  initAuth();
+  // 2. Auth — now async, waits for Supabase session restore
+  //    Demo sessions resolve instantly from localStorage.
+  //    Real sessions do one network call to Supabase.
+  await initAuth();
 
   // 3. App state — hydrate from localStorage
   loadState();
 
   // 4. PWA service worker (non-blocking)
-  registerSW();
+  _registerSW();
 }
 
-function registerSW() {
+function _registerSW() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {
-        // SW optional — no-op in dev
+      navigator.serviceWorker.register('/performanceiq-platform/sw.js').catch(() => {
+        // SW is optional — no-op in dev or when file missing
       });
     });
   }
