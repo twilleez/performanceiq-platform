@@ -1,71 +1,58 @@
-/**
- * Solo Goals View — personal training goals
- */
 import { buildSidebar }   from '../../components/nav.js';
-import { getCurrentUser } from '../../core/auth.js';
-import { getState }       from '../../state/state.js';
-import { getPIQScore, getStreak, getWorkoutCount } from '../../state/selectors.js';
+import { getAthleteProfile, patchProfile } from '../../state/state.js';
+import { showToast }      from '../../core/notifications.js';
 
 export function renderSoloGoals() {
-  const user     = getCurrentUser();
-  const piq      = getPIQScore();
-  const streak   = getStreak();
-  const sessions = getWorkoutCount();
-  const goals    = getState().athleteProfile?.goals || [];
-
-  const defaultGoals = [
-    { title: 'Log 20 Sessions', target: 20, current: sessions, unit: 'sessions', icon: '💪' },
-    { title: 'Reach 7-Day Streak', target: 7, current: streak, unit: 'days', icon: '🔥' },
-    { title: 'PIQ Score ≥80', target: 80, current: piq, unit: 'points', icon: '🏅' },
-  ];
-
-  const goalCards = defaultGoals.map(g => {
-    const pct = Math.min(100, Math.round(g.current/g.target*100));
-    const done = g.current >= g.target;
-    return `
-    <div style="padding:16px;border:1px solid ${done?'var(--piq-green)':'var(--border)'};border-radius:12px;background:${done?'#22c95511':'transparent'}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <span style="font-size:22px">${g.icon}</span>
-        <div style="flex:1">
-          <div style="font-weight:600;font-size:13.5px;color:var(--text-primary)">${g.title}</div>
-          <div style="font-size:12px;color:var(--text-muted)">${g.current} / ${g.target} ${g.unit}</div>
-        </div>
-        ${done?`<span style="font-size:11px;padding:3px 8px;border-radius:10px;background:#22c95522;color:#22c955;font-weight:700">✓ Done</span>`:''}
-      </div>
-      <div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${done?'var(--piq-green)':'#3b82f6'};border-radius:4px;transition:width .4s"></div>
-      </div>
-      <div style="font-size:11.5px;color:var(--text-muted);margin-top:5px">${pct}% complete</div>
-    </div>`;
-  }).join('');
+  const profile = getAthleteProfile();
+  const goals   = profile.goals || [];
+  const ALL_GOALS = ['strength','speed','endurance','flexibility','conditioning','recovery','vertical','recruiting'];
 
   return `
 <div class="view-with-sidebar">
   ${buildSidebar('solo','solo/goals')}
   <main class="page-main">
-    <div class="page-header">
-      <h1>Training Goals</h1>
-      <p>Track your personal performance targets</p>
-    </div>
-    <div class="kpi-row">
-      <div class="kpi-card"><div class="kpi-lbl">Goals Active</div><div class="kpi-val b">${defaultGoals.length}</div><div class="kpi-chg">In progress</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Completed</div><div class="kpi-val g">${defaultGoals.filter(g=>g.current>=g.target).length}</div><div class="kpi-chg">Achieved</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">PIQ Score</div><div class="kpi-val" style="color:var(--piq-green)">${piq}</div><div class="kpi-chg">Current</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Streak</div><div class="kpi-val">🔥 ${streak}d</div><div class="kpi-chg">Active days</div></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Current Goals</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px">
-        ${goalCards}
+    <div class="page-header"><h1>My <span>Goals</span></h1><p>Focus your training priorities</p></div>
+    <div class="panel" style="max-width:560px">
+      <div class="panel-title">Training Goals</div>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Select all that apply — your goals shape recommendations.</p>
+      <div class="onboard-goals" id="goals-grid">
+        ${ALL_GOALS.map(g => `
+        <button class="onboard-goal ${goals.includes(g)?'sel':''}" data-g="${g}">
+          ${{strength:'💪',speed:'⚡',endurance:'🏃',flexibility:'🧘',conditioning:'🔥',recovery:'💚',vertical:'⬆️',recruiting:'🎓'}[g]} ${g.charAt(0).toUpperCase()+g.slice(1)}
+        </button>`).join('')}
       </div>
-    </div>
-    <div class="panel" style="margin-top:16px">
-      <div class="panel-title">Goal Setting Guide</div>
-      <div style="margin-top:12px;font-size:13px;color:var(--text-primary);line-height:1.7">
-        <p style="margin:0 0 10px">Effective goal setting in athletic training follows the <strong>SMART framework</strong>: goals should be Specific, Measurable, Achievable, Relevant, and Time-bound.</p>
-        <p style="margin:0;font-size:12px;color:var(--text-muted)">Custom goal creation is coming in a future update. For now, your progress toward the default targets above is tracked automatically as you log sessions.</p>
+      <div style="margin-top:24px;display:flex;gap:10px">
+        <button class="btn-primary" style="width:auto;padding:11px 24px" id="save-goals-btn">Save Goals</button>
+        <button class="btn-draft" style="padding:11px 20px" data-route="solo/home">← Back</button>
       </div>
+      <p id="goals-saved" style="color:var(--piq-green-dark);font-size:13px;margin-top:10px;display:none">✓ Goals saved</p>
+      ${goals.length ? `<div style="margin-top:16px;font-size:12.5px;color:var(--text-muted)">Current: ${goals.join(' · ')}</div>` : ''}
     </div>
   </main>
 </div>`;
+}
+
+document.addEventListener('piq:viewRendered', () => {
+  if (!document.getElementById('save-goals-btn')) return;
+  const selected = new Set(getAthleteProfile().goals || []);
+
+  document.querySelectorAll('#goals-grid .onboard-goal').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('sel');
+      const g = btn.dataset.g;
+      if (btn.classList.contains('sel')) selected.add(g); else selected.delete(g);
+    });
+  });
+
+  document.getElementById('save-goals-btn')?.addEventListener('click', () => {
+    patchProfile({ goals: [...selected] });
+    const el = document.getElementById('goals-saved');
+    if (el) { el.style.display='block'; setTimeout(()=>el.style.display='none',2500); }
+    showToast('🎯 Goals saved!');
+  });
+});
+
+function getAthleteProfile() {
+  try { const s=JSON.parse(localStorage.getItem('piq_state_v3')||'{}'); return s.athleteProfile||{goals:[]}; }
+  catch(_){ return {goals:[]}; }
 }
