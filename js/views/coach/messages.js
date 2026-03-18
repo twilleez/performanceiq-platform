@@ -1,49 +1,41 @@
-/**
- * Coach Messages View
- */
 import { buildSidebar } from '../../components/nav.js';
-import { getCurrentUser } from '../../core/auth.js';
-import { getState } from '../../state/state.js';
+import { getRoster }    from '../../state/state.js';
 
 export function renderCoachMessages() {
-  const user = getCurrentUser();
-  const messages = getState().messages || [];
-
-  const sampleThreads = [
-    { name: 'Jake Williams', role: 'Player', avatar: '🏀', time: '9:14 AM', preview: 'Coach, I felt some tightness in my left hamstring during warm-up.', unread: true },
-    { name: 'Marcus T.', role: 'Player', avatar: '🏅', time: 'Yesterday', preview: 'Thanks for the feedback on my sprint form. Working on it.', unread: false },
-    { name: 'Maria Chen', role: 'Parent', avatar: '👨‍👩‍👦', time: 'Mon', preview: 'Can we schedule a check-in about Devon\'s progress this week?', unread: true },
-    { name: 'Devon N.', role: 'Player', avatar: '🏅', time: 'Sun', preview: 'Ready for tomorrow\'s session. Legs feel great.', unread: false },
-    { name: 'Aliyah N.', role: 'Player', avatar: '🏅', time: 'Fri', preview: 'Completed all the extra conditioning work you assigned.', unread: false },
-  ];
-
-  const threads = sampleThreads.map(t => `
-  <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;background:${t.unread?'var(--surface-2)':'transparent'};transition:background .2s" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='${t.unread?'var(--surface-2)':'transparent'}'">
-    <div style="width:40px;height:40px;border-radius:50%;background:var(--g200);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${t.avatar}</div>
-    <div style="flex:1;min-width:0">
-      <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-        <span style="font-weight:${t.unread?'700':'600'};font-size:13.5px;color:var(--text-primary)">${t.name}</span>
-        <span style="font-size:11.5px;color:var(--text-muted)">${t.time}</span>
-      </div>
-      <div style="font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.preview}</div>
-    </div>
-    ${t.unread?`<div style="width:8px;height:8px;border-radius:50%;background:var(--piq-green);flex-shrink:0"></div>`:''}
-  </div>`).join('');
-
+  const roster = getRoster().slice(0,5);
   return `
 <div class="view-with-sidebar">
   ${buildSidebar('coach','coach/messages')}
   <main class="page-main">
-    <div class="page-header">
-      <h1>Messages</h1>
-      <p>Team communication hub</p>
-    </div>
-    <div class="panel" style="padding:0;overflow:hidden">
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-        <span style="font-weight:600;font-size:13.5px">Conversations</span>
-        <button class="btn-primary" style="font-size:12px;padding:7px 14px">+ New Message</button>
+    <div class="page-header"><h1>Coach <span>Messages</span></h1><p>Communicate with your athletes</p></div>
+    <div class="panels-2">
+      <div class="panel">
+        <div class="panel-title">Athletes</div>
+        ${roster.map(a=>`
+        <div class="athlete-row" style="cursor:pointer">
+          <div class="athlete-avatar">${a.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+          <div class="athlete-info">
+            <div class="athlete-name">${a.name}</div>
+            <div class="athlete-meta" style="color:var(--text-muted)">Tap to message</div>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted)">—</span>
+        </div>`).join('')}
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <div style="display:flex;gap:10px">
+            <input type="text" placeholder="Message all athletes..." style="flex:1;padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--bg-input);color:var(--text-primary);font-size:13px;outline:none">
+            <button class="btn-assign" style="padding:10px 18px;font-size:13px">Send</button>
+          </div>
+          <p style="font-size:11.5px;color:var(--text-muted);margin-top:8px">💬 Real-time messaging requires Supabase.</p>
+        </div>
       </div>
-      ${threads}
+      <div class="panel">
+        <div class="panel-title">Announcements</div>
+        <div class="sched-row"><div class="sched-dot"></div><div><div class="sched-title">New Workout Assigned</div><div class="sched-desc">Pre-Season Power Build · All athletes</div></div></div>
+        <div class="sched-row"><div class="sched-dot blue"></div><div><div class="sched-title">Readiness Alert</div><div class="sched-desc">3 athletes below 60% today — check roster</div></div></div>
+        <div style="margin-top:14px">
+          <button class="btn-primary" style="width:auto;padding:10px 20px;font-size:13px" data-route="coach/roster">View Roster →</button>
+        </div>
+      </div>
     </div>
   </main>
 </div>`;
