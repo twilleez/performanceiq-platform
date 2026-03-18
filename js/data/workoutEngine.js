@@ -1727,7 +1727,7 @@ export function adaptWorkoutToReadiness(workout, readinessScore) {
  * Generates today's workout based on sport, phase, level, and readiness.
  * Returns a structured workout object ready for display.
  */
-export function generateTodayWorkout(sport, compPhase, trainingLevel, readinessScore, dayOfWeek) {
+export function generateTodayWorkout(sport, compPhase, trainingLevel, readinessScore, dayOfWeek, primaryGoal, secondaryGoals) {
   const sportProgram = ELITE_PROGRAMS[sport] || ELITE_PROGRAMS.basketball;
   const phaseProgram = sportProgram[compPhase] || sportProgram.off_season;
 
@@ -1750,13 +1750,141 @@ export function generateTodayWorkout(sport, compPhase, trainingLevel, readinessS
     estimatedDuration: _estimateDuration(daySession.exercises),
   };
 
-  return adaptWorkoutToReadiness(baseWorkout, readinessScore);
+  const readinessWorkout = adaptWorkoutToReadiness(baseWorkout, readinessScore);
+  // Apply goal-specific exercise injections
+  return applyGoalModifiers(readinessWorkout, primaryGoal, secondaryGoals);
 }
 
 function _estimateDuration(exercises) {
   if (!exercises || !exercises.length) return 45;
   const sets = exercises.reduce((s, e) => s + (parseInt(e.sets) || 3), 0);
   return Math.round(sets * 3.5 + 15); // ~3.5 min per set + 15 min warmup
+}
+
+
+// ── GOAL-ADAPTIVE EXERCISE LIBRARY ───────────────────────────
+/**
+ * Extra exercises injected based on user goals.
+ * Each goal adds 1–3 targeted exercises to the session.
+ * Based on NSCA and sport science best practices.
+ */
+const GOAL_EXERCISE_INJECTIONS = {
+  strength: [
+    { name: 'Barbell Back Squat', sets: 3, reps: '5', load: 'Heavy (80–85%)', cue: 'TB12: Pliability first. Squat deep only through full range. Drive through heels.', goalTag: 'strength' },
+    { name: 'Trap Bar Deadlift', sets: 3, reps: '5', load: 'Heavy (80–85%)', cue: 'Neutral spine. Full hip extension at top. Reset between reps.', goalTag: 'strength' },
+  ],
+  speed: [
+    { name: '10-Yard Acceleration Sprint', sets: 6, reps: '1', load: 'Max effort', cue: 'Drive phase: 45° lean, powerful arm drive, triple extension. Full rest between reps.', goalTag: 'speed' },
+    { name: 'Resisted Sprint (Band)', sets: 4, reps: '20 yds', load: 'Light resistance band', cue: 'Maintain mechanics under resistance. Do not let band alter stride pattern.', goalTag: 'speed' },
+  ],
+  endurance: [
+    { name: 'Aerobic Tempo Run', sets: 1, reps: '15–20 min', load: '65–70% max HR', cue: 'Conversational pace. Nasal breathing if possible. Builds aerobic base per Maffetone method.', goalTag: 'endurance' },
+  ],
+  flexibility: [
+    { name: 'Hip Flexor Stretch (90/90)', sets: 2, reps: '60 sec/side', load: 'Bodyweight', cue: 'TB12: Tight hip flexors limit sprint mechanics and increase lower back stress. Hold and breathe.', goalTag: 'flexibility' },
+    { name: 'Thoracic Rotation Stretch', sets: 2, reps: '10/side', load: 'Bodyweight', cue: 'Rotate from mid-back, not lower back. Improves throwing, swinging, and overhead mechanics.', goalTag: 'flexibility' },
+  ],
+  conditioning: [
+    { name: 'HIIT Intervals (30/30)', sets: 8, reps: '30 sec on / 30 sec off', load: '85–90% max effort', cue: 'Stølen et al. (2005): High-intensity intervals mirror match demands. Full effort on work intervals.', goalTag: 'conditioning' },
+  ],
+  recovery: [
+    { name: 'Foam Roll — Full Body', sets: 1, reps: '5 min', load: 'Bodyweight', cue: 'TB12: Pliability work is not optional. Roll slowly, pause on tender spots, breathe through them.', goalTag: 'recovery' },
+    { name: 'Diaphragmatic Breathing', sets: 3, reps: '10 breaths', load: 'Bodyweight', cue: 'Inhale 4 sec, hold 2, exhale 6. Activates parasympathetic system. Reduces cortisol post-training.', goalTag: 'recovery' },
+  ],
+  vertical: [
+    { name: 'Depth Jump', sets: 4, reps: '5', load: 'Bodyweight', cue: 'Step off box, land, immediately jump. Minimize ground contact time. Reactive strength index focus.', goalTag: 'vertical' },
+    { name: 'Jump Squat', sets: 3, reps: '8', load: '20–30% 1RM', cue: 'NSCA: Loaded jump squats at 20–30% 1RM maximize power output. Explode through full extension.', goalTag: 'vertical' },
+  ],
+  recruiting: [
+    { name: 'Position-Specific Drill', sets: 4, reps: '5 reps', load: 'Bodyweight / sport-specific', cue: 'Film every set. Coaches and scouts evaluate mechanics, effort, and consistency under fatigue.', goalTag: 'recruiting' },
+    { name: '40-Yard Dash / Pro Agility', sets: 3, reps: '1', load: 'Max effort', cue: 'Recruiting metric. Drive phase mechanics critical for first 10 yards. Record times every session.', goalTag: 'recruiting' },
+  ],
+  injury_prev: [
+    { name: 'Nordic Hamstring Curl', sets: 3, reps: '6', load: 'Bodyweight', cue: 'Petersen et al. (2011): 51% reduction in hamstring injuries. Lower slowly (3–4 sec), use hands to assist up.', goalTag: 'injury_prev' },
+    { name: 'Copenhagen Plank', sets: 3, reps: '20 sec/side', load: 'Bodyweight', cue: 'Harøy et al. (2019): Groin injury prevention. Keep hips level. Progress to longer holds over weeks.', goalTag: 'injury_prev' },
+  ],
+  nutrition: [
+    { name: 'Post-Workout Nutrition Window', sets: 1, reps: 'Action item', load: 'N/A', cue: 'TB12: Consume protein + carbohydrates within 30 min of training. Target 0.3g protein/kg bodyweight. Check your Nutrition tab.', goalTag: 'nutrition' },
+  ],
+};
+
+/**
+ * Goal priority map — determines which exercises get added first
+ * and how many extra exercises are injected per session.
+ */
+const GOAL_PRIORITY = {
+  strength:    { maxInject: 2, position: 'main'    },
+  speed:       { maxInject: 2, position: 'main'    },
+  endurance:   { maxInject: 1, position: 'end'     },
+  flexibility: { maxInject: 2, position: 'end'     },
+  conditioning:{ maxInject: 1, position: 'end'     },
+  recovery:    { maxInject: 2, position: 'end'     },
+  vertical:    { maxInject: 2, position: 'main'    },
+  recruiting:  { maxInject: 2, position: 'end'     },
+  injury_prev: { maxInject: 2, position: 'warmup'  },
+  nutrition:   { maxInject: 1, position: 'end'     },
+};
+
+/**
+ * applyGoalModifiers — injects goal-specific exercises into a workout.
+ * Primary goal gets full injection (up to maxInject exercises).
+ * Secondary goals each get 1 exercise.
+ *
+ * @param {Object} workout          - Base workout from generateTodayWorkout
+ * @param {string} primaryGoal      - User's primary goal ID (e.g. 'strength')
+ * @param {string[]} secondaryGoals - User's secondary goal IDs
+ * @returns {Object} Modified workout with goal-specific exercises added
+ */
+export function applyGoalModifiers(workout, primaryGoal, secondaryGoals = []) {
+  if (!workout || (!primaryGoal && !secondaryGoals.length)) return workout;
+
+  const mainExercises   = [...(workout.exercises || [])];
+  const warmupAdditions = [];
+  const endAdditions    = [];
+
+  function injectGoal(goalId, maxCount) {
+    const injections = GOAL_EXERCISE_INJECTIONS[goalId];
+    if (!injections || !injections.length) return;
+    const priority = GOAL_PRIORITY[goalId] || { maxInject: 1, position: 'end' };
+    const toAdd = injections.slice(0, maxCount || priority.maxInject);
+    toAdd.forEach(ex => {
+      // Don't duplicate if already in the workout
+      const alreadyPresent = mainExercises.some(e => e.name === ex.name);
+      if (alreadyPresent) return;
+      if (priority.position === 'warmup') {
+        warmupAdditions.push(ex);
+      } else if (priority.position === 'main') {
+        // Insert before last exercise (before cooldown/finisher)
+        const insertAt = Math.max(mainExercises.length - 1, 0);
+        mainExercises.splice(insertAt, 0, ex);
+      } else {
+        endAdditions.push(ex);
+      }
+    });
+  }
+
+  // Primary goal: full injection
+  if (primaryGoal) injectGoal(primaryGoal, GOAL_PRIORITY[primaryGoal]?.maxInject || 2);
+
+  // Secondary goals: 1 exercise each
+  (secondaryGoals || []).slice(0, 3).forEach(g => {
+    if (g && g !== primaryGoal) injectGoal(g, 1);
+  });
+
+  // Build goal summary label for display
+  const allGoals = [primaryGoal, ...(secondaryGoals || [])].filter(Boolean);
+  const goalLabel = allGoals.length
+    ? 'Goal focus: ' + allGoals.map(g => g.replace('_', ' ')).join(', ')
+    : null;
+
+  return {
+    ...workout,
+    exercises: [...warmupAdditions, ...mainExercises, ...endAdditions],
+    goalLabel,
+    primaryGoal,
+    secondaryGoals,
+    goalModified: allGoals.length > 0,
+  };
 }
 
 // ── SPORT POSITIONS ───────────────────────────────────────────
