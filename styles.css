@@ -1,0 +1,716 @@
+/* ============================================================
+   styles.css — PerformanceIQ Phase 15C
+   Core design system + component styles for all views.
+   Patch CSS files (boot-loader, nav-bar, tooltips, etc.)
+   are linked separately in index.html.
+   ============================================================ */
+
+/* ── TOKENS ──────────────────────────────────────────────── */
+:root {
+  --coral:    #FF6B35;
+  --blue:     #00D4FF;
+  --black:    #0A0A0F;
+  --s1:       #13131A;
+  --s2:       #1C1C26;
+  --s3:       #24242F;
+  --border:   rgba(255, 255, 255, 0.07);
+  --text:     #E8E8F0;
+  --muted:    #6B6B80;
+  --green:    #00E599;
+  --yellow:   #FFD166;
+  --red:      #FF4757;
+
+  --font-display: 'Oswald', 'Impact', sans-serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+  --font-num:     'Barlow Condensed', 'Oswald', sans-serif;
+
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── RESET ───────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html { font-size: 16px; }
+
+body {
+  background: var(--black);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  padding-bottom: calc(60px + var(--safe-bottom));
+  overflow-x: hidden;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input, select {
+  font-family: inherit;
+}
+
+/* ── #app ROOT ───────────────────────────────────────────── */
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+/* ── CARD ────────────────────────────────────────────────── */
+.card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+}
+
+/* ── BUTTONS ─────────────────────────────────────────────── */
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 15px;
+  background: var(--coral);
+  color: white;
+  border-radius: var(--radius-md);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  transition: background 0.2s, transform 0.1s;
+}
+.btn-primary:hover    { background: #ff7c4d; }
+.btn-primary:active   { transform: scale(0.98); }
+.btn-primary:disabled { background: rgba(255,107,53,0.35); cursor: not-allowed; }
+
+.btn-ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 13px;
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s, border-color 0.2s;
+}
+.btn-ghost:hover { color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.25); }
+
+.text-btn {
+  font-size: 12px;
+  color: var(--coral);
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.06);
+  border-radius: var(--radius-sm);
+  font-size: 18px;
+  color: var(--text);
+  transition: background 0.2s;
+}
+.icon-btn:hover { background: rgba(255,255,255,0.1); }
+
+.back-btn {
+  font-size: 20px;
+  color: var(--text);
+  padding: 4px 8px;
+  opacity: 0.7;
+}
+.back-btn:hover { opacity: 1; }
+
+/* ── FORM FIELDS ─────────────────────────────────────────── */
+.field-input {
+  display: block;
+  width: 100%;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 13px 14px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-body);
+  margin-bottom: 12px;
+  transition: border-color 0.2s;
+}
+.field-input:focus {
+  outline: none;
+  border-color: rgba(255,107,53,0.5);
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--red);
+  margin-bottom: 10px;
+}
+
+.auth-msg-warn {
+  background: rgba(255,209,102,0.1);
+  border: 1px solid rgba(255,209,102,0.25);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--yellow);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+/* ── AUTH SCREENS ────────────────────────────────────────── */
+.auth-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 48px 24px 32px;
+  min-height: 100vh;
+}
+
+.auth-welcome {
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.auth-logo-mark {
+  width: 64px;
+  height: 64px;
+  background: var(--coral);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  color: white;
+}
+
+.auth-logo {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--coral);
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.auth-header { text-align: center; margin-bottom: 24px; }
+
+.auth-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+
+.auth-sub {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── ROLE CARDS (Fix 02 — role-desc included) ────────────── */
+.role-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.role-card {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  gap: 4px;
+}
+
+.role-card:hover {
+  border-color: rgba(255,107,53,0.35);
+  background: rgba(255,107,53,0.04);
+}
+
+.role-card.selected {
+  border-color: rgba(255,107,53,0.6);
+  background: rgba(255,107,53,0.08);
+}
+
+.role-icon {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+.role-label {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.03em;
+}
+
+/* Fix 02 — role descriptor */
+.role-desc {
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+/* ── VIEW SCREENS ────────────────────────────────────────── */
+.view-screen {
+  padding: 0 0 32px;
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(10,10,15,0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.view-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.04em;
+}
+
+.view-subtitle { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.view-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.view-nav-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.04em;
+}
+
+.view-sport-badge {
+  font-family: var(--font-num);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--coral);
+  background: rgba(255,107,53,0.1);
+  border: 1px solid rgba(255,107,53,0.2);
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.view-header-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.season-phase-badge {
+  font-family: var(--font-num);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--blue);
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.18);
+  padding: 3px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+.season-phase-badge:empty { display: none; }
+
+/* ── PIQ RING ────────────────────────────────────────────── */
+.piq-ring-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 20px 16px;
+  gap: 10px;
+}
+
+.piq-ring-outer {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  cursor: pointer;
+}
+
+.piq-ring-outer:hover .piq-ring-center { opacity: 0.8; }
+
+.piq-ring-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  transition: opacity 0.2s;
+}
+
+.piq-score-num {
+  display: block;
+  font-family: var(--font-num);
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--coral);
+  line-height: 1;
+}
+
+.piq-score-label {
+  display: block;
+  font-family: var(--font-num);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.piq-ring-caption {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* ── READINESS BANNER (Fix 05) ───────────────────────────── */
+.readiness-banner {
+  margin: 0 20px 16px;
+}
+
+.readiness-level-label {
+  font-family: var(--font-num);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.readiness-reason {
+  font-size: 12.5px;
+  color: rgba(255,255,255,0.55);
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+/* Action copy injected by readiness-copy.js */
+.readiness-action-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 6px;
+}
+
+/* ── QUICK ACTIONS ───────────────────────────────────────── */
+.quick-actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px 16px;
+}
+
+.quick-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-num);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: border-color 0.2s, color 0.2s;
+}
+.quick-btn:hover { border-color: rgba(255,107,53,0.35); color: var(--text); }
+
+.quick-icon { font-size: 22px; }
+
+/* ── SECTION LABELS ──────────────────────────────────────── */
+.section-label {
+  font-family: var(--font-num);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 20px;
+  margin-bottom: 10px;
+}
+
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  margin-bottom: 10px;
+}
+
+/* ── SESSION CARDS ───────────────────────────────────────── */
+.session-list { padding: 0 20px; display: grid; gap: 8px; }
+
+.session-card {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-card-sport { font-size: 13px; color: white; font-weight: 500; }
+.session-card-date  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.session-card-rpe   { font-family: var(--font-num); font-size: 16px; color: var(--coral); }
+.session-card-status.done   { color: var(--green); font-size: 16px; margin-top: 2px; }
+.session-card-status.missed { color: var(--red);   font-size: 16px; margin-top: 2px; }
+.session-card-right { text-align: right; }
+
+/* ── WELLNESS FIELDS ─────────────────────────────────────── */
+.log-section { padding: 0 20px 16px; }
+.wellness-fields { display: grid; gap: 16px; }
+.wellness-field {}
+
+.wellness-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.wellness-label {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.wellness-slider {
+  width: 100%;
+  accent-color: var(--coral);
+  height: 4px;
+  cursor: pointer;
+}
+
+.wellness-slider-hints {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ── EXERCISE CARDS (Fix 08) ─────────────────────────────── */
+.exercise-list { display: grid; gap: 8px; }
+
+.exercise-card {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.exercise-card-left { flex: 1; }
+.exercise-name { font-size: 14px; color: white; font-weight: 500; }
+.exercise-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* swap button — detailed styles in tooltips.css */
+.exercise-swap-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.2);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.exercise-swap-btn:hover { background: rgba(0,212,255,0.2); }
+
+/* ── RPE CARD ────────────────────────────────────────────── */
+.rpe-card {}
+.rpe-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+.rpe-value {
+  font-family: var(--font-num);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--coral);
+}
+
+/* ── KPI STRIP ───────────────────────────────────────────── */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.kpi-card {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.kpi-val {
+  font-family: var(--font-num);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--coral);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.kpi-lbl {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: var(--font-num);
+  font-weight: 600;
+}
+
+/* ── ATHLETE ROWS ────────────────────────────────────────── */
+.athlete-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 20px 8px;
+}
+
+.athlete-row-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255,107,53,0.15);
+  border: 2px solid rgba(255,107,53,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--coral);
+  flex-shrink: 0;
+}
+
+.athlete-row-info { flex: 1; }
+.athlete-name    { font-size: 14px; color: white; font-weight: 500; }
+.athlete-sport   { font-size: 11px; color: var(--muted); }
+.athlete-piq     { font-family: var(--font-num); font-size: 20px; font-weight: 700; line-height: 1; }
+.athlete-readiness-label { font-size: 10px; margin-top: 2px; text-align: right; }
+.athlete-row-status { text-align: right; }
+
+/* ── SPORT GRID ──────────────────────────────────────────── */
+.sport-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.sport-card { padding: 12px 8px; }
+.sport-card .role-label { font-size: 12px; }
+
+/* ── WELLNESS SNAPSHOT (Parent view) ─────────────────────── */
+.wellness-snapshot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.wellness-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 8px;
+}
+
+.wt-icon  { font-size: 22px; }
+.wt-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.wt-val   { font-family: var(--font-num); font-size: 28px; font-weight: 700; line-height: 1; }
+.wt-bar-bg {
+  width: 100%;
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.wt-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+/* ── COACH HOME ──────────────────────────────────────────── */
+.coach-home .view-header { padding: 16px 20px; }
+
+/* ── SCROLL PADDING ──────────────────────────────────────── */
+.view-screen { padding-bottom: 32px; }

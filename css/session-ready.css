@@ -1,0 +1,206 @@
+/* ============================================================
+   session-ready.css — Fix 07
+   "Session Ready" state that appears after training generation.
+   Slides up from bottom with summary card + primary CTA.
+   ============================================================ */
+
+/* ── SESSION READY OVERLAY ─────────────────────────────────── */
+
+#piq-session-ready {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(10, 10, 15, 0);
+  pointer-events: none;
+  transition: background 0.3s ease;
+}
+
+#piq-session-ready.visible {
+  background: rgba(10, 10, 15, 0.6);
+  pointer-events: auto;
+}
+
+/* ── SESSION READY CARD ────────────────────────────────────── */
+
+.session-ready-card {
+  background: #1C1C26;
+  border-top: 1px solid rgba(255, 107, 53, 0.3);
+  border-radius: 20px 20px 0 0;
+  padding: 24px 24px calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Push above bottom nav */
+  margin-bottom: 60px;
+}
+
+#piq-session-ready.visible .session-ready-card {
+  transform: translateY(0);
+}
+
+/* ── DRAG HANDLE ───────────────────────────────────────────── */
+
+.session-ready-handle {
+  width: 36px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  margin: 0 auto 20px;
+}
+
+/* ── HEADER ROW ────────────────────────────────────────────── */
+
+.session-ready-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.session-ready-check {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 229, 153, 0.15);
+  border: 2px solid rgba(0, 229, 153, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  animation: piq-check-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both;
+}
+
+@keyframes piq-check-pop {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+.session-ready-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 0.03em;
+}
+
+.session-ready-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 2px;
+}
+
+/* ── SESSION STATS ROW ─────────────────────────────────────── */
+
+.session-ready-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.session-stat {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+
+.session-stat-value {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #FF6B35;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.session-stat-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+
+/* ── INTENSITY BADGE ───────────────────────────────────────── */
+
+.session-intensity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.session-intensity-badge.high     { background: rgba(255,71,87,0.12);   color: #FF4757;  border: 1px solid rgba(255,71,87,0.25); }
+.session-intensity-badge.moderate { background: rgba(255,209,102,0.1);  color: #FFD166;  border: 1px solid rgba(255,209,102,0.2); }
+.session-intensity-badge.low      { background: rgba(0,229,153,0.1);    color: #00E599;  border: 1px solid rgba(0,229,153,0.2); }
+.session-intensity-badge.recovery { background: rgba(0,212,255,0.08);   color: #00D4FF;  border: 1px solid rgba(0,212,255,0.18); }
+
+/* ── CTA BUTTONS ───────────────────────────────────────────── */
+
+.session-ready-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-start-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  background: #FF6B35;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.session-start-btn:hover  { background: #ff7c4d; }
+.session-start-btn:active { transform: scale(0.98); }
+
+.session-start-btn .btn-icon {
+  font-size: 20px;
+}
+
+.session-save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 13px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.session-save-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.25);
+}

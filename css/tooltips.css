@@ -1,0 +1,243 @@
+/* ============================================================
+   tooltips.css — Fix 04 (wellness microcopy) + Fix 08 (swap affordance)
+   + Fix 03 (PIQ explainer)
+   ============================================================ */
+
+
+/* ── PIQ EXPLAINER TOOLTIP (Fix 03) ──────────────────────── */
+
+.piq-tooltip {
+  position: absolute;
+  z-index: 9000;
+  background: #1C1C26;
+  border: 1px solid rgba(255, 107, 53, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow:
+    0 4px 24px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,107,53,0.08);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.piq-tooltip--visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.piq-tooltip--hiding {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.piq-tooltip__arrow {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.piq-tooltip__arrow::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #1C1C26;
+  border: 1px solid rgba(255,107,53,0.3);
+  bottom: -5px;
+  left: 1px;
+  transform: rotate(45deg);
+}
+
+.piq-tooltip__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.piq-tooltip__icon {
+  font-size: 16px;
+}
+
+.piq-tooltip__title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #FF6B35;
+  letter-spacing: 0.04em;
+}
+
+.piq-tooltip__body {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12.5px;
+  color: rgba(232, 232, 240, 0.8);
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+
+.piq-tooltip__body em {
+  color: white;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.piq-tooltip__dismiss {
+  display: block;
+  width: 100%;
+  background: rgba(255,107,53,0.15);
+  border: 1px solid rgba(255,107,53,0.3);
+  color: #FF6B35;
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 8px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.piq-tooltip__dismiss:hover {
+  background: rgba(255,107,53,0.25);
+}
+
+
+/* ── WELLNESS INFO ICON + TOOLTIP (Fix 04) ───────────────── */
+
+/* Wrapper: wrap each wellness input label with .wellness-label-wrap */
+.wellness-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+/* The (?) info icon — add to each wellness field label */
+.wellness-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.4);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+  /* No button styles */
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.wellness-info-btn:hover,
+.wellness-info-btn:focus {
+  background: rgba(0, 212, 255, 0.15);
+  border-color: rgba(0, 212, 255, 0.4);
+  color: #00D4FF;
+  outline: none;
+}
+
+/* Tooltip popup */
+.wellness-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 8000;
+  width: 220px;
+  background: #1C1C26;
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: rgba(232, 232, 240, 0.85);
+  line-height: 1.5;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  /* Prevent tooltip from being cut off on small screens */
+  max-width: min(220px, calc(100vw - 32px));
+}
+
+.wellness-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Caret pointing down */
+.wellness-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 16px;
+  width: 8px;
+  height: 8px;
+  background: #1C1C26;
+  border-right: 1px solid rgba(0,212,255,0.25);
+  border-bottom: 1px solid rgba(0,212,255,0.25);
+  transform: rotate(45deg);
+}
+
+
+/* ── SWAP BUTTON + PULSE HINT (Fix 08) ───────────────────── */
+
+/* Add .exercise-card-swap to each exercise card in the session builder */
+.exercise-swap-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  color: #00D4FF;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.exercise-swap-btn:hover {
+  background: rgba(0, 212, 255, 0.18);
+  border-color: rgba(0, 212, 255, 0.45);
+}
+
+.exercise-swap-btn .swap-icon {
+  font-size: 12px;
+}
+
+/* First-time pulse hint — add .piq-swap-hint to FIRST exercise's swap btn */
+/* Removed automatically by swap-affordance.js after first interaction */
+.piq-swap-hint {
+  animation: piq-swap-pulse 1.8s ease-in-out 3;
+}
+
+@keyframes piq-swap-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(0, 212, 255, 0);
+    border-color: rgba(0, 212, 255, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(0, 212, 255, 0.12);
+    border-color: rgba(0, 212, 255, 0.7);
+  }
+}
