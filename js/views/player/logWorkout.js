@@ -1,239 +1,281 @@
 /**
- * player/logWorkout.js — Phase 15C
- * C4: Wellness sliders — midpoint labels, directional hints per field
- * Fix 04: data-wellness-field attributes for tooltip module
- * Fix 07: sessionReady.show() after generation
- * Fix 08: swap hint on first exercise card
+ * player/logWorkout.js — Phase 15C v2
+ * Uses Engine 3 (workout generator) + Engine 4 (nutrition preview)
+ * C4: Wellness sliders with directional hints
+ * Shows generated workout from Engine 3
  */
-import { state }            from '../../state/state.js';
-import { router }           from '../../core/router.js';
+import { state }           from '../../state/state.js';
+import { router }          from '../../core/router.js';
 import { showSessionReady } from '../../app.js';
-import { inline }           from '../../components/logo.js';
-import { ROUTES }           from '../../app.js';
+import { ROUTES }          from '../../app.js';
+import { Engines }         from '../../services/engines.js';
 
-const EXERCISES = {
-  Basketball: [
-    { id:'b1', name:'Box Jumps',           sets:3, reps:8,   tag:'Explosive Power',  swaps:['Depth Jump','Broad Jump'] },
-    { id:'b2', name:'Romanian Deadlift',   sets:4, reps:6,   tag:'Posterior Chain',  swaps:['Stiff-Leg Deadlift'] },
-    { id:'b3', name:'Lateral Bounds',      sets:3, reps:10,  tag:'Agility',          swaps:['Cone Shuffle'] },
-    { id:'b4', name:'Bulgarian Split Squat',sets:3,reps:8,   tag:'Unilateral',       swaps:['Step-up + Knee Drive'] },
-    { id:'b5', name:'Med Ball Slam',       sets:3, reps:12,  tag:'Power Endurance',  swaps:[] },
-    { id:'b6', name:'Nordic Curl',         sets:3, reps:6,   tag:'Hamstring',        swaps:['Lying Leg Curl'] },
-    { id:'b7', name:'Sprint Ladder',       sets:4, reps:1,   tag:'Speed',            swaps:[] },
-    { id:'b8', name:'Hip Flexor Stretch',  sets:2, reps:45,  tag:'Mobility',         swaps:[] },
-  ],
-};
-function getExercises(sport) {
-  return EXERCISES[sport] || EXERCISES.Basketball;
-}
-
-// C4 — Wellness field definitions including scale direction copy
 const WELLNESS_FIELDS = [
-  {
-    id:    'sleep',
-    label: 'Sleep Quality',
-    low:   'Poor',
-    mid:   'OK',
-    high:  'Great',
-    invert: false,
-  },
-  {
-    id:    'soreness',
-    label: 'Muscle Soreness',
-    low:   'None',
-    mid:   'Moderate',
-    high:  'Very sore',
-    invert: true,   // high value = worse
-  },
-  {
-    id:    'stress',
-    label: 'Stress Level',
-    low:   'Calm',
-    mid:   'Neutral',
-    high:  'High stress',
-    invert: true,
-  },
-  {
-    id:    'fatigue',
-    label: 'Fatigue',
-    low:   'Fresh',
-    mid:   'Tired',
-    high:  'Exhausted',
-    invert: true,
-  },
+  { id:'sleep',    label:'Sleep Quality',   low:'Poor sleep',     high:'Excellent sleep',  invert:false },
+  { id:'soreness', label:'Muscle Soreness', low:'No soreness',    high:'Very sore',        invert:true  },
+  { id:'stress',   label:'Stress Level',    low:'Calm & focused', high:'High stress',       invert:true  },
+  { id:'fatigue',  label:'Fatigue',         low:'Fresh',          high:'Exhausted',         invert:true  },
+  { id:'mood',     label:'Mood',            low:'Low',            high:'Excellent',          invert:false },
 ];
 
-function renderWellnessField(f) {
+function wellnessField(f, savedVal) {
+  const defaultVal = f.invert ? 3 : 7;
+  const v = savedVal || defaultVal;
   return `
-    <div class="wellness-field" data-wellness-field="${f.id}">
-      <div class="wellness-label-row">
-        <label class="wellness-label" for="wf-${f.id}">${f.label}</label>
-      </div>
-      <input type="range" id="wf-${f.id}" class="wellness-slider"
-             min="1" max="10" value="${f.invert ? 3 : 7}"
-             aria-label="${f.label} 1 to 10">
-      <div class="wellness-slider-hints">
-        <span>${f.low}</span>
-        <span id="wf-${f.id}-val" class="slider-mid-val">${f.invert ? 3 : 7} — ${f.mid}</span>
-        <span>${f.high}</span>
-      </div>
-    </div>`;
+  <div class="wellness-field" data-wellness-field="${f.id}">
+    <div class="wellness-label-row">
+      <label class="wellness-label" for="wf-${f.id}">${f.label}</label>
+      <span class="slider-mid-val" id="wf-${f.id}-val" style="font-size:12px;font-weight:600;color:var(--piq-muted);">${v}/10</span>
+    </div>
+    <input type="range" id="wf-${f.id}" class="wellness-slider"
+           min="1" max="10" value="${v}" aria-label="${f.label}">
+    <div class="wellness-slider-hints">
+      <span>${f.low}</span><span></span><span>${f.high}</span>
+    </div>
+  </div>`;
 }
 
 export function renderPlayerLog(container) {
-  const s        = state.getAll();
-  const sport    = s.sport || 'Basketball';
-  const exercises = getExercises(sport);
+  const s       = state.getAll();
+  const sport   = s.sport || 'Basketball';
+  const lastW   = (s.wellness || []).slice(-1)[0] || {};
+
+  // Generate workout from Engine 3
+  const workout = Engines.workout(s);
 
   container.innerHTML = `
-    <div class="view-screen log-workout">
-      <div class="view-nav-bar">
-        <button class="back-btn" id="back">←</button>
-        ${inline(28)}
-        <div class="view-nav-title">LOG SESSION</div>
+    <div class="piq-view" style="max-width:820px;">
+
+      <div class="view-page-header">
+        <div class="view-page-title">LOG <span class="hl">SESSION</span></div>
+        <div class="view-page-subtitle">${sport} · ${s.seasonPhase||'In-Season'} · ${workout.typeLabel||'Standard Session'}</div>
       </div>
 
-      <!-- C4: Wellness fields with directional scale hints -->
-      <div class="log-section" style="margin-top:16px;">
-        <div class="section-label" style="padding:0;margin-bottom:12px;">TODAY'S WELLNESS</div>
-        <div class="wellness-fields card">
-          ${WELLNESS_FIELDS.map(renderWellnessField).join('')}
-        </div>
-      </div>
+      <div class="two-col" style="grid-template-columns:1fr 280px;">
 
-      <!-- Exercise list -->
-      <div class="log-section">
-        <div class="section-label" style="padding:0;margin-bottom:12px;">
-          TODAY'S SESSION — ${sport.toUpperCase()}
-        </div>
-        <div id="exercise-list" class="exercise-list">
-          ${exercises.map((ex, i) => `
-            <div class="exercise-card" data-exercise-id="${ex.id}">
-              <div class="exercise-card-left">
-                <div class="exercise-name">${ex.name}</div>
-                <div class="exercise-meta">${ex.sets} × ${ex.reps} · ${ex.tag}</div>
+        <!-- LEFT: Wellness + workout -->
+        <div style="display:grid;gap:16px;">
+
+          <!-- Wellness Check-in -->
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">WELLNESS CHECK-IN</div></div>
+            <div style="padding:16px 20px;display:grid;gap:16px;">
+              ${WELLNESS_FIELDS.map(f => wellnessField(f, lastW[f.id])).join('')}
+            </div>
+          </div>
+
+          <!-- Generated Workout -->
+          <div class="panel">
+            <div class="panel-head" style="align-items:flex-start;flex-direction:column;gap:4px;">
+              <div class="panel-title">TODAY'S SESSION — ${sport.toUpperCase()}</div>
+              <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);font-family:inherit;">
+                ${workout.rationale}
               </div>
-              <!-- Fix 08: piq-swap-hint on first card -->
-              <button class="exercise-swap-btn${i === 0 ? ' piq-swap-hint' : ''}"
-                      data-exercise="${ex.id}"
-                      aria-label="Swap ${ex.name}">
-                ⇄ Swap
-              </button>
-            </div>`).join('')}
-        </div>
-      </div>
+            </div>
 
-      <!-- RPE -->
-      <div class="log-section">
-        <div class="section-label" style="padding:0;margin-bottom:12px;">SESSION RPE</div>
-        <div class="card rpe-card">
-          <div class="rpe-label-row">
-            <span>How hard was this session?</span>
-            <span class="rpe-value" id="rpe-display">6</span>
-          </div>
-          <input type="range" id="rpe-slider" min="1" max="10" value="6"
-                 class="wellness-slider" aria-label="RPE 1 to 10">
-          <div class="wellness-slider-hints">
-            <span>Very easy</span><span></span><span>Max effort</span>
-          </div>
-        </div>
-      </div>
+            <!-- Warm-up -->
+            <div style="padding:10px 20px 6px;background:#F9FAFF;border-bottom:1px solid var(--card-border,#E8E9F0);">
+              <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--text-muted,#9CA3AF);text-transform:uppercase;margin-bottom:6px;">WARM-UP</div>
+              ${workout.warmup.map(ex => `
+                <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.04);">
+                  <div style="width:6px;height:6px;background:var(--accent-green,#24C054);border-radius:50%;margin-top:5px;flex-shrink:0;"></div>
+                  <div>
+                    <div style="font-size:12.5px;font-weight:500;color:var(--text-primary,#1A1F36);">${ex.name}</div>
+                    <div style="font-size:11px;color:var(--text-muted,#9CA3AF);">${ex.note}</div>
+                  </div>
+                </div>`).join('')}
+            </div>
 
-      <div class="log-section">
-        <button class="btn-primary" id="log-submit">GENERATE &amp; LOG SESSION</button>
-      </div>
+            <!-- Main exercises -->
+            <div style="padding:0 20px;">
+              ${workout.exercises.map((ex, i) => `
+                <div class="session-row" style="padding:12px 0;cursor:default;">
+                  <div style="width:28px;height:28px;border-radius:7px;background:var(--nav-bg,#0D1B40);
+                       display:flex;align-items:center;justify-content:center;
+                       font-family:'Oswald',sans-serif;font-size:12px;font-weight:700;
+                       color:var(--accent-green,#24C054);flex-shrink:0;">
+                    ${i+1}
+                  </div>
+                  <div style="flex:1;">
+                    <div class="session-name">${ex.name}</div>
+                    <div class="session-meta">${ex.sets} sets${ex.reps>1?' × '+ex.reps:''} · ${ex.note}</div>
+                  </div>
+                  <span style="font-size:10px;padding:3px 8px;border-radius:5px;font-weight:600;
+                       background:var(--accent-green-dim,rgba(36,192,84,0.1));
+                       color:var(--accent-green,#24C054);text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0;">
+                    ${ex.category}
+                  </span>
+                </div>`).join('')}
+            </div>
+
+            <!-- Cool-down -->
+            <div style="padding:10px 20px 14px;background:#F9FAFF;border-top:1px solid var(--card-border,#E8E9F0);">
+              <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--text-muted,#9CA3AF);text-transform:uppercase;margin-bottom:6px;">COOL-DOWN</div>
+              ${workout.cooldown.map(ex => `
+                <div style="display:flex;align-items:flex-start;gap:10px;padding:5px 0;">
+                  <div style="width:6px;height:6px;background:var(--accent-blue,#3B82F6);border-radius:50%;margin-top:5px;flex-shrink:0;"></div>
+                  <div style="font-size:12px;color:var(--text-secondary,#6B7280);">${ex.name} — ${ex.note}</div>
+                </div>`).join('')}
+            </div>
+          </div>
+
+          <!-- RPE -->
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">SESSION RPE</div></div>
+            <div style="padding:16px 20px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="font-size:13px;color:var(--text-primary,#1A1F36);">How hard was this session?</span>
+                <span id="rpe-display" style="font-family:'Oswald',sans-serif;font-size:26px;font-weight:700;color:var(--accent-green,#24C054);">6</span>
+              </div>
+              <input type="range" id="rpe-slider" min="1" max="10" value="6"
+                     class="wellness-slider" aria-label="RPE 1 to 10">
+              <div class="wellness-slider-hints"><span>Very easy</span><span></span><span>Maximum effort</span></div>
+            </div>
+          </div>
+
+          <button class="btn-primary" id="log-submit">GENERATE &amp; LOG SESSION</button>
+        </div>
+
+        <!-- RIGHT: Engine outputs -->
+        <div style="display:grid;gap:16px;">
+
+          <!-- Readiness summary -->
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">READINESS</div></div>
+            <div id="readiness-preview" style="padding:14px 18px;">
+              <div style="font-size:12px;color:var(--text-muted,#9CA3AF);">Adjust wellness sliders to see your real-time readiness score.</div>
+            </div>
+          </div>
+
+          <!-- Nutrition preview -->
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">NUTRITION TARGET</div></div>
+            <div style="padding:14px 18px;">
+              ${_nutritionPreview(s)}
+            </div>
+          </div>
+
+          <!-- Session breakdown -->
+          <div class="panel">
+            <div class="panel-head"><div class="panel-title">SESSION DETAILS</div></div>
+            <div style="padding:14px 18px;display:grid;gap:8px;">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+                <span style="color:var(--text-muted,#9CA3AF);">Duration</span>
+                <span style="font-weight:600;color:var(--text-primary,#1A1F36);">${workout.durationMins} min</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+                <span style="color:var(--text-muted,#9CA3AF);">Intensity</span>
+                <span style="font-weight:600;color:var(--text-primary,#1A1F36);">${workout.intensity.toUpperCase()}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+                <span style="color:var(--text-muted,#9CA3AF);">Exercises</span>
+                <span style="font-weight:600;color:var(--text-primary,#1A1F36);">${workout.exercises.length}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+                <span style="color:var(--text-muted,#9CA3AF);">Phase</span>
+                <span style="font-weight:600;color:var(--text-primary,#1A1F36);">${workout.phase}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+                <span style="color:var(--text-muted,#9CA3AF);">ACWR Zone</span>
+                <span style="font-weight:600;color:var(--accent-green,#24C054);">${workout.acwrZone.replace('-',' ')}</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /two-col -->
     </div>`;
 
-  // C4: Live slider value labels with midpoint description
+  // Wire wellness sliders
   WELLNESS_FIELDS.forEach(f => {
     const slider  = container.querySelector(`#wf-${f.id}`);
     const display = container.querySelector(`#wf-${f.id}-val`);
     if (!slider || !display) return;
     const update = () => {
-      const v = parseInt(slider.value);
-      let desc = f.mid;
-      if (v <= 3)       desc = f.low;
-      else if (v >= 8)  desc = f.high;
-      display.textContent = `${v} — ${desc}`;
-      // Color hint: invert fields go red-green opposite direction
-      const danger  = f.invert ? (v >= 7) : (v <= 3);
-      const good    = f.invert ? (v <= 3) : (v >= 7);
-      display.style.color = danger ? 'var(--piq-red)' : good ? 'var(--piq-green)' : 'var(--piq-muted)';
+      const v  = parseInt(slider.value);
+      const bad = f.invert ? v >= 7 : v <= 3;
+      const good= f.invert ? v <= 3 : v >= 7;
+      display.textContent = `${v}/10`;
+      display.style.color = bad ? '#EF4444' : good ? '#24C054' : '#9CA3AF';
     };
     slider.addEventListener('input', update);
     update();
   });
 
-  const rpeSlider  = container.querySelector('#rpe-slider');
+  const rpeSlider = container.querySelector('#rpe-slider');
   const rpeDisplay = container.querySelector('#rpe-display');
   rpeSlider?.addEventListener('input', () => {
     if (rpeDisplay) rpeDisplay.textContent = rpeSlider.value;
   });
 
-  // Swap buttons
-  container.querySelectorAll('.exercise-swap-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      container.querySelector('.piq-swap-hint')?.classList.remove('piq-swap-hint');
-      const id  = btn.dataset.exercise;
-      const ex  = exercises.find(e => e.id === id);
-      if (!ex?.swaps?.length) { btn.textContent = '— No swaps'; return; }
-      const nameEl = btn.closest('.exercise-card')?.querySelector('.exercise-name');
-      if (nameEl) nameEl.textContent = ex.swaps[0];
-      btn.textContent = '✓ Swapped';
-      btn.style.color = 'var(--piq-green)';
-      btn.style.borderColor = 'rgba(0,229,153,0.35)';
-    });
-  });
-
-  // Submit — generate + show session ready sheet
   container.querySelector('#log-submit')?.addEventListener('click', () => {
     const getVal = id => parseInt(container.querySelector(`#wf-${id}`)?.value || 5);
     const wellness = {
-      date:     new Date().toISOString(),
-      sleep:    getVal('sleep'),
-      soreness: getVal('soreness'),
-      stress:   getVal('stress'),
-      fatigue:  getVal('fatigue'),
+      date: new Date().toISOString(),
+      sleep: getVal('sleep'), soreness: getVal('soreness'),
+      stress: getVal('stress'), fatigue: getVal('fatigue'), mood: getVal('mood'),
     };
     const rpe  = parseInt(rpeSlider?.value || 6);
-    const load = rpe * exercises.length;
-    const intensity = rpe >= 8 ? 'high' : rpe >= 5 ? 'moderate' : rpe <= 2 ? 'recovery' : 'low';
+    const load = rpe * (workout.durationMins || 40);
+    const intensity = rpe >= 8 ? 'high' : rpe >= 5 ? 'moderate' : 'low';
 
-    // Save wellness
     const wList = state.get('wellness') || [];
     wList.push(wellness);
     state.set('wellness', wList);
 
-    // Fix 07: Session-ready bottom sheet
     showSessionReady({
-      exerciseCount: exercises.length,
-      durationMins:  exercises.length * 5 + 5,
-      intensity,
-      sport,
-      phase: state.get('seasonPhase') || '',
-      onStart: () => _saveSession(exercises, wellness, rpe, load, sport, true),
-      onSave:  () => _saveSession(exercises, wellness, rpe, load, sport, false),
+      exerciseCount: workout.exercises.length,
+      durationMins: workout.durationMins,
+      intensity, sport,
+      phase: s.seasonPhase || '',
+      onStart: () => _save(workout, wellness, rpe, load, sport, true),
+      onSave:  () => _save(workout, wellness, rpe, load, sport, false),
     });
   });
 
-  container.querySelector('#back')?.addEventListener('click', () => router.navigate(ROUTES.PLAYER_HOME));
+  container.querySelectorAll('[data-route]').forEach(el =>
+    el.addEventListener('click', () => router.navigate(el.dataset.route)));
 }
 
-function _saveSession(exercises, wellness, rpe, load, sport, completed) {
+function _nutritionPreview(s) {
+  try {
+    const n = Engines.nutrition(s);
+    return `
+      <div style="display:grid;gap:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+          <span style="color:var(--text-muted,#9CA3AF);">Carbs</span>
+          <span style="font-weight:700;color:var(--accent-green,#24C054);">${n.macros.carbs.g}g</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+          <span style="color:var(--text-muted,#9CA3AF);">Protein</span>
+          <span style="font-weight:700;color:var(--accent-blue,#3B82F6);">${n.macros.protein.g}g</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+          <span style="color:var(--text-muted,#9CA3AF);">Fat</span>
+          <span style="font-weight:600;color:var(--text-primary,#1A1F36);">${n.macros.fat.g}g</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;">
+          <span style="color:var(--text-muted,#9CA3AF);">Total Cal</span>
+          <span style="font-weight:600;color:var(--text-primary,#1A1F36);">${n.macros.total.kcal}</span>
+        </div>
+        <div style="font-size:10.5px;color:var(--text-muted,#9CA3AF);margin-top:4px;line-height:1.4;">
+          ${n.typeLabel} · ${n.macros.carbs.gPerKg}g/kg CHO
+        </div>
+      </div>`;
+  } catch { return '<div style="font-size:12px;color:#9CA3AF;">Set body weight in settings to see targets.</div>'; }
+}
+
+function _save(workout, wellness, rpe, load, sport, completed) {
   const sessions = state.get('sessions') || [];
   const logs     = state.get('logs')     || [];
   const session  = {
-    id:        Date.now(),
-    date:      new Date().toISOString(),
-    sport,
-    exercises: exercises.map(e => e.name),
-    rpe,
-    load,
-    completed,
-    draft: !completed,
+    id: Date.now(), date: new Date().toISOString(), sport,
+    exercises: workout.exercises.map(e=>e.name),
+    durationMins: workout.durationMins,
+    rpe, load, completed, draft: !completed,
   };
   sessions.push(session);
-  if (completed) logs.push({ date: session.date, load, completed: true });
+  if (completed) logs.push({ date:session.date, load, completed:true, rpe, durationMins:session.durationMins });
   state.set('sessions', sessions);
   state.set('logs', logs);
   router.navigate('player-home');

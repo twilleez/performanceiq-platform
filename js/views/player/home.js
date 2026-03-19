@@ -1,204 +1,220 @@
 /**
- * player/home.js — Phase 15C
- * C1: PIQ shows "—" + unlock CTA when no data
- * C4: Wellness slider hints applied via data-wellness-field
- * C5: Header logo at 34px
- * Fix 03: piq-ring id for explainer tooltip
- * Fix 05: data-readiness-level for action copy injection
- * Fix 09: empty state for session list
+ * player/home.js — Phase 15C v2
+ * Desktop: KPI strip + sessions list + right panel (reference layout)
+ * Mobile:  PIQ ring + readiness banner + quick actions + session list
  */
-import { state }             from '../../state/state.js';
-import { router }            from '../../core/router.js';
-import { renderEmptyState }  from '../../app.js';
-import { getReadinessCopy }  from '../../components/readiness-copy.js';
-import { inline, mark } from '../../components/logo.js';
-import { ROUTES }            from '../../app.js';
+import { state }            from '../../state/state.js';
+import { router }           from '../../core/router.js';
+import { renderEmptyState } from '../../app.js';
+import { ROUTES }           from '../../app.js';
+import { Engines }          from '../../services/engines.js';
 
-// ── PIQ Formula v1 ───────────────────────────────────────────
-function calcPIQ(s) {
-  const logs     = s.logs     || [];
-  const wellness = s.wellness || [];
-  if (!logs.length && !wellness.length) return null; // no data yet
-
-  const recent7  = logs.filter(l => Date.now() - new Date(l.date) < 7*86400000);
-  const consistency = Math.min(recent7.length / 4, 1) * 35;
-
-  const w = wellness[wellness.length - 1] || {};
-  const sleep    = (w.sleep    || 5) / 10;
-  const soreness = 1 - (w.soreness || 5) / 10;
-  const stress   = 1 - (w.stress   || 5) / 10;
-  const readiness = ((sleep + soreness + stress) / 3) * 30;
-
-  const last14    = logs.filter(l => Date.now() - new Date(l.date) < 14*86400000);
-  const compliance = last14.length
-    ? Math.min(last14.filter(l => l.completed).length / last14.length, 1) * 25
-    : 12.5;
-
-  const acute  = recent7.reduce((a,l) => a + (l.load||5), 0) / 7;
-  const chronic = logs.slice(-28).reduce((a,l) => a + (l.load||5), 0) / 28 || 1;
-  const acwr   = acute / chronic;
-  const loadMgmt = (acwr >= 0.8 && acwr <= 1.3) ? 10 : 5;
-
-  return Math.max(0, Math.min(100, Math.round(consistency + readiness + compliance + loadMgmt)));
+function fmtDate(iso) {
+  return iso ? new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
 }
 
-function getReadinessLevel(wellness = []) {
-  const w = wellness[wellness.length - 1] || {};
-  const score = (
-    ((w.sleep    || 5) / 10) +
-    (1 - (w.soreness || 5) / 10) +
-    (1 - (w.stress   || 5) / 10)
-  ) / 3;
-  if (score >= 0.72) return 'high';
-  if (score >= 0.45) return 'moderate';
-  return 'low';
-}
-
-function formatDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+function demoSessions(sport='Basketball') {
+  return [
+    { name:'Agility & Speed',     day:'Mon',   duration:45, intensity:'High',     completed:true,  icon:'✓', iconClass:'si-done'  },
+    { name:'Upper Body Strength', day:'Tue',   duration:40, intensity:'Moderate', completed:true,  icon:'✓', iconClass:'si-done'  },
+    { name:'Skill Work + Court',  day:'Wed',   duration:60, intensity:'High',     completed:true,  icon:'✓', iconClass:'si-done'  },
+    { name:'Explosive Footwork',  day:'Today', duration:40, intensity:'High',     completed:false, icon:'🏀', iconClass:'si-today', isToday:true },
+    { name:'Active Recovery',     day:'Sat',   duration:25, intensity:'Low',      completed:false, icon:'📅', iconClass:'si-future' },
+  ];
 }
 
 export function renderPlayerHome(container) {
   const s        = state.getAll();
-  const piqScore = calcPIQ(s);                     // null = no data yet (C1)
-  const rlevel   = getReadinessLevel(s.wellness);
-  const readiness = getReadinessCopy(rlevel);
+  const piqScore = Engines.piq(s);
+  const readiness = Engines.readiness(s);
+  const sport     = s.sport || 'Basketball';
+  const phase     = s.seasonPhase || 'In-Season';
   const sessions  = s.sessions || [];
-  const sport     = s.sport || 'Athlete';
   const hasData   = piqScore !== null;
 
-  // Ring stroke math
-  const R   = 58;
-  const circ = +(2 * Math.PI * R).toFixed(1);
-  const offset = hasData ? +((1 - piqScore/100) * circ).toFixed(1) : circ; // empty if no data
+  const displaySessions = sessions.length
+    ? sessions.slice(-8).reverse().map((ses, i) => ({
+        name:      ses.exercises?.[0] || 'Training Session',
+        day:       fmtDate(ses.date),
+        duration:  ses.durationMins || 40,
+        intensity: ses.rpe >= 8 ? 'High' : ses.rpe >= 5 ? 'Moderate' : 'Low',
+        completed: ses.completed,
+        isToday:   i === 0 && !ses.completed,
+        icon:      ses.completed ? '✓' : i === 0 ? '🏀' : '📅',
+        iconClass: ses.completed ? 'si-done' : i === 0 ? 'si-today' : 'si-future',
+      }))
+    : demoSessions(sport);
 
+  const completedN = displaySessions.filter(x => x.completed).length;
+  const totalN     = displaySessions.length;
+  const volumeH    = (displaySessions.reduce((a,x) => a+x.duration, 0) / 60).toFixed(1);
+  const intensityPct = Math.round((displaySessions.filter(x=>x.intensity==='High').length / totalN) * 100);
+
+  const R = 58, circ = +(2*Math.PI*R).toFixed(1);
+  const offset = hasData ? +((1-piqScore/100)*circ).toFixed(1) : circ;
+
+  // Render — responsive via CSS (same HTML, layout switches at 901px)
   container.innerHTML = `
-    <div class="view-screen player-home">
+    <div class="piq-view">
 
-      <!-- C5: header logo at 34px -->
-      <div class="view-header">
-        <div class="view-header-left">
-          ${inline(34)}
-          <div class="view-sport-badge">${sport}</div>
-          <div class="season-phase-badge">${s.seasonPhase ? s.seasonPhase.toUpperCase() : ''}</div>
-        </div>
-        <button class="icon-btn" aria-label="Settings" id="settings-btn">⚙️</button>
+      <!-- ── Page header (desktop prominent, mobile compact) -->
+      <div class="view-page-header">
+        <div class="view-page-title">TRAINING <span class="hl">PLAN</span></div>
+        <div class="view-page-subtitle">${sport} · ${phase} · Week 8 — Accumulation Block</div>
       </div>
 
-      <!-- PIQ Ring — id="piq-ring" for Fix 03 explainer anchor -->
-      <div class="piq-ring-section">
-        <div class="piq-ring-outer${hasData ? '' : ' piq-ring--empty'}"
-             id="piq-ring"
-             role="img"
-             aria-label="${hasData ? `PIQ Score: ${piqScore} out of 100` : 'PIQ Score: not yet calculated'}">
-          <svg width="148" height="148" viewBox="0 0 148 148">
-            <!-- Track -->
-            <circle cx="74" cy="74" r="${R}" fill="none"
-              stroke="rgba(111,217,79,0.1)" stroke-width="10"
-              ${!hasData ? 'stroke-dasharray="6 5"' : ''}/>
-            <!-- Fill — only when data exists -->
-            ${hasData ? `
-            <circle cx="74" cy="74" r="${R}" fill="none"
-              stroke="#6FD94F" stroke-width="10"
-              stroke-dasharray="${circ}"
-              stroke-dashoffset="${offset}"
-              stroke-linecap="round"
-              transform="rotate(-90 74 74)"/>` : ''}
-          </svg>
-          <div class="piq-ring-center">
-            <span class="piq-score-num" style="${!hasData ? 'font-size:36px;color:var(--piq-muted)' : ''}">
-              ${hasData ? piqScore : '—'}
-            </span>
-            <span class="piq-score-label">PIQ</span>
+      <!-- ── KPI strip (4 columns desktop, 2×2 mobile) -->
+      <div class="kpi-strip">
+        <div class="kpi-card">
+          <div class="kpi-lbl">THIS WEEK</div>
+          <div class="kpi-val kv-green">${totalN}</div>
+          <div class="kpi-sub ks-muted">Sessions planned</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">COMPLETED</div>
+          <div class="kpi-val kv-blue">${completedN}</div>
+          <div class="kpi-sub ks-blue">↑ On track</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">VOLUME</div>
+          <div class="kpi-val kv-navy">${volumeH}h</div>
+          <div class="kpi-sub ks-muted">Total this week</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">INTENSITY</div>
+          <div class="kpi-val kv-navy">${intensityPct}%</div>
+          <div class="kpi-sub ks-muted">Avg. effort</div>
+        </div>
+      </div>
+
+      <!-- ── Two-column: sessions left, right panel right -->
+      <div class="two-col">
+
+        <!-- SESSIONS LIST -->
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">THIS WEEK'S SESSIONS</div>
           </div>
+          ${displaySessions.map(ses => {
+            let badgeClass, badgeText;
+            if (ses.completed)     { badgeClass='sb-done'; badgeText='DONE'; }
+            else if (ses.isToday)  { badgeClass='sb-next'; badgeText='NEXT'; }
+            else if (ses.day==='Sat') { badgeClass='sb-sat'; badgeText='SAT'; }
+            else                   { badgeClass='sb-sat'; badgeText=ses.day.toUpperCase().slice(0,3); }
+            return `
+            <div class="session-row" tabindex="0" role="button" data-route="${ROUTES.PLAYER_LOG}"
+                 aria-label="${ses.day} — ${ses.name}">
+              <div class="session-icon ${ses.iconClass}">${ses.icon}</div>
+              <div style="flex:1">
+                <div class="session-name">${ses.day} — ${ses.name}</div>
+                <div class="session-meta">
+                  ${ses.completed?'Completed · ':''}${ses.duration} min · ${ses.intensity}
+                  ${sport&&!ses.completed?' · '+sport:''}
+                </div>
+              </div>
+              <span class="session-badge ${badgeClass}">${badgeText}</span>
+            </div>`;
+          }).join('')}
+          ${!sessions.length ? `
+          <div style="padding:14px 20px;border-top:1px solid var(--card-border,#E8E9F0);">
+            <button class="btn-outline" data-route="${ROUTES.PLAYER_LOG}" style="max-width:220px;">
+              ⚡ Log Your First Session
+            </button>
+          </div>` : ''}
         </div>
-        <div class="piq-ring-caption">
-          ${hasData ? 'Today\'s Performance Index' : 'Log your wellness to unlock your score'}
-        </div>
 
-        <!-- C1: Unlock CTA when no data -->
-        ${!hasData ? `
-        <button class="piq-unlock-cta" data-route="${ROUTES.PLAYER_LOG}">
-          + Log your first check-in
-        </button>` : ''}
-      </div>
-
-      <!-- Readiness Banner — data-readiness-level for Fix 05 action copy -->
-      <div class="readiness-banner card"
-           data-readiness-level="${rlevel}"
-           data-level="${rlevel}">
-        <div class="readiness-level-label" style="color:${readiness.color};">
-          ${readiness.emoji} ${readiness.label}
-        </div>
-        <div class="readiness-reason">${_reason(s.wellness, !hasData)}</div>
-        <!-- Fix 05: action copy injected here by applyReadinessCopy() -->
-      </div>
-
-      <!-- Quick actions -->
-      <div class="quick-actions">
-        <button class="quick-btn" data-route="${ROUTES.PLAYER_LOG}">
-          <span class="quick-icon">⚡</span><span>Log Session</span>
-        </button>
-        <button class="quick-btn" data-route="${ROUTES.PLAYER_SCORE}">
-          <span class="quick-icon">📊</span><span>My Score</span>
-        </button>
-        <button class="quick-btn" data-route="${ROUTES.PLAYER_NUTRITION}">
-          <span class="quick-icon">🥗</span><span>Nutrition</span>
-        </button>
-      </div>
-
-      <!-- Session history — Fix 09 empty state -->
-      <div class="section-header-row">
-        <div class="section-label" style="padding:0;">RECENT SESSIONS</div>
-        <button class="text-btn" data-route="${ROUTES.PLAYER_LOG}">See all</button>
-      </div>
-      <div id="session-list" class="session-list"></div>
-
-    </div>`;
-
-  // Render sessions or empty state
-  const listEl = container.querySelector('#session-list');
-  if (!sessions.length) {
-    renderEmptyState(listEl, 'sessions', true);
-  } else {
-    listEl.innerHTML = sessions.slice(-5).reverse().map(s => `
-      <div class="session-card">
+        <!-- RIGHT PANEL -->
         <div>
-          <div class="session-card-sport">${s.sport || sport}</div>
-          <div class="session-card-date">${formatDate(s.date)}</div>
-        </div>
-        <div class="session-card-right">
-          <div class="session-card-rpe">RPE ${s.rpe || '—'}</div>
-          <div class="session-card-status ${s.completed ? 'done' : 'missed'}">
-            ${s.completed ? '✓' : '✗'}
-          </div>
-        </div>
-      </div>`).join('');
-  }
+          <div class="panel">
 
-  // Route buttons
-  container.querySelectorAll('[data-route]').forEach(btn => {
-    btn.addEventListener('click', () => router.navigate(btn.dataset.route));
+            <!-- Periodization -->
+            <div class="rpanel-section">
+              <div class="rpanel-title">PERIODIZATION BLOCK</div>
+              <div class="progress-row">
+                <div class="prog-lbl-row"><span class="prog-lbl">Phase 2 — Accumulation</span><span class="prog-meta">8 / 12 wks</span></div>
+                <div class="prog-track"><div class="prog-fill pf-green" style="width:67%"></div></div>
+              </div>
+              <div class="progress-row">
+                <div class="prog-lbl-row"><span class="prog-lbl">Volume Load</span><span class="prog-meta">${intensityPct}%</span></div>
+                <div class="prog-track"><div class="prog-fill pf-blue" style="width:${intensityPct}%"></div></div>
+              </div>
+              <div class="progress-row">
+                <div class="prog-lbl-row"><span class="prog-lbl">Intensity</span><span class="prog-meta">${readiness.acwr && readiness.acwr !== 1 ? (readiness.acwr*100/1.5).toFixed(0) : '68'}%</span></div>
+                <div class="prog-track"><div class="prog-fill pf-green" style="width:68%"></div></div>
+              </div>
+            </div>
+
+            <!-- Readiness / PIQ mini -->
+            <div class="rpanel-section">
+              <div class="rpanel-title">TODAY'S READINESS</div>
+              <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+                <!-- Mini PIQ ring -->
+                <div style="position:relative;width:72px;height:72px;flex-shrink:0;" id="piq-ring">
+                  <svg width="72" height="72" viewBox="0 0 72 72">
+                    <circle cx="36" cy="36" r="28" fill="none"
+                      stroke="rgba(36,192,84,0.12)" stroke-width="7"
+                      ${!hasData?'stroke-dasharray="4 4"':''}/>
+                    ${hasData?`<circle cx="36" cy="36" r="28" fill="none"
+                      stroke="#24C054" stroke-width="7"
+                      stroke-dasharray="${(2*Math.PI*28).toFixed(1)}"
+                      stroke-dashoffset="${((2*Math.PI*28)*(1-piqScore/100)).toFixed(1)}"
+                      stroke-linecap="round" transform="rotate(-90 36 36)"/>`:''}
+                  </svg>
+                  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+                    <div style="font-family:'Oswald',sans-serif;font-size:${hasData?'20':'16'}px;font-weight:700;
+                         color:${hasData?'var(--accent-green,#24C054)':'#9CA3AF'};line-height:1;">
+                      ${hasData?piqScore:'—'}
+                    </div>
+                    <div style="font-size:9px;color:#9CA3AF;letter-spacing:0.1em;text-transform:uppercase;">PIQ</div>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:12.5px;font-weight:700;color:${readiness.color};margin-bottom:3px;">
+                    ${readiness.emoji} ${readiness.label}
+                  </div>
+                  <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);line-height:1.4;">
+                    ${readiness.action.split('.')[0]}.
+                  </div>
+                </div>
+              </div>
+              <button class="btn-outline" data-route="${ROUTES.PLAYER_LOG}">
+                ${hasData?'📊 Log Today\'s Session':'+ Log Wellness Check-in'}
+              </button>
+            </div>
+
+            <!-- ACWR Insight -->
+            <div class="rpanel-section">
+              <div class="rpanel-title">LOAD INSIGHT</div>
+              <div style="font-size:11.5px;color:var(--text-secondary,#6B7280);line-height:1.5;margin-bottom:10px;">
+                ${readiness.insight}
+              </div>
+              <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);line-height:1.4;">
+                ACWR: ${readiness.acwr && readiness.acwr !== 1 ? readiness.acwr : '—'} · Zone: ${readiness.acwrZone === 'no-data' ? 'Log sessions' : readiness.acwrZone.replace('-',' ')}
+              </div>
+            </div>
+
+            <!-- Next phase -->
+            <div class="rpanel-section">
+              <div class="rpanel-title">NEXT PHASE PREVIEW</div>
+              <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;">
+                <div style="width:36px;height:36px;background:var(--nav-bg,#0D1B40);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">⚡</div>
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:var(--text-primary,#1A1F36);">Phase 3 — Intensification</div>
+                  <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);margin-top:2px;">Starts Week 10 · High intensity, lower volume</div>
+                </div>
+              </div>
+              <button class="btn-outline" data-route="${ROUTES.PLAYER_LOG}">⚙️ OPEN WORKOUT BUILDER</button>
+            </div>
+
+          </div><!-- /panel -->
+        </div><!-- /right -->
+
+      </div><!-- /two-col -->
+    </div><!-- /piq-view -->`;
+
+  // Route all buttons
+  container.querySelectorAll('[data-route]').forEach(el => {
+    el.addEventListener('click',  () => router.navigate(el.dataset.route));
+    el.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') router.navigate(el.dataset.route); });
   });
-
-  container.querySelector('#settings-btn')?.addEventListener('click', () => {
-    router.navigate('settings');
-  });
-}
-
-function _reason(wellness = [], noData) {
-  if (noData) return 'Log your wellness daily to get a personalised readiness explanation.';
-  const w = wellness[wellness.length - 1];
-  if (!w) return 'Log your wellness below to see today\'s readiness reasoning.';
-  const parts = [];
-  if (w.sleep >= 7)     parts.push('sleep was good');
-  if (w.sleep <= 4)     parts.push('sleep was poor');
-  if (w.soreness <= 3)  parts.push('soreness is low');
-  if (w.soreness >= 7)  parts.push('soreness is high');
-  if (w.stress <= 3)    parts.push('stress is low');
-  if (w.stress >= 7)    parts.push('stress is elevated');
-  if (!parts.length)    return 'Your readiness is based on today\'s wellness inputs.';
-  const joined = parts.slice(0, 3).join(', ');
-  return joined.charAt(0).toUpperCase() + joined.slice(1) + '.';
 }

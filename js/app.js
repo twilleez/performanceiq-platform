@@ -13,7 +13,11 @@
  *  - Fix 10: offlineIndicator.init() called in init()
  */
 
+// ── SCIENCE ENGINES ───────────────────────────────────────────
+import { Engines }           from './services/engines.js';        // v2 engines
+
 // ── CORE ──────────────────────────────────────────────────────
+import { shell }         from './components/shell.js';         // Desktop layout
 import { router }       from './core/router.js';
 import { boot }         from './core/boot.js';
 import { state }        from './state/state.js';
@@ -29,6 +33,9 @@ import { emptyState,
          offlineIndicator }     from './components/empty-states.js';    // Fix 09+10
 
 // ── ROUTE MAP (dynamic imports — no static import for views) ──
+// Expose engines to views via app.js exports
+export { Engines };
+
 export const ROUTES = {
   // Auth
   WELCOME:       'welcome',
@@ -173,8 +180,11 @@ async function init() {
     // Register navigate with the router so view modules can call router.navigate()
     router.register(navigate);
 
-    // Fix 06 — init nav bar based on role from state
-    const role = state.get('role');
+    // Desktop shell — init before first route render
+    const role = state.get('role') || 'athlete';
+    shell.init(role);
+
+    // Fix 06 — mobile nav bar (hidden on desktop via CSS)
     navBar.init(role, { navigate });
 
     // Navigate to initial route

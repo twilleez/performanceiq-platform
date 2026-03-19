@@ -1,10 +1,4 @@
-/**
- * coach/home.js — Phase 15C
- * Fix 09: Empty state when no athletes are assigned
- * Fix 05: Readiness copy on team overview cards
- */
 import { state }           from '../../state/state.js';
-import { inline, mark } from '../../components/logo.js';
 import { router }          from '../../core/router.js';
 import { renderEmptyState } from '../../app.js';
 import { getReadinessCopy } from '../../components/readiness-copy.js';
@@ -13,103 +7,95 @@ import { ROUTES }          from '../../app.js';
 export function renderCoachHome(container) {
   const s        = state.getAll();
   const athletes = s.athletes || [];
+  const sessions  = s.sessions || [];
+  const sport     = s.sport || 'Basketball';
+
+  const readyCnt   = athletes.filter(a=>a.readiness==='high'||a.readiness==='optimal').length;
+  const cautionCnt = athletes.filter(a=>a.readiness==='moderate'||a.readiness==='caution').length;
+  const sessions7d = sessions.filter(s=>Date.now()-new Date(s.date)<7*86400000).length;
 
   container.innerHTML = `
-    <div class="view-screen coach-home">
+    <div class="piq-view">
+      <div class="view-page-header">
+        <div class="view-page-title">COACH <span class="highlight">HQ</span></div>
+        <div class="view-page-subtitle">${athletes.length} athlete${athletes.length!==1?'s':''} tracked · ${sport}</div>
+      </div>
 
-      <div class="view-header">
-        <div class="view-header-left">
-          ${inline(28)}
-          <div>
-            <div class="view-title">COACH HQ</div>
-            <div class="view-subtitle">${athletes.length} athlete${athletes.length !== 1 ? 's' : ''} tracked</div>
+      <div class="kpi-strip-desktop">
+        <div class="kpi-card-desktop">
+          <div class="kpi-card-label">ATHLETES</div>
+          <div class="kpi-card-value kpi-green">${athletes.length}</div>
+          <div class="kpi-card-sub kpi-sub-grey">In roster</div>
+        </div>
+        <div class="kpi-card-desktop">
+          <div class="kpi-card-label">READY TODAY</div>
+          <div class="kpi-card-value kpi-blue">${readyCnt}</div>
+          <div class="kpi-card-sub kpi-sub-blue">↑ Full training</div>
+        </div>
+        <div class="kpi-card-desktop">
+          <div class="kpi-card-label">CAUTION</div>
+          <div class="kpi-card-value kpi-navy">${cautionCnt}</div>
+          <div class="kpi-card-sub kpi-sub-grey">Reduced load</div>
+        </div>
+        <div class="kpi-card-desktop">
+          <div class="kpi-card-label">SESSIONS 7D</div>
+          <div class="kpi-card-value kpi-navy">${sessions7d}</div>
+          <div class="kpi-card-sub kpi-sub-grey">Team total</div>
+        </div>
+      </div>
+
+      <div class="content-two-col">
+        <!-- Athlete roster -->
+        <div class="panel-card">
+          <div class="panel-card-header" style="display:flex;align-items:center;justify-content:space-between;">
+            <div class="panel-card-title">ATHLETE ROSTER</div>
+            <button class="btn-outline-green" id="add-athlete-btn"
+                    style="width:auto;padding:7px 14px;font-size:12px;">
+              + Add Athlete
+            </button>
+          </div>
+          <div id="athlete-list"></div>
+        </div>
+
+        <!-- Right panel -->
+        <div class="panel-card">
+          <div class="right-panel-section">
+            <div class="right-panel-title">QUICK ACTIONS</div>
+            <div style="display:grid;gap:10px;">
+              <button class="btn-outline-green" data-route="${ROUTES.COACH_PROGRAM}">📋 Build Program</button>
+              <button class="btn-outline-green" data-route="${ROUTES.PLAYER_LOG}">⚡ Log Session</button>
+              <button class="btn-outline-green" data-route="${ROUTES.COACH_ANALYTICS}">📊 View Analytics</button>
+            </div>
           </div>
         </div>
-        <button class="icon-btn" id="add-athlete-btn" aria-label="Add athlete" style="font-size:22px;font-weight:300;">+</button>
       </div>
+    </div>`;
 
-      <!-- KPI Strip -->
-      <div class="kpi-strip">
-        <div class="kpi-card">
-          <div class="kpi-val">${athletes.length}</div>
-          <div class="kpi-lbl">Athletes</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">${_readyCount(athletes)}</div>
-          <div class="kpi-lbl">Ready Today</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">${_cautionCount(athletes)}</div>
-          <div class="kpi-lbl">Caution</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">${_sessions7d(s.sessions)}</div>
-          <div class="kpi-lbl">Sessions 7d</div>
-        </div>
-      </div>
-
-      <!-- Quick nav -->
-      <div class="quick-actions">
-        <button class="quick-btn" data-route="${ROUTES.COACH_PROGRAM}">
-          <span class="quick-icon">📋</span><span>Program</span>
-        </button>
-        <button class="quick-btn" data-route="${ROUTES.COACH_TEAM}">
-          <span class="quick-icon">🎽</span><span>Team</span>
-        </button>
-        <button class="quick-btn" data-route="${ROUTES.COACH_ANALYTICS}">
-          <span class="quick-icon">📊</span><span>Analytics</span>
-        </button>
-      </div>
-
-      <!-- Roster -->
-      <div class="section-header-row">
-        <div class="section-label">ATHLETE ROSTER</div>
-        <button class="text-btn" data-route="${ROUTES.COACH_TEAM}">Manage</button>
-      </div>
-      <div id="athlete-roster"></div>
-
-    </div>
-  `;
-
-  // ── Render roster (Fix 09) ────────────────────────────────
-  const rosterEl = container.querySelector('#athlete-roster');
+  const listEl = container.querySelector('#athlete-list');
   if (!athletes.length) {
-    renderEmptyState(rosterEl, 'roster');
+    renderEmptyState(listEl, 'roster');
   } else {
-    rosterEl.innerHTML = athletes.map(a => {
-      const readiness = getReadinessCopy(a.readiness || 'moderate');
-      return `
-        <div class="athlete-row card">
-          <div class="athlete-row-avatar">${a.initials || a.name?.slice(0,2).toUpperCase() || 'AT'}</div>
-          <div class="athlete-row-info">
-            <div class="athlete-name">${a.name || 'Athlete'}</div>
-            <div class="athlete-sport">${a.sport || s.sport || '—'}</div>
-          </div>
-          <div class="athlete-row-status" style="color:${readiness.color}">
-            <div class="athlete-piq">${a.piq || '—'}</div>
-            <div class="athlete-readiness-label">${readiness.emoji} ${readiness.label}</div>
-          </div>
+    const rc = getReadinessCopy;
+    listEl.innerHTML = athletes.map(a => {
+      const rd = rc(a.readiness||'moderate');
+      return `<div class="session-row">
+        <div class="session-icon" style="background:var(--nav-bg,#0D1B40);color:var(--accent-green,#24C054);
+             font-family:'Oswald',sans-serif;font-size:12px;font-weight:700;">
+          ${(a.name||'AT').slice(0,2).toUpperCase()}
         </div>
-      `;
+        <div class="session-info">
+          <div class="session-name">${a.name||'Athlete'}</div>
+          <div class="session-meta">${a.sport||sport} · PIQ ${a.piq||'—'}</div>
+        </div>
+        <span style="font-size:13px;font-weight:600;color:${rd.color};">${rd.emoji} ${rd.label}</span>
+      </div>`;
     }).join('');
   }
 
-  // ── Routing ───────────────────────────────────────────────
   container.querySelectorAll('[data-route]').forEach(btn => {
     btn.addEventListener('click', () => router.navigate(btn.dataset.route));
   });
-
   container.querySelector('#add-athlete-btn')?.addEventListener('click', () => {
     router.navigate(ROUTES.COACH_TEAM);
   });
-}
-
-function _readyCount(athletes) {
-  return athletes.filter(a => a.readiness === 'high' || a.readiness === 'optimal').length;
-}
-function _cautionCount(athletes) {
-  return athletes.filter(a => a.readiness === 'moderate' || a.readiness === 'caution').length;
-}
-function _sessions7d(sessions = []) {
-  return sessions.filter(s => Date.now() - new Date(s.date) < 7 * 86400000).length;
 }
