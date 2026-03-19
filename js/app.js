@@ -95,8 +95,14 @@ const VIEW_MAP = {
  * then fires post-render hooks for the relevant fixes.
  */
 export async function navigate(route, params = {}) {
-  const appEl = document.getElementById('app');
-  if (!appEl) return;
+  // Guard: if #app doesn't exist yet, create it
+  let appEl = document.getElementById('app');
+  if (!appEl) {
+    appEl = document.createElement('div');
+    appEl.id = 'app';
+    appEl.setAttribute('role', 'main');
+    document.body.appendChild(appEl);
+  }
 
   const entry = VIEW_MAP[route];
   if (!entry) {
@@ -257,4 +263,8 @@ document.addEventListener('piq:empty-cta', (e) => {
 });
 
 // ── START ──────────────────────────────────────────────────────
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}

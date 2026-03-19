@@ -134,43 +134,52 @@ export const offlineIndicator = {
   },
 
   _render() {
-    // Find the app header — try common selectors
-    const header =
-      document.querySelector('.app-header') ||
-      document.querySelector('#app-header') ||
-      document.querySelector('header') ||
-      document.querySelector('.piq-header');
+    // Defer until DOM has content — retry up to 20 times over 2s
+    const tryRender = (attempts = 0) => {
+      const header =
+        document.querySelector('.app-header') ||
+        document.querySelector('#app-header') ||
+        document.querySelector('header') ||
+        document.querySelector('.view-header') ||
+        document.querySelector('#app');
 
-    if (!header) {
-      // If no header found, append to body top
-      document.body.insertAdjacentHTML('afterbegin', '<div id="piq-offline-anchor"></div>');
-    }
+      if (!header && attempts < 20) {
+        setTimeout(() => tryRender(attempts + 1), 100);
+        return;
+      }
 
-    const anchor = header || document.getElementById('piq-offline-anchor');
+      // Final fallback: append to body
+      const anchor = header || document.body;
 
-    const pill = document.createElement('div');
-    pill.id = 'piq-offline-pill';
-    pill.setAttribute('aria-live', 'polite');
-    pill.setAttribute('aria-atomic', 'true');
-    pill.style.cssText = `
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: 0.02em;
-      transition: background 0.3s, color 0.3s, border-color 0.3s;
-      border: 1px solid transparent;
-      cursor: default;
-      user-select: none;
-    `;
+      const pill = document.createElement('div');
+      pill.id = 'piq-offline-pill';
+      pill.setAttribute('aria-live', 'polite');
+      pill.setAttribute('aria-atomic', 'true');
+      pill.style.cssText = `
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 9000;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        transition: background 0.3s, color 0.3s, opacity 0.5s;
+        border: 1px solid transparent;
+        pointer-events: none;
+      `;
 
-    // Insert at the end of header (right side)
-    anchor.appendChild(pill);
-    this._el = pill;
+      document.body.appendChild(pill);
+      this._el = pill;
+      this._update();
+    };
+
+    tryRender();
   },
 
   _update() {
