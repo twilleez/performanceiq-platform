@@ -16,27 +16,27 @@
 // 'route' values must match your existing router's route keys/paths.
 const NAV_TABS = {
   athlete: [
-    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'dashboard' },
-    { id: 'train',     icon: '⚡', label: 'TRAIN',     route: 'training' },
-    { id: 'track',     icon: '📊', label: 'TRACK',     route: 'wellness' },
-    { id: 'nutrition', icon: '🥗', label: 'NUTRITION', route: 'nutrition' },
+    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'player-home' },
+    { id: 'train',     icon: '⚡', label: 'TRAIN',     route: 'player-log' },
+    { id: 'track',     icon: '📊', label: 'TRACK',     route: 'player-log' },
+    { id: 'nutrition', icon: '🥗', label: 'NUTRITION', route: 'player-nutrition' },
   ],
   coach: [
-    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'dashboard' },
-    { id: 'team',      icon: '🎽', label: 'TEAM',      route: 'team' },
-    { id: 'train',     icon: '⚡', label: 'TRAIN',     route: 'training' },
-    { id: 'track',     icon: '📊', label: 'TRACK',     route: 'analytics' },
+    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'player-home' },
+    { id: 'team',      icon: '🎽', label: 'TEAM',      route: 'coach-team' },
+    { id: 'train',     icon: '⚡', label: 'TRAIN',     route: 'player-log' },
+    { id: 'track',     icon: '📊', label: 'TRACK',     route: 'player-score' },
   ],
   parent: [
-    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'dashboard' },
-    { id: 'athlete',   icon: '⚡', label: 'ATHLETE',   route: 'athlete-view' },
-    { id: 'wellness',  icon: '💚', label: 'WELLNESS',  route: 'wellness' },
-    { id: 'history',   icon: '📅', label: 'HISTORY',   route: 'history' },
+    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'player-home' },
+    { id: 'athlete',   icon: '⚡', label: 'ATHLETE',   route: 'player-home' },
+    { id: 'wellness',  icon: '💚', label: 'WELLNESS',  route: 'player-log' },
+    { id: 'history',   icon: '📅', label: 'HISTORY',   route: 'player-score' },
   ],
   admin: [
-    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'dashboard' },
-    { id: 'users',     icon: '👥', label: 'USERS',     route: 'users' },
-    { id: 'analytics', icon: '📊', label: 'ANALYTICS', route: 'analytics' },
+    { id: 'home',      icon: '🏠', label: 'HOME',      route: 'player-home' },
+    { id: 'users',     icon: '👥', label: 'USERS',     route: 'admin-home' },
+    { id: 'analytics', icon: '📊', label: 'ANALYTICS', route: 'player-score' },
     { id: 'settings',  icon: '⚙️', label: 'SETTINGS',  route: 'settings' },
   ]
 };

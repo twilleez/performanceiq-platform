@@ -9,16 +9,16 @@
 
   <!-- PWA — manifest and icons only linked when files exist in repo -->
   <!-- <link rel="manifest" href="manifest.json" /> -->
-  <!-- <link rel="apple-touch-icon" href="icons/icon-192.png" /> -->
-  <!-- Inline favicon so browser makes no 404 request -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23FF6B35'/><text y='.9em' font-size='70' font-family='sans-serif' font-weight='bold' fill='white' x='15'>P</text></svg>" />
+  <!-- Inline SVG favicon — no file dependency -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236EE040'/><text y='.9em' font-size='70' font-family='sans-serif' font-weight='bold' fill='%23060D12' x='18'>P</text></svg>" />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Styles — Phase 15C: patch CSS files added -->
+  <!-- Design tokens first, then component styles -->
+  <link rel="stylesheet" href="css/tokens.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="css/boot-loader.css" />
   <link rel="stylesheet" href="css/nav-bar.css" />

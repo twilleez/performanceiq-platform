@@ -1,13 +1,18 @@
-import { router } from '../../core/router.js';
+import { router }  from '../../core/router.js';
+import { lockup }  from '../../components/logo.js';
+
 export function renderWelcome(container) {
   container.innerHTML = `
     <div class="auth-screen auth-welcome">
-      <div class="auth-logo-mark">P</div>
-      <h1 class="auth-title">PERFORMANCE<br>IQ</h1>
-      <p class="auth-sub">Your sport science readiness platform.</p>
-      <button class="btn-primary" id="get-started">GET STARTED</button>
-      <button class="btn-ghost" id="sign-in-link">Already have an account? Sign in</button>
+      ${lockup(80)}
+      <p class="auth-sub" style="max-width:260px;">
+        Your sport science readiness platform.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;">
+        <button class="btn-primary" id="get-started">GET STARTED</button>
+        <button class="btn-ghost"   id="sign-in-link">Already have an account? Sign in</button>
+      </div>
     </div>`;
-  container.querySelector('#get-started')?.addEventListener('click', () => router.navigate('pick-role'));
-  container.querySelector('#sign-in-link')?.addEventListener('click', () => router.navigate('sign-in'));
+  container.querySelector('#get-started')  ?.addEventListener('click', () => router.navigate('pick-role'));
+  container.querySelector('#sign-in-link') ?.addEventListener('click', () => router.navigate('sign-in'));
 }

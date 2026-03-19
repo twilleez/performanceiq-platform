@@ -4,6 +4,7 @@
  * Fix 05: Readiness copy on team overview cards
  */
 import { state }           from '../../state/state.js';
+import { inline }           from '../../components/logo.js';
 import { router }          from '../../core/router.js';
 import { renderEmptyState } from '../../app.js';
 import { getReadinessCopy } from '../../components/readiness-copy.js';
@@ -17,11 +18,14 @@ export function renderCoachHome(container) {
     <div class="view-screen coach-home">
 
       <div class="view-header">
-        <div>
-          <div class="view-title">COACH HQ</div>
-          <div class="view-subtitle">${athletes.length} athlete${athletes.length !== 1 ? 's' : ''} tracked</div>
+        <div class="view-header-left">
+          ${inline(28)}
+          <div>
+            <div class="view-title">COACH HQ</div>
+            <div class="view-subtitle">${athletes.length} athlete${athletes.length !== 1 ? 's' : ''} tracked</div>
+          </div>
         </div>
-        <button class="icon-btn" id="add-athlete-btn" aria-label="Add athlete">+</button>
+        <button class="icon-btn" id="add-athlete-btn" aria-label="Add athlete" style="font-size:22px;font-weight:300;">+</button>
       </div>
 
       <!-- KPI Strip -->

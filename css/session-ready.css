@@ -175,7 +175,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.session-start-btn:hover  { background: #ff7c4d; }
+.session-start-btn:hover  { background: #FF6B35; }
 .session-start-btn:active { transform: scale(0.98); }
 
 .session-start-btn .btn-icon {

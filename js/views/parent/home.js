@@ -4,6 +4,7 @@
  * Phase 3 preview: "Is my athlete ready today?" single answer
  */
 import { state }           from '../../state/state.js';
+import { inline }           from '../../components/logo.js';
 import { router }          from '../../core/router.js';
 import { getReadinessCopy } from '../../components/readiness-copy.js';
 import { ROUTES }          from '../../app.js';
@@ -24,9 +25,9 @@ export function renderParentHome(container) {
   const copy  = getReadinessCopy(level);
 
   const VERDICT = {
-    high:     { text: 'READY TO PLAY',        color: '#00E599', bg: 'rgba(0,229,153,0.08)', border: 'rgba(0,229,153,0.2)' },
-    moderate: { text: 'LIGHT LOAD DAY',       color: '#FFD166', bg: 'rgba(255,209,102,0.08)', border: 'rgba(255,209,102,0.2)' },
-    low:      { text: 'REST RECOMMENDED',     color: '#FF4757', bg: 'rgba(255,71,87,0.08)',  border: 'rgba(255,71,87,0.2)' },
+    high:     { text: 'READY TO PLAY',        color: 'var(--piq-green, #00E599)', bg: 'rgba(0,229,153,0.08)', border: 'rgba(0,229,153,0.2)' },
+    moderate: { text: 'LIGHT LOAD DAY',       color: 'var(--piq-yellow, #FFD166)', bg: 'rgba(255,209,102,0.08)', border: 'rgba(255,209,102,0.2)' },
+    low:      { text: 'REST RECOMMENDED',     color: 'var(--piq-red, #FF4757)', bg: 'rgba(255,71,87,0.08)',  border: 'rgba(255,71,87,0.2)' },
   };
   const verdict = VERDICT[level] || VERDICT.moderate;
 
@@ -37,8 +38,13 @@ export function renderParentHome(container) {
     <div class="view-screen parent-home">
 
       <div class="view-header">
-        <div class="view-title">PARENT PORTAL</div>
-        <div class="view-subtitle">Monitoring ${athleteName}</div>
+        <div class="view-header-left">
+          ${inline(28)}
+          <div>
+            <div class="view-title">PARENT PORTAL</div>
+            <div class="view-subtitle">Monitoring ${athleteName}</div>
+          </div>
+        </div>
       </div>
 
       <!-- Phase 3: Single "ready today?" verdict -->
@@ -73,8 +79,8 @@ export function renderParentHome(container) {
       <div class="wellness-snapshot-grid card">
         ${_wellnessTile('😴', 'Sleep',    lastW.sleep    || '—', 10, '#00D4FF')}
         ${_wellnessTile('💪', 'Soreness', lastW.soreness || '—', 10, '#FF6B35', true)}
-        ${_wellnessTile('🧠', 'Stress',   lastW.stress   || '—', 10, '#FFD166', true)}
-        ${_wellnessTile('⚡', 'Fatigue',  lastW.fatigue  || '—', 10, '#FF4757', true)}
+        ${_wellnessTile('🧠', 'Stress',   lastW.stress   || '—', 10, 'var(--piq-yellow, #FFD166)', true)}
+        ${_wellnessTile('⚡', 'Fatigue',  lastW.fatigue  || '—', 10, 'var(--piq-red, #FF4757)', true)}
       </div>
 
       ${!wellness.length ? `

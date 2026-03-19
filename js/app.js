@@ -170,6 +170,9 @@ async function init() {
     // Boot: checks auth state, determines initial route
     const initialRoute = await boot(state, ROUTES);
 
+    // Register navigate with the router so view modules can call router.navigate()
+    router.register(navigate);
+
     // Fix 06 — init nav bar based on role from state
     const role = state.get('role');
     navBar.init(role, { navigate });
