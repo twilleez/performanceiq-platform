@@ -6,7 +6,7 @@
  */
 import { router }  from '../../core/router.js';
 import { state }   from '../../state/state.js';
-import { inline }  from '../../components/logo.js';
+import { inline, mark, wide } from '../../components/logo.js';
 
 const SPORTS = [
   { id: 'basketball', label: 'Basketball', icon: '🏀' },

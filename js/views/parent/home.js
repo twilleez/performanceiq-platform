@@ -4,7 +4,7 @@
  * Phase 3 preview: "Is my athlete ready today?" single answer
  */
 import { state }           from '../../state/state.js';
-import { inline }           from '../../components/logo.js';
+import { inline, mark } from '../../components/logo.js';
 import { router }          from '../../core/router.js';
 import { getReadinessCopy } from '../../components/readiness-copy.js';
 import { ROUTES }          from '../../app.js';

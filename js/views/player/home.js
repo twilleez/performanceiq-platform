@@ -11,7 +11,7 @@ import { state }             from '../../state/state.js';
 import { router }            from '../../core/router.js';
 import { renderEmptyState }  from '../../app.js';
 import { getReadinessCopy }  from '../../components/readiness-copy.js';
-import { inline }            from '../../components/logo.js';
+import { inline, mark } from '../../components/logo.js';
 import { ROUTES }            from '../../app.js';
 
 // ── PIQ Formula v1 ───────────────────────────────────────────
@@ -95,12 +95,12 @@ export function renderPlayerHome(container) {
           <svg width="148" height="148" viewBox="0 0 148 148">
             <!-- Track -->
             <circle cx="74" cy="74" r="${R}" fill="none"
-              stroke="rgba(255,107,53,0.10)" stroke-width="10"
+              stroke="rgba(111,217,79,0.1)" stroke-width="10"
               ${!hasData ? 'stroke-dasharray="6 5"' : ''}/>
             <!-- Fill — only when data exists -->
             ${hasData ? `
             <circle cx="74" cy="74" r="${R}" fill="none"
-              stroke="#FF6B35" stroke-width="10"
+              stroke="#6FD94F" stroke-width="10"
               stroke-dasharray="${circ}"
               stroke-dashoffset="${offset}"
               stroke-linecap="round"

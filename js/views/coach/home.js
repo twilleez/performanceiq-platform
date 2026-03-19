@@ -4,7 +4,7 @@
  * Fix 05: Readiness copy on team overview cards
  */
 import { state }           from '../../state/state.js';
-import { inline }           from '../../components/logo.js';
+import { inline, mark } from '../../components/logo.js';
 import { router }          from '../../core/router.js';
 import { renderEmptyState } from '../../app.js';
 import { getReadinessCopy } from '../../components/readiness-copy.js';

@@ -1,5 +1,5 @@
 import { router }  from '../../core/router.js';
-import { inline }  from '../../components/logo.js';
+import { inline, mark, wide } from '../../components/logo.js';
 
 export function renderSignUp(container) {
   container.innerHTML = `

@@ -1,8 +1,8 @@
-/* boot-loader.css — Phase 15C — coral brand */
-#piq-boot-loader{position:fixed;inset:0;z-index:99999;background:#0A0A0F;display:flex;align-items:center;justify-content:center;transition:opacity .35s ease,visibility .35s ease}
+/* boot-loader.css — green/teal/navy from logo */
+#piq-boot-loader{position:fixed;inset:0;z-index:99999;background:#010D14;display:flex;align-items:center;justify-content:center;transition:opacity .35s ease,visibility .35s ease}
 body.piq-loaded #piq-boot-loader{opacity:0;visibility:hidden;pointer-events:none}
 .piq-boot-inner{display:flex;flex-direction:column;align-items:center;gap:20px}
-.piq-boot-ring{width:56px;height:56px;border-radius:50%;border:3px solid rgba(255,107,53,.15);border-top-color:#FF6B35;animation:piq-spin .85s linear infinite}
-.piq-boot-logo{font-family:'Oswald','Impact',sans-serif;font-size:20px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.55);animation:piq-pulse 1.4s ease-in-out infinite}
+.piq-boot-ring{width:56px;height:56px;border-radius:50%;border:3px solid rgba(111,217,79,.15);border-top-color:#6FD94F;animation:piq-spin .85s linear infinite}
+.piq-boot-logo{font-family:'Oswald','Impact',sans-serif;font-size:20px;font-weight:700;letter-spacing:.12em;color:rgba(208,238,244,.45);animation:piq-pulse 1.4s ease-in-out infinite}
 @keyframes piq-spin{to{transform:rotate(360deg)}}
-@keyframes piq-pulse{0%,100%{opacity:.35}50%{opacity:.9}}
+@keyframes piq-pulse{0%,100%{opacity:.3}50%{opacity:.85}}

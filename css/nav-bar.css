@@ -1,13 +1,13 @@
-/* nav-bar.css — Phase 15C — coral brand */
-#piq-bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:5000;background:rgba(10,10,15,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,0.07);padding:0 4px env(safe-area-inset-bottom,0px);display:flex;align-items:stretch;height:60px;transform:translateZ(0);transition:transform .3s ease}
+/* nav-bar.css — green/teal/navy from logo */
+#piq-bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:5000;background:rgba(1,13,20,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(80,144,160,.15);padding:0 4px env(safe-area-inset-bottom,0px);display:flex;align-items:stretch;height:60px;transform:translateZ(0);transition:transform .3s ease}
 #piq-bottom-nav.nav-hidden{transform:translateY(100%)}
-.piq-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border:none;background:transparent;color:rgba(255,255,255,.3);padding:8px 4px;transition:color .2s;position:relative;min-width:44px;-webkit-tap-highlight-color:transparent}
-.piq-nav-item:hover{color:rgba(255,255,255,.65)}
-.piq-nav-item.active{color:#FF6B35}
-.piq-nav-item.active::before{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:#FF6B35;border-radius:0 0 2px 2px}
+.piq-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border:none;background:transparent;color:rgba(208,238,244,.28);padding:8px 4px;transition:color .2s;position:relative;min-width:44px;-webkit-tap-highlight-color:transparent}
+.piq-nav-item:hover{color:rgba(208,238,244,.6)}
+.piq-nav-item.active{color:#6FD94F}
+.piq-nav-item.active::before{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:#6FD94F;border-radius:0 0 2px 2px;box-shadow:0 0 8px rgba(111,217,79,.5)}
 .piq-nav-icon{font-size:20px;line-height:1;transition:transform .15s}
 .piq-nav-item:active .piq-nav-icon{transform:scale(.88)}
 .piq-nav-item.active .piq-nav-icon{transform:scale(1.05)}
 .piq-nav-label{font-family:'Barlow Condensed','Oswald',sans-serif;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;line-height:1}
-.piq-nav-badge{position:absolute;top:6px;right:calc(50% - 18px);min-width:16px;height:16px;background:#FF6B35;color:white;font-size:9px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;border:1.5px solid #0A0A0F;line-height:1}
+.piq-nav-badge{position:absolute;top:6px;right:calc(50% - 18px);min-width:16px;height:16px;background:#6FD94F;color:#010D14;font-size:9px;font-weight:700;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px;border:1.5px solid #010D14;line-height:1}
 .has-bottom-nav{padding-bottom:calc(60px + env(safe-area-inset-bottom,0px))}

@@ -1,61 +1,72 @@
 /* ============================================================
    tokens.css — PerformanceIQ Phase 15C
-   Color system confirmed from live screenshot branding.
-   Primary: Electric Coral #FF6B35 (logo mark + CTAs)
+   Color system matched to uploaded logo:
+   Volt Green glow ring + Steel Teal spiral + Deep Navy background
    ============================================================ */
 
 :root {
-  /* ── PRIMARY — Electric Coral ─────────────────────────── */
-  --piq-coral:        #FF6B35;
-  --piq-coral-light:  #FF8A5E;
-  --piq-coral-dim:    #CC5228;
-  --piq-coral-glow:   rgba(255, 107, 53, 0.16);
-  --piq-coral-border: rgba(255, 107, 53, 0.28);
+  /* ── PRIMARY — Volt Green (logo glow ring) ─────────────── */
+  --piq-green:        #6FD94F;
+  --piq-green-light:  #A0F070;
+  --piq-green-bright: #C0F0A0;
+  --piq-green-dim:    #4CAF30;
+  --piq-green-glow:   rgba(111, 217, 79, 0.18);
+  --piq-green-border: rgba(111, 217, 79, 0.30);
 
-  /* ── SECONDARY — Electric Blue ────────────────────────── */
-  --piq-blue:         #00D4FF;
-  --piq-blue-light:   #4DE3FF;
-  --piq-blue-glow:    rgba(0, 212, 255, 0.12);
-  --piq-blue-border:  rgba(0, 212, 255, 0.22);
+  /* ── SECONDARY — Mid Teal (logo spiral highlights) ─────── */
+  --piq-teal:         #5090A0;
+  --piq-teal-light:   #70B0C0;
+  --piq-teal-glow:    rgba(80, 144, 160, 0.14);
+  --piq-teal-border:  rgba(80, 144, 160, 0.25);
+
+  /* ── DEEP NAVY — Logo body / app backgrounds ───────────── */
+  --piq-navy:         #002030;
+  --piq-navy-mid:     #103050;
+  --piq-navy-light:   #204060;
 
   /* ── BACKGROUNDS ──────────────────────────────────────── */
-  --piq-bg:           #0A0A0F;
-  --piq-s1:           #13131A;
-  --piq-s2:           #1C1C26;
-  --piq-s3:           #24242F;
-  --piq-border:       rgba(255, 255, 255, 0.07);
-  --piq-border-hover: rgba(255, 107, 53, 0.30);
+  --piq-bg:           #010D14;   /* deepest navy-black */
+  --piq-s1:           #0A1E28;   /* card surface */
+  --piq-s2:           #112636;   /* elevated surface */
+  --piq-s3:           #1A3040;   /* headers */
+  --piq-border:       rgba(80, 144, 160, 0.15);
+  --piq-border-hover: rgba(111, 217, 79, 0.30);
 
   /* ── TEXT ─────────────────────────────────────────────── */
-  --piq-text:         #E8E8F0;
-  --piq-muted:        #6B6B80;
-  --piq-faint:        #3A3A4A;
+  --piq-text:         #D0EEF4;   /* cool white with teal tint */
+  --piq-muted:        #4A7888;   /* muted teal-grey */
+  --piq-faint:        #1E4050;   /* very faint — placeholders */
 
   /* ── SEMANTIC ─────────────────────────────────────────── */
-  --piq-green:        #00E599;
-  --piq-yellow:       #FFD166;
-  --piq-red:          #FF4757;
+  --piq-coral:        #6FD94F;   /* keep "coral" token pointing to green for btn compat */
+  --piq-coral-light:  #A0F070;
+  --piq-coral-dim:    #4CAF30;
+  --piq-coral-glow:   rgba(111, 217, 79, 0.18);
+  --piq-coral-border: rgba(111, 217, 79, 0.30);
 
-  /* ── READINESS ────────────────────────────────────────── */
-  --piq-ready:        #00E599;
-  --piq-moderate:     #FFD166;
-  --piq-low:          #FF4757;
+  --piq-blue:         #5090A0;   /* "blue" → teal for compat */
+  --piq-blue-light:   #70B0C0;
+  --piq-blue-glow:    rgba(80, 144, 160, 0.14);
+  --piq-blue-border:  rgba(80, 144, 160, 0.25);
 
-  /* ── TYPOGRAPHY ───────────────────────────────────────── */
+  /* ── READINESS TIERS ──────────────────────────────────── */
+  --piq-ready:        #6FD94F;   /* high — volt green */
+  --piq-moderate:     #F0C040;   /* moderate — amber */
+  --piq-low:          #E04060;   /* low — red */
+  --piq-yellow:       #F0C040;
+  --piq-red:          #E04060;
+
+  /* ── TYPOGRAPHY ────────────────────────────────────────── */
   --font-display:     'Oswald', 'Impact', sans-serif;
   --font-body:        'DM Sans', system-ui, sans-serif;
   --font-num:         'Barlow Condensed', 'Oswald', sans-serif;
 
-  /* ── RADII ────────────────────────────────────────────── */
+  /* ── RADII ─────────────────────────────────────────────── */
   --r-sm:   8px;
   --r-md:   12px;
   --r-lg:   16px;
   --r-xl:   20px;
 
-  /* ── SAFE AREA ────────────────────────────────────────── */
+  /* ── SAFE AREA ─────────────────────────────────────────── */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-
-  /* ── LOGO — embedded SVG, zero file dependencies ─────── */
-  --piq-logo-mark-src:   "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTIwIiBmaWxsPSJub25lIj4KICA8cmVjdCB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgcng9IjI0IiBmaWxsPSIjRkY2QjM1Ii8+CiAgPHRleHQgeD0iNjAiIHk9Ijg2IiAKICAgICAgICBmb250LWZhbWlseT0iT3N3YWxkLCBJbXBhY3QsIHNhbnMtc2VyaWYiCiAgICAgICAgZm9udC1zaXplPSI3MiIgZm9udC13ZWlnaHQ9IjcwMCIKICAgICAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIKICAgICAgICBsZXR0ZXItc3BhY2luZz0iLTIiPlA8L3RleHQ+Cjwvc3ZnPg==";
-  --piq-logo-lockup-src: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMjAgODAiIGZpbGw9Im5vbmUiPgogIDwhLS0gSWNvbiBzcXVhcmUgLS0+CiAgPHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiByeD0iMTYiIGZpbGw9IiNGRjZCMzUiLz4KICA8dGV4dCB4PSI0MCIgeT0iNTgiCiAgICAgICAgZm9udC1mYW1pbHk9Ik9zd2FsZCwgSW1wYWN0LCBzYW5zLXNlcmlmIgogICAgICAgIGZvbnQtc2l6ZT0iNDgiIGZvbnQtd2VpZ2h0PSI3MDAiCiAgICAgICAgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0id2hpdGUiPlA8L3RleHQ+CiAgPCEtLSBXb3JkbWFyayAtLT4KICA8dGV4dCB4PSI5NiIgeT0iMzQiCiAgICAgICAgZm9udC1mYW1pbHk9Ik9zd2FsZCwgSW1wYWN0LCBzYW5zLXNlcmlmIgogICAgICAgIGZvbnQtc2l6ZT0iMjYiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNFOEU4RjAiCiAgICAgICAgbGV0dGVyLXNwYWNpbmc9IjIiPlBFUkZPUk1BTkNFPC90ZXh0PgogIDx0ZXh0IHg9Ijk2IiB5PSI2NCIKICAgICAgICBmb250LWZhbWlseT0iT3N3YWxkLCBJbXBhY3QsIHNhbnMtc2VyaWYiCiAgICAgICAgZm9udC1zaXplPSIyNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iI0ZGNkIzNSIKICAgICAgICBsZXR0ZXItc3BhY2luZz0iNCI+SVE8L3RleHQ+Cjwvc3ZnPg==";
 }

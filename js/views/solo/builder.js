@@ -24,14 +24,14 @@ export function renderSoloBuilder(container) {
   const flagKey = 'piq_notify_solo_builder';
   
   if (localStorage.getItem(flagKey)) {
-    notifyBtn.textContent = '✓ You're on the list';
+    notifyBtn.textContent = '✓ You\'re on the list';
     notifyBtn.classList.add('notified');
     notifyBtn.disabled = true;
   }
 
   notifyBtn?.addEventListener('click', () => {
     localStorage.setItem(flagKey, '1');
-    notifyBtn.textContent = '✓ You're on the list';
+    notifyBtn.textContent = '✓ You\'re on the list';
     notifyBtn.classList.add('notified');
     notifyBtn.disabled = true;
   });
