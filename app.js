@@ -97,7 +97,7 @@ function bindShellEvents() {
   document.getElementById('modal-cancel-btn')?.addEventListener('click', () =>
     document.getElementById('assign-modal').classList.add('hidden'));
   document.getElementById('modal-confirm-btn')?.addEventListener('click', () =>
-    document.dispatchEvent(new CustomEvent('piq:confirmAssign')));
+   document.dispatchEvent(new CustomEvent('piq:viewRendered', { detail: { route: getCurrentRoute() } }));
 }
 
 // ── TOPNAV ────────────────────────────────────────────────────
