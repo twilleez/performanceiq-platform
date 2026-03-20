@@ -1,283 +1,292 @@
 /**
- * app.js — PerformanceIQ Phase 15C
- *
- * Changes from Phase 15B:
- *  - Fix 01: bootLoader.hide() / showError() wired into init
- *  - Fix 03: piqExplainer.init() called after athlete dashboard renders
- *  - Fix 04: wellnessTooltips.init() called after wellness form renders
- *  - Fix 05: applyReadinessCopy() called after readiness renders
- *  - Fix 06: navBar.init() called after role/router are established
- *  - Fix 07: sessionReady.show() wired into training generator
- *  - Fix 08: swap hint class applied to first exercise card in render
- *  - Fix 09: emptyState.show() called in all list-render functions
- *  - Fix 10: offlineIndicator.init() called in init()
+ * PerformanceIQ — App Bootstrap
+ * Uses dynamic imports so views load lazily and a single bad module
+ * can't block the entire app from starting.
  */
+import { boot }                        from './core/boot.js';
+import { getThemeIcon, cycleTheme }    from './core/theme.js';
+import { isAuthenticated, getCurrentRole,
+         getInitials, signOut }         from './core/auth.js';
+import { navigate, getCurrentRoute,
+         onRouteChange, ROUTES, ROLE_HOME } from './router.js';
+import { getDashboardConfig }          from './state/selectors.js';
+import { getScoreBreakdownElite, getReadinessScoreElite } from './state/selectorsElite.js';
+import { calculateMacroTargetsElite, getMealPlanForProfileElite } from './data/nutritionEngineElite.js';
 
-// ── SCIENCE ENGINES ───────────────────────────────────────────
-import { Engines }           from './services/engines.js';        // v2 engines
+// Logo comes from the DOM (index.html inlines it to avoid 200KB module parse)
+const LOGO_URI = document.getElementById('piq-logo-data')?.src || '';
 
-// ── CORE ──────────────────────────────────────────────────────
-import { shell }         from './components/shell.js';         // Desktop layout
-import { router }       from './core/router.js';
-import { boot }         from './core/boot.js';
-import { state }        from './state/state.js';
-
-// ── PHASE 15C: New patch modules ──────────────────────────────
-import { bootLoader }           from './components/boot-loader.js';     // Fix 01
-import { piqExplainer }         from './components/piq-explainer.js';   // Fix 03
-import { wellnessTooltips }     from './components/wellness-tooltips.js'; // Fix 04
-import { applyReadinessCopy }   from './components/readiness-copy.js';  // Fix 05
-import { navBar }               from './components/nav-bar.js';         // Fix 06
-import { sessionReady }         from './components/session-ready.js';   // Fix 07
-import { emptyState,
-         offlineIndicator }     from './components/empty-states.js';    // Fix 09+10
-
-// ── ROUTE MAP (dynamic imports — no static import for views) ──
-// Expose engines to views via app.js exports
-export { Engines };
-
-export const ROUTES = {
-  // Auth
-  WELCOME:       'welcome',
-  SIGN_IN:       'sign-in',
-  SIGN_UP:       'sign-up',
-  PICK_ROLE:     'pick-role',
-  ONBOARDING:    'onboarding',
-
-  // Coach
-  COACH_HOME:    'coach-home',
-  COACH_PROGRAM: 'coach-program',
-  COACH_TEAM:    'coach-team',
-  COACH_ANALYTICS: 'coach-analytics',
-
-  // Player / Athlete
-  PLAYER_HOME:   'player-home',
-  PLAYER_LOG:    'player-log',
-  PLAYER_SCORE:  'player-score',
-  PLAYER_NUTRITION: 'player-nutrition',
-
-  // Parent
-  PARENT_HOME:   'parent-home',
-
-  // Admin
-  ADMIN_HOME:    'admin-home',
-
-  // Solo
-  SOLO_HOME:     'solo-home',
-  SOLO_BUILDER:  'solo-builder',
-  SOLO_SCORE:    'solo-score',
-};
-
-// Dynamic view map — each entry: [moduleUrl, exportedFunctionName]
-const VIEW_MAP = {
-  [ROUTES.WELCOME]:          ['./views/auth/welcome.js',         'renderWelcome'],
-  [ROUTES.SIGN_IN]:          ['./views/auth/signin.js',          'renderSignIn'],
-  [ROUTES.SIGN_UP]:          ['./views/auth/signup.js',          'renderSignUp'],
-  [ROUTES.PICK_ROLE]:        ['./views/auth/pickRole.js',        'renderPickRole'],
-  [ROUTES.ONBOARDING]:       ['./views/auth/onboarding.js',      'renderOnboarding'],
-
-  [ROUTES.COACH_HOME]:       ['./views/coach/home.js',           'renderCoachHome'],
-  [ROUTES.COACH_PROGRAM]:    ['./views/coach/program.js',        'renderCoachProgram'],
-  [ROUTES.COACH_TEAM]:       ['./views/coach/team.js',           'renderCoachTeam'],
-  [ROUTES.COACH_ANALYTICS]:  ['./views/coach/analytics.js',      'renderCoachAnalytics'],
-
-  [ROUTES.PLAYER_HOME]:      ['./views/player/home.js',          'renderPlayerHome'],
-  [ROUTES.PLAYER_LOG]:       ['./views/player/logWorkout.js',    'renderPlayerLog'],
-  [ROUTES.PLAYER_SCORE]:     ['./views/player/score.js',         'renderPlayerScore'],
-  [ROUTES.PLAYER_NUTRITION]: ['./views/player/nutrition.js',     'renderPlayerNutrition'],
-
-  [ROUTES.PARENT_HOME]:      ['./views/parent/home.js',          'renderParentHome'],
-  [ROUTES.ADMIN_HOME]:       ['./views/admin/home.js',           'renderAdminHome'],
-
-  [ROUTES.SOLO_HOME]:        ['./views/solo/home.js',            'renderSoloHome'],
-  [ROUTES.SOLO_BUILDER]:     ['./views/solo/builder.js',         'renderSoloBuilder'],
-  [ROUTES.SOLO_SCORE]:       ['./views/solo/score.js',           'renderSoloScore'],
-};
-
-// ── NAVIGATE ──────────────────────────────────────────────────
-
-/**
- * Navigate to a route.
- * Dynamically imports the view module, renders it into #app,
- * then fires post-render hooks for the relevant fixes.
- */
-export async function navigate(route, params = {}) {
-  // Guard: if #app doesn't exist yet, create it
-  let appEl = document.getElementById('app');
-  if (!appEl) {
-    appEl = document.createElement('div');
-    appEl.id = 'app';
-    appEl.setAttribute('role', 'main');
-    document.body.appendChild(appEl);
-  }
-
-  const entry = VIEW_MAP[route];
-  if (!entry) {
-    appEl.innerHTML = `<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.4);">
-      Unknown route: ${route}
-    </div>`;
-    return;
-  }
-
-  const [moduleUrl, fnName] = entry;
-
-  // Show skeleton while module loads
-  appEl.innerHTML = _skeleton();
-
-  try {
-    const mod = await import(moduleUrl);
-    const renderFn = mod[fnName];
-
-    if (typeof renderFn !== 'function') {
-      throw new Error(`${fnName} is not exported from ${moduleUrl}`);
-    }
-
-    await renderFn(appEl, params);
-
-    // ── POST-RENDER HOOKS ────────────────────────────────────
-
-    // Fix 05 — readiness action copy (any view may have a readiness banner)
-    applyReadinessCopy();
-
-    // Fix 06 — keep nav active state in sync
-    navBar.setActiveByRoute(route);
-
-    // Fix 03 — PIQ explainer (athlete home only)
-    if (route === ROUTES.PLAYER_HOME) {
-      piqExplainer.init();
-    }
-
-    // Fix 04 — wellness tooltips (log workout + onboarding wellness step)
-    if (route === ROUTES.PLAYER_LOG || route === ROUTES.ONBOARDING) {
-      wellnessTooltips.init();
-    }
-
-    // Dispatch route-changed event for any listeners
-    document.dispatchEvent(new CustomEvent('piq:route-changed', {
-      detail: { route, params },
-      bubbles: true
-    }));
-
-  } catch (err) {
-    console.error(`[PIQ] Failed to render route "${route}":`, err);
-    appEl.innerHTML = _errorView(route, err);
-  }
-}
-
-// ── INIT ──────────────────────────────────────────────────────
-
+// ── BOOTSTRAP ─────────────────────────────────────────────────
 async function init() {
   try {
-    // Fix 10 — offline indicator (fires before anything else)
-    offlineIndicator.init();
+    await boot();
+  } catch(e) {
+    console.error('[PIQ] boot failed:', e);
+  }
 
-    // Clear the boot timeout failsafe
-    clearTimeout(window.__piqBootTimeout);
+  document.getElementById('piq-root').innerHTML = buildShell();
+  bindShellEvents();
+  onRouteChange(route => renderRoute(route));
 
-    // Boot: checks auth state, determines initial route
-    const initialRoute = await boot(state, ROUTES);
+  const start = isAuthenticated()
+    ? (ROLE_HOME[getCurrentRole()] || ROUTES.PICK_ROLE)
+    : ROUTES.WELCOME;
 
-    // Register navigate with the router so view modules can call router.navigate()
-    router.register(navigate);
+  navigate(start);
 
-    // Desktop shell — init before first route render
-    const role = state.get('role') || 'athlete';
-    shell.init(role);
+  // Show loader for minimum 1 second for branded splash experience
+  const _loaderStart = Date.now();
+  const _hideLoader = () => {
+    const elapsed = Date.now() - _loaderStart;
+    const remaining = Math.max(0, 1000 - elapsed);
+    // Animate progress bar to 100% then fade out
+    const bar   = document.getElementById('splash-bar');
+    const label = document.getElementById('splash-label');
+    if (bar)   bar.style.width = '100%';
+    if (label) label.textContent = 'Ready!';
+    setTimeout(() => {
+      document.getElementById('piq-loader')?.classList.add('hidden');
+    }, remaining + 300); // extra 300ms to show "Ready!" state
+  };
+  // Kick off progress bar animation steps
+  const _progressSteps = [
+    { pct: 30, label: 'Loading profile…',   delay: 100  },
+    { pct: 60, label: 'Building your plan…', delay: 350 },
+    { pct: 85, label: 'Almost ready…',       delay: 650 },
+  ];
+  _progressSteps.forEach(({ pct, label, delay }) => {
+    setTimeout(() => {
+      const bar = document.getElementById('splash-bar');
+      const lbl = document.getElementById('splash-label');
+      if (bar) bar.style.width = pct + '%';
+      if (lbl) lbl.textContent = label;
+    }, delay);
+  });
+  requestAnimationFrame(() => { requestAnimationFrame(_hideLoader); });
+}
 
-    // Fix 06 — mobile nav bar (hidden on desktop via CSS)
-    navBar.init(role, { navigate });
+// ── SHELL HTML ────────────────────────────────────────────────
+function buildShell() {
+  const authed = isAuthenticated();
+  const logoImg = LOGO_URI
+    ? `<img src="${LOGO_URI}" alt="PerformanceIQ">`
+    : `<span style="font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;color:var(--piq-green);letter-spacing:2px">PIQ</span>`;
 
-    // Navigate to initial route
-    await navigate(initialRoute);
+  return `
+<div id="piq-splash" class="${authed ? 'hidden' : ''}">
+  <div class="splash-logo">
+    ${logoImg}
+    <div class="splash-tagline">Elite Training. Smart Results.</div>
+  </div>
+  <div id="auth-view-slot"></div>
+</div>
 
-    // Fix 01 — hide boot loader after first render
-    bootLoader.hide();
+<div id="piq-app" class="${authed ? 'mounted' : ''}">
+  <nav id="piq-nav">
+    <div class="nav-logo" id="nav-logo-btn">${logoImg}</div>
+    <ul class="nav-links" id="nav-links"></ul>
+    <div class="nav-right">
+      <button class="nav-theme-btn" id="theme-toggle-btn" title="Toggle theme">${getThemeIcon()}</button>
+      <span class="nav-role-badge" id="nav-role-badge">${getCurrentRole() || ''}</span>
+      <div class="nav-avatar" id="nav-avatar">${getInitials()}</div>
+    </div>
+  </nav>
+  <div id="piq-main"></div>
+</div>
 
+<div id="assign-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>Assign Workout</h3>
+    <div class="modal-detail" id="assign-modal-detail"></div>
+    <div class="modal-athlete-list" id="assign-modal-athletes"></div>
+    <div class="modal-btns">
+      <button class="modal-cancel" id="modal-cancel-btn">Cancel</button>
+      <button class="modal-confirm" id="modal-confirm-btn">Assign ✓</button>
+    </div>
+  </div>
+</div>`.trim();
+}
+
+// ── SHELL EVENTS ──────────────────────────────────────────────
+function bindShellEvents() {
+  document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
+    cycleTheme();
+    document.getElementById('theme-toggle-btn').textContent = getThemeIcon();
+  });
+  document.getElementById('nav-logo-btn')?.addEventListener('click', () => {
+    if (isAuthenticated()) navigate(ROLE_HOME[getCurrentRole()] || ROUTES.WELCOME);
+  });
+  document.getElementById('nav-avatar')?.addEventListener('click', () => {
+    if (isAuthenticated()) navigate(getCurrentRole() + '/settings');
+  });
+  document.getElementById('modal-cancel-btn')?.addEventListener('click', () =>
+    document.getElementById('assign-modal').classList.add('hidden'));
+  document.getElementById('modal-confirm-btn')?.addEventListener('click', () =>
+    document.dispatchEvent(new CustomEvent('piq:confirmAssign')));
+}
+
+// ── TOPNAV ────────────────────────────────────────────────────
+function renderNav(activeRoute) {
+  const $links = document.getElementById('nav-links');
+  if (!$links || !isAuthenticated()) return;
+  const items = getDashboardConfig().navItems.slice(0, 6);
+  $links.innerHTML = items.map(it =>
+    `<li><button class="${activeRoute === it.route ? 'active' : ''}" data-route="${it.route}">
+      <span>${it.icon}</span> ${it.label}
+    </button></li>`
+  ).join('');
+  $links.querySelectorAll('[data-route]').forEach(el =>
+    el.addEventListener('click', () => navigate(el.dataset.route)));
+  document.getElementById('nav-role-badge').textContent = getCurrentRole() || '';
+  document.getElementById('nav-avatar').textContent     = getInitials();
+}
+
+// ── DYNAMIC VIEW LOADER ───────────────────────────────────────
+// Maps route → [module path, export name]
+const VIEW_MAP = {
+  // Auth
+  [ROUTES.WELCOME]:          ['./views/shared/welcome.js',        'renderWelcome'],
+  [ROUTES.SIGN_IN]:          ['./views/shared/signin.js',         'renderSignIn'],
+  [ROUTES.SIGN_UP]:          ['./views/shared/signup.js',         'renderSignUp'],
+  [ROUTES.PICK_ROLE]:        ['./views/shared/pickRole.js',       'renderPickRole'],
+  [ROUTES.ONBOARDING]:       ['./views/shared/onboarding.js',     'renderOnboarding'],
+  [ROUTES.SETTINGS_THEME]:   ['./views/shared/settingsTheme.js',  'renderSettingsTheme'],
+  [ROUTES.SETTINGS_PROFILE]: ['./views/shared/settingsProfile.js','renderSettingsProfile'],
+  // Coach
+  [ROUTES.COACH_HOME]:       ['./views/coach/home.js',            'renderCoachHome'],
+  [ROUTES.COACH_TEAM]:       ['./views/coach/team.js',            'renderCoachTeam'],
+  [ROUTES.COACH_ROSTER]:     ['./views/coach/roster.js',          'renderCoachRoster'],
+  [ROUTES.COACH_PROGRAM]:    ['./views/coach/programBuilder.js',  'renderCoachProgram'],
+  [ROUTES.COACH_READINESS]:  ['./views/coach/readiness.js',       'renderCoachReadiness'],
+  [ROUTES.COACH_ANALYTICS]:  ['./views/coach/analytics.js',       'renderCoachAnalytics'],
+  [ROUTES.COACH_MESSAGES]:   ['./views/coach/messages.js',        'renderCoachMessages'],
+  [ROUTES.COACH_CALENDAR]:   ['./views/coach/calendar.js',        'renderCoachCalendar'],
+  [ROUTES.COACH_SESSION]:    ['./views/coach/session.js',         'renderCoachSession'],
+  [ROUTES.COACH_LIBRARY]:    ['./views/coach/library.js',          'renderCoachLibrary'],
+  [ROUTES.COACH_REPORTS]:    ['./views/coach/reports.js',          'renderCoachReports'],
+  [ROUTES.COACH_SETTINGS]:   ['./views/coach/settings.js',         'renderCoachSettings'],
+  // Player
+  [ROUTES.PLAYER_HOME]:      ['./views/player/home.js',           'renderPlayerHome'],
+  [ROUTES.PLAYER_TODAY]:     ['./views/player/todayWorkout.js',   'renderPlayerToday'],
+  [ROUTES.PLAYER_LOG]:       ['./views/player/logWorkout.js',     'renderPlayerLog'],
+  [ROUTES.PLAYER_PROGRESS]:  ['./views/player/progress.js',       'renderPlayerProgress'],
+  [ROUTES.PLAYER_SCORE]:     ['./views/player/score.js',          'renderPlayerScore'],
+  [ROUTES.PLAYER_READINESS]: ['./views/player/readiness.js',      'renderPlayerReadiness'],
+  [ROUTES.PLAYER_MESSAGES]:  ['./views/player/messages.js',       'renderPlayerMessages'],
+  [ROUTES.PLAYER_CALENDAR]:  ['./views/player/calendar.js',       'renderPlayerCalendar'],
+  [ROUTES.PLAYER_RECRUITING]:['./views/player/recruiting.js',     'renderPlayerRecruiting'],
+  [ROUTES.PLAYER_SETTINGS]:  ['./views/player/settings.js',       'renderPlayerSettings'],
+  [ROUTES.PLAYER_NUTRITION]: ['./views/player/nutrition.js',     'renderPlayerNutrition'],
+  // Parent
+  [ROUTES.PARENT_HOME]:      ['./views/parent/home.js',           'renderParentHome'],
+  [ROUTES.PARENT_CHILD]:     ['./views/parent/childOverview.js',  'renderParentChild'],
+  [ROUTES.PARENT_WEEK]:      ['./views/parent/weeklyPlan.js',     'renderParentWeek'],
+  [ROUTES.PARENT_PROGRESS]:  ['./views/parent/progress.js',       'renderParentProgress'],
+  [ROUTES.PARENT_MESSAGES]:  ['./views/parent/messages.js',       'renderParentMessages'],
+  [ROUTES.PARENT_BILLING]:   ['./views/parent/billing.js',        'renderParentBilling'],
+  [ROUTES.PARENT_WELLNESS]:  ['./views/parent/wellness.js',       'renderParentWellness'],
+  [ROUTES.PARENT_SETTINGS]:  ['./views/parent/settings.js',       'renderParentSettings'],
+  // Admin
+  [ROUTES.ADMIN_HOME]:       ['./views/admin/home.js',            'renderAdminHome'],
+  [ROUTES.ADMIN_ORG]:        ['./views/admin/org.js',             'renderAdminOrg'],
+  [ROUTES.ADMIN_TEAMS]:      ['./views/admin/teams.js',           'renderAdminTeams'],
+  [ROUTES.ADMIN_COACHES]:    ['./views/admin/coaches.js',         'renderAdminCoaches'],
+  [ROUTES.ADMIN_ATHLETES]:   ['./views/admin/athletes.js',        'renderAdminAthletes'],
+  [ROUTES.ADMIN_ADOPTION]:   ['./views/admin/adoption.js',        'renderAdminAdoption'],
+  [ROUTES.ADMIN_REPORTS]:    ['./views/admin/reports.js',         'renderAdminReports'],
+  [ROUTES.ADMIN_COMPLIANCE]: ['./views/admin/compliance.js',      'renderAdminCompliance'],
+  [ROUTES.ADMIN_BILLING]:    ['./views/admin/billing.js',         'renderAdminBilling'],
+  [ROUTES.ADMIN_SETTINGS]:   ['./views/admin/settings.js',        'renderAdminSettings'],
+  // Solo
+  [ROUTES.SOLO_HOME]:        ['./views/solo/home.js',             'renderSoloHome'],
+  [ROUTES.SOLO_TODAY]:       ['./views/solo/todayWorkout.js',     'renderSoloToday'],
+  [ROUTES.SOLO_BUILDER]:     ['./views/solo/builder.js',          'renderSoloBuilder'],
+  [ROUTES.SOLO_LIBRARY]:     ['./views/solo/library.js',          'renderSoloLibrary'],
+  [ROUTES.SOLO_PROGRESS]:    ['./views/solo/progress.js',         'renderSoloProgress'],
+  [ROUTES.SOLO_SCORE]:       ['./views/solo/score.js',            'renderSoloScore'],
+  [ROUTES.SOLO_READINESS]:   ['./views/solo/readiness.js',        'renderSoloReadiness'],
+  [ROUTES.SOLO_GOALS]:       ['./views/solo/goals.js',            'renderSoloGoals'],
+  [ROUTES.SOLO_SUBSCRIPTION]:['./views/solo/subscription.js',    'renderSoloSubscription'],
+  [ROUTES.SOLO_SETTINGS]:    ['./views/solo/settings.js',         'renderSoloSettings'],
+  [ROUTES.SOLO_NUTRITION]:   ['./views/solo/nutrition.js',       'renderSoloNutrition'],
+};
+
+async function renderRoute(route) {
+  const entry = VIEW_MAP[route];
+  if (!entry) {
+    // Unknown route → go home
+    const fallback = VIEW_MAP[isAuthenticated()
+      ? ROLE_HOME[getCurrentRole()]
+      : ROUTES.WELCOME];
+    if (fallback) await loadAndRender(...fallback, route);
+    return;
+  }
+  await loadAndRender(...entry, route);
+}
+
+async function loadAndRender(modulePath, exportName, route) {
+  const isAuth = !isAuthenticated() ||
+    [ROUTES.WELCOME, ROUTES.SIGN_IN, ROUTES.SIGN_UP,
+     ROUTES.PICK_ROLE, ROUTES.ONBOARDING].includes(route);
+
+  try {
+    const mod = await import(modulePath);
+    const renderFn = mod[exportName];
+    if (typeof renderFn !== 'function') throw new Error(`${exportName} not exported from ${modulePath}`);
+
+    if (!isAuthenticated() || isAuth) {
+      authView(renderFn);
+    } else {
+      appView(renderFn);
+    }
   } catch (err) {
-    console.error('[PIQ] Init failed:', err);
-    bootLoader.showError('PerformanceIQ failed to start. Please refresh.');
+    console.error(`[PIQ] Failed to load ${modulePath}:`, err);
+    showLoadError(route, err.message);
   }
 }
 
-// ── EMPTY STATE HELPERS (exported for use in view modules) ────
-
-/**
- * Render empty state into a container.
- * Import and use in any view module that has a list:
- *
- *   import { renderEmptyState, clearEmptyState } from '../../app.js';
- *   renderEmptyState(containerEl, 'roster');
- */
-export function renderEmptyState(container, type, compact = false) {
-  emptyState.show(container, type, compact);
-}
-export function clearEmptyState(container) {
-  emptyState.clear(container);
+// ── VIEW RENDERERS ────────────────────────────────────────────
+function authView(renderFn) {
+  document.getElementById('piq-splash')?.classList.remove('hidden');
+  document.getElementById('piq-app')?.classList.remove('mounted');
+  const $slot = document.getElementById('auth-view-slot');
+  if (!$slot) return;
+  $slot.innerHTML = renderFn();
+  bindLinks($slot);
+  document.dispatchEvent(new CustomEvent('piq:authRendered'));
 }
 
-/**
- * Show session-ready bottom sheet.
- * Import in training generator modules:
- *
- *   import { showSessionReady } from '../../app.js';
- *   showSessionReady({ exerciseCount: 8, durationMins: 45, ... });
- */
-export function showSessionReady(opts) {
-  sessionReady.show(opts);
+function appView(renderFn) {
+  if (!isAuthenticated()) { navigate(ROUTES.WELCOME); return; }
+  document.getElementById('piq-splash')?.classList.add('hidden');
+  document.getElementById('piq-app')?.classList.add('mounted');
+  renderNav(getCurrentRoute());
+  const $main = document.getElementById('piq-main');
+  if (!$main) return;
+  $main.innerHTML = renderFn();
+  bindLinks($main);
+  document.dispatchEvent(new CustomEvent('piq:viewRendered'));
 }
 
-// ── SKELETON / ERROR HELPERS ──────────────────────────────────
-
-function _skeleton() {
-  return `
-    <div style="padding:24px;display:grid;gap:14px;">
-      ${[1,2,3].map(() => `
-        <div style="background:rgba(255,255,255,0.04);border-radius:10px;height:80px;
-          animation:piq-shimmer 1.4s ease-in-out infinite;"></div>
-      `).join('')}
-    </div>
-    <style>
-      @keyframes piq-shimmer {
-        0%,100%{opacity:.4} 50%{opacity:.8}
-      }
-    </style>
-  `;
+function bindLinks(container) {
+  container.querySelectorAll('[data-route]').forEach(el =>
+    el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.route); }));
+  container.querySelectorAll('[data-signout]').forEach(el =>
+    el.addEventListener('click', () => { signOut(); navigate(ROUTES.WELCOME); }));
 }
 
-function _errorView(route, err) {
-  return `
-    <div style="padding:40px 24px;text-align:center;">
-      <div style="font-size:28px;margin-bottom:12px;">⚠️</div>
-      <div style="font-family:Oswald,sans-serif;font-size:16px;color:#FF6B35;
-           margin-bottom:8px;letter-spacing:0.04em;">VIEW FAILED TO LOAD</div>
-      <div style="font-size:12px;color:rgba(255,255,255,0.35);margin-bottom:20px;line-height:1.5;">
-        Route: ${route}<br>${err?.message || 'Unknown error'}
-      </div>
-      <button onclick="location.reload()"
-        style="background:rgba(255,107,53,0.15);border:1px solid rgba(255,107,53,0.3);
-               color:#FF6B35;font-family:Oswald,sans-serif;font-size:13px;font-weight:600;
-               letter-spacing:0.06em;padding:10px 22px;border-radius:8px;cursor:pointer;">
-        RELOAD
-      </button>
-    </div>
-  `;
-}
-
-// ── Listen to empty-state CTA clicks ──────────────────────────
-document.addEventListener('piq:empty-cta', (e) => {
-  switch (e.detail?.action) {
-    case 'add-athlete':    navigate(ROUTES.COACH_TEAM);           break;
-    case 'open-training':  navigate(ROUTES.PLAYER_LOG);           break;
-    case 'open-wellness':  navigate(ROUTES.PLAYER_LOG);           break;
-    case 'reset-filters':
-      document.dispatchEvent(new CustomEvent('piq:reset-filters', { bubbles: true }));
-      break;
+function showLoadError(route, msg) {
+  const $main = document.getElementById('piq-main') || document.getElementById('auth-view-slot');
+  if ($main) {
+    $main.innerHTML = `
+    <div style="padding:40px;text-align:center;font-family:sans-serif">
+      <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+      <div style="font-weight:600;margin-bottom:8px;color:var(--text-primary)">Could not load view</div>
+      <code style="font-size:11px;color:var(--text-muted)">${route}: ${msg}</code>
+      <br><br>
+      <button onclick="location.reload()" style="padding:10px 24px;background:var(--piq-green);border:none;border-radius:8px;font-weight:700;color:var(--piq-navy);cursor:pointer">Reload</button>
+    </div>`;
   }
-});
-
-// ── START ──────────────────────────────────────────────────────
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
 }
+
+init();

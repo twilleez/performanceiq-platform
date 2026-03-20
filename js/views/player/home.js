@@ -1,220 +1,180 @@
 /**
- * player/home.js — Phase 15C v2
- * Desktop: KPI strip + sessions list + right panel (reference layout)
- * Mobile:  PIQ ring + readiness banner + quick actions + session list
+ * Player Home Dashboard v2
+ * Role-specific view: athlete-first design.
+ * PIQ Score, readiness, today's workout, nutrition, and mindset.
  */
-import { state }            from '../../state/state.js';
-import { router }           from '../../core/router.js';
-import { renderEmptyState } from '../../app.js';
-import { ROUTES }           from '../../app.js';
-import { Engines }          from '../../services/engines.js';
+import { buildSidebar }          from '../../components/nav.js';
+import { getCurrentUser, getCurrentRole } from '../../core/auth.js';
+import { getAthleteProfile, getWorkoutLog } from '../../state/state.js';
+import { getPIQScore, getReadinessScore, getReadinessColor, getStreak, getScoreBreakdown } from '../../state/selectors.js';
+import { generateTodayWorkout }  from '../../data/workoutEngine.js';
+import { getMacroTargets }       from '../../state/selectors.js';
 
-function fmtDate(iso) {
-  return iso ? new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
-}
+export function renderPlayerHome() {
+  const user     = getCurrentUser() || {};
+  const role     = getCurrentRole() || 'player';
+  const fname    = user.name?.split(' ')[0] || 'Athlete';
+  const profile  = getAthleteProfile();
+  const piq      = getPIQScore();
+  const readiness = getReadinessScore();
+  const rColor   = getReadinessColor(readiness);
+  const streak   = getStreak();
+  const sb       = getScoreBreakdown();
+  const log      = getWorkoutLog();
+  const dow      = new Date().getDay();
+  const workout  = generateTodayWorkout(
+    profile.sport || 'basketball',
+    profile.compPhase || 'in-season',
+    profile.trainingLevel || 'intermediate',
+    readiness, dow
+  );
+  const macros   = getMacroTargets();
+  const hour     = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const profilePct = sb.profile?.raw || 0;
 
-function demoSessions(sport='Basketball') {
-  return [
-    { name:'Agility & Speed',     day:'Mon',   duration:45, intensity:'High',     completed:true,  icon:'✓', iconClass:'si-done'  },
-    { name:'Upper Body Strength', day:'Tue',   duration:40, intensity:'Moderate', completed:true,  icon:'✓', iconClass:'si-done'  },
-    { name:'Skill Work + Court',  day:'Wed',   duration:60, intensity:'High',     completed:true,  icon:'✓', iconClass:'si-done'  },
-    { name:'Explosive Footwork',  day:'Today', duration:40, intensity:'High',     completed:false, icon:'🏀', iconClass:'si-today', isToday:true },
-    { name:'Active Recovery',     day:'Sat',   duration:25, intensity:'Low',      completed:false, icon:'📅', iconClass:'si-future' },
-  ];
-}
+  return `
+<div class="view-with-sidebar">
+  ${buildSidebar(role, role + '/home')}
+  <main class="page-main">
 
-export function renderPlayerHome(container) {
-  const s        = state.getAll();
-  const piqScore = Engines.piq(s);
-  const readiness = Engines.readiness(s);
-  const sport     = s.sport || 'Basketball';
-  const phase     = s.seasonPhase || 'In-Season';
-  const sessions  = s.sessions || [];
-  const hasData   = piqScore !== null;
+    <!-- Header -->
+    <div class="page-header">
+      <h1>${greeting}, <span>${fname}</span></h1>
+      <p>${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} · ${profile.sport ? profile.sport.charAt(0).toUpperCase()+profile.sport.slice(1) : 'Athlete'} ${profile.position ? '· ' + profile.position : ''} ${profile.team ? '· ' + profile.team : ''}</p>
+    </div>
 
-  const displaySessions = sessions.length
-    ? sessions.slice(-8).reverse().map((ses, i) => ({
-        name:      ses.exercises?.[0] || 'Training Session',
-        day:       fmtDate(ses.date),
-        duration:  ses.durationMins || 40,
-        intensity: ses.rpe >= 8 ? 'High' : ses.rpe >= 5 ? 'Moderate' : 'Low',
-        completed: ses.completed,
-        isToday:   i === 0 && !ses.completed,
-        icon:      ses.completed ? '✓' : i === 0 ? '🏀' : '📅',
-        iconClass: ses.completed ? 'si-done' : i === 0 ? 'si-today' : 'si-future',
-      }))
-    : demoSessions(sport);
-
-  const completedN = displaySessions.filter(x => x.completed).length;
-  const totalN     = displaySessions.length;
-  const volumeH    = (displaySessions.reduce((a,x) => a+x.duration, 0) / 60).toFixed(1);
-  const intensityPct = Math.round((displaySessions.filter(x=>x.intensity==='High').length / totalN) * 100);
-
-  const R = 58, circ = +(2*Math.PI*R).toFixed(1);
-  const offset = hasData ? +((1-piqScore/100)*circ).toFixed(1) : circ;
-
-  // Render — responsive via CSS (same HTML, layout switches at 901px)
-  container.innerHTML = `
-    <div class="piq-view">
-
-      <!-- ── Page header (desktop prominent, mobile compact) -->
-      <div class="view-page-header">
-        <div class="view-page-title">TRAINING <span class="hl">PLAN</span></div>
-        <div class="view-page-subtitle">${sport} · ${phase} · Week 8 — Accumulation Block</div>
+    ${profilePct < 50 ? `
+    <div style="background:#f59e0b14;border:1px solid #f59e0b40;border-radius:12px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:12px;cursor:pointer" data-route="${role}/settings">
+      <span style="font-size:20px">⚠️</span>
+      <div>
+        <div style="font-weight:700;font-size:13px;color:#f59e0b">Complete your profile for an accurate PIQ Score</div>
+        <div style="font-size:12px;color:var(--text-muted)">Profile is ${profilePct}% complete. Add your weight, height, and training details to unlock personalized programming.</div>
       </div>
+      <span style="margin-left:auto;color:var(--text-muted);font-size:18px">→</span>
+    </div>` : ''}
 
-      <!-- ── KPI strip (4 columns desktop, 2×2 mobile) -->
-      <div class="kpi-strip">
-        <div class="kpi-card">
-          <div class="kpi-lbl">THIS WEEK</div>
-          <div class="kpi-val kv-green">${totalN}</div>
-          <div class="kpi-sub ks-muted">Sessions planned</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl">COMPLETED</div>
-          <div class="kpi-val kv-blue">${completedN}</div>
-          <div class="kpi-sub ks-blue">↑ On track</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl">VOLUME</div>
-          <div class="kpi-val kv-navy">${volumeH}h</div>
-          <div class="kpi-sub ks-muted">Total this week</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl">INTENSITY</div>
-          <div class="kpi-val kv-navy">${intensityPct}%</div>
-          <div class="kpi-sub ks-muted">Avg. effort</div>
-        </div>
-      </div>
+    <!-- Top KPI Row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">
+      ${_kpi('PIQ Score', piq, sb.tier, '#22c955', '🏅', `${role}/score`)}
+      ${_kpi('Readiness', readiness, readiness>=80?'High':readiness>=60?'Moderate':'Low', rColor, '💚', `${role}/readiness`)}
+      ${_kpi('Streak', streak + ' days', streak>=7?'On fire!':streak>=3?'Building':'Keep going', '#f59e0b', '🔥', `${role}/progress`)}
+      ${_kpi('Sessions', log.length, 'Total logged', '#60a5fa', '📊', `${role}/progress`)}
+    </div>
 
-      <!-- ── Two-column: sessions left, right panel right -->
-      <div class="two-col">
-
-        <!-- SESSIONS LIST -->
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-title">THIS WEEK'S SESSIONS</div>
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px">
+      <div>
+        <!-- Today's Workout Preview -->
+        <div class="panel" style="margin-bottom:20px;background:linear-gradient(135deg,#0d1b3e 0%,#1a2f5e 100%);border:1px solid #22c95530">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--piq-green);letter-spacing:.08em">TODAY'S WORKOUT</div>
+              <div style="font-size:17px;font-weight:800;color:#fff;margin-top:4px">${workout.title}</div>
+              <div style="font-size:12px;color:#a0b4d0;margin-top:2px">Est. ${workout.estimatedDuration} min · RPE ${workout.rpeTarget || '6-8'} · ${workout.badge?.label || 'Full Intensity'}</div>
+            </div>
+            <span style="padding:5px 12px;border-radius:20px;background:${workout.badge?.color || '#22c955'}22;color:${workout.badge?.color || '#22c955'};font-size:11px;font-weight:700;border:1px solid ${workout.badge?.color || '#22c955'}40;flex-shrink:0">${workout.badge?.label || 'Full Intensity'}</span>
           </div>
-          ${displaySessions.map(ses => {
-            let badgeClass, badgeText;
-            if (ses.completed)     { badgeClass='sb-done'; badgeText='DONE'; }
-            else if (ses.isToday)  { badgeClass='sb-next'; badgeText='NEXT'; }
-            else if (ses.day==='Sat') { badgeClass='sb-sat'; badgeText='SAT'; }
-            else                   { badgeClass='sb-sat'; badgeText=ses.day.toUpperCase().slice(0,3); }
-            return `
-            <div class="session-row" tabindex="0" role="button" data-route="${ROUTES.PLAYER_LOG}"
-                 aria-label="${ses.day} — ${ses.name}">
-              <div class="session-icon ${ses.iconClass}">${ses.icon}</div>
-              <div style="flex:1">
-                <div class="session-name">${ses.day} — ${ses.name}</div>
-                <div class="session-meta">
-                  ${ses.completed?'Completed · ':''}${ses.duration} min · ${ses.intensity}
-                  ${sport&&!ses.completed?' · '+sport:''}
-                </div>
-              </div>
-              <span class="session-badge ${badgeClass}">${badgeText}</span>
-            </div>`;
-          }).join('')}
-          ${!sessions.length ? `
-          <div style="padding:14px 20px;border-top:1px solid var(--card-border,#E8E9F0);">
-            <button class="btn-outline" data-route="${ROUTES.PLAYER_LOG}" style="max-width:220px;">
-              ⚡ Log Your First Session
-            </button>
+          ${workout.mindsetNote ? `
+          <div style="padding:10px 12px;background:#ffffff08;border-radius:8px;border-left:3px solid var(--piq-green);margin-bottom:14px">
+            <div style="font-size:11px;color:var(--piq-green);font-weight:700;margin-bottom:2px">MINDSET</div>
+            <div style="font-size:12px;color:#c8d8e8;font-style:italic">"${workout.mindsetNote}"</div>
           </div>` : ''}
+          <div style="display:flex;gap:8px">
+            <button class="btn-primary" style="flex:1;font-size:13px;padding:11px" data-route="${role}/today">Start Workout</button>
+            <button class="btn-draft" style="padding:11px 16px;font-size:13px" data-route="${role}/readiness">Check In</button>
+          </div>
         </div>
 
-        <!-- RIGHT PANEL -->
-        <div>
-          <div class="panel">
-
-            <!-- Periodization -->
-            <div class="rpanel-section">
-              <div class="rpanel-title">PERIODIZATION BLOCK</div>
-              <div class="progress-row">
-                <div class="prog-lbl-row"><span class="prog-lbl">Phase 2 — Accumulation</span><span class="prog-meta">8 / 12 wks</span></div>
-                <div class="prog-track"><div class="prog-fill pf-green" style="width:67%"></div></div>
-              </div>
-              <div class="progress-row">
-                <div class="prog-lbl-row"><span class="prog-lbl">Volume Load</span><span class="prog-meta">${intensityPct}%</span></div>
-                <div class="prog-track"><div class="prog-fill pf-blue" style="width:${intensityPct}%"></div></div>
-              </div>
-              <div class="progress-row">
-                <div class="prog-lbl-row"><span class="prog-lbl">Intensity</span><span class="prog-meta">${readiness.acwr && readiness.acwr !== 1 ? (readiness.acwr*100/1.5).toFixed(0) : '68'}%</span></div>
-                <div class="prog-track"><div class="prog-fill pf-green" style="width:68%"></div></div>
-              </div>
+        <!-- PIQ Score Breakdown -->
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-title">PIQ Score Breakdown</div>
+          <div style="font-size:12px;color:var(--text-muted);margin:6px 0 14px">Your ${piq} PIQ Score is calculated from 5 weighted pillars:</div>
+          ${[
+            [sb.consistency, '🏋️'],
+            [sb.readiness,   '💚'],
+            [sb.compliance,  '✅'],
+            [sb.load,        '⚖️'],
+            [sb.profile,     '👤'],
+          ].map(([pillar, icon]) => pillar ? `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12px;font-weight:600;color:var(--text-primary)">${icon} ${pillar.label}</span>
+              <span style="font-size:12px;font-weight:700;color:var(--piq-green)">${pillar.raw}/100 <span style="color:var(--text-muted);font-weight:400">(${Math.round(pillar.weight*100)}%)</span></span>
             </div>
-
-            <!-- Readiness / PIQ mini -->
-            <div class="rpanel-section">
-              <div class="rpanel-title">TODAY'S READINESS</div>
-              <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
-                <!-- Mini PIQ ring -->
-                <div style="position:relative;width:72px;height:72px;flex-shrink:0;" id="piq-ring">
-                  <svg width="72" height="72" viewBox="0 0 72 72">
-                    <circle cx="36" cy="36" r="28" fill="none"
-                      stroke="rgba(36,192,84,0.12)" stroke-width="7"
-                      ${!hasData?'stroke-dasharray="4 4"':''}/>
-                    ${hasData?`<circle cx="36" cy="36" r="28" fill="none"
-                      stroke="#24C054" stroke-width="7"
-                      stroke-dasharray="${(2*Math.PI*28).toFixed(1)}"
-                      stroke-dashoffset="${((2*Math.PI*28)*(1-piqScore/100)).toFixed(1)}"
-                      stroke-linecap="round" transform="rotate(-90 36 36)"/>`:''}
-                  </svg>
-                  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
-                    <div style="font-family:'Oswald',sans-serif;font-size:${hasData?'20':'16'}px;font-weight:700;
-                         color:${hasData?'var(--accent-green,#24C054)':'#9CA3AF'};line-height:1;">
-                      ${hasData?piqScore:'—'}
-                    </div>
-                    <div style="font-size:9px;color:#9CA3AF;letter-spacing:0.1em;text-transform:uppercase;">PIQ</div>
-                  </div>
-                </div>
-                <div>
-                  <div style="font-size:12.5px;font-weight:700;color:${readiness.color};margin-bottom:3px;">
-                    ${readiness.emoji} ${readiness.label}
-                  </div>
-                  <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);line-height:1.4;">
-                    ${readiness.action.split('.')[0]}.
-                  </div>
-                </div>
-              </div>
-              <button class="btn-outline" data-route="${ROUTES.PLAYER_LOG}">
-                ${hasData?'📊 Log Today\'s Session':'+ Log Wellness Check-in'}
-              </button>
+            <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pillar.raw}%;background:${pillar.raw>=80?'#22c955':pillar.raw>=60?'#f59e0b':'#ef4444'};border-radius:3px;transition:width 600ms ease"></div>
             </div>
+          </div>` : '').join('')}
+          <button class="btn-draft" style="width:100%;margin-top:8px;font-size:12px" data-route="${role}/score">View Full Score Report</button>
+        </div>
+      </div>
 
-            <!-- ACWR Insight -->
-            <div class="rpanel-section">
-              <div class="rpanel-title">LOAD INSIGHT</div>
-              <div style="font-size:11.5px;color:var(--text-secondary,#6B7280);line-height:1.5;margin-bottom:10px;">
-                ${readiness.insight}
-              </div>
-              <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);line-height:1.4;">
-                ACWR: ${readiness.acwr && readiness.acwr !== 1 ? readiness.acwr : '—'} · Zone: ${readiness.acwrZone === 'no-data' ? 'Log sessions' : readiness.acwrZone.replace('-',' ')}
-              </div>
-            </div>
+      <div>
+        <!-- Readiness Ring -->
+        <div class="panel" style="margin-bottom:16px;text-align:center">
+          <div class="panel-title">Readiness</div>
+          <svg width="120" height="120" viewBox="0 0 120 120" style="margin:12px auto;display:block">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="var(--surface-2)" stroke-width="10"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="${rColor}" stroke-width="10"
+              stroke-dasharray="289" stroke-dashoffset="${Math.round(289-(readiness/100)*289)}"
+              stroke-linecap="round" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset 800ms ease"/>
+            <text x="60" y="56" text-anchor="middle" font-size="22" font-weight="900" fill="${rColor}">${readiness}</text>
+            <text x="60" y="72" text-anchor="middle" font-size="10" fill="var(--text-muted)">READINESS</text>
+          </svg>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${readiness>=80?'High — Train hard today':readiness>=60?'Moderate — Quality focus':'Low — Recovery day'}</div>
+          <button class="btn-draft" style="width:100%;font-size:12px" data-route="${role}/readiness">Update Check-In</button>
+        </div>
 
-            <!-- Next phase -->
-            <div class="rpanel-section">
-              <div class="rpanel-title">NEXT PHASE PREVIEW</div>
-              <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;">
-                <div style="width:36px;height:36px;background:var(--nav-bg,#0D1B40);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">⚡</div>
-                <div>
-                  <div style="font-size:13px;font-weight:600;color:var(--text-primary,#1A1F36);">Phase 3 — Intensification</div>
-                  <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);margin-top:2px;">Starts Week 10 · High intensity, lower volume</div>
-                </div>
-              </div>
-              <button class="btn-outline" data-route="${ROUTES.PLAYER_LOG}">⚙️ OPEN WORKOUT BUILDER</button>
-            </div>
+        <!-- Nutrition Targets -->
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-title">Today's Nutrition Targets</div>
+          <div style="font-size:11px;color:var(--text-muted);margin:4px 0 12px">Based on your body weight and training phase (ISSN guidelines)</div>
+          ${[
+            { label: 'Calories', val: macros.cal, unit: 'kcal', color: '#f59e0b' },
+            { label: 'Protein',  val: macros.pro, unit: 'g',    color: '#22c955' },
+            { label: 'Carbs',    val: macros.cho, unit: 'g',    color: '#60a5fa' },
+            { label: 'Fat',      val: macros.fat, unit: 'g',    color: '#a78bfa' },
+          ].map(m => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:12px;color:var(--text-muted)">${m.label}</span>
+            <span style="font-size:13px;font-weight:700;color:${m.color}">${m.val} ${m.unit}</span>
+          </div>`).join('')}
+          ${profilePct < 50 ? `<div style="font-size:11px;color:#f59e0b;margin-top:8px">Complete your profile for personalized targets</div>` : ''}
+        </div>
 
-          </div><!-- /panel -->
-        </div><!-- /right -->
+        <!-- Quick Actions -->
+        <div class="panel">
+          <div class="panel-title">Quick Actions</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+            ${[
+              ['⚡', 'Start Today\'s Workout', `${role}/today`],
+              ['💚', 'Daily Check-In', `${role}/readiness`],
+              ['📈', 'View Progress', `${role}/progress`],
+              ['🏅', 'PIQ Score Report', `${role}/score`],
+              ['⚙️', 'Update Profile', `${role}/settings`],
+            ].map(([icon, label, route]) => `
+            <button class="btn-draft" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;font-size:13px" data-route="${route}">
+              <span style="font-size:16px">${icon}</span> ${label}
+            </button>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
 
-      </div><!-- /two-col -->
-    </div><!-- /piq-view -->`;
+  </main>
+</div>`;
+}
 
-  // Route all buttons
-  container.querySelectorAll('[data-route]').forEach(el => {
-    el.addEventListener('click',  () => router.navigate(el.dataset.route));
-    el.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') router.navigate(el.dataset.route); });
-  });
+function _kpi(label, value, sub, color, icon, route) {
+  return `
+<div class="panel" style="cursor:pointer;border-bottom:3px solid ${color}" data-route="${route}">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between">
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">${label}</div>
+      <div style="font-size:24px;font-weight:900;color:${color};margin:4px 0 2px">${value}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${sub}</div>
+    </div>
+    <span style="font-size:22px">${icon}</span>
+  </div>
+</div>`;
 }

@@ -1,160 +1,89 @@
 /**
- * player/score.js — PIQ Breakdown + Mindset Panel
- * Renders full 6-component breakdown + Mental Toughness + Today's PST skill
+ * Player PIQ Score View — full breakdown
  */
-import { state }  from '../../state/state.js';
-import { router } from '../../core/router.js';
-import { ROUTES } from '../../app.js';
-import { Engines } from '../../services/engines.js';
+import { buildSidebar }         from '../../components/nav.js';
+import { getScoreBreakdown, getReadinessScore,
+         getReadinessColor }    from '../../state/selectors.js';
+import { getScoreBreakdownElite } from '../../state/selectorsElite.js';
+import { getCurrentUser }       from '../../core/auth.js';
 
-export function renderPlayerScore(container) {
-  const s         = state.getAll();
-  const piqScore  = Engines.piq(s);
-  const breakdown = Engines.piqDetail(s);
-  const mindset   = Engines.mindset(s);
-  const total     = piqScore ?? 0;
+export function renderPlayerScore() {
+  const user = getCurrentUser();
+  const sb   = getScoreBreakdownElite();
+  const r    = getReadinessScore();
+  const rc   = getReadinessColor(r);
 
-  const scoreColor = total >= 80 ? '#24C054' : total >= 60 ? '#F59E0B' : total >= 40 ? '#EF4444' : '#9CA3AF';
+  const rows = [
+    { label:'Training Consistency', detail:'Streak + total sessions logged', key:'consistency', icon:'📅' },
+    { label:'Readiness Index',       detail:'Sleep, load, nutrition, mood',    key:'readiness',   icon:'💚' },
+    { label:'Workout Compliance',    detail:'% of sessions completed',         key:'compliance',  icon:'✅' },
+    { label:'Load Management',       detail:'RPE balance over last 7 sessions',key:'load',        icon:'⚖️' },
+  ];
 
-  container.innerHTML = `
-    <div class="piq-view">
-      <div class="view-page-header">
-        <div class="view-page-title">MY <span class="hl">SCORE</span></div>
-        <div class="view-page-subtitle">6-component PIQ breakdown — updated after each check-in</div>
+  return `
+<div class="view-with-sidebar">
+  ${buildSidebar('player','player/score')}
+  <main class="page-main">
+    <div class="page-header">
+      <h1>PIQ <span>Score</span></h1>
+      <p>${user?.name||'Athlete'} · Performance Intelligence Quotient</p>
+    </div>
+
+    <!-- Hero score -->
+    <div class="piq-score-hero">
+      <div class="piq-score-val">${sb.total}</div>
+      <div class="piq-score-lbl">Performance IQ Score</div>
+      <div class="piq-score-tier">${sb.tier}</div>
+    </div>
+
+    <div class="panels-2">
+      <!-- Breakdown -->
+      <div class="panel">
+        <div class="panel-title">Score Breakdown</div>
+        ${rows.map(r => `
+        <div class="score-breakdown-row">
+          <div>
+            <div class="score-bd-label">${r.icon} ${r.label}</div>
+            <div class="score-bd-detail">${r.detail}</div>
+          </div>
+          <div class="score-bd-wt">${Math.round(sb[r.key].weight*100)}%</div>
+          <div class="score-bd-val">${sb[r.key].raw}</div>
+        </div>`).join('')}
+        <div class="divider"></div>
+        <div class="score-breakdown-row" style="padding-top:0">
+          <div><div class="score-bd-label" style="font-size:15px">Total PIQ Score</div></div>
+          <div></div>
+          <div class="score-bd-val" style="font-size:30px;color:var(--piq-green-dark)">${sb.total}</div>
+        </div>
       </div>
 
-      <div class="two-col">
-
-        <!-- LEFT: Score Breakdown -->
-        <div>
-          <!-- Total PIQ -->
-          <div class="panel" style="margin-bottom:16px;">
-            <div style="padding:28px;text-align:center;">
-              <div style="font-family:'Oswald',sans-serif;font-size:72px;font-weight:700;
-                   color:${scoreColor};line-height:1;text-shadow:0 0 40px ${scoreColor}33;">
-                ${piqScore ?? '—'}
-              </div>
-              <div style="font-family:'Oswald',sans-serif;font-size:14px;
-                   color:var(--text-muted,#9CA3AF);letter-spacing:0.12em;margin-top:6px;">
-                PIQ SCORE
-              </div>
-              ${piqScore !== null ? `
-              <div style="font-size:12px;color:var(--text-secondary,#6B7280);margin-top:8px;">
-                ${piqScore >= 80 ? '🟢 Elite training readiness' : piqScore >= 60 ? '🟡 Good — maintain consistency' : piqScore >= 40 ? '🟠 Building baseline' : '🔴 Early stage — log more data'}
-              </div>` : `
-              <div style="font-size:12px;color:var(--text-muted,#9CA3AF);margin-top:8px;">
-                Log wellness + sessions to unlock your full PIQ score
-              </div>`}
+      <!-- Tier guide + tips -->
+      <div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-title">Score Tiers</div>
+          ${[['Elite','90–99','Exceptional performance across all pillars'],
+             ['Advanced','80–89','Strong fundamentals + great consistency'],
+             ['Developing','70–79','Solid base with room to grow'],
+             ['Building','60–69','Consistency improvements unlock gains'],
+             ['Getting Started','0–59','Log sessions to build your score']
+            ].map(([tier,range,desc])=>`
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+            <span class="tag ${sb.tier===tier?'tag-green':'tag-navy'}" style="flex-shrink:0">${tier}</span>
+            <div>
+              <div style="font-size:12.5px;font-weight:600;color:var(--text-primary)">${range}</div>
+              <div style="font-size:11.5px;color:var(--text-muted)">${desc}</div>
             </div>
-          </div>
-
-          <!-- Component breakdown -->
-          <div class="panel">
-            <div class="panel-head"><div class="panel-title">SCORE BREAKDOWN</div></div>
-            <div style="padding:16px 20px;display:grid;gap:18px;">
-              ${breakdown.map(comp => {
-                const pct = Math.round((comp.score/comp.max)*100);
-                const fillColor = pct >= 80 ? 'var(--accent-green,#24C054)'
-                  : pct >= 55 ? 'var(--accent-blue,#3B82F6)' : pct >= 30 ? '#F59E0B' : '#EF4444';
-                return `
-                <div>
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
-                    <span style="font-size:13px;font-weight:600;color:var(--text-primary,#1A1F36);">
-                      ${comp.icon} ${comp.label}
-                    </span>
-                    <span style="font-family:'Oswald',sans-serif;font-size:13px;">
-                      <span style="color:${fillColor};font-weight:700;">${Math.round(comp.score)}/${comp.max}</span>
-                      <span style="color:var(--text-muted,#9CA3AF);font-size:11px;margin-left:4px;">${comp.weight}</span>
-                    </span>
-                  </div>
-                  <div style="height:5px;background:#EEF0F8;border-radius:3px;overflow:hidden;margin-bottom:5px;">
-                    <div style="height:100%;width:${pct}%;background:${fillColor};border-radius:3px;transition:width .7s ease;"></div>
-                  </div>
-                  <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);line-height:1.4;">${comp.reason}</div>
-                  ${comp.acwr ? `<div style="font-size:10.5px;color:var(--text-secondary,#6B7280);margin-top:2px;">
-                    ACWR Zone: <strong style="color:${comp.zone==='sweet-spot'?'var(--accent-green)':comp.zone==='spike'?'#F59E0B':'#EF4444'}">${comp.zone}</strong>
-                  </div>` : ''}
-                </div>`;
-              }).join('')}
-            </div>
-          </div>
+          </div>`).join('')}
         </div>
 
-        <!-- RIGHT: Mindset Panel -->
-        <div style="display:grid;gap:16px;">
-
-          <!-- Mental State -->
-          <div class="panel">
-            <div class="panel-head"><div class="panel-title">MENTAL STATE</div></div>
-            <div class="rpanel-section">
-              <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
-                <div style="font-size:36px;line-height:1;">${mindset.todaySkill.emoji}</div>
-                <div>
-                  <div style="font-family:'Oswald',sans-serif;font-size:16px;font-weight:700;
-                       color:${mindset.color};letter-spacing:0.06em;">${mindset.stateLabel}</div>
-                  <div style="font-size:11.5px;color:var(--text-muted,#9CA3AF);margin-top:2px;">
-                    HRV Proxy: ${mindset.hrv}/10 · ${mindset.hrvLabel}
-                  </div>
-                </div>
-              </div>
-              <div style="font-size:12px;color:var(--text-secondary,#6B7280);line-height:1.5;margin-bottom:12px;">
-                ${mindset.interpretation}
-              </div>
-            </div>
-
-            <!-- Today's PST Skill -->
-            <div class="rpanel-section">
-              <div class="rpanel-title">TODAY'S MENTAL SKILL — ${mindset.todaySkill.pillar.toUpperCase()}</div>
-              <div style="font-size:12.5px;font-weight:600;color:var(--text-primary,#1A1F36);margin-bottom:6px;">
-                ${mindset.todaySkill.emoji} ${mindset.todaySkill.label}
-              </div>
-              <div style="font-size:12px;color:var(--text-secondary,#6B7280);line-height:1.5;margin-bottom:8px;">
-                ${mindset.todaySkill.daily_prompt}
-              </div>
-              <div style="background:var(--accent-green-dim,rgba(36,192,84,0.08));border:1px solid var(--accent-green-border,rgba(36,192,84,0.2));
-                   border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--text-secondary,#6B7280);line-height:1.5;">
-                <strong>Reframe:</strong> ${mindset.todaySkill.reframe}
-              </div>
-            </div>
-
-            <!-- Science -->
-            <div class="rpanel-section">
-              <div style="font-size:10.5px;color:var(--text-muted,#9CA3AF);line-height:1.5;">
-                📚 ${mindset.todaySkill.science}
-              </div>
-            </div>
-          </div>
-
-          <!-- Mental Toughness -->
-          ${mindset.mentalToughness ? `
-          <div class="panel">
-            <div class="panel-head"><div class="panel-title">MENTAL TOUGHNESS (4C)</div></div>
-            <div class="rpanel-section">
-              ${['Control','Commitment','Challenge','Confidence'].map(c => {
-                const val = mindset.mentalToughness[c.toLowerCase()];
-                const col = val >= 70 ? 'var(--accent-green)' : val >= 50 ? 'var(--accent-blue,#3B82F6)' : '#F59E0B';
-                return `<div class="progress-row">
-                  <div class="prog-lbl-row"><span class="prog-lbl">${c}</span><span class="prog-meta">${val}%</span></div>
-                  <div class="prog-track"><div class="prog-fill" style="width:${val}%;background:${col};"></div></div>
-                </div>`;
-              }).join('')}
-              <div style="font-size:11px;color:var(--text-muted,#9CA3AF);margin-top:6px;">
-                Based on 7-day wellness trend. Trend: ${mindset.mentalToughness.trend.replace('-',' ')}.
-              </div>
-            </div>
-          </div>` : `
-          <div class="panel">
-            <div class="rpanel-section">
-              <div style="font-size:12px;color:var(--text-muted,#9CA3AF);">
-                Log 3+ days of wellness to unlock the 4C Mental Toughness assessment.
-              </div>
-            </div>
-          </div>`}
-
-        </div><!-- /right -->
-      </div><!-- /two-col -->
-    </div>`;
-
-  container.querySelectorAll('[data-route]').forEach(el =>
-    el.addEventListener('click', () => router.navigate(el.dataset.route)));
+        <div class="panel">
+          <div class="panel-title">How to Improve</div>
+          <div class="w-row"><div class="w-icon">📅</div><div class="w-info"><div class="w-name">Log every session</div><div class="w-meta">Consistency (35%) is the biggest driver</div></div></div>
+          <div class="w-row"><div class="w-icon">💚</div><div class="w-info"><div class="w-name">Track readiness daily</div><div class="w-meta">Sleep and recovery directly affect your score</div></div></div>
+          <div class="w-row"><div class="w-icon">⚖️</div><div class="w-info"><div class="w-name">Manage training load</div><div class="w-meta">Aim for RPE 6–7 average over the week</div></div></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>`;
 }
