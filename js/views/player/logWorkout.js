@@ -78,6 +78,8 @@ document.addEventListener('piq:viewRendered', (e) => {
     const avgRPE   = parseFloat(document.getElementById('log-rpe')?.value) || 6;
     addWorkoutLog({ name, duration, avgRPE, completed: true, ts: Date.now() });
     // Re-render
-    document.dispatchEvent(new CustomEvent('piq:navigate', { detail: { route: 'player/log' } }));
+    import { navigate } from '../../router.js';
+// ...
+navigate('player/log');
   });
 });
