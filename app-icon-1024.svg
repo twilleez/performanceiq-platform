@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="224" fill="#0d1b3e"/>
+
+  <!-- Outer ambient glow ring -->
+  <circle cx="512" cy="512" r="330" stroke="rgba(57,230,107,0.07)" stroke-width="2" fill="none"/>
+
+  <!-- Track ring -->
+  <circle cx="512" cy="512" r="290" stroke="rgba(57,230,107,0.12)" stroke-width="18" fill="none"/>
+
+  <!-- Motion arc — main green -->
+  <circle cx="512" cy="512" r="290"
+    stroke="#39e66b" stroke-width="20" fill="none"
+    stroke-dasharray="1200 621"
+    stroke-dashoffset="0"
+    stroke-linecap="round"
+    transform="rotate(-90 512 512)"/>
+
+  <!-- Secondary arc — blue accent, offset 60° -->
+  <circle cx="512" cy="512" r="290"
+    stroke="#2a9df4" stroke-width="12" fill="none"
+    stroke-dasharray="300 1521"
+    stroke-dashoffset="-900"
+    stroke-linecap="round"
+    opacity="0.6"
+    transform="rotate(-90 512 512)"/>
+
+  <!-- Speed lines — vectored motion -->
+  <line x1="300" y1="512" x2="462" y2="512" stroke="#39e66b" stroke-width="28" stroke-linecap="round" opacity="0.85"/>
+  <line x1="340" y1="415" x2="462" y2="512" stroke="#39e66b" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
+  <line x1="340" y1="609" x2="462" y2="512" stroke="#39e66b" stroke-width="20" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- Arrow dot — tip of motion -->
+  <circle cx="530" cy="512" r="46" fill="#39e66b"/>
+  <circle cx="530" cy="512" r="26" fill="#0d1b3e"/>
+
+  <!-- PIQ text mark at bottom -->
+  <text x="512" y="820"
+    font-family="Oswald, sans-serif"
+    font-weight="700"
+    font-size="110"
+    letter-spacing="28"
+    fill="rgba(255,255,255,0.9)"
+    text-anchor="middle"
+    text-rendering="optimizeLegibility">PIQ</text>
+</svg>

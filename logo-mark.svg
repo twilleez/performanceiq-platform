@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 56" fill="none">
+  <rect width="56" height="56" rx="14" fill="#0d1b3e"/>
+  <!-- Outer track -->
+  <circle cx="28" cy="28" r="18" stroke="rgba(57,230,107,0.15)" stroke-width="3" fill="none"/>
+  <!-- Motion arc -->
+  <circle cx="28" cy="28" r="18"
+    stroke="#39e66b" stroke-width="3.5" fill="none"
+    stroke-dasharray="72 41"
+    stroke-dashoffset="0"
+    stroke-linecap="round"
+    transform="rotate(-90 28 28)"/>
+  <!-- Speed lines -->
+  <line x1="17" y1="28" x2="25" y2="28" stroke="#39e66b" stroke-width="2.5" stroke-linecap="round" opacity="0.75"/>
+  <line x1="19" y1="22.5" x2="25" y2="28" stroke="#39e66b" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+  <line x1="19" y1="33.5" x2="25" y2="28" stroke="#39e66b" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+  <!-- Dot -->
+  <circle cx="30" cy="28" r="2.8" fill="#39e66b"/>
+</svg>
