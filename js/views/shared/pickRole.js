@@ -1,52 +1,24 @@
-/**
- * Pick Role screen — shown post-auth when role needs confirmation
- */
-import { navigate, ROLE_HOME } from '../../router.js';
-import { setRole }              from '../../core/auth.js';
+import { buildSidebar } from '../../components/nav.js';
+import { getCurrentUser } from '../../core/auth.js';
 
 export function renderPickRole() {
+  const user = getCurrentUser();
   return `
-<div class="auth-card" style="margin-top:0;max-width:560px;width:100%">
-  <h2>Choose Your Role</h2>
-  <p style="font-size:13px;color:var(--g400);margin-bottom:0;line-height:1.5">
-    Your role shapes your dashboard and features.
-  </p>
-  <div class="pick-role-grid" id="role-grid">
-    <div class="pick-role-card" data-role="coach">
-      <div class="pick-role-icon">🎽</div>
-      <div class="pick-role-label">Coach</div>
-      <div class="pick-role-desc">Build programs, manage rosters, track readiness</div>
+<div class="view-with-sidebar">
+  ${buildSidebar('shared', 'pick-role')}
+  <main class="page-main">
+    <div class="page-header">
+      <h1>Pick Your Role</h1>
+      <p>${user?.name || ''} · Pick Your Role</p>
     </div>
-    <div class="pick-role-card" data-role="player">
-      <div class="pick-role-icon">🏀</div>
-      <div class="pick-role-label">Player</div>
-      <div class="pick-role-desc">Follow workouts and track your PIQ score</div>
+    <div class="panel">
+      <div class="panel-title">Pick Your Role</div>
+      <div style="padding:40px;text-align:center;color:var(--text-muted);font-size:13.5px">
+        <div style="font-size:36px;margin-bottom:12px">🚧</div>
+        <div style="font-weight:700;font-size:15px;color:var(--text-primary);margin-bottom:8px">Coming Soon</div>
+        <div>This section is in development.</div>
+      </div>
     </div>
-    <div class="pick-role-card" data-role="parent">
-      <div class="pick-role-icon">👨‍👧</div>
-      <div class="pick-role-label">Parent</div>
-      <div class="pick-role-desc">Monitor your athlete's progress</div>
-    </div>
-    <div class="pick-role-card" data-role="solo">
-      <div class="pick-role-icon">🏃</div>
-      <div class="pick-role-label">Solo</div>
-      <div class="pick-role-desc">Self-directed training with full builder</div>
-    </div>
-    <div class="pick-role-card" data-role="admin">
-      <div class="pick-role-icon">🏫</div>
-      <div class="pick-role-label">Admin</div>
-      <div class="pick-role-desc">Manage your organization and teams</div>
-    </div>
-  </div>
+  </main>
 </div>`;
 }
-
-document.addEventListener('piq:authRendered', () => {
-  document.querySelectorAll('#role-grid .pick-role-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const role = card.dataset.role;
-      setRole(role);
-      navigate(ROLE_HOME[role]);
-    });
-  });
-});
