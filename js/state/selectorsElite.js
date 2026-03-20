@@ -323,6 +323,24 @@ function _getStreak(log) {
 }
 
 // ────────────────────────────────────────────────────────────────
+// READINESS SCORE ELITE (Main Export)
+// ────────────────────────────────────────────────────────────────
+
+export function getReadinessScoreElite() {
+  const readiness = _calculateReadinessElite();
+  return {
+    score: readiness.score,
+    raw: readiness.raw,
+    color: getReadinessColorElite(readiness.raw),
+    ringOffset: getReadinessRingOffsetElite(readiness.raw),
+    explain: getReadinessExplainElite(readiness.raw),
+    factors: readiness.factors,
+    trend: readiness.trend,
+    sleepDebt: readiness.sleepDebt
+  };
+}
+
+// ────────────────────────────────────────────────────────────────
 // READINESS RING HELPERS
 // ────────────────────────────────────────────────────────────────
 
