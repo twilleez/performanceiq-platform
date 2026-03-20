@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background -->
+  <rect width="32" height="32" fill="#0f172a" rx="6"/>
+  
+  <!-- Gradient definitions -->
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="emeraldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Upward arrow (performance) -->
+  <g transform="translate(8, 6)">
+    <!-- Arrow shaft -->
+    <rect x="6" y="4" width="2" height="10" fill="url(#goldGradient)" rx="1"/>
+    <!-- Arrow head -->
+    <polygon points="7,4 4,8 10,8" fill="url(#goldGradient)"/>
+  </g>
+  
+  <!-- Pulse rings (readiness) -->
+  <circle cx="16" cy="20" r="3" fill="none" stroke="url(#emeraldGradient)" stroke-width="1.5" opacity="0.8"/>
+  <circle cx="16" cy="20" r="6" fill="none" stroke="url(#emeraldGradient)" stroke-width="1" opacity="0.5"/>
+  
+  <!-- Center dot -->
+  <circle cx="16" cy="20" r="1.5" fill="url(#emeraldGradient)"/>
+</svg>
