@@ -1,15 +1,17 @@
 /**
  * PerformanceIQ — Service Worker
- * Cache-first strategy for static assets, network-first for API calls.
+ * Registered with scope /performanceiq-platform/ to match GitHub Pages hosting.
  */
 
-const CACHE_NAME = 'piq-v1';
+const CACHE_NAME = 'piq-v3';
+const BASE = '/performanceiq-platform/';
+
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/js/app.js',
-  '/js/router.js',
+  BASE,
+  BASE + 'index.html',
+  BASE + 'styles.css',
+  BASE + 'js/app.js',
+  BASE + 'js/router.js',
 ];
 
 self.addEventListener('install', event => {
