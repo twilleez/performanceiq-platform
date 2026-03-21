@@ -1,9 +1,9 @@
 import { navigate, ROUTES, ROLE_HOME } from '../../router.js';
 import { signIn, signUp } from '../../core/auth.js';
 
-export function renderWelcome() {
+export function renderSignIn() {
   return `<div class="auth-card" style="margin-top:0">
-    <h2>Welcome</h2>
+    <h2>Sign In</h2>
     <p style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:20px">This view is provided by your uploaded source files.</p>
     <button class="btn-primary" id="fallback-home" style="width:100%">Continue</button>
   </div>`;

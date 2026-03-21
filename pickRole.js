@@ -1,52 +1,161 @@
 /**
- * Pick Role screen — shown post-auth when role needs confirmation
+ * PerformanceIQ — Storage Service
+ * ─────────────────────────────────────────────────────────────
+ * Safe localStorage read/write helpers.
+ *
+ * SECTIONS
+ *  1. Unguarded helpers  (theme, UI state — fine in demo mode)
+ *  2. Guarded helpers    (athlete data — blocked in demo mode)
+ *  3. Bulk helpers       (clear / list keys)
+ *
+ * RULE OF THUMB
+ *  • Use saveToStorage()         for preferences & UI state (always OK)
+ *  • Use guardedSaveToStorage()  for any data the user "owns" as an athlete
+ *    (workouts, check-ins, nutrition logs, roster edits, etc.)
  */
-import { navigate, ROLE_HOME } from '../../router.js';
-import { setRole }              from '../../core/auth.js';
 
-export function renderPickRole() {
-  return `
-<div class="auth-card" style="margin-top:0;max-width:560px;width:100%">
-  <h2>Choose Your Role</h2>
-  <p style="font-size:13px;color:var(--g400);margin-bottom:0;line-height:1.5">
-    Your role shapes your dashboard and features.
-  </p>
-  <div class="pick-role-grid" id="role-grid">
-    <div class="pick-role-card" data-role="coach">
-      <div class="pick-role-icon">🎽</div>
-      <div class="pick-role-label">Coach</div>
-      <div class="pick-role-desc">Build programs, manage rosters, track readiness</div>
-    </div>
-    <div class="pick-role-card" data-role="player">
-      <div class="pick-role-icon">🏀</div>
-      <div class="pick-role-label">Player</div>
-      <div class="pick-role-desc">Follow workouts and track your PIQ score</div>
-    </div>
-    <div class="pick-role-card" data-role="parent">
-      <div class="pick-role-icon">👨‍👧</div>
-      <div class="pick-role-label">Parent</div>
-      <div class="pick-role-desc">Monitor your athlete's progress</div>
-    </div>
-    <div class="pick-role-card" data-role="solo">
-      <div class="pick-role-icon">🏃</div>
-      <div class="pick-role-label">Solo</div>
-      <div class="pick-role-desc">Self-directed training with full builder</div>
-    </div>
-    <div class="pick-role-card" data-role="admin">
-      <div class="pick-role-icon">🏫</div>
-      <div class="pick-role-label">Admin</div>
-      <div class="pick-role-desc">Manage your organization and teams</div>
-    </div>
-  </div>
-</div>`;
+import { assertNotDemo } from '../core/auth.js';
+
+// ── 1. UNGUARDED HELPERS ──────────────────────────────────────
+//
+// Safe to call regardless of demo mode. Use these for:
+//   • Theme preference
+//   • Onboarding flags
+//   • UI layout preferences
+//   • Any non-athlete-data persistence
+
+/**
+ * Read a value from localStorage.
+ * @template T
+ * @param {string} key
+ * @param {T}      fallback  Returned when the key is absent or parse fails.
+ * @returns {T}
+ */
+export function loadFromStorage(key, fallback = null) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw !== null ? JSON.parse(raw) : fallback;
+  } catch (_) {
+    return fallback;
+  }
 }
 
-document.addEventListener('piq:authRendered', () => {
-  document.querySelectorAll('#role-grid .pick-role-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const role = card.dataset.role;
-      setRole(role);
-      navigate(ROLE_HOME[role]);
-    });
-  });
-});
+/**
+ * Write a value to localStorage (no demo protection).
+ * @param {string} key
+ * @param {*}      value  Will be JSON-serialised.
+ */
+export function saveToStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (_) {
+    // Quota exceeded or private-mode restriction — silently ignore.
+  }
+}
+
+/**
+ * Remove a key from localStorage (no demo protection).
+ * @param {string} key
+ */
+export function removeFromStorage(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch (_) {}
+}
+
+
+// ── 2. GUARDED HELPERS ────────────────────────────────────────
+//
+// These wrap assertNotDemo() and return false when the guard fires,
+// letting call sites bail cleanly without needing to know about
+// demo mode themselves.
+//
+// Use for:
+//   • piq_state_v4   (workout log, readiness check-in, nutrition)
+//   • Roster edits
+//   • Any data that represents a real athlete's record
+
+/**
+ * Write a value to localStorage — blocked in demo mode.
+ *
+ * Returns true if the write succeeded, false if blocked by the
+ * demo guard or if localStorage threw (quota / private mode).
+ *
+ * @param {string} key
+ * @param {*}      value
+ * @param {string} [demoMessage]  Custom toast message shown to demo users.
+ * @returns {boolean}
+ *
+ * @example
+ * function saveWorkout(log) {
+ *   const ok = guardedSaveToStorage('piq_state_v4', state);
+ *   if (!ok) return;  // toast was already shown by the guard
+ *   toast('Workout saved!', 'success');
+ * }
+ */
+export function guardedSaveToStorage(key, value, demoMessage) {
+  if (!assertNotDemo(demoMessage)) return false;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Remove a key from localStorage — blocked in demo mode.
+ *
+ * Returns true if removal succeeded, false if blocked.
+ *
+ * @param {string} key
+ * @param {string} [demoMessage]
+ * @returns {boolean}
+ *
+ * @example
+ * function deleteEntry(id) {
+ *   if (!guardedRemoveFromStorage('piq_entry_' + id)) return;
+ *   toast('Entry deleted.', 'success');
+ * }
+ */
+export function guardedRemoveFromStorage(key, demoMessage) {
+  if (!assertNotDemo(demoMessage)) return false;
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+
+// ── 3. BULK HELPERS ───────────────────────────────────────────
+
+/**
+ * Clear all localStorage keys.
+ * Intentionally NOT guarded — used only by signOut() which is
+ * always the user's own action.
+ */
+export function clearStorage() {
+  try {
+    localStorage.clear();
+  } catch (_) {}
+}
+
+/**
+ * Return all localStorage keys that start with a given prefix.
+ * Useful for enumerating per-entry records.
+ *
+ * @param {string} prefix
+ * @returns {string[]}
+ *
+ * @example
+ * const logKeys = listStorageKeys('piq_log_');
+ */
+export function listStorageKeys(prefix = '') {
+  try {
+    return Object.keys(localStorage).filter(k => k.startsWith(prefix));
+  } catch (_) {
+    return [];
+  }
+}
