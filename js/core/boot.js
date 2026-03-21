@@ -20,7 +20,11 @@ export async function boot() {
 function registerSW() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      // Absolute path matching the GitHub Pages subdirectory.
+      // Must match the <base href> in index.html.
+      navigator.serviceWorker.register('/performanceiq-platform/sw.js', {
+        scope: '/performanceiq-platform/'
+      }).catch(() => {});
     });
   }
 }
