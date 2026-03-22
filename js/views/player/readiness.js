@@ -21,7 +21,7 @@ import { buildSidebar }                              from '../../components/nav.
 import { getCurrentRole }                            from '../../core/auth.js';
 import { patchReadinessCheckIn, getReadinessCheckIn } from '../../state/state.js';
 import { getReadinessScore, getReadinessColor }      from '../../state/selectors.js';
-import { getReadinessScoreElite }                    from '../../state/selectorsElite.js';
+import { getReadinessScore as getReadinessScoreElite } from '../../state/selectors.js';
 import { showToast }                                 from '../../core/notifications.js';
 import { navigate }                                  from '../../router.js';
 

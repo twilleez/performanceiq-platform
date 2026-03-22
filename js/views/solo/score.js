@@ -4,7 +4,7 @@
 import { buildSidebar }           from '../../components/nav.js';
 import { getCurrentUser }         from '../../core/auth.js';
 import { getScoreBreakdown }      from '../../state/selectors.js';
-import { getScoreBreakdownElite } from '../../state/selectorsElite.js';
+import { getScoreBreakdown as getScoreBreakdownElite } from '../../state/selectors.js';
 
 export function renderSoloScore() {
   const sb   = getScoreBreakdownElite();
