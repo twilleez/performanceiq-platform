@@ -79,3 +79,14 @@ export function patchNutrition(fields) {
   _state.nutrition = { ..._state.nutrition, ...fields };
   saveState(); notify();
 }
+
+export function addMeal(meal) {
+  const meals = [...(_state.nutrition?.meals || []), { id: Date.now(), ...meal }];
+  _state.nutrition = { ..._state.nutrition, meals };
+  saveState(); notify();
+}
+export function removeMeal(id) {
+  const meals = (_state.nutrition?.meals || []).filter(m => m.id !== id);
+  _state.nutrition = { ..._state.nutrition, meals };
+  saveState(); notify();
+}

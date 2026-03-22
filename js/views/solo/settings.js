@@ -1,22 +1,35 @@
 import { buildSidebar } from '../../components/nav.js';
 import { getCurrentUser } from '../../core/auth.js';
-
 export function renderSoloSettings() {
   const user = getCurrentUser();
+  const initials = (user?.name||'S').split(' ').map(w=>w[0]).slice(0,2).join('');
   return `
 <div class="view-with-sidebar">
-  ${buildSidebar('solo', 'solo/settings')}
+  ${buildSidebar('solo','solo/settings')}
   <main class="page-main">
-    <div class="page-header">
-      <h1>Settings</h1>
-      <p>${user?.name || ''} · Settings</p>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Settings</div>
-      <div style="padding:40px;text-align:center;color:var(--text-muted);font-size:13.5px">
-        <div style="font-size:36px;margin-bottom:12px">🚧</div>
-        <div style="font-weight:700;font-size:15px;color:var(--text-primary);margin-bottom:8px">Coming Soon</div>
-        <div>This section is in development.</div>
+    <div class="page-header"><h1>Settings</h1><p>Manage your account and training preferences</p></div>
+    <div class="panels-2">
+      <div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-title">Profile</div>
+          <div style="display:flex;align-items:center;gap:14px;margin:14px 0">
+            <div style="width:56px;height:56px;border-radius:50%;background:var(--piq-green);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#0d1b3e">${initials}</div>
+            <div><div style="font-weight:700;font-size:15px;color:var(--text-primary)">${user?.name||'Solo Athlete'}</div><div style="font-size:12.5px;color:var(--text-muted)">${user?.email||''} · Solo</div></div>
+          </div>
+          <button class="btn-draft" style="width:100%;font-size:13px;padding:10px" data-route="settings/profile">Edit Profile</button>
+        </div>
+        <div class="panel"><div class="panel-title">Appearance</div>
+          <button class="btn-draft" style="width:100%;font-size:13px;padding:10px;margin-top:10px" data-route="settings/theme">Theme Settings</button>
+        </div>
+      </div>
+      <div class="panel"><div class="panel-title">Training Preferences</div>
+        ${[['Workout reminders',true],['Progress milestones',true],['PIQ score updates',true],['Weekly summary',false],['Readiness alerts',true]].map(([l,on])=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:13px;color:var(--text-primary)">${l}</span>
+          <div style="width:40px;height:22px;border-radius:11px;background:${on?'var(--piq-green)':'var(--surface-2)'};position:relative">
+            <div style="width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:2px;${on?'right:2px':'left:2px'}"></div>
+          </div>
+        </div>`).join('')}
       </div>
     </div>
   </main>

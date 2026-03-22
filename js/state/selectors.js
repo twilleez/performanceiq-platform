@@ -84,3 +84,40 @@ function playerNav() { return [{route:'player/home',label:'Dashboard',icon:'🏠
 function parentNav() { return [{route:'parent/home',label:'Dashboard',icon:'🏠'},{route:'parent/child',label:'My Athlete',icon:'🏃'},{route:'parent/week',label:'Weekly Plan',icon:'📅'},{route:'parent/progress',label:'Progress',icon:'📈'},{route:'parent/messages',label:'Messages',icon:'💬'},{route:'parent/settings',label:'Settings',icon:'⚙️'}]; }
 function adminNav()  { return [{route:'admin/home',label:'Overview',icon:'🏠'},{route:'admin/org',label:'Org',icon:'🏫'},{route:'admin/teams',label:'Teams',icon:'👥'},{route:'admin/coaches',label:'Coaches',icon:'🎽'},{route:'admin/athletes',label:'Athletes',icon:'🏃'},{route:'admin/settings',label:'Settings',icon:'⚙️'}]; }
 function soloNav()   { return [{route:'solo/home',label:'Dashboard',icon:'🏠'},{route:'solo/today',label:'Today',icon:'⚡'},{route:'solo/builder',label:'Builder',icon:'📐'},{route:'solo/library',label:'Library',icon:'📚'},{route:'solo/progress',label:'Progress',icon:'📈'},{route:'solo/score',label:'PIQ Score',icon:'🏅'},{route:'solo/readiness',label:'Readiness',icon:'💚'},{route:'solo/settings',label:'Settings',icon:'⚙️'}]; }
+
+export function getReadinessExplain(score) {
+  if (score >= 85) return 'Train at full intensity today. Your body is fully primed.';
+  if (score >= 70) return 'Train hard. Minor adjustments may help.';
+  if (score >= 55) return 'Reduce volume ~20%. Quality over quantity.';
+  return 'Active recovery only. Rest is training.';
+}
+
+export function getReadinessRingOffset(score) {
+  const circumference = 289;
+  return circumference - (score / 100) * circumference;
+}
+
+export function getMacroTargets() {
+  const t = getState().nutrition?.targetMacros;
+  if (!t || t.cal === 0) return { cal:2800, pro:160, cho:350, fat:80 };
+  return t;
+}
+
+export function getMacroProgress() {
+  const c = getState().nutrition?.macros || { cal:0, pro:0, cho:0, fat:0 };
+  const t = getMacroTargets();
+  const pct = (v, m) => Math.min(100, Math.round((v / m) * 100));
+  return {
+    cal: { current: c.cal, target: t.cal, pct: pct(c.cal, t.cal) },
+    pro: { current: c.pro, target: t.pro, pct: pct(c.pro, t.pro) },
+    cho: { current: c.cho, target: t.cho, pct: pct(c.cho, t.cho) },
+    fat: { current: c.fat, target: t.fat, pct: pct(c.fat, t.fat) },
+  };
+}
+
+export function getReadinessLabel(score) {
+  if (score >= 85) return 'Peak — push hard today.';
+  if (score >= 70) return 'High — train hard.';
+  if (score >= 55) return 'Moderate — reduce ~20%.';
+  return 'Low — active recovery.';
+}
