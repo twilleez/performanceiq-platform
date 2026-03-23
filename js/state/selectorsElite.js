@@ -1,12 +1,14 @@
 /**
  * PerformanceIQ Selectors Elite — re-exports from selectors.js
- * Phase 3 complete: all selector exports centralised here
+ * Phase 4 complete: mindset engine exports added
  */
 export {
   getScoreBreakdown     as getScoreBreakdownElite,
   getReadinessScore     as getReadinessScoreElite,
   getReadinessResult,
   getNutritionResult,
+  getMindsetResult,
+  getMindsetScore,
   getDashboardConfig,
   getReadinessColor,
   getReadinessLabel,

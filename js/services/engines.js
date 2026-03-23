@@ -392,3 +392,161 @@ export const Engines = {
   nutrition:  calcNutrition,
   sRPE,
 };
+
+// ═══════════════════════════════════════════════════════════════
+//  ENGINE 4 — MINDSET
+//  PST 5-pillar + HRV coherence + pre-competition routine builder
+//
+//  Evidence:
+//    Vealey 2007 — PST 5-pillar model (goal-setting, imagery,
+//      self-talk, arousal regulation, attention)
+//    Hedges' g = 0.83 (PMC10933186 2024 meta-analysis — PST interventions)
+//    Buchheit & Laursen 2013 — HRV proxy for mental readiness
+//    Hardy et al. 1996 — Individual Zone of Optimal Functioning (IZOF)
+//    PMC11277272 2024 — cognitive reframing for performance
+// ═══════════════════════════════════════════════════════════════
+
+const PST_SKILLS = [
+  {
+    id:           'goal-setting',
+    label:        'Goal Setting',
+    icon:         '🎯',
+    principle:    'Process goals outperform outcome goals by 2:1 in training contexts (Burton 1992).',
+    daily_prompt: 'Write one process goal for today\'s session. Focus on execution, not result.',
+    pre_comp_cue: 'State your one technical focus: "Today I will ___"',
+  },
+  {
+    id:           'imagery',
+    label:        'Mental Imagery',
+    icon:         '🧠',
+    principle:    'PETTLEP imagery (physical, environment, task, timing, learning, emotion, perspective) activates the same neural patterns as physical practice.',
+    daily_prompt: 'Spend 3 minutes visualising your key movement at game speed. Include the feel, not just the picture.',
+    pre_comp_cue: 'Eyes closed — run your best performance sequence at real speed. Include emotion.',
+  },
+  {
+    id:           'self-talk',
+    label:        'Self-Talk',
+    icon:         '💬',
+    principle:    'Instructional self-talk improves accuracy tasks by 17%; motivational self-talk improves endurance by 18% (Hatzigeorgiadis 2011).',
+    daily_prompt: 'Replace one negative thought with a process cue. "I can\'t" → "I will focus on ___".',
+    pre_comp_cue: 'Your cue word: "Execute." Repeat it at the start of every rep.',
+  },
+  {
+    id:           'arousal',
+    label:        'Arousal Regulation',
+    icon:         '🌬️',
+    principle:    'Box breathing (4-4-4-4) activates the parasympathetic system in under 90 seconds, lowering cortisol and improving decision accuracy.',
+    daily_prompt: 'Before today\'s hardest set: 3 rounds of box breathing. Inhale 4, hold 4, exhale 4, hold 4.',
+    pre_comp_cue: 'Arousal check 1–10. Target zone: 6–8. Too high → box breathe. Too low → activation phrase.',
+  },
+  {
+    id:           'attention',
+    label:        'Attention Control',
+    icon:         '📍',
+    principle:    'Narrow-external focus (target or movement endpoint) produces superior motor performance vs. internal or broad focus (Wulf 2013).',
+    daily_prompt: 'During warm-up: pick one external target (a mark on the floor, a specific hand position) and lock focus on it for every rep.',
+    pre_comp_cue: 'Narrow your focus to one external cue. Everything else is background.',
+  },
+];
+
+const PRE_COMP_ROUTINE = [
+  { step:1, name:'Arrival anchor',       duration:'5 min',  action:'Same song, same warm-up sequence. Consistency = security.', emoji:'📍' },
+  { step:2, name:'Body scan',            duration:'90 sec', action:'Eyes closed, scan from feet to head. Note tension and release it.', emoji:'🧘' },
+  { step:3, name:'Process goals review', duration:'2 min',  action:'Read your one technical goal. Commit to the process, not the scoreboard.', emoji:'🎯' },
+  { step:4, name:'Vivid imagery',        duration:'3 min',  action:'See your key movements at game speed. Include sound, feel, and emotion.', emoji:'🧠' },
+  { step:5, name:'Arousal check',        duration:'1 min',  action:'Rate energy 1–10. Box breathe (4-4-4-4) if over 8, activation phrase if under 5.', emoji:'🌬️' },
+  { step:6, name:'Cue word activation',  duration:'30 sec', action:'"Execute." Say it out loud. Step into your performance identity.', emoji:'💬' },
+];
+
+/**
+ * Calculate mental toughness composite from check-in data.
+ * Uses consistency of mood, stress management, and energy across history.
+ */
+function calcMentalToughness(checkInHistory) {
+  if (!checkInHistory || checkInHistory.length < 3) return null;
+  const recent = checkInHistory.slice(-14);
+  const moodAvg    = recent.reduce((s,c) => s + (c.mood || 3), 0) / recent.length;
+  const stressAvg  = recent.reduce((s,c) => s + (c.stressLevel || 3), 0) / recent.length;
+  const energyAvg  = recent.reduce((s,c) => s + (c.energyLevel || 3), 0) / recent.length;
+  // Consistency bonus: low variance in mood = more resilient
+  const moodVariance = recent.reduce((s,c) => s + Math.pow((c.mood||3) - moodAvg, 2), 0) / recent.length;
+  const consistency  = Math.max(0, 1 - (moodVariance / 4));
+  const raw = (moodAvg / 5) * 0.35 + (1 - stressAvg / 5) * 0.30 + (energyAvg / 5) * 0.20 + consistency * 0.15;
+  return clamp(Math.round(raw * 10), 1, 10);
+}
+
+/**
+ * Engine 4 — Mindset
+ * @param {object} state — { readinessCheckIn, checkInHistory, workoutLog }
+ * @returns {{ score, stateLabel, color, hrv, interpretation, todaySkill,
+ *             preCompRoutine, mentalToughness, allSkills, hasData }}
+ */
+export function calcMindset(state) {
+  const ci      = state.readinessCheckIn || {};
+  const history = state.checkInHistory   || [];
+  const today   = new Date().toDateString();
+  const hasData = ci.date === today && ci.mood > 0;
+
+  // ── HRV proxy ──────────────────────────────────────────────
+  const hrv = hasData ? hrvProxy({
+    mood:   ci.mood        || 5,
+    sleep:  ci.sleepQuality || 5,
+    stress: ci.stressLevel  || 5,
+  }) : 0.5;
+
+  // ── Mental readiness composite ─────────────────────────────
+  // mood 40% + stress (inv) 30% + energy 20% + fatigue (inv) 10%
+  let score = 5; // neutral default
+  if (hasData) {
+    score = clamp(Math.round((
+      (ci.mood         || 3) / 5 * 4.0 +
+      (1 - (ci.stressLevel  || 3) / 5) * 3.0 +
+      (ci.energyLevel  || 3) / 5 * 2.0 +
+      (1 - (ci.fatigueLevel || 3) / 5) * 1.0
+    ) / 10 * 10), 1, 10);
+  }
+
+  // ── State label and colour ─────────────────────────────────
+  const stateLabel = score >= 8 ? 'Peak mental state'
+    : score >= 6 ? 'Activated'
+    : score >= 4 ? 'Neutral'
+    : 'Regulation needed';
+
+  const color = score >= 8 ? '#22c955' : score >= 6 ? '#3b82f6' : score >= 4 ? '#f59e0b' : '#ef4444';
+
+  // ── Today's PST skill (rotates daily) ──────────────────────
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+  const todaySkill = PST_SKILLS[dayOfYear % PST_SKILLS.length];
+
+  // ── Contextual interpretation ──────────────────────────────
+  const interpretation = !hasData
+    ? `Log today's check-in to get your mental readiness score. Today's PST focus: ${todaySkill.label}.`
+    : score >= 8
+    ? `Peak mental state — HRV proxy ${Math.round(hrv * 10)}/10. Channel this into ${todaySkill.label.toLowerCase()} — you're primed for an elite session.`
+    : score >= 6
+    ? `Mentally activated (${score}/10). ${todaySkill.label} will sharpen your focus for today.`
+    : score >= 4
+    ? `Neutral state (${score}/10). ${todaySkill.label} can shift your mindset toward execution quality.`
+    : `Regulation needed (${score}/10). Prioritise ${todaySkill.id === 'arousal' ? 'box breathing (4-4-4-4)' : todaySkill.label.toLowerCase()} before training.`;
+
+  // ── Mental toughness (14-day resilience score) ─────────────
+  const mentalToughness = calcMentalToughness(history);
+
+  return {
+    score,
+    stateLabel,
+    color,
+    hrv:           Math.round(hrv * 10),
+    hrvLabel:      hrv > 0.7 ? 'HIGH' : hrv > 0.5 ? 'NORMAL' : 'LOW',
+    interpretation,
+    todaySkill,
+    allSkills:     PST_SKILLS,
+    preCompRoutine: PRE_COMP_ROUTINE,
+    mentalToughness,
+    hasData,
+  };
+}
+
+// Update namespace export
+// (reassign Engines const — use Object.assign since const prevents reassignment)
+Object.assign(Engines, { mindset: calcMindset });

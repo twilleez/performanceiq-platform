@@ -1,7 +1,7 @@
 import { buildSidebar } from '../../components/nav.js';
 import { getCurrentUser } from '../../core/auth.js';
 import { getAthleteProfile, getWorkoutLog, getReadinessCheckIn } from '../../state/state.js';
-import { getPIQScore, getReadinessScore, getReadinessColor, getStreak, getScoreBreakdown, getMacroTargets } from '../../state/selectors.js';
+import { getPIQScore, getReadinessScore, getReadinessColor, getStreak, getScoreBreakdown, getMacroTargets, getMindsetScore } from '../../state/selectors.js';
 import { generateTodayWorkout } from '../../data/workoutEngine.js';
 export function renderSoloHome() {
   const user = getCurrentUser()||{};
@@ -10,8 +10,9 @@ export function renderSoloHome() {
   const piq = getPIQScore();
   const readiness = getReadinessScore();
   const rColor = getReadinessColor(readiness);
-  const streak = getStreak();
-  const sb = getScoreBreakdown();
+  const streak       = getStreak();
+  const sb           = getScoreBreakdown();
+  const mindsetScore = getMindsetScore();
   const log = getWorkoutLog();
   const checkin = getReadinessCheckIn();
   const today = new Date().toDateString();
@@ -76,6 +77,20 @@ export function renderSoloHome() {
               <div style="height:4px;background:var(--surface-2);border-radius:2px;overflow:hidden"><div style="height:100%;width:${val||0}%;background:${color};border-radius:2px"></div></div>
             </div>`).join('')}
           </div>
+          ${mindsetScore > 0 ? `
+          <div style="margin-top:8px;padding:7px 10px;border-radius:8px;
+                      background:rgba(163,139,250,.08);border:1px solid rgba(163,139,250,.25);
+                      display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:12px;color:#a78bfa">🧠 Mindset</span>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:12px;font-weight:600;color:#a78bfa">${mindsetScore}/10</span>
+              <button class="btn-draft" style="font-size:10px;padding:2px 8px" data-route="solo/mindset">Train →</button>
+            </div>
+          </div>` : `
+          <div style="margin-top:8px;padding:7px 10px;border-radius:8px;background:var(--surface-2);cursor:pointer"
+               data-route="solo/mindset">
+            <span style="font-size:12px;color:var(--text-muted)">🧠 Mindset training →</span>
+          </div>`}
         </div>
         <div class="panel">
           <div style="display:flex;justify-content:space-between;margin-bottom:8px"><div class="panel-title" style="margin:0">Macros</div><button class="btn-draft" style="font-size:11px;padding:4px 8px" data-route="solo/nutrition">Track →</button></div>

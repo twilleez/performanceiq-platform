@@ -134,6 +134,12 @@ function buildShell() {
     <ul class="nav-links" id="nav-links"></ul>
     <div class="nav-right">
       <button class="nav-theme-btn" id="theme-toggle-btn" title="Toggle theme">${getThemeIcon()}</button>
+      <button class="nav-install-btn hidden" id="pwa-install-btn" title="Install app"
+        style="padding:5px 11px;border-radius:7px;border:1px solid rgba(34,201,85,.4);
+               background:rgba(34,201,85,.08);color:var(--piq-green);font-size:11.5px;
+               font-weight:700;cursor:pointer;letter-spacing:.03em">
+        ⬇ Install
+      </button>
       <span class="nav-role-badge" id="nav-role-badge">${getCurrentRole() || ''}</span>
       <div class="nav-avatar" id="nav-avatar">${getInitials()}</div>
     </div>
@@ -155,6 +161,28 @@ function buildShell() {
 }
 
 
+// ── PWA INSTALL PROMPT ────────────────────────────────────────
+// Capture the browser's install prompt and surface it as a nav button.
+// The button only appears when the browser fires beforeinstallprompt
+// (i.e. the app is installable but not yet installed).
+
+let _installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', ev => {
+  ev.preventDefault();
+  _installPrompt = ev;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.classList.remove('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  _installPrompt = null;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.classList.add('hidden');
+  showToast('✅ PIQ installed! Launch it from your home screen.', 'success');
+});
+
+
 // ── 4. SHELL EVENTS ───────────────────────────────────────────
 
 function bindShellEvents() {
@@ -169,6 +197,17 @@ function bindShellEvents() {
 
   document.getElementById('nav-avatar')?.addEventListener('click', () => {
     if (isAuthenticated()) navigate(getCurrentRole() + '/settings');
+  });
+
+  // PWA install button — triggers deferred prompt
+  document.getElementById('pwa-install-btn')?.addEventListener('click', async () => {
+    if (!_installPrompt) return;
+    _installPrompt.prompt();
+    const { outcome } = await _installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      _installPrompt = null;
+      document.getElementById('pwa-install-btn')?.classList.add('hidden');
+    }
   });
 
   document.getElementById('modal-cancel-btn')?.addEventListener('click', () =>
@@ -237,6 +276,7 @@ const VIEW_MAP = {
   [ROUTES.PLAYER_RECRUITING]: ['./views/player/recruiting.js',      'renderPlayerRecruiting'],
   [ROUTES.PLAYER_SETTINGS]:   ['./views/player/settings.js',        'renderPlayerSettings'],
   [ROUTES.PLAYER_NUTRITION]:  ['./views/player/nutrition.js',       'renderPlayerNutrition'],
+  [ROUTES.PLAYER_MINDSET]:    ['./views/player/mindset.js',         'renderPlayerMindset'],
 
   // Parent
   [ROUTES.PARENT_HOME]:       ['./views/parent/home.js',            'renderParentHome'],
@@ -272,6 +312,7 @@ const VIEW_MAP = {
   [ROUTES.SOLO_SUBSCRIPTION]: ['./views/solo/subscription.js',      'renderSoloSubscription'],
   [ROUTES.SOLO_SETTINGS]:     ['./views/solo/settings.js',          'renderSoloSettings'],
   [ROUTES.SOLO_NUTRITION]:    ['./views/solo/nutrition.js',         'renderSoloNutrition'],
+  [ROUTES.SOLO_MINDSET]:      ['./views/solo/mindset.js',           'renderSoloMindset'],
 };
 
 async function renderRoute(route) {

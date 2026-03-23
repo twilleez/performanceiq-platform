@@ -20,6 +20,7 @@ export const ROUTES = {
   PLAYER_READINESS: 'player/readiness', PLAYER_MESSAGES: 'player/messages',
   PLAYER_CALENDAR: 'player/calendar', PLAYER_RECRUITING: 'player/recruiting',
   PLAYER_SETTINGS: 'player/settings', PLAYER_NUTRITION: 'player/nutrition',
+  PLAYER_MINDSET: 'player/mindset',
   PARENT_HOME: 'parent/home', PARENT_CHILD: 'parent/child',
   PARENT_WEEK: 'parent/week', PARENT_PROGRESS: 'parent/progress',
   PARENT_WELLNESS: 'parent/wellness', PARENT_MESSAGES: 'parent/messages',
@@ -34,6 +35,7 @@ export const ROUTES = {
   SOLO_SCORE: 'solo/score', SOLO_READINESS: 'solo/readiness',
   SOLO_GOALS: 'solo/goals', SOLO_SUBSCRIPTION: 'solo/subscription',
   SOLO_SETTINGS: 'solo/settings', SOLO_NUTRITION: 'solo/nutrition',
+  SOLO_MINDSET: 'solo/mindset',
 };
 
 export const ROLE_HOME = {

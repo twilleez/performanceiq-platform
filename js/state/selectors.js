@@ -14,7 +14,7 @@
  */
 import { getState } from './state.js';
 import { getCurrentRole, getCurrentUser }              from '../core/auth.js';
-import { calcReadiness, calcPIQ, calcNutrition, sRPE } from '../services/engines.js';
+import { calcReadiness, calcPIQ, calcNutrition, calcMindset, sRPE } from '../services/engines.js';
 
 // ── EWMA helpers (mirrors engines.js but local for selector use) ──
 const LAMBDA_A = 2 / (7  + 1);
@@ -327,6 +327,7 @@ function playerNav() {
     { route:'player/progress',  label:'Progress',  icon:'📈' },
     { route:'player/score',     label:'PIQ Score', icon:'🏅' },
     { route:'player/readiness', label:'Readiness', icon:'💚' },
+    { route:'player/mindset',   label:'Mindset',   icon:'🧠' },
     { route:'player/nutrition', label:'Nutrition', icon:'🥗' },
     { route:'player/messages',  label:'Messages',  icon:'💬', section:'secondary' },
     { route:'player/settings',  label:'Settings',  icon:'⚙️', section:'secondary' },
@@ -367,9 +368,25 @@ function soloNav() {
     { route:'solo/progress',     label:'Progress',  icon:'📈' },
     { route:'solo/score',        label:'PIQ Score', icon:'🏅' },
     { route:'solo/readiness',    label:'Readiness', icon:'💚' },
+    { route:'solo/mindset',      label:'Mindset',   icon:'🧠' },
     { route:'solo/nutrition',    label:'Nutrition', icon:'🥗' },
     { route:'solo/goals',        label:'Goals',     icon:'🎯', section:'secondary' },
     { route:'solo/subscription', label:'Plan',      icon:'💳', section:'secondary' },
     { route:'solo/settings',     label:'Settings',  icon:'⚙️', section:'secondary' },
   ];
+}
+
+// ── MINDSET (Phase 4) ─────────────────────────────────────────
+
+/**
+ * Full mindset engine result for the current state.
+ * Returns PST skill of the day, HRV proxy, pre-comp routine,
+ * mental toughness score, and contextual interpretation.
+ */
+export function getMindsetResult() {
+  return calcMindset(getState());
+}
+
+export function getMindsetScore() {
+  return calcMindset(getState()).score;
 }

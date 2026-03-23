@@ -14,7 +14,8 @@ import { getAthleteProfile, getWorkoutLog,
          getReadinessCheckIn }                  from '../../state/state.js';
 import { getPIQScore, getReadinessScore,
          getReadinessColor, getStreak,
-         getScoreBreakdown, getMacroTargets }   from '../../state/selectors.js';
+         getScoreBreakdown, getMacroTargets,
+         getMindsetScore }                from '../../state/selectors.js';
 import { generateTodayWorkout }                 from '../../data/workoutEngine.js';
 
 export function renderPlayerHome() {
@@ -25,8 +26,9 @@ export function renderPlayerHome() {
   const piq        = getPIQScore();
   const readiness  = getReadinessScore();
   const rColor     = getReadinessColor(readiness);
-  const streak     = getStreak();
-  const sb         = getScoreBreakdown();
+  const streak       = getStreak();
+  const sb           = getScoreBreakdown();
+  const mindsetScore = getMindsetScore();
   const log        = getWorkoutLog();
   const checkin    = getReadinessCheckIn();
   const macros     = getMacroTargets();
@@ -191,6 +193,22 @@ export function renderPlayerHome() {
               </div>
             </div>`).join('')}
           </div>
+          ${mindsetScore > 0 ? `
+          <div style="margin-top:10px;padding:8px 10px;border-radius:8px;
+                      background:rgba(163,139,250,.08);border:1px solid rgba(163,139,250,.25);
+                      display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:12px;color:#a78bfa">🧠 Mindset</span>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:12px;font-weight:600;color:#a78bfa">${mindsetScore}/10</span>
+              <button class="btn-draft" style="font-size:10px;padding:2px 8px"
+                data-route="${role}/mindset">Train →</button>
+            </div>
+          </div>` : `
+          <div style="margin-top:10px;padding:8px 10px;border-radius:8px;
+                      background:var(--surface-2);cursor:pointer"
+               data-route="${role}/mindset">
+            <span style="font-size:12px;color:var(--text-muted)">🧠 Mindset training →</span>
+          </div>`}
         </div>
 
         <!-- Macro summary -->
