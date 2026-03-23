@@ -16,7 +16,7 @@ import { buildSidebar }                          from '../../components/nav.js';
 import { getCurrentRole }                        from '../../core/auth.js';
 import { addCheckIn, getReadinessCheckIn }            from '../../state/state.js';
 import { getReadinessScore, getReadinessColor, getReadinessResult,
-         getPIQScore, getStreak }  from '../../state/selectors.js';
+         getPIQScore, getStreak, getReadinessRingOffset }  from '../../state/selectors.js';
 import { showToast }                             from '../../core/notifications.js';
 import { navigate }                              from '../../router.js';
 
@@ -153,11 +153,26 @@ export function renderSoloReadiness() {
         <div class="panel" style="margin-bottom:16px">
           <div class="panel-title">Current Readiness Score</div>
           <div style="display:flex;align-items:center;gap:16px;margin-top:12px">
-            <div style="width:72px;height:72px;border-radius:50%;border:4px solid ${color};
-                        display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <span style="font-weight:900;font-size:22px;color:${color}">${score}</span>
-            </div>
-            <div>
+            <!-- SVG ring gauge -->
+            <svg width="120" height="120" viewBox="0 0 120 120" style="flex-shrink:0" aria-label="Readiness ${score}/100">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" stroke-width="10"/>
+              <circle cx="60" cy="60" r="52" fill="none"
+                stroke="${color}" stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="326.7"
+                stroke-dashoffset="${getReadinessRingOffset(score)}"
+                transform="rotate(-90 60 60)"
+                style="transition:stroke-dashoffset .6s ease,stroke .4s"/>
+              <text x="60" y="58" text-anchor="middle" dominant-baseline="central"
+                font-family="'Oswald',sans-serif" font-size="28" font-weight="700"
+                fill="${color}">${score}</text>
+              <text x="60" y="78" text-anchor="middle" dominant-baseline="central"
+                font-family="Arial,sans-serif" font-size="9" font-weight="600"
+                fill="${color}" opacity="0.8" letter-spacing="1">
+                ${(result.tier || (score >= 85 ? 'PEAK' : score >= 70 ? 'HIGH' : score >= 55 ? 'MOD' : 'LOW')).toUpperCase()}
+              </text>
+            </svg>
+
+            <div style="flex:1">
               <div style="font-weight:700;font-size:15px;color:var(--text-primary)">${result.label}</div>
               <div style="font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.5">
                 ${result.detail || ''}

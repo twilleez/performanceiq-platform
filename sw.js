@@ -14,7 +14,7 @@
  *   Cache versioned — bump CACHE_NAME to force re-install.
  */
 
-const CACHE_NAME  = 'piq-v4';
+const CACHE_NAME  = 'piq-v5';
 const BASE        = '/performanceiq-platform/';
 
 const STATIC_ASSETS = [
@@ -54,6 +54,8 @@ const VIEW_MODULES = [
   'js/views/coach/programBuilder.js',
   'js/views/coach/readiness.js',
   'js/views/coach/analytics.js',
+  'js/views/coach/leaderboard.js',
+  'js/views/coach/athleteDetail.js',
   'js/views/coach/messages.js',
   'js/views/coach/calendar.js',
   'js/views/coach/reports.js',

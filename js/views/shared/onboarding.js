@@ -1,6 +1,6 @@
 import { navigate, ROLE_HOME, ROUTES } from '../../router.js';
 import { getCurrentUser, getCurrentRole, markOnboardingDone, setRole } from '../../core/auth.js';
-import { patchProfile } from '../../state/state.js';
+import { patchProfile, setState, getRoster } from '../../state/state.js';
 
 const SPORTS = [
   {id:'basketball',emoji:'🏀',label:'Basketball'},
@@ -79,9 +79,73 @@ document.addEventListener('piq:authRendered', () => {
     const age  = document.getElementById('ob-age')?.value||'';
     const btn  = document.getElementById('ob-finish');
     btn.textContent = 'Setting up…'; btn.disabled = true;
+
+    // If parent role: show athlete linking step before finishing
+    if (selectedRole === 'parent') {
+      btn.disabled = false;
+      btn.textContent = 'Get Started →';
+      _showAthleteLinker(team, age);
+      return;
+    }
+
     setRole(selectedRole);
     markOnboardingDone({ sport:selectedSport, team, age, role:selectedRole });
     patchProfile({ sport:selectedSport, team, age, role:selectedRole });
     setTimeout(() => navigate(ROLE_HOME[selectedRole]||ROUTES.WELCOME), 400);
   });
 });
+
+function _showAthleteLinker(team, age) {
+  const roster = getRoster();
+  const card   = document.querySelector('.auth-card');
+  if (!card) return;
+  card.innerHTML = `
+    <h2>Link your athlete</h2>
+    <p style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:20px;line-height:1.5">
+      Select which athlete you're following. You can change this later in Settings.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px" id="athlete-list">
+      ${roster.map(a => `
+      <div class="ob-athlete-card" data-id="${a.id}"
+        style="border:2px solid rgba(255,255,255,.15);border-radius:10px;padding:12px;cursor:pointer;
+               display:flex;align-items:center;gap:12px;transition:all .15s">
+        <div style="width:38px;height:38px;border-radius:50%;background:#22c955;
+                    display:flex;align-items:center;justify-content:center;
+                    font-weight:700;color:#0d1b3e;font-size:14px;flex-shrink:0">
+          ${(a.name||'A').charAt(0)}
+        </div>
+        <div>
+          <div style="font-size:13.5px;font-weight:600;color:#fff">${a.name}</div>
+          <div style="font-size:11.5px;color:rgba(255,255,255,.4)">${a.position||''} · ${a.sport||''}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+    <button class="btn-primary" id="ob-link-btn" style="width:100%;font-size:14px;padding:14px;opacity:.5" disabled>
+      Link athlete &amp; Continue →
+    </button>`;
+
+  let selectedAthleteId = null;
+
+  card.querySelectorAll('.ob-athlete-card').forEach(el => {
+    el.addEventListener('click', () => {
+      card.querySelectorAll('.ob-athlete-card').forEach(c => {
+        c.style.borderColor = 'rgba(255,255,255,.15)';
+        c.style.background  = 'transparent';
+      });
+      el.style.borderColor = 'var(--piq-green)';
+      el.style.background  = 'rgba(34,201,85,.1)';
+      selectedAthleteId = parseInt(el.dataset.id);
+      const btn = document.getElementById('ob-link-btn');
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    });
+  });
+
+  document.getElementById('ob-link-btn')?.addEventListener('click', () => {
+    if (!selectedAthleteId) return;
+    setState({ linkedAthlete: selectedAthleteId });
+    setRole('parent');
+    markOnboardingDone({ team, age, role: 'parent' });
+    patchProfile({ team, age, role: 'parent' });
+    setTimeout(() => navigate(ROLE_HOME['parent'] || 'parent/home'), 400);
+  });
+}

@@ -1,7 +1,7 @@
 import { buildSidebar } from '../../components/nav.js';
 import { getCurrentUser } from '../../core/auth.js';
 import { getAthleteProfile, getWorkoutLog, getReadinessCheckIn } from '../../state/state.js';
-import { getPIQScore, getReadinessScore, getReadinessColor, getStreak, getScoreBreakdown, getMacroTargets, getMindsetScore } from '../../state/selectors.js';
+import { getPIQScore, getReadinessScore, getReadinessColor, getStreak, getScoreBreakdown, getMacroTargets, getMindsetScore, getWeeklyProgress } from '../../state/selectors.js';
 import { generateTodayWorkout } from '../../data/workoutEngine.js';
 export function renderSoloHome() {
   const user = getCurrentUser()||{};
@@ -13,6 +13,7 @@ export function renderSoloHome() {
   const streak       = getStreak();
   const sb           = getScoreBreakdown();
   const mindsetScore = getMindsetScore();
+  const weekly       = getWeeklyProgress();
   const log = getWorkoutLog();
   const checkin = getReadinessCheckIn();
   const today = new Date().toDateString();
@@ -45,7 +46,24 @@ export function renderSoloHome() {
         ${!hasCheckedIn?'<div style="position:absolute;top:-7px;right:-7px;background:#f59e0b;color:#0d1b3e;font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px">LOG CHECK-IN</div>':''}
       </div>
       <div class="kpi-card"><div class="kpi-lbl">Streak</div><div class="kpi-val">🔥 ${streak}d</div><div class="kpi-chg">${streak>=5?'On fire!':streak>=3?'Building':'Keep going'}</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Sessions</div><div class="kpi-val b">${log.length}</div><div class="kpi-chg">Total logged</div></div>
+      <div class="kpi-card" style="padding:10px;display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div class="kpi-lbl" style="text-align:center">This Week</div>
+        <svg width="56" height="56" viewBox="0 0 56 56">
+          <circle cx="28" cy="28" r="22" fill="none" stroke="var(--surface-2)" stroke-width="5"/>
+          <circle cx="28" cy="28" r="22" fill="none"
+            stroke="${weekly.pct >= 100 ? '#22c955' : weekly.onTrack ? '#3b82f6' : '#f59e0b'}"
+            stroke-width="5" stroke-linecap="round"
+            stroke-dasharray="138.2"
+            stroke-dashoffset="${Math.max(0, 138.2 - (weekly.pct / 100) * 138.2).toFixed(1)}"
+            transform="rotate(-90 28 28)"/>
+          <text x="28" y="30" text-anchor="middle" dominant-baseline="central"
+            font-family="'Oswald',sans-serif" font-size="13" font-weight="700"
+            fill="${weekly.pct >= 100 ? '#22c955' : 'var(--text-primary)'}">
+            ${weekly.completed}/${weekly.target}
+          </text>
+        </svg>
+        <div class="kpi-chg" style="text-align:center">${weekly.pct >= 100 ? '🎯 Goal hit!' : weekly.daysLeft + 'd left'}</div>
+      </div>
     </div>
     <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px">
       <div class="panel">

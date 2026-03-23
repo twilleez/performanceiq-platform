@@ -96,6 +96,16 @@ function defaultState() {
       targetMacros:{ cal:0, pro:0, cho:0, fat:0 }, mealPlan:null,
     },
     linkedAthlete:    null,
+
+    // ── Phase 5: schools tracker + weekly goal cycle ─────────
+    schools: [],           // [{ id, name, division, sport, interest, contactName, notes, ts }]
+    weeklyGoal: {
+      targetSessions:    4,       // default, synced from profile.daysPerWeek
+      completedThisWeek: 0,       // resets each Monday
+      weekStartTs:       0,       // Monday 00:00 of current week
+      streakWeeks:       0,       // consecutive weeks hitting target
+      bestStreakWeeks:   0,       // all-time best
+    },
     builder: {
       activeTab:'plan', pickerOpen:false, pickerFilter:'all',
       loadedTemplateId:null, draft:null,
@@ -143,6 +153,8 @@ export function loadState() {
       piqHistory:       saved.piqHistory       || [],
       // Phase 3: migrate — seed if absent
       messages:         saved.messages?.length     ? saved.messages         : def.messages,
+      schools:          saved.schools            || [],
+      weeklyGoal:       { ...def.weeklyGoal, ...(saved.weeklyGoal || {}) },
       assignedWorkouts: saved.assignedWorkouts      ? saved.assignedWorkouts : def.assignedWorkouts,
     };
     if (!_state.roster?.length) _state.roster = def.roster;
@@ -173,6 +185,8 @@ export function getCheckInHistory()   { return _state.checkInHistory; }
 export function getPIQHistory()       { return _state.piqHistory; }
 export function getMessages()         { return _state.messages; }
 export function getAssignedWorkouts() { return _state.assignedWorkouts; }
+export function getSchools()          { return _state.schools; }
+export function getWeeklyGoal()       { return _state.weeklyGoal; }
 
 export function getRosterAthlete(id) {
   return _state.roster.find(a => a.id === id) || _state.roster[0] || null;
@@ -317,6 +331,8 @@ export function addWorkoutLog(entry) {
     ...entry,
   };
   _state.workoutLog = [..._state.workoutLog, full];
+  // Keep weekly counter live — refreshWeeklyGoal reads workoutLog directly
+  _refreshWeeklyGoalInternal();
   saveState();
   notify();
 }
@@ -351,6 +367,96 @@ export function removeMeal(id) {
   _state.nutrition = { ..._state.nutrition, meals };
   saveState();
   notify();
+}
+
+// ── SCHOOLS MUTATIONS ────────────────────────────────────────
+
+export function addSchool(payload) {
+  const school = { id: Date.now(), ts: Date.now(), ...payload };
+  _state.schools = [..._state.schools, school];
+  saveState(); notify();
+  return school;
+}
+
+export function updateSchool(id, fields) {
+  _state.schools = _state.schools.map(s =>
+    s.id === id ? { ...s, ...fields, updatedTs: Date.now() } : s
+  );
+  saveState(); notify();
+}
+
+export function removeSchool(id) {
+  _state.schools = _state.schools.filter(s => s.id !== id);
+  saveState(); notify();
+}
+
+// ── WEEKLY GOAL ───────────────────────────────────────────────
+
+/**
+ * refreshWeeklyGoal — called on app boot and after each workout log.
+ * Resets completedThisWeek if we're in a new week, then counts sessions
+ * logged since Monday 00:00. Updates streakWeeks if target was hit.
+ */
+function _refreshWeeklyGoalInternal() {
+  const now     = Date.now();
+  const monday  = _getMondayTs(now);
+  const goal    = _state.weeklyGoal || {};
+  const target  = parseInt(_state.athleteProfile?.daysPerWeek) || goal.targetSessions || 4;
+  let weekStartTs = goal.weekStartTs || 0;
+  if (weekStartTs === 0 || monday > weekStartTs) weekStartTs = monday;
+  const completed = (_state.workoutLog || []).filter(e => (e.ts||0) >= weekStartTs && e.completed).length;
+  _state.weeklyGoal = { ...goal, targetSessions: target, completedThisWeek: completed, weekStartTs };
+}
+
+export function refreshWeeklyGoal() {
+  const now      = Date.now();
+  const monday   = _getMondayTs(now);
+  const goal     = _state.weeklyGoal;
+  const profile  = _state.athleteProfile;
+
+  // Target synced from profile
+  const target = parseInt(profile.daysPerWeek) || goal.targetSessions || 4;
+
+  let streakWeeks   = goal.streakWeeks;
+  let bestStreak    = goal.bestStreakWeeks;
+  let weekStartTs   = goal.weekStartTs;
+
+  // New week — check if last week's goal was met before resetting
+  if (monday > weekStartTs && weekStartTs > 0) {
+    const lastWeekSessions = (_state.workoutLog || []).filter(e => {
+      const t = e.ts || 0;
+      return t >= weekStartTs && t < monday;
+    }).length;
+    if (lastWeekSessions >= target) {
+      streakWeeks++;
+      bestStreak = Math.max(bestStreak, streakWeeks);
+    } else {
+      streakWeeks = 0;
+    }
+    weekStartTs = monday;
+  } else if (weekStartTs === 0) {
+    weekStartTs = monday;
+    streakWeeks = 0;
+  }
+
+  // Count sessions this week
+  const completedThisWeek = (_state.workoutLog || []).filter(e => {
+    const t = e.ts || 0;
+    return t >= weekStartTs && e.completed;
+  }).length;
+
+  _state.weeklyGoal = { targetSessions: target, completedThisWeek, weekStartTs, streakWeeks, bestStreakWeeks: bestStreak };
+  saveState(); notify();
+}
+
+function _getMondayTs(ts) {
+  const d = new Date(ts);
+  const day = d.getDay(); // 0 Sun, 1 Mon ...
+  const diff = (day === 0 ? -6 : 1 - day);
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday.getTime();
 }
 
 export function setState(patch, { silent = false } = {}) {

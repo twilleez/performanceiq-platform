@@ -133,6 +133,20 @@ document.addEventListener('piq:viewRendered', e => {
   const scroll = document.getElementById('msg-scroll');
   if (scroll) scroll.scrollTop = scroll.scrollHeight;
 
+  // Pre-fill from 1-tap alert button in coach/home.js
+  const draft     = sessionStorage.getItem('piq_compose_draft');
+  const draftThread = sessionStorage.getItem('piq_compose_thread');
+  if (draft) {
+    const input = document.getElementById('msg-input');
+    if (input) input.value = draft;
+    sessionStorage.removeItem('piq_compose_draft');
+    sessionStorage.removeItem('piq_compose_thread');
+    // If the draft thread isn't active, navigate to it
+    if (draftThread && !document.getElementById('msg-scroll')) {
+      window.location.hash = draftThread;
+    }
+  }
+
   // Send message
   const input  = document.getElementById('msg-input');
   const sendBtn = document.getElementById('msg-send');

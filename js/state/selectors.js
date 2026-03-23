@@ -312,7 +312,8 @@ function coachNav() {
     { route:'coach/roster',    label:'Roster',    icon:'📋' },
     { route:'coach/program',   label:'Programs',  icon:'📐' },
     { route:'coach/readiness', label:'Readiness', icon:'💚' },
-    { route:'coach/analytics', label:'Analytics', icon:'📈' },
+    { route:'coach/analytics',    label:'Analytics',   icon:'📈' },
+    { route:'coach/leaderboard',  label:'Leaderboard', icon:'🏆' },
     { route:'coach/messages',  label:'Messages',  icon:'💬' },
     { route:'coach/calendar',  label:'Calendar',  icon:'📅' },
     { route:'coach/reports',   label:'Reports',   icon:'📊', section:'secondary' },
@@ -389,4 +390,24 @@ export function getMindsetResult() {
 
 export function getMindsetScore() {
   return calcMindset(getState()).score;
+}
+
+// ── WEEKLY GOAL (Phase 5) ─────────────────────────────────────
+
+
+/**
+ * Returns weekly progress for the player home ring.
+ * { target, completed, pct, daysLeft, onTrack, streakWeeks }
+ */
+export function getWeeklyProgress() {
+  const g        = getState().weeklyGoal || {};
+  const target   = g.targetSessions   || 4;
+  const completed = g.completedThisWeek || 0;
+  const pct      = target > 0 ? Math.min(100, Math.round((completed / target) * 100)) : 0;
+  const today    = new Date().getDay();                        // 0=Sun
+  const daysLeft = today === 0 ? 0 : 7 - today;               // days remaining in Mon-Sun week
+  const onTrack  = daysLeft > 0
+    ? completed / (7 - daysLeft) >= target / 7              // pace check
+    : completed >= target;
+  return { target, completed, pct, daysLeft, onTrack, streakWeeks: g.streakWeeks || 0 };
 }

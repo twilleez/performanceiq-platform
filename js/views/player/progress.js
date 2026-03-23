@@ -18,7 +18,8 @@ import { getCurrentRole, getCurrentUser } from '../../core/auth.js';
 import { getWorkoutLog, getAthleteProfile } from '../../state/state.js';
 import { getPIQScore, getStreak, getReadinessScore, getReadinessColor,
          getWorkoutCount, getReadinessTrend, getPIQTrend,
-         getACWRSeries, getLoadSeries, getScoreBreakdown } from '../../state/selectors.js';
+         getACWRSeries, getLoadSeries, getScoreBreakdown,
+         getCheckInHistory } from '../../state/selectors.js';
 
 // ── CHART HELPERS ─────────────────────────────────────────────
 
@@ -128,6 +129,7 @@ export function renderPlayerProgress() {
   const piqTrend       = getPIQTrend(30);
   const acwrSeries     = getACWRSeries(14);
   const loadSeries     = getLoadSeries(28);
+  const checkInHist    = getCheckInHistory(30);
   const hasLog         = total >= 3;
   const hasTrend       = readinessTrend.length >= 2;
 
@@ -258,6 +260,62 @@ export function renderPlayerProgress() {
     </div>
 
     <!-- Sessions + Milestones -->
+    <!-- 30-day check-in heatmap -->
+    ${checkInHist.length > 0 ? `
+    <div class="panel" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="panel-title" style="margin:0">30-Day Wellness Calendar</div>
+        <div style="font-size:11px;color:var(--text-muted)">
+          ${checkInHist.length} check-ins logged
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+        ${['M','T','W','T','F','S','S'].map(d =>
+          `<div style="text-align:center;font-size:10px;font-weight:600;color:var(--text-muted);padding:2px 0">${d}</div>`
+        ).join('')}
+        ${(() => {
+          const cells = [];
+          const now   = Date.now();
+          const today = new Date(); today.setHours(23,59,59,999);
+          const day0  = new Date(today);
+          day0.setDate(today.getDate() - 29);           // 30-day window start
+          // Pad to Monday
+          const padDays = (day0.getDay() + 6) % 7;     // Mon=0
+          for (let i = 0; i < padDays; i++) cells.push('<div></div>');
+          for (let d = 0; d < 30; d++) {
+            const dt   = new Date(day0); dt.setDate(day0.getDate() + d);
+            const dStr = dt.toDateString();
+            const ci   = checkInHist.find(h => new Date(h.ts||0).toDateString() === dStr);
+            const score = ci ? (ci.readinessScore || Math.round(
+              ((ci.sleepQuality||3)/5*.30 + (ci.energyLevel||3)/5*.15 +
+               ((6-(ci.soreness||3))/5)*.20 + ((6-(ci.fatigueLevel||3))/5)*.15 +
+               ((6-(ci.stressLevel||3))/5)*.10 + (ci.mood||3)/5*.10) * 100
+            )) : null;
+            const isToday = dStr === new Date().toDateString();
+            const color = score !== null
+              ? (score >= 80 ? '#22c955' : score >= 60 ? '#f59e0b' : '#ef4444')
+              : 'transparent';
+            const opacity = score !== null ? 0.25 + (score / 100) * 0.75 : 1;
+            cells.push(
+              `<div title="${dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})}${score!==null?' · '+score:'  · no data'}"
+                style="aspect-ratio:1;border-radius:4px;
+                  background:${score!==null ? color : 'var(--surface-2)'};
+                  opacity:${score!==null ? opacity : 0.4};
+                  border:${isToday?'2px solid var(--piq-green)':'1px solid transparent'};
+                  cursor:${score!==null?'pointer':'default'}"></div>`
+            );
+          }
+          return cells.join('');
+        })()}
+      </div>
+      <div style="display:flex;gap:16px;margin-top:10px;font-size:11px">
+        <span style="color:#22c955">● ≥80 Peak</span>
+        <span style="color:#f59e0b">● 60–79 Moderate</span>
+        <span style="color:#ef4444">● &lt;60 Low</span>
+        <span style="color:var(--text-muted)">● No data</span>
+      </div>
+    </div>` : ''}
+
     <div class="panels-2">
 
       <div class="panel">

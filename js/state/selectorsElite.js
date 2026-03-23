@@ -1,6 +1,6 @@
 /**
- * PerformanceIQ Selectors Elite — re-exports from selectors.js
- * Phase 4 complete: mindset engine exports added
+ * PerformanceIQ Selectors Elite — re-exports
+ * Phase 5 complete: weekly progress + check-in history added
  */
 export {
   getScoreBreakdown     as getScoreBreakdownElite,
@@ -26,4 +26,5 @@ export {
   getWorkoutCount,
   getScoreBreakdown,
   getReadinessScore,
+  getWeeklyProgress,
 } from './selectors.js';

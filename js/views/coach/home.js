@@ -16,6 +16,8 @@ import { buildSidebar }                                from '../../components/na
 import { getCurrentUser, getCurrentRole }              from '../../core/auth.js';
 import { getRoster, getWorkoutLog, getUnreadCount,
          getAssignedWorkouts }                         from '../../state/state.js';
+import { getReadinessTrend, getPIQTrend }              from '../../state/selectors.js';
+import { navigate }                                    from '../../router.js';
 
 // ── SPARKLINE GENERATOR ───────────────────────────────────────
 /**
@@ -148,11 +150,19 @@ export function renderCoachHome() {
   const teamCompliance = assigned.length
     ? Math.round((doneAssigned / assigned.length) * 100) : null;
 
-  // ── Sparkline trends for team KPIs ────────────────────────
-  // Seeds are stable across renders: avgPIQ / avgReadiness used as seeds
-  const piqTrend       = trendFromValue(avgPIQ,       avgPIQ * 3,       8);
-  const readinessTrend = trendFromValue(avgReadiness,  avgReadiness * 5, 10);
-  const highReadyTrend = trendFromValue(highReady,     highReady * 7,    2);
+  // ── Sparklines: real data from piqHistory/checkInHistory ─
+  // getReadinessTrend(7) / getPIQTrend(7) return scored history arrays.
+  // Fall back to deterministic seed when < 3 points exist.
+  function _toValues(series) { return series.map(d => d.score || 0); }
+
+  const rdyHistory  = getReadinessTrend(7);
+  const piqHistory7 = getPIQTrend(7);
+  const hasRealRdy  = rdyHistory.length >= 3;
+  const hasRealPIQ  = piqHistory7.length >= 3;
+
+  const readinessTrend = hasRealRdy  ? _toValues(rdyHistory)  : trendFromValue(avgReadiness, avgReadiness * 5, 10);
+  const piqTrend       = hasRealPIQ  ? _toValues(piqHistory7) : trendFromValue(avgPIQ, avgPIQ * 3, 8);
+  const highReadyTrend = trendFromValue(highReady, highReady * 7, 2);  // per-athlete history N/A here
 
   const piqColor  = '#22c955';
   const rdyColor  = avgReadiness >= 75 ? '#22c955' : avgReadiness >= 60 ? '#f59e0b' : '#ef4444';
@@ -174,8 +184,8 @@ export function renderCoachHome() {
 
     <!-- Team KPI Row — sparklines on readiness + PIQ metrics -->
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px">
-      ${kpiWithSpark('Avg PIQ',       avgPIQ,       '7-day trend',    piqColor,  piqTrend)}
-      ${kpiWithSpark('Avg Readiness', avgReadiness + '%', '7-day trend', rdyColor, readinessTrend)}
+      ${kpiWithSpark('Avg PIQ',       avgPIQ,       hasRealPIQ  ? '7-day live' : 'Building…', piqColor,  piqTrend)}
+      ${kpiWithSpark('Avg Readiness', avgReadiness + '%', hasRealRdy ? '7-day live' : 'Building…', rdyColor, readinessTrend)}
       ${kpiWithSpark('High Ready',    highReady,    'Athletes ≥80',   '#22c955', highReadyTrend)}
       ${kpiPlain('At Risk',     lowReady, 'Readiness <60', riskColor)}
       ${kpiPlain('Compliance',  teamCompliance !== null ? teamCompliance + '%' : '—', assigned.length ? doneAssigned + '/' + assigned.length + ' sessions' : 'No assignments yet', teamCompliance !== null && teamCompliance >= 80 ? '#22c955' : teamCompliance !== null && teamCompliance >= 60 ? '#f59e0b' : '#ef4444')}
@@ -235,10 +245,15 @@ export function renderCoachHome() {
               <div style="font-weight:600;font-size:13px;color:var(--text-primary)">${a.name}</div>
               <div style="font-size:11.5px;color:var(--text-muted)">
                 ${a.readiness < 55 ? `Readiness ${a.readiness}% — consider light session` : ''}
-                ${a.streak === 0 ? `No sessions logged this week` : ''}
+                ${a.streak === 0 ? 'No sessions logged this week' : ''}
               </div>
             </div>
-            <span style="font-size:13px;font-weight:700;color:${a.readiness<55?'#ef4444':'#f59e0b'}">${a.readiness}%</span>
+            <span style="font-size:13px;font-weight:700;color:${a.readiness<55?'#ef4444':'#f59e0b'};margin-right:8px">${a.readiness}%</span>
+            <button class="alert-msg-btn btn-draft"
+              data-athlete="${a.name}" data-readiness="${a.readiness}"
+              style="font-size:11px;padding:5px 10px;white-space:nowrap;flex-shrink:0">
+              💬 Message
+            </button>
           </div>`).join('')}
         </div>` : `
         <div class="panel" style="margin-bottom:16px;border-color:rgba(34,201,85,.3)">
@@ -278,3 +293,21 @@ export function renderCoachHome() {
   </main>
 </div>`;
 }
+
+document.addEventListener('piq:viewRendered', e => {
+  if (e.detail?.route !== 'coach/home') return;
+
+  document.querySelectorAll('.alert-msg-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name      = btn.dataset.athlete;
+      const readiness = btn.dataset.readiness;
+      // Pre-populate the team-channel thread compose field and navigate to messages
+      // We store a draft message that messages.js picks up
+      sessionStorage.setItem('piq_compose_draft',
+        `Hey ${name} — your readiness is at ${readiness}% today. Want to talk about today's training load?`
+      );
+      sessionStorage.setItem('piq_compose_thread', 'thread-coach-player');
+      if (typeof navigate === 'function') navigate('coach/messages');
+    });
+  });
+});

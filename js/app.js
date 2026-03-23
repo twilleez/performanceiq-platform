@@ -263,6 +263,8 @@ const VIEW_MAP = {
   [ROUTES.COACH_CALENDAR]:    ['./views/coach/calendar.js',         'renderCoachCalendar'],
   [ROUTES.COACH_REPORTS]:     ['./views/coach/reports.js',          'renderCoachReports'],
   [ROUTES.COACH_SETTINGS]:    ['./views/coach/settings.js',         'renderCoachSettings'],
+  [ROUTES.COACH_ATHLETE_DETAIL]:['./views/coach/athleteDetail.js',   'renderCoachAthleteDetail'],
+  [ROUTES.COACH_LEADERBOARD]: ['./views/coach/leaderboard.js',       'renderCoachLeaderboard'],
 
   // Player
   [ROUTES.PLAYER_HOME]:       ['./views/player/home.js',            'renderPlayerHome'],

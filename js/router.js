@@ -9,7 +9,7 @@ export const ROUTES = {
   JOIN_TEAM: 'join-team', ONBOARDING: 'onboarding',
   SETTINGS_THEME: 'settings/theme', SETTINGS_PROFILE: 'settings/profile',
   COACH_HOME: 'coach/home', COACH_TEAM: 'coach/team', COACH_ROSTER: 'coach/roster',
-  COACH_ATHLETE_DETAIL: 'coach/athlete/:id', COACH_PROGRAM: 'coach/program',
+  COACH_ATHLETE_DETAIL: 'coach/athlete/:id', COACH_LEADERBOARD: 'coach/leaderboard', COACH_PROGRAM: 'coach/program',
   COACH_SESSION: 'coach/session', COACH_LIBRARY: 'coach/library',
   COACH_READINESS: 'coach/readiness', COACH_ANALYTICS: 'coach/analytics',
   COACH_MESSAGES: 'coach/messages', COACH_CALENDAR: 'coach/calendar',
