@@ -2,13 +2,39 @@
   "name": "PerformanceIQ",
   "short_name": "PIQ",
   "description": "Elite training analytics for coaches, athletes, and programs.",
-  "start_url": "/",
+  "start_url": "/performanceiq-platform/",
+  "scope": "/performanceiq-platform/",
   "display": "standalone",
   "background_color": "#0d1b3e",
   "theme_color": "#0f1827",
   "orientation": "portrait-primary",
+  "categories": ["sports", "health", "fitness"],
+  "shortcuts": [
+    {
+      "name": "Today's Workout",
+      "short_name": "Today",
+      "url": "/performanceiq-platform/#player/today",
+      "description": "Jump straight to today's session"
+    },
+    {
+      "name": "Check In",
+      "short_name": "Check In",
+      "url": "/performanceiq-platform/#player/readiness",
+      "description": "Log your daily readiness check-in"
+    }
+  ],
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "/performanceiq-platform/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/performanceiq-platform/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }
