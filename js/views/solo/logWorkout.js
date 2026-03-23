@@ -41,7 +41,7 @@ const RPE_LABELS = {
   6:'Hard+', 7:'Very hard', 8:'Very hard+', 9:'Near max', 10:'Max effort',
 };
 
-export function renderPlayerLog() {
+export function renderSoloLog() {
   const role = getCurrentRole() || 'player';
   const log  = getWorkoutLog();
   const streak = getStreak();
