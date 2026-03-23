@@ -12,9 +12,10 @@
  *   When real check-in data is logged (state.workoutLog), the
  *   sparklines will reflect actual values automatically.
  */
-import { buildSidebar }                   from '../../components/nav.js';
-import { getCurrentUser, getCurrentRole } from '../../core/auth.js';
-import { getRoster, getWorkoutLog }       from '../../state/state.js';
+import { buildSidebar }                                from '../../components/nav.js';
+import { getCurrentUser, getCurrentRole }              from '../../core/auth.js';
+import { getRoster, getWorkoutLog, getUnreadCount,
+         getAssignedWorkouts }                         from '../../state/state.js';
 
 // ── SPARKLINE GENERATOR ───────────────────────────────────────
 /**
@@ -140,6 +141,13 @@ export function renderCoachHome() {
   const onStreak     = roster.filter(a => a.streak >= 3).length;
   const atRisk       = roster.filter(a => a.readiness < 55 || a.streak === 0);
 
+  // Phase 3: live message + assignment data
+  const unreadMsgs   = getUnreadCount();
+  const assigned     = getAssignedWorkouts();
+  const doneAssigned = assigned.filter(w => w.completed).length;
+  const teamCompliance = assigned.length
+    ? Math.round((doneAssigned / assigned.length) * 100) : null;
+
   // ── Sparkline trends for team KPIs ────────────────────────
   // Seeds are stable across renders: avgPIQ / avgReadiness used as seeds
   const piqTrend       = trendFromValue(avgPIQ,       avgPIQ * 3,       8);
@@ -165,12 +173,18 @@ export function renderCoachHome() {
     </div>
 
     <!-- Team KPI Row — sparklines on readiness + PIQ metrics -->
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px">
       ${kpiWithSpark('Avg PIQ',       avgPIQ,       '7-day trend',    piqColor,  piqTrend)}
       ${kpiWithSpark('Avg Readiness', avgReadiness + '%', '7-day trend', rdyColor, readinessTrend)}
       ${kpiWithSpark('High Ready',    highReady,    'Athletes ≥80',   '#22c955', highReadyTrend)}
       ${kpiPlain('At Risk',     lowReady, 'Readiness <60', riskColor)}
-      ${kpiPlain('On Streak',   onStreak, '3+ day streak',  '#f59e0b')}
+      ${kpiPlain('Compliance',  teamCompliance !== null ? teamCompliance + '%' : '—', assigned.length ? doneAssigned + '/' + assigned.length + ' sessions' : 'No assignments yet', teamCompliance !== null && teamCompliance >= 80 ? '#22c955' : teamCompliance !== null && teamCompliance >= 60 ? '#f59e0b' : '#ef4444')}
+      <div class="kpi-card" style="cursor:pointer;position:relative" data-route="coach/messages">
+        <div class="kpi-lbl">Messages</div>
+        <div class="kpi-val" style="color:${unreadMsgs > 0 ? '#f59e0b' : 'var(--piq-green)'}">${unreadMsgs > 0 ? unreadMsgs : '✓'}</div>
+        <div class="kpi-chg">${unreadMsgs > 0 ? 'Unread' : 'All read'}</div>
+        ${unreadMsgs > 0 ? `<div style="position:absolute;top:-6px;right:-6px;background:#f59e0b;color:#0d1b3e;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">${unreadMsgs}</div>` : ''}
+      </div>
     </div>
 
     <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:20px">

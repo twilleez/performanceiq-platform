@@ -1,6 +1,6 @@
 /**
  * PerformanceIQ Selectors Elite — re-exports from selectors.js
- * Phase 2: added trend/history selectors
+ * Phase 3 complete: all selector exports centralised here
  */
 export {
   getScoreBreakdown     as getScoreBreakdownElite,
@@ -19,4 +19,9 @@ export {
   getPIQTrend,
   getACWRSeries,
   getLoadSeries,
+  getPIQScore,
+  getStreak,
+  getWorkoutCount,
+  getScoreBreakdown,
+  getReadinessScore,
 } from './selectors.js';

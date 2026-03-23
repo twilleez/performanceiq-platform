@@ -249,8 +249,3 @@ document.addEventListener('piq:viewRendered', e => {
   });
 });
 
-// ── RPE SCALE (CR10, Foster 2001) ─────────────────────────────
-const RPE_LABELS = {
-  1:'Very light', 2:'Light', 3:'Moderate', 4:'Somewhat hard', 5:'Hard',
-  6:'Hard+', 7:'Very hard', 8:'Very hard+', 9:'Near max', 10:'Max effort',
-};

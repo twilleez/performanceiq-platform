@@ -1,7 +1,9 @@
 import { buildSidebar } from '../../components/nav.js';
 import { getCurrentRole } from '../../core/auth.js';
-import { getAthleteProfile, addWorkoutLog } from '../../state/state.js';
-import { getReadinessScore, getReadinessColor } from '../../state/selectors.js';
+import { getAthleteProfile, addWorkoutLog, getAssignedWorkouts,
+         completeAssignment, addCheckIn } from '../../state/state.js';
+import { getReadinessScore, getReadinessColor,
+         getPIQScore, getStreak }          from '../../state/selectors.js';
 import { generateTodayWorkout, PLIABILITY_PROTOCOLS, WARMUP_PROTOCOLS } from '../../data/workoutEngine.js';
 import { showToast } from '../../core/notifications.js';
 import { navigate } from '../../router.js';
@@ -12,6 +14,14 @@ export function renderPlayerToday() {
   const readiness = getReadinessScore();
   const rColor = getReadinessColor(readiness);
   const dow = new Date().getDay();
+  const today = new Date().toDateString();
+
+  // Assigned workouts from coach (pending only, due today or earlier)
+  const allAssigned  = getAssignedWorkouts();
+  const myAssigned   = allAssigned.filter(w =>
+    !w.completed && w.dueDate && new Date(w.dueDate) <= new Date(new Date().toDateString() + ' 23:59')
+  );
+
   const workout = generateTodayWorkout(
     profile.sport||'basketball', profile.compPhase||'in-season',
     profile.trainingLevel||'intermediate', readiness, dow,
@@ -61,7 +71,41 @@ export function renderPlayerToday() {
       <h1>Today's <span>Workout</span></h1>
       <p>${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+    ${myAssigned.length > 0 ? `
+    <div style="background:#3b82f614;border:1px solid #3b82f640;border-radius:12px;
+                padding:14px 18px;margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:#3b82f6;letter-spacing:.06em;margin-bottom:10px">
+        📋 ASSIGNED BY COACH · ${myAssigned.length} SESSION${myAssigned.length>1?'S':''} DUE
+      </div>
+      ${myAssigned.slice(0,3).map(w => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px;
+                  background:var(--surface-2);border-radius:10px;margin-bottom:8px">
+        <span style="font-size:18px">📌</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13.5px;color:var(--text-primary)">${w.title}</div>
+          <div style="font-size:12px;color:var(--text-muted)">
+            ${w.sessionType} · Due ${new Date(w.dueDate).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+            ${w.notes ? ' · ' + w.notes : ''}
+          </div>
+          ${w.exercises.length ? `
+          <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+            ${w.exercises.slice(0,4).map(ex =>
+              `<span style="font-size:10.5px;padding:2px 7px;border-radius:7px;
+                background:var(--surface-2);border:1px solid var(--border);
+                color:var(--text-muted)">${ex.name}</span>`
+            ).join('')}
+            ${w.exercises.length > 4 ? `<span style="font-size:10.5px;color:var(--text-muted)">+${w.exercises.length-4} more</span>` : ''}
+          </div>` : ''}
+        </div>
+        <button class="btn-primary assign-complete-btn" data-id="${w.id}"
+          style="font-size:12px;padding:8px 14px;white-space:nowrap;flex-shrink:0">
+          Mark Done ✓
+        </button>
+      </div>`).join('')}
+    </div>` : ''}
+
+
       <div class="panel" style="border-left:4px solid ${rColor}">
         <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:.06em;margin-bottom:6px">READINESS SCORE</div>
         <div style="display:flex;align-items:center;gap:12px">
@@ -101,11 +145,24 @@ export function renderPlayerToday() {
 document.addEventListener('piq:viewRendered', e => {
   const role = e.detail?.route?.split('/')[0] || 'player';
   if (!['player','solo'].includes(role)) return;
+
+  // Self-generated workout completion
   document.getElementById('log-workout-btn')?.addEventListener('click', () => {
-    const profile = (window._piqGetProfile ? window._piqGetProfile() : {});
-    addWorkoutLog({ title: 'Today's Session', completed: true, avgRPE: 7, ts: Date.now() });
+    addWorkoutLog({ name: "Today's Session", completed: true, avgRPE: 7, duration: 45, ts: Date.now() });
+    addCheckIn({}, { piqSnapshot: { piq: getPIQScore(), readiness: getReadinessScore(), streak: getStreak() } });
     document.getElementById('log-workout-btn').textContent = '✅ Logged!';
     document.getElementById('workout-logged').style.display = 'block';
     showToast('✅ Workout logged!', 'success');
+  });
+
+  // Coach-assigned workout completion
+  document.querySelectorAll('.assign-complete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      completeAssignment(id, { avgRPE: 7, duration: 45 });
+      addCheckIn({}, { piqSnapshot: { piq: getPIQScore(), readiness: getReadinessScore(), streak: getStreak() } });
+      showToast('✅ Assigned session marked complete!', 'success');
+      navigate(e.detail.route);
+    });
   });
 });
