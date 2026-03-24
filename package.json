@@ -1,0 +1,17 @@
+{
+  "name": "piq-recovery",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["frontend", "backend"],
+  "scripts": {
+    "dev:frontend": "npm --workspace=frontend run dev",
+    "dev:backend": "npm --workspace=backend run dev",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "build": "npm --workspaces run build",
+    "db:migrate": "psql $DATABASE_URL -f database/migrations/001_all_phases.sql",
+    "lint": "npm --workspaces run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
+}

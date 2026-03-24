@@ -1,0 +1,424 @@
+/* ============================================================
+   PIQ GLOBAL STYLES v1.0
+   Device-aware, WCAG AA compliant, safe-area aware
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── CSS CUSTOM PROPERTIES ─────────────────────────────────── */
+:root {
+  /* Safe area insets (populated by JS useDevice hook) */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
+  /* Dynamic viewport height (set by useViewportLock) */
+  --vh: 1vh;
+  --dvh: calc(var(--vh, 1vh) * 100);
+
+  /* Layout */
+  --nav-height-mobile: 56px;
+  --nav-height-desktop: 64px;
+  --nav-height: var(--nav-height-mobile);
+  --sidebar-width: 240px;
+  --content-max: 1240px;
+  --fab-size: 56px;
+
+  /* Sport theme overrides (defaults to navy/green) */
+  --theme-primary: #1A5276;
+  --theme-accent: #E67E22;
+  --theme-secondary: #27AE60;
+
+  /* Typography */
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --font-size-base: 16px; /* WCAG minimum */
+  --line-height-body: 1.65;
+
+  /* WCAG contrast enforced colors */
+  --text-primary: #1a1a2e;   /* 14.7:1 on white — AAA */
+  --text-secondary: #4a4a62; /* 7.1:1 on white — AAA */
+  --text-muted: #6b6b80;     /* 4.6:1 on white — AA */
+  --text-disabled: #9494a8;  /* for disabled elements only */
+  --text-inverse: #ffffff;
+
+  /* Background levels */
+  --bg-base: #f8f7f4;
+  --bg-card: #ffffff;
+  --bg-raised: #fafaf8;
+  --bg-overlay: rgba(10, 10, 20, 0.6);
+
+  /* Border */
+  --border-default: #e8e6e0;
+  --border-strong: #c8c6c0;
+  --border-focus: #1A5276;
+  --border-radius-sm: 6px;
+  --border-radius-md: 10px;
+  --border-radius-lg: 14px;
+  --border-radius-xl: 20px;
+  --border-radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.10), 0 2px 6px rgba(0,0,0,.07);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.08);
+  --shadow-fab: 0 4px 16px rgba(0,0,0,.24), 0 2px 6px rgba(0,0,0,.16);
+  --shadow-toast: 0 8px 32px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.12);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-index stack */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+  --z-fab: 150;
+}
+
+/* Desktop overrides */
+@media (min-width: 1024px) {
+  :root {
+    --nav-height: var(--nav-height-desktop);
+  }
+}
+
+/* ── RESET ──────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: var(--font-size-base);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  /* Use dynamic viewport height to prevent address-bar layout shift */
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-body);
+  color: var(--text-primary);
+  background: var(--bg-base);
+  min-height: 100%;
+  min-height: var(--dvh);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent horizontal scroll from overflowing content */
+  overflow-x: hidden;
+}
+
+/* ── TYPOGRAPHY ─────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+h1 { font-size: clamp(28px, 7vw, 42px); }
+h2 { font-size: clamp(22px, 5.5vw, 32px); }
+h3 { font-size: clamp(18px, 4.5vw, 24px); }
+h4 { font-size: clamp(16px, 4vw, 20px); }
+
+p {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-body);
+  color: var(--text-secondary);
+}
+
+/* Tabular numerals for all stat/data displays — prevents misalignment */
+.stat, .metric, [data-numeric], td.numeric, .tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-family: var(--font-mono);
+}
+
+/* ── FOCUS MANAGEMENT ───────────────────────────────────────── */
+/* Visible focus for keyboard navigation — WCAG 2.4.7 */
+:focus-visible {
+  outline: 3px solid var(--theme-primary);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Remove focus ring for mouse/touch users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── TOUCH TARGETS ──────────────────────────────────────────── */
+/* WCAG 2.5.5: interactive targets minimum 44x44px */
+button, a, [role="button"], [role="tab"], input, select, textarea {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Inline links are exempt from min-width */
+a:not([class]), p a {
+  min-width: unset;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── SCROLLBAR ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── LAYOUT UTILITIES ───────────────────────────────────────── */
+.piq-page {
+  padding-top: var(--nav-height);
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(80px, calc(var(--nav-height-mobile) + env(safe-area-inset-bottom) + 16px));
+  max-width: var(--content-max);
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .piq-page {
+    padding-top: calc(var(--nav-height-desktop) + 24px);
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
+    padding-bottom: 48px;
+  }
+}
+
+/* ── CARDS ──────────────────────────────────────────────────── */
+.piq-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--border-radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+@media (min-width: 768px) {
+  .piq-card { padding: 20px; }
+}
+
+/* ── NAVIGATION ─────────────────────────────────────────────── */
+/* Mobile: fixed bottom nav */
+.piq-nav-mobile {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--nav-height-mobile) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-default);
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+}
+
+/* Desktop: fixed top nav */
+.piq-nav-desktop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--nav-height-desktop);
+  padding-top: env(safe-area-inset-top);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-default);
+  z-index: var(--z-sticky);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── FAB ────────────────────────────────────────────────────── */
+.piq-fab {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  width: var(--fab-size);
+  height: var(--fab-size);
+  border-radius: var(--border-radius-full);
+  background: var(--theme-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-fab);
+  z-index: var(--z-fab);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  /* Bottom position set by JS based on nav height + safe area */
+}
+
+.piq-fab:active {
+  transform: scale(0.94);
+  box-shadow: var(--shadow-md);
+}
+
+@media (hover: hover) {
+  .piq-fab:hover {
+    transform: scale(1.06);
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+/* ── TOAST ──────────────────────────────────────────────────── */
+.piq-toast-container {
+  position: fixed;
+  top: calc(var(--nav-height) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  pointer-events: none;
+  width: calc(100% - 32px);
+  max-width: 480px;
+}
+
+.piq-toast {
+  background: var(--text-primary);
+  color: white;
+  border-radius: var(--border-radius-md);
+  padding: 12px 16px;
+  box-shadow: var(--shadow-toast);
+  pointer-events: all;
+  animation: toast-in var(--transition-normal) ease forwards;
+}
+
+.piq-toast.exiting {
+  animation: toast-out var(--transition-normal) ease forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-8px) scale(0.96); }
+}
+
+/* ── ONBOARDING OVERLAY ─────────────────────────────────────── */
+.piq-onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-end;
+}
+
+@media (min-width: 768px) {
+  .piq-onboarding-overlay {
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.piq-onboarding-sheet {
+  background: var(--bg-card);
+  width: 100%;
+  max-width: 560px;
+  border-radius: var(--border-radius-xl) var(--border-radius-xl) 0 0;
+  padding: 24px 24px calc(24px + env(safe-area-inset-bottom));
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+
+@media (min-width: 768px) {
+  .piq-onboarding-sheet {
+    border-radius: var(--border-radius-xl);
+    padding: 32px;
+    max-height: 80vh;
+  }
+}
+
+/* ── STREAK INDICATOR ───────────────────────────────────────── */
+.piq-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  color: #E67E22;
+}
+
+.piq-streak::before {
+  content: "🔥";
+  font-size: 16px;
+}
+
+/* ── ACCESSIBILITY ──────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── DARK MODE (inherits from theme toggle) ─────────────────── */
+[data-theme="dark"] {
+  --text-primary: #f0f2ff;
+  --text-secondary: #b0b4cc;
+  --text-muted: #6b6f88;
+  --bg-base: #07080d;
+  --bg-card: #0c0e18;
+  --bg-raised: #10121e;
+  --border-default: #1a1f30;
+  --border-strong: #252a3c;
+}
+
+/* ── HIGH CONTRAST MODE ─────────────────────────────────────── */
+@media (forced-colors: active) {
+  .piq-fab,
+  .piq-toast {
+    forced-color-adjust: none;
+  }
+}
+
+/* ── PRINT ──────────────────────────────────────────────────── */
+@media print {
+  .piq-nav-mobile,
+  .piq-nav-desktop,
+  .piq-fab,
+  .piq-toast-container {
+    display: none !important;
+  }
+  .piq-page {
+    padding: 0;
+  }
+}
