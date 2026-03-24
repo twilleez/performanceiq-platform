@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/App.tsx
-================================================================
-
 // ============================================================
 // App.tsx — Main entry point
 // Wires all phases: device detection, onboarding, shell, FAB,
@@ -16,11 +12,11 @@ import { UndoProvider } from "./components/ui/UndoToast";
 import { TooltipProvider, HelpSidebar } from "./components/ui/TooltipSystem";
 import { RetentionStyles } from "./components/retention/RetentionEngine";
 import { useDevice, useViewportLock } from "./hooks/useDevice";
-import { useAppStore } from "./context/AppStore";
+import { AppStoreProvider, useAppStore } from "./context/AppStore";
 import { analytics } from "./lib/analytics";
 import { NAV_TABS, ROLE_DEFAULT_TAB } from "./config/navigation";
 import type { NavTab } from "./config/navigation";
-import "../../frontend/src/styles/global.css";
+import "./styles/global.css";
 
 // Lazy-load heavy views
 const DashboardView        = React.lazy(() => import("./views/DashboardView"));
@@ -49,7 +45,7 @@ export default function App() {
 
   // Analytics session start
   useEffect(() => {
-    analytics.sessionStart = true;
+    // analytics session starts below
     analytics.trackSessionStart();
     if (user) {
       analytics.identify(user.id, {
@@ -142,4 +138,3 @@ const PageLoader = () => (
     Loading...
   </div>
 );
-

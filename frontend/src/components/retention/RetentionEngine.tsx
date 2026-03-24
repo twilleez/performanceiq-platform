@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/retention/RetentionEngine.tsx
-================================================================
-
 // ============================================================
 // Retention Engine — Phase 3
 // Streak tracking, milestone system, progress visualization
@@ -282,4 +278,3 @@ export const RetentionStyles = () => (
     }
   `}</style>
 );
-

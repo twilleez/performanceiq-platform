@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/periodization/PeriodizationTimeline.tsx
-================================================================
-
 // ============================================================
 // Periodization — Phase 4
 // Visual season timeline + plain-language setup wizard

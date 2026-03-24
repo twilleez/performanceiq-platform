@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/ui/AccessibilitySystem.tsx
-================================================================
-
 // ============================================================
 // Accessibility System — Phase 2
 // WCAG AA compliance: contrast checker, colorblind palette,
@@ -301,4 +297,3 @@ export const DashboardKPIGrid: React.FC<DashboardKPIGridProps> = ({ role, data }
     </div>
   );
 };
-

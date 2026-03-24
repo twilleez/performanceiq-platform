@@ -5,13 +5,16 @@
   "workspaces": ["frontend", "backend"],
   "scripts": {
     "dev:frontend": "npm --workspace=frontend run dev",
-    "dev:backend": "npm --workspace=backend run dev",
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
-    "build": "npm --workspaces run build",
-    "db:migrate": "psql $DATABASE_URL -f database/migrations/001_all_phases.sql",
-    "lint": "npm --workspaces run lint"
+    "dev:backend":  "npm --workspace=backend run dev",
+    "dev":          "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "build":        "npm --workspaces run build",
+    "db:migrate":   "psql $DATABASE_URL -f database/migrations/001_all_phases.sql && psql $DATABASE_URL -f database/migrations/002_workout_engine.sql",
+    "db:migrate:1": "psql $DATABASE_URL -f database/migrations/001_all_phases.sql",
+    "db:migrate:2": "psql $DATABASE_URL -f database/migrations/002_workout_engine.sql",
+    "lint":         "npm --workspaces run lint",
+    "type-check":   "npm --workspaces run type-check"
   },
   "devDependencies": {
-    "concurrently": "^8.0.0"
+    "concurrently": "^8.2.2"
   }
 }

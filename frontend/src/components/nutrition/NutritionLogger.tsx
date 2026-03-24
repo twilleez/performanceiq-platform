@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/nutrition/NutritionLogger.tsx
-================================================================
-
 // ============================================================
 // NutritionLogger — Phase 4
 // Barcode scanner (camera API) + USDA food database search
@@ -287,7 +283,7 @@ const FoodSearch: React.FC<{
     setLoading(true);
     try {
       const res = await fetch(
-        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&pageSize=20&api_key=${process.env.NEXT_PUBLIC_USDA_API_KEY ?? "DEMO_KEY"}`
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&pageSize=20&api_key=${import.meta.env.VITE_USDA_API_KEY ?? "DEMO_KEY"}`
       );
       const data = await res.json();
       const items: FoodItem[] = (data.foods ?? []).map((f: any) => {
@@ -473,7 +469,7 @@ async function lookupBarcode(
   onNotFound: () => void
 ): Promise<void> {
   try {
-    const res = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${upc}&api_key=${process.env.NEXT_PUBLIC_USDA_API_KEY ?? "DEMO_KEY"}`);
+    const res = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${upc}&api_key=${import.meta.env.VITE_USDA_API_KEY ?? "DEMO_KEY"}`);
     const data = await res.json();
     const food = data.foods?.[0];
     if (!food) { onNotFound(); return; }

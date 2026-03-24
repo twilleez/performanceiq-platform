@@ -1,7 +1,3 @@
-================================================================
-FILE: backend/src/services/reportGenerator.ts
-================================================================
-
 // ============================================================
 // PDF Report Generator — Phase 4
 // Coach-to-parent progress report
@@ -10,7 +6,8 @@ FILE: backend/src/services/reportGenerator.ts
 
 import PDFDocument from "pdfkit";
 import { createClient } from "@supabase/supabase-js";
-import { COLORS } from "../../../assets/tokens/theme";
+// COLORS inline for PDF - no frontend import in backend
+const PDF_COLORS = { navy: "0A1628", blue: "1A5276", green: "27AE60", red: "C0392B", orange: "E67E22", gray: "9494A8" };
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -241,4 +238,3 @@ function formatDate(iso: string): string {
     month: "long", day: "numeric", year: "numeric",
   });
 }
-

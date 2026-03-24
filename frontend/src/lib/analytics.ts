@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/lib/analytics.ts
-================================================================
-
 // ============================================================
 // Analytics — PIQ event instrumentation
 // All focus group recovery events tracked here
@@ -126,4 +122,3 @@ class Analytics {
 }
 
 export const analytics = new Analytics();
-

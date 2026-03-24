@@ -1,7 +1,3 @@
-================================================================
-FILE: backend/src/routes/api.ts
-================================================================
-
 // ============================================================
 // API Routes — PIQ Recovery
 // All backend endpoints with validation, auth, and docs
@@ -285,4 +281,3 @@ function generateDemoWorkouts(userId: string) {
 }
 
 export default router;
-

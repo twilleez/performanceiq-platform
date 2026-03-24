@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/ui/UndoToast.tsx
-================================================================
-
 // ============================================================
 // UndoToast — Phase 0 global undo system
 // 10-second window, handles all destructive actions
@@ -237,4 +233,3 @@ const UndoToastItem: React.FC<{
     </div>
   );
 };
-

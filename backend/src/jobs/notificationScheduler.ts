@@ -1,7 +1,3 @@
-================================================================
-FILE: backend/src/jobs/notificationScheduler.ts
-================================================================
-
 // ============================================================
 // Notification Scheduler — Phase 3
 // Daily streak reminders + weekly athlete summaries for parents

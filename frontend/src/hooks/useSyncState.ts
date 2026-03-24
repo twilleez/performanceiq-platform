@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/hooks/useSyncState.ts
-================================================================
-
 // ============================================================
 // useSyncState — Phase 0
 // Tracks Supabase sync status, exposes to AppShell indicator
@@ -101,4 +97,3 @@ export function useSyncState(): SyncStateHook {
 
   return { syncStatus: status, markDirty, retry, lastSyncedAt };
 }
-

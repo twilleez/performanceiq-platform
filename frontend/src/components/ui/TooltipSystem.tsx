@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/ui/TooltipSystem.tsx
-================================================================
-
 // ============================================================
 // Tooltip System — Phase 1
 // Registry of every annotatable element on the platform
@@ -582,4 +578,3 @@ export const HelpSidebar: React.FC<HelpSidebarProps> = ({ isOpen, onClose }) => 
     </div>
   );
 };
-

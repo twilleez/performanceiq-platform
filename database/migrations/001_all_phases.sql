@@ -107,11 +107,7 @@ CREATE TABLE IF NOT EXISTS piq_streaks (
   current_streak     INTEGER DEFAULT 0,
   longest_streak     INTEGER DEFAULT 0,
   last_log_date      DATE,
-  streak_at_risk     BOOLEAN GENERATED ALWAYS AS (
-    last_log_date IS NOT NULL AND
-    last_log_date < CURRENT_DATE AND
-    CURRENT_DATE - last_log_date = 1
-  ) STORED,
+  streak_at_risk     BOOLEAN NOT NULL DEFAULT FALSE, -- updated by piq_update_streak()
   total_days_logged  INTEGER DEFAULT 0,
   updated_at         TIMESTAMPTZ DEFAULT NOW()
 );
@@ -272,5 +268,19 @@ BEGIN
       AND notification_type = p_type
       AND sent_at > NOW() - INTERVAL '23 hours'
   );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Update streak_at_risk flag (cannot use CURRENT_DATE in GENERATED column -- not IMMUTABLE)
+CREATE OR REPLACE FUNCTION piq_refresh_streak_at_risk(p_user_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE piq_streaks
+  SET streak_at_risk = (
+    last_log_date IS NOT NULL AND
+    last_log_date < CURRENT_DATE AND
+    CURRENT_DATE - last_log_date = 1
+  )
+  WHERE user_id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

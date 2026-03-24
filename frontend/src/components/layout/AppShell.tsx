@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/layout/AppShell.tsx
-================================================================
-
 // ============================================================
 // AppShell — Device-aware layout wrapper
 // Mobile: bottom tab nav | Desktop: top nav + sidebar
@@ -56,7 +52,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 };
 
 // ── SYNC STATE INDICATOR ─────────────────────────────────────
-type SyncStatus = "saved" | "syncing" | "error" | "offline";
+import type { SyncStatus } from "../../hooks/useSyncState";
 
 const SyncIndicator: React.FC<{ status: SyncStatus; onRetry?: () => void }> = ({
   status, onRetry,

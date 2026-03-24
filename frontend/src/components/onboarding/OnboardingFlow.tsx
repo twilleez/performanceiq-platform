@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/onboarding/OnboardingFlow.tsx
-================================================================
-
 // ============================================================
 // OnboardingFlow — Phase 1
 // 5-step role-personalized guided tour with first-action prompt
@@ -483,4 +479,3 @@ const PIQScoreRevealStep: React.FC<{ role: UserRole }> = ({ role }) => {
     </div>
   );
 };
-

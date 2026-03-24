@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/components/ui/SeedDemoGate.tsx
-================================================================
-
 // ============================================================
 // SeedDemoGate — Phase 0 triple-confirm destructive action gate
 // Prevents accidental data destruction from Seed Demo trigger

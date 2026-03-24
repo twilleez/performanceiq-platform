@@ -1,7 +1,3 @@
-================================================================
-FILE: frontend/src/hooks/useDevice.ts
-================================================================
-
 // ============================================================
 // useDevice — Device detection, viewport tracking, responsive
 // focus management, and scroll-to-focal-point behavior
@@ -189,6 +185,8 @@ export function useDevice(): DeviceInfo {
 
 // ── FOCAL POINT HOOK ──────────────────────────────────────────
 // scrolls the screen to the most important element on mount or route change
+const ANIMATION_DURATION = { fast: "150" } as const;
+
 export function useFocalPoint() {
   const device = useDevice();
   const focalRef = useRef<HTMLElement | null>(null);
@@ -231,7 +229,7 @@ export function useFocalPoint() {
   return { setFocal, jumpToFocal, device };
 }
 
-const ANIMATION_DURATION = { fast: "150" } as const;
+
 
 // ── RESPONSIVE CSS HELPER ─────────────────────────────────────
 // Returns inline style object tuned to current device
