@@ -1,274 +1,469 @@
 // ============================================================
-// PIQ DESIGN SYSTEM TOKENS v1.0
-// Single source of truth for all visual design decisions
+// Messaging — Phase 3
+// Real-time coach ↔ athlete threads via Supabase Realtime
+// Mobile-first thread list + message view
 // ============================================================
 
-export const BREAKPOINTS = {
-  xs: 320,
-  sm: 480,
-  md: 768,
-  lg: 1024,
-  xl: 1280,
-  xxl: 1536,
-} as const;
+import React, {
+  useState, useEffect, useRef, useCallback, useId,
+} from "react";
+import { useDevice, useFocalPoint } from "../../hooks/useDevice";
+import { supabase } from "../../lib/supabase";
+import { analytics } from "../../lib/analytics";
 
-export const DEVICE = {
-  mobileSmall: `(max-width: ${BREAKPOINTS.xs}px)`,
-  mobile: `(max-width: ${BREAKPOINTS.sm}px)`,
-  tablet: `(max-width: ${BREAKPOINTS.md}px)`,
-  desktop: `(min-width: ${BREAKPOINTS.lg}px)`,
-  touch: "(hover: none) and (pointer: coarse)",
-  mouse: "(hover: hover) and (pointer: fine)",
-} as const;
+// ── TYPES ─────────────────────────────────────────────────────
+interface Thread {
+  id: string;
+  athleteId: string;
+  coachId: string;
+  athleteName: string;
+  coachName: string;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
 
-// ── BASE PALETTE ─────────────────────────────────────────────
-export const COLORS = {
-  navy: {
-    900: "#0A1628",
-    800: "#0F1F3D",
-    700: "#162847",
-    600: "#1C3258",
-    500: "#1A5276",
-    400: "#2980B9",
-    300: "#5DADE2",
-    200: "#AED6F1",
-    100: "#D6EAF8",
-  },
-  green: {
-    900: "#0B3D1E",
-    800: "#145A32",
-    700: "#1E8449",
-    600: "#27AE60",
-    500: "#2ECC71",
-    400: "#52D98C",
-    300: "#82E6AA",
-    200: "#ABEBC6",
-    100: "#D5F5E3",
-  },
-  red: {
-    900: "#641E16",
-    800: "#922B21",
-    700: "#C0392B",
-    600: "#E74C3C",
-    500: "#F1948A",
-    400: "#F5B7B1",
-    300: "#FADBD8",
-    200: "#FDEDEC",
-    100: "#FEF9F9",
-  },
-  orange: {
-    700: "#935116",
-    600: "#D35400",
-    500: "#E67E22",
-    400: "#F0A500",
-    300: "#FAD7A0",
-    200: "#FDEBD0",
-    100: "#FEF9EC",
-  },
-  purple: {
-    800: "#4A235A",
-    700: "#6C3483",
-    600: "#8E44AD",
-    500: "#9B59B6",
-    300: "#D2B4DE",
-    200: "#E8DAEF",
-    100: "#F4ECF7",
-  },
-  neutral: {
-    950: "#0A0A0F",
-    900: "#111118",
-    800: "#1C1C28",
-    700: "#2E2E42",
-    600: "#4A4A62",
-    500: "#6B6B80",
-    400: "#9494A8",
-    300: "#BBBBC8",
-    200: "#D8D8E2",
-    150: "#E8E6E0",
-    100: "#F0EDE8",
-    50: "#F8F7F4",
-    0: "#FFFFFF",
-  },
-  semantic: {
-    success: "#27AE60",
-    successBg: "#EAFAF1",
-    successBorder: "#A9DFBF",
-    warning: "#E67E22",
-    warningBg: "#FEF9EC",
-    warningBorder: "#FAD7A0",
-    error: "#C0392B",
-    errorBg: "#FDECEA",
-    errorBorder: "#F5C6C2",
-    info: "#1A5276",
-    infoBg: "#EBF5FB",
-    infoBorder: "#AED6F1",
-  },
-} as const;
+interface Message {
+  id: string;
+  threadId: string;
+  senderId: string;
+  content: string;
+  readAt: string | null;
+  createdAt: string;
+}
 
-// ── SPORT THEMES ─────────────────────────────────────────────
-export const SPORT_THEMES = {
-  football: {
-    id: "football",
-    label: "Football",
-    primary: "#1A5276",
-    accent: "#E67E22",
-    secondary: "#27AE60",
-    icon: "🏈",
-  },
-  basketball: {
-    id: "basketball",
-    label: "Basketball",
-    primary: "#C0392B",
-    accent: "#E67E22",
-    secondary: "#1A5276",
-    icon: "🏀",
-  },
-  swimming: {
-    id: "swimming",
-    label: "Swimming",
-    primary: "#1A5276",
-    accent: "#5DADE2",
-    secondary: "#27AE60",
-    icon: "🏊",
-  },
-  track: {
-    id: "track",
-    label: "Track & Field",
-    primary: "#6C3483",
-    accent: "#E67E22",
-    secondary: "#27AE60",
-    icon: "🏃",
-  },
-  soccer: {
-    id: "soccer",
-    label: "Soccer",
-    primary: "#1E8449",
-    accent: "#F0A500",
-    secondary: "#1A5276",
-    icon: "⚽",
-  },
-  baseball: {
-    id: "baseball",
-    label: "Baseball",
-    primary: "#145A32",
-    accent: "#C0392B",
-    secondary: "#1A5276",
-    icon: "⚾",
-  },
-} as const;
+interface MessagingProps {
+  currentUserId: string;
+  currentUserRole: "coach" | "athlete";
+  currentUserName: string;
+}
 
-// ── TYPOGRAPHY ───────────────────────────────────────────────
-export const TYPOGRAPHY = {
-  fontFamily: {
-    display: "'Barlow Condensed', sans-serif",
-    body: "'DM Sans', sans-serif",
-    mono: "'DM Mono', monospace",
-  },
-  fontSize: {
-    // Mobile-first sizes
-    xs: "clamp(10px, 2.5vw, 11px)",
-    sm: "clamp(12px, 3vw, 13px)",
-    base: "clamp(14px, 3.5vw, 16px)", // 16px minimum per accessibility requirement
-    md: "clamp(15px, 4vw, 18px)",
-    lg: "clamp(18px, 4.5vw, 22px)",
-    xl: "clamp(22px, 5.5vw, 28px)",
-    "2xl": "clamp(28px, 7vw, 36px)",
-    "3xl": "clamp(36px, 9vw, 48px)",
-  },
-  fontWeight: {
-    regular: 400,
-    medium: 500,
-    semibold: 600,
-    bold: 700,
-    extrabold: 800,
-    black: 900,
-  },
-  lineHeight: {
-    tight: 1.1,
-    snug: 1.3,
-    normal: 1.5,
-    relaxed: 1.65,
-    loose: 1.85,
-  },
-  // Tabular numerals for stat columns — WCAG requirement for data alignment
-  tabularNumerals: {
-    fontVariantNumeric: "tabular-nums",
-    fontFeatureSettings: '"tnum" 1',
-  },
-} as const;
+// ── THREAD LIST ───────────────────────────────────────────────
+export const MessagingView: React.FC<MessagingProps> = ({
+  currentUserId, currentUserRole, currentUserName,
+}) => {
+  const { isMobile } = useDevice();
+  const { setFocal, jumpToFocal } = useFocalPoint();
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const threadListRef = useRef<HTMLDivElement>(null);
 
-// ── SPACING ──────────────────────────────────────────────────
-export const SPACING = {
-  // Touch targets: minimum 44px per WCAG 2.5.5
-  touchTarget: "44px",
-  touchTargetMin: "44px",
+  useEffect(() => {
+    loadThreads();
+  }, [currentUserId]);
 
-  // Responsive spacing using clamp
-  xs: "clamp(4px, 1vw, 6px)",
-  sm: "clamp(8px, 2vw, 12px)",
-  md: "clamp(12px, 3vw, 16px)",
-  lg: "clamp(16px, 4vw, 24px)",
-  xl: "clamp(24px, 6vw, 32px)",
-  "2xl": "clamp(32px, 8vw, 48px)",
-  "3xl": "clamp(48px, 12vw, 64px)",
+  const loadThreads = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("piq_message_threads")
+        .select(`
+          id,
+          coach_id,
+          athlete_id,
+          last_message_at,
+          coach:profiles!coach_id(first_name, last_name),
+          athlete:profiles!athlete_id(first_name, last_name),
+          piq_messages(content, created_at, sender_id, read_at)
+        `)
+        .or(`coach_id.eq.${currentUserId},athlete_id.eq.${currentUserId}`)
+        .order("last_message_at", { ascending: false });
 
-  // Layout
-  navHeight: {
-    mobile: "56px",
-    desktop: "64px",
-  },
-  fabSize: "56px",
-  sidebarWidth: "240px",
-  contentMaxWidth: "1240px",
-} as const;
+      if (error) throw error;
 
-// ── SHADOWS ──────────────────────────────────────────────────
-export const SHADOWS = {
-  sm: "0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06)",
-  md: "0 4px 12px rgba(0,0,0,.10), 0 2px 6px rgba(0,0,0,.07)",
-  lg: "0 8px 24px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.08)",
-  xl: "0 16px 48px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.10)",
-  fab: "0 4px 16px rgba(0,0,0,.24), 0 2px 6px rgba(0,0,0,.16)",
-  toast: "0 8px 32px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.12)",
-} as const;
+      const mapped: Thread[] = (data ?? []).map((t: any) => {
+        const msgs: any[] = t.piq_messages ?? [];
+        const lastMsg = msgs.sort((a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0];
+        const unread = msgs.filter((m: any) => m.sender_id !== currentUserId && !m.read_at).length;
 
-// ── ANIMATION ────────────────────────────────────────────────
-export const ANIMATION = {
-  duration: {
-    instant: "80ms",
-    fast: "150ms",
-    normal: "250ms",
-    slow: "400ms",
-    page: "300ms",
-  },
-  easing: {
-    default: "cubic-bezier(0.4, 0, 0.2, 1)",
-    enter: "cubic-bezier(0.0, 0.0, 0.2, 1)",
-    exit: "cubic-bezier(0.4, 0.0, 1, 1)",
-    spring: "cubic-bezier(0.34, 1.56, 0.64, 1)",
-  },
-} as const;
+        return {
+          id: t.id,
+          coachId: t.coach_id,
+          athleteId: t.athlete_id,
+          coachName: `${t.coach?.first_name ?? ""} ${t.coach?.last_name ?? ""}`.trim(),
+          athleteName: `${t.athlete?.first_name ?? ""} ${t.athlete?.last_name ?? ""}`.trim(),
+          lastMessage: lastMsg?.content ?? null,
+          lastMessageAt: lastMsg?.created_at ?? null,
+          unreadCount: unread,
+        };
+      });
 
-// ── WCAG CONTRAST REQUIREMENTS ───────────────────────────────
-export const WCAG = {
-  normalText: 4.5,    // AA requirement
-  largeText: 3.0,     // AA requirement for 18px+ or 14px bold
-  uiComponents: 3.0,  // AA requirement for UI components
-  enhanced: 7.0,      // AAA requirement
-} as const;
+      setThreads(mapped);
+    } catch (err) {
+      console.error("Failed to load threads:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-// ── Z-INDEX STACK ────────────────────────────────────────────
-export const Z_INDEX = {
-  base: 0,
-  raised: 10,
-  dropdown: 100,
-  sticky: 200,
-  overlay: 300,
-  modal: 400,
-  toast: 500,
-  tooltip: 600,
-  fab: 150,
-} as const;
+  const openThread = (threadId: string) => {
+    setActiveThreadId(threadId);
+    analytics.track("message_thread_opened", { thread_id: threadId });
+    // Mark messages read
+    supabase.from("piq_messages")
+      .update({ read_at: new Date().toISOString() })
+      .eq("thread_id", threadId)
+      .neq("sender_id", currentUserId)
+      .is("read_at", null)
+      .then(() => loadThreads());
+  };
 
-export type SportThemeId = keyof typeof SPORT_THEMES;
-export type ColorScale = keyof typeof COLORS;
+  const activeThread = threads.find(t => t.id === activeThreadId);
+
+  // Mobile: full-screen message view when thread open
+  if (isMobile && activeThreadId && activeThread) {
+    return (
+      <MessageThread
+        thread={activeThread}
+        currentUserId={currentUserId}
+        onBack={() => setActiveThreadId(null)}
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", height: isMobile ? "auto" : "calc(var(--dvh, 100vh) - var(--nav-height) - 48px)", gap: 1 }}>
+      {/* Thread list */}
+      <div
+        ref={el => { threadListRef.current = el; setFocal(el); }}
+        style={{
+          width: isMobile ? "100%" : 280,
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--border-radius-md)",
+          overflowY: "auto",
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border-default)" }}>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 17, fontWeight: 800, color: "#1a1a2e" }}>
+            Messages
+          </div>
+        </div>
+
+        {loading && (
+          <div style={{ padding: 20, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+            Loading...
+          </div>
+        )}
+
+        {!loading && threads.length === 0 && (
+          <div style={{ padding: 24, textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+              No messages yet.
+              {currentUserRole === "coach" && " Start a conversation with an athlete from their profile."}
+            </div>
+          </div>
+        )}
+
+        {threads.map(thread => {
+          const otherName = currentUserRole === "coach" ? thread.athleteName : thread.coachName;
+          const isActive = activeThreadId === thread.id;
+          return (
+            <button
+              key={thread.id}
+              onClick={() => openThread(thread.id)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                textAlign: "left",
+                background: isActive ? "var(--bg-raised)" : "transparent",
+                border: "none",
+                borderBottom: "1px solid var(--border-default)",
+                cursor: "pointer",
+                transition: "background 150ms ease",
+                minHeight: 44,
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "var(--bg-raised)"; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+            >
+              {/* Avatar */}
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%", background: "var(--theme-primary)",
+                color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 800, flexShrink: 0,
+              }}>
+                {otherName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                  <div style={{ fontSize: 13, fontWeight: thread.unreadCount > 0 ? 700 : 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {otherName}
+                  </div>
+                  {thread.lastMessageAt && (
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, marginLeft: 6 }}>
+                      {formatRelativeTime(thread.lastMessageAt)}
+                    </div>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: 12, color: thread.unreadCount > 0 ? "var(--text-secondary)" : "var(--text-muted)",
+                  fontWeight: thread.unreadCount > 0 ? 600 : 400,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {thread.lastMessage ?? "No messages yet"}
+                </div>
+              </div>
+              {thread.unreadCount > 0 && (
+                <div style={{
+                  width: 18, height: 18, borderRadius: "50%", background: "#C0392B",
+                  color: "#fff", fontSize: 10, fontWeight: 700,
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }} aria-label={`${thread.unreadCount} unread`}>
+                  {thread.unreadCount > 9 ? "9+" : thread.unreadCount}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Desktop: message thread in right panel */}
+      {!isMobile && (
+        <div style={{ flex: 1, background: "var(--bg-card)", border: "1px solid var(--border-default)", borderRadius: "var(--border-radius-md)", overflow: "hidden" }}>
+          {activeThread
+            ? <MessageThread thread={activeThread} currentUserId={currentUserId} onBack={() => setActiveThreadId(null)} isDesktopPanel />
+            : <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                Select a conversation
+              </div>
+          }
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── MESSAGE THREAD VIEW ───────────────────────────────────────
+const MessageThread: React.FC<{
+  thread: Thread;
+  currentUserId: string;
+  onBack: () => void;
+  isDesktopPanel?: boolean;
+}> = ({ thread, currentUserId, onBack, isDesktopPanel = false }) => {
+  const { isMobile } = useDevice();
+  const { setFocal, jumpToFocal } = useFocalPoint();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load messages and subscribe to real-time updates
+  useEffect(() => {
+    loadMessages();
+
+    const channel = supabase
+      .channel(`thread-${thread.id}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "piq_messages",
+        filter: `thread_id=eq.${thread.id}`,
+      }, (payload) => {
+        const newMsg = payload.new as any;
+        setMessages(prev => [...prev, {
+          id: newMsg.id,
+          threadId: newMsg.thread_id,
+          senderId: newMsg.sender_id,
+          content: newMsg.content,
+          readAt: newMsg.read_at,
+          createdAt: newMsg.created_at,
+        }]);
+        scrollToBottom();
+        // Mark as read if we're looking at it
+        if (newMsg.sender_id !== currentUserId) {
+          supabase.from("piq_messages")
+            .update({ read_at: new Date().toISOString() })
+            .eq("id", newMsg.id);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [thread.id]);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      setFocal(containerRef.current);
+      jumpToFocal({ behavior: "instant", highlightDuration: 0 });
+    }
+  }, []);
+
+  const loadMessages = async () => {
+    const { data } = await supabase
+      .from("piq_messages")
+      .select("id, thread_id, sender_id, content, read_at, created_at")
+      .eq("thread_id", thread.id)
+      .order("created_at");
+
+    setMessages((data ?? []).map((m: any) => ({
+      id: m.id,
+      threadId: m.thread_id,
+      senderId: m.sender_id,
+      content: m.content,
+      readAt: m.read_at,
+      createdAt: m.created_at,
+    })));
+    scrollToBottom("instant");
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior }), 50);
+  };
+
+  const sendMessage = useCallback(async () => {
+    const content = inputValue.trim();
+    if (!content || sending) return;
+
+    setSending(true);
+    setInputValue("");
+
+    const { error } = await supabase.from("piq_messages").insert({
+      thread_id: thread.id,
+      sender_id: currentUserId,
+      content,
+    });
+
+    if (!error) {
+      analytics.track("message_sent", { thread_id: thread.id });
+    }
+    setSending(false);
+    inputRef.current?.focus();
+  }, [inputValue, sending, thread.id, currentUserId]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const otherName = currentUserId === thread.coachId ? thread.athleteName : thread.coachName;
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: isMobile && !isDesktopPanel
+          ? "calc(var(--dvh, 100vh) - 52px)"
+          : "100%",
+      }}
+    >
+      {/* Header */}
+      <div style={{
+        padding: "12px 16px",
+        borderBottom: "1px solid var(--border-default)",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexShrink: 0,
+      }}>
+        {!isDesktopPanel && (
+          <button
+            onClick={onBack}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 20, minHeight: 44, minWidth: 44, display: "flex", alignItems: "center", justifyContent: "center" }}
+            aria-label="Back to messages"
+          >
+            ←
+          </button>
+        )}
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>
+          {otherName}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {messages.map((msg, i) => {
+          const isMine = msg.senderId === currentUserId;
+          const isFirst = i === 0 || messages[i - 1].senderId !== msg.senderId;
+          return (
+            <div key={msg.id} style={{ display: "flex", justifyContent: isMine ? "flex-end" : "flex-start", marginTop: isFirst ? 6 : 0 }}>
+              <div
+                style={{
+                  maxWidth: "72%",
+                  padding: "9px 13px",
+                  borderRadius: isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                  background: isMine ? "var(--theme-primary)" : "var(--bg-raised)",
+                  border: isMine ? "none" : "1px solid var(--border-default)",
+                  color: isMine ? "#fff" : "var(--text-primary)",
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                  wordBreak: "break-word",
+                }}
+              >
+                {msg.content}
+                <div style={{ fontSize: 10, color: isMine ? "rgba(255,255,255,.55)" : "var(--text-muted)", marginTop: 4, textAlign: isMine ? "right" : "left" }}>
+                  {formatTime(msg.createdAt)}
+                  {isMine && msg.readAt && " · Read"}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ padding: "10px 16px calc(10px + env(safe-area-inset-bottom))", borderTop: "1px solid var(--border-default)", display: "flex", gap: 8, flexShrink: 0 }}>
+        <textarea
+          ref={inputRef}
+          value={inputValue}
+          onChange={e => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Message..."
+          rows={1}
+          style={{
+            flex: 1, border: "1px solid var(--border-default)", borderRadius: 22,
+            padding: "10px 16px", fontFamily: "var(--font-body)", fontSize: 14,
+            color: "var(--text-primary)", resize: "none", outline: "none",
+            lineHeight: 1.4, maxHeight: 100, overflowY: "auto",
+          }}
+          onFocus={e => (e.target.style.borderColor = "var(--theme-primary)")}
+          onBlur={e => (e.target.style.borderColor = "var(--border-default)")}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={!inputValue.trim() || sending}
+          aria-label="Send message"
+          style={{
+            width: 44, height: 44, borderRadius: "50%", border: "none",
+            background: inputValue.trim() ? "var(--theme-primary)" : "var(--border-default)",
+            color: "#fff", cursor: inputValue.trim() ? "pointer" : "not-allowed",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 18, flexShrink: 0, transition: "background 150ms ease",
+          }}
+        >
+          ↑
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── HELPERS ───────────────────────────────────────────────────
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours   = Math.floor(diff / 3600000);
+  const days    = Math.floor(diff / 86400000);
+  if (minutes < 1)  return "now";
+  if (minutes < 60) return `${minutes}m`;
+  if (hours < 24)   return `${hours}h`;
+  if (days < 7)     return `${days}d`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}

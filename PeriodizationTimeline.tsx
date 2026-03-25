@@ -1,24 +1,25 @@
 {
-  "name": "piq-recovery-frontend",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev":        "vite",
-    "build":      "tsc && vite build",
-    "preview":    "vite preview",
-    "lint":       "eslint src --ext .ts,.tsx",
-    "type-check": "tsc --noEmit"
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
-    "react":                 "^18.3.0",
-    "react-dom":             "^18.3.0"
-  },
-  "devDependencies": {
-    "@types/react":          "^18.3.0",
-    "@types/react-dom":      "^18.3.0",
-    "@vitejs/plugin-react":  "^4.3.0",
-    "typescript":            "^5.4.0",
-    "vite":                  "^5.3.0"
-  }
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -1,232 +1,234 @@
 // ============================================================
-// TrainingView — Training hub with sub-nav routing
-// Sub-pages: Log Workout | Workouts | Season Plan | Wellness
+// UndoToast — Phase 0 global undo system
+// 10-second window, handles all destructive actions
 // ============================================================
 
-import React, { useState, useEffect } from "react";
-import { useDevice } from "../hooks/useDevice";
-import { useAppStore } from "../context/AppStore";
-import { PeriodizationTimeline, PeriodizationWizard } from "../components/periodization/PeriodizationTimeline";
-import { Tooltip } from "../components/ui/TooltipSystem";
-import { trainingService } from "../lib/trainingService";
-import { analytics } from "../lib/analytics";
+import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from "react";
+import { useDevice } from "../../hooks/useDevice";
+import { analytics } from "../../lib/analytics";
 
-type SubPage = "log" | "workouts" | "periodization" | "wellness";
+const UNDO_WINDOW_MS = 10_000;
 
-const WELLNESS_LABELS = [
-  { score: 1, label: "Awful",   icon: "😫", color: "#C0392B" },
-  { score: 2, label: "Bad",     icon: "😕", color: "#E67E22" },
-  { score: 3, label: "Poor",    icon: "😔", color: "#E67E22" },
-  { score: 4, label: "Below avg",icon:"😐", color: "#B7770D" },
-  { score: 5, label: "Average", icon: "🙂", color: "#B7770D" },
-  { score: 6, label: "Decent",  icon: "🙂", color: "#1E8449" },
-  { score: 7, label: "Good",    icon: "😊", color: "#1E8449" },
-  { score: 8, label: "Great",   icon: "😄", color: "#1A5276" },
-  { score: 9, label: "Excellent",icon:"🤩", color: "#1A5276" },
-  { score:10, label: "Peak",    icon: "🔥", color: "#6C3483" },
-];
-
-export default function TrainingView() {
-  const { user } = useAppStore();
-  const { isMobile } = useDevice();
-  const [subPage, setSubPage] = useState<SubPage>("log");
-  const [seasonPlan, setSeasonPlan] = useState<any>(null);
-  const [showWizard, setShowWizard] = useState(false);
-  const [recentLogs, setRecentLogs] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (user) loadRecentLogs();
-    analytics.track("training_view_opened", { sub_page: subPage });
-  }, [user?.id]);
-
-  const loadRecentLogs = async () => {
-    if (!user) return;
-    const to   = new Date().toISOString();
-    const from = new Date(Date.now() - 14 * 86400000).toISOString();
-    const logs = await trainingService.getLogs(user.id, from, to);
-    setRecentLogs(logs);
-  };
-
-  const SUB_PAGES: { id: SubPage; label: string; icon: string }[] = [
-    { id: "log",           label: "Log",       icon: "📝" },
-    { id: "workouts",      label: "Workouts",  icon: "🏋️" },
-    { id: "periodization", label: "Season",    icon: "📅" },
-    { id: "wellness",      label: "Wellness",  icon: "💚" },
-  ];
-
-  return (
-    <div className="piq-page">
-      {/* Sub-nav */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, overflowX: "auto", paddingBottom: 2 }}>
-        {SUB_PAGES.map(sp => (
-          <button
-            key={sp.id}
-            onClick={() => { setSubPage(sp.id); analytics.track("training_subnav", { page: sp.id }); }}
-            style={{
-              padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600,
-              whiteSpace: "nowrap", cursor: "pointer", minHeight: 36, minWidth: "auto",
-              border: `1.5px solid ${subPage === sp.id ? "var(--theme-primary)" : "var(--border-default)"}`,
-              background: subPage === sp.id ? "var(--theme-primary)" : "var(--bg-card)",
-              color: subPage === sp.id ? "#fff" : "var(--text-secondary)",
-              transition: "all 150ms ease",
-            }}
-          >
-            {sp.icon} {sp.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Log Workout */}
-      {subPage === "log" && (
-        <div>
-          <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Recent Sessions</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Last 14 days · Use the + button to log a new session</div>
-
-          {recentLogs.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 20px", background: "var(--bg-card)", border: "1px solid var(--border-default)", borderRadius: 12 }}>
-              <div style={{ fontSize: 36, marginBottom: 12 }}>📝</div>
-              <div style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65 }}>No sessions logged yet.<br />Tap the + button to log your first workout.</div>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {recentLogs.map(log => (
-                <div key={log.id} style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", borderRadius: 10, padding: "12px 16px", display: "flex", gap: 14, alignItems: "center" }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 900, color: "var(--theme-primary)", minWidth: 44, textAlign: "center", lineHeight: 1 }}>
-                    {log.intensity ?? "--"}
-                    <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontFamily: "var(--font-body)" }}>RPE</div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", textTransform: "capitalize", marginBottom: 3 }}>{log.activityType}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {log.durationMinutes}min · {log.trainingLoad} AU load ·
-                      {new Date(log.loggedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    </div>
-                  </div>
-                  {log.piqScoreAtLog && (
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 800, color: "var(--theme-primary)", lineHeight: 1 }}>{log.piqScoreAtLog}</div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>PIQ</div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Workouts library */}
-      {subPage === "workouts" && (
-        <div>
-          <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 800, marginBottom: 16 }}>Workout Library</div>
-          <div style={{ textAlign: "center", padding: "40px 20px", background: "var(--bg-card)", border: "1px solid var(--border-default)", borderRadius: 12 }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🏋️</div>
-            <div style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65 }}>Workout templates coming in the next sprint.<br />Browse and assign sport-specific sessions.</div>
-          </div>
-        </div>
-      )}
-
-      {/* Season Plan / Periodization */}
-      {subPage === "periodization" && (
-        <div>
-          {showWizard ? (
-            <PeriodizationWizard
-              onComplete={plan => { setSeasonPlan(plan); setShowWizard(false); analytics.track("periodization_plan_created"); }}
-              onSkip={() => setShowWizard(false)}
-            />
-          ) : seasonPlan ? (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 800 }}>Your Season Plan</div>
-                <button onClick={() => setShowWizard(true)} style={{ fontSize: 12, color: "var(--theme-primary)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, minHeight: 32 }}>Edit →</button>
-              </div>
-              <PeriodizationTimeline plan={seasonPlan} />
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: "40px 20px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 800, marginBottom: 8 }}>Build Your Season Plan</div>
-              <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.65, maxWidth: 340, margin: "0 auto 20px" }}>
-                <Tooltip id="periodization.overview" inline>
-                  <span>Set up your season structure in 4 steps. Plain language, no jargon.</span>
-                </Tooltip>
-              </p>
-              <button
-                onClick={() => setShowWizard(true)}
-                style={{ height: 44, padding: "0 28px", borderRadius: 10, border: "none", background: "var(--theme-primary)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-              >
-                Set Up Season Plan →
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Wellness */}
-      {subPage === "wellness" && (
-        <WellnessLogSubPage userId={user?.id ?? ""} />
-      )}
-    </div>
-  );
+export interface UndoAction {
+  id: string;
+  label: string;
+  onUndo: () => void | Promise<void>;
+  onCommit?: () => void | Promise<void>;
+  severity?: "default" | "destructive";
 }
 
-// ── WELLNESS LOG ──────────────────────────────────────────────
-const WellnessLogSubPage: React.FC<{ userId: string }> = ({ userId }) => {
-  const [selected, setSelected] = useState<number | null>(null);
-  const [logged, setLogged] = useState(false);
+interface UndoContextValue {
+  pushUndo: (action: UndoAction) => void;
+  clearUndo: (id: string) => void;
+}
 
-  const handleLog = async (score: number) => {
-    setSelected(score);
-    const id = `wellness-${Date.now()}`;
-    await trainingService.saveLog(id, {
-      type: "wellness",
-      wellnessScore: score,
-      timestamp: new Date().toISOString(),
+const UndoContext = createContext<UndoContextValue | null>(null);
+
+export function useUndo() {
+  const ctx = useContext(UndoContext);
+  if (!ctx) throw new Error("useUndo must be used within UndoProvider");
+  return ctx;
+}
+
+interface ActiveToast extends UndoAction {
+  expiresAt: number;
+  progress: number; // 0–100
+}
+
+export const UndoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [toasts, setToasts] = useState<ActiveToast[]>([]);
+  const timers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const { isMobile, navHeight } = useDevice();
+
+  const clearUndo = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+    const timer = timers.current.get(id);
+    if (timer) {
+      clearInterval(timer);
+      timers.current.delete(id);
+    }
+  }, []);
+
+  const pushUndo = useCallback((action: UndoAction) => {
+    // Clear any existing toast with same id
+    clearUndo(action.id);
+
+    const expiresAt = Date.now() + UNDO_WINDOW_MS;
+    const toast: ActiveToast = { ...action, expiresAt, progress: 100 };
+
+    setToasts(prev => [toast, ...prev.slice(0, 2)]); // max 3 toasts
+
+    analytics.track("undo_toast_shown", {
+      action_id: action.id,
+      label: action.label,
+      severity: action.severity ?? "default",
     });
-    setLogged(true);
-    analytics.track("wellness_logged", { score });
+
+    // Progress countdown tick every 100ms
+    const interval = setInterval(() => {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        clearUndo(action.id);
+        action.onCommit?.();
+        analytics.track("undo_toast_expired", { action_id: action.id });
+      } else {
+        setToasts(prev =>
+          prev.map(t =>
+            t.id === action.id
+              ? { ...t, progress: (remaining / UNDO_WINDOW_MS) * 100 }
+              : t
+          )
+        );
+      }
+    }, 100);
+
+    timers.current.set(action.id, interval);
+  }, [clearUndo]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      timers.current.forEach(t => clearInterval(t));
+    };
+  }, []);
+
+  const handleUndo = async (toast: ActiveToast) => {
+    clearUndo(toast.id);
+    await toast.onUndo();
+    analytics.track("undo_triggered", { action_id: toast.id });
   };
 
-  if (logged) {
-    const entry = WELLNESS_LABELS.find(w => w.score === selected);
-    return (
-      <div style={{ textAlign: "center", padding: "48px 20px" }}>
-        <div style={{ fontSize: 52, marginBottom: 12 }}>{entry?.icon}</div>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 800, color: entry?.color, marginBottom: 8 }}>
-          {entry?.label} — {selected}/10
-        </div>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Wellness check-in saved. Your readiness score will update.</p>
-        <button onClick={() => { setLogged(false); setSelected(null); }} style={{ marginTop: 20, background: "none", border: "1px solid var(--border-default)", borderRadius: 8, padding: "8px 20px", cursor: "pointer", fontSize: 13, color: "var(--text-secondary)", minHeight: 36 }}>
-          Log again
-        </button>
-      </div>
-    );
-  }
+  // Position toast above bottom nav on mobile, below top nav on desktop
+  const toastBottom = isMobile ? navHeight + 12 : "auto";
+  const toastTop = isMobile ? "auto" : "calc(var(--nav-height) + 12px)";
 
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-        <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 800 }}>How are you feeling today?</div>
-        <Tooltip id="wellness.score" />
+    <UndoContext.Provider value={{ pushUndo, clearUndo }}>
+      {children}
+
+      {/* Toast container */}
+      <div
+        aria-live="polite"
+        aria-atomic="false"
+        style={{
+          position: "fixed",
+          bottom: typeof toastBottom === "number" ? `${toastBottom}px` : toastBottom,
+          top: toastTop,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 500,
+          width: "calc(100% - 32px)",
+          maxWidth: 420,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          pointerEvents: "none",
+        }}
+      >
+        {toasts.map(toast => (
+          <UndoToastItem
+            key={toast.id}
+            toast={toast}
+            onUndo={() => handleUndo(toast)}
+            onDismiss={() => {
+              clearUndo(toast.id);
+              toast.onCommit?.();
+            }}
+          />
+        ))}
       </div>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>Takes 5 seconds. Powers your readiness score.</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
-        {WELLNESS_LABELS.filter(w => w.score % 2 !== 0 || w.score === 10).map(w => (
+    </UndoContext.Provider>
+  );
+};
+
+const UndoToastItem: React.FC<{
+  toast: ActiveToast;
+  onUndo: () => void;
+  onDismiss: () => void;
+}> = ({ toast, onUndo, onDismiss }) => {
+  const isDestructive = toast.severity === "destructive";
+
+  return (
+    <div
+      role="alert"
+      style={{
+        background: "#1a1a2e",
+        color: "#fff",
+        borderRadius: 10,
+        padding: "12px 14px",
+        boxShadow: "0 8px 32px rgba(0,0,0,.18)",
+        pointerEvents: "all",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        animation: "toast-in 200ms ease forwards",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isDestructive && (
+            <span style={{ fontSize: 16, flexShrink: 0 }}>🗑️</span>
+          )}
+          <span style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>
+            {toast.label}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
           <button
-            key={w.score}
-            onClick={() => handleLog(w.score)}
+            onClick={onUndo}
             style={{
-              padding: "14px 8px", borderRadius: 10, textAlign: "center", cursor: "pointer",
-              border: `2px solid ${selected === w.score ? w.color : "var(--border-default)"}`,
-              background: selected === w.score ? w.color + "18" : "var(--bg-card)",
-              transition: "all 150ms ease", minHeight: 44,
+              height: 32,
+              minHeight: 32,
+              padding: "0 12px",
+              borderRadius: 6,
+              border: "1.5px solid rgba(255,255,255,0.3)",
+              background: "transparent",
+              color: "#fff",
+              fontFamily: "'DM Sans',sans-serif",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "background 150ms ease",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,.1)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+          >
+            Undo
+          </button>
+          <button
+            onClick={onDismiss}
+            aria-label="Dismiss"
+            style={{
+              height: 32,
+              minHeight: 32,
+              width: 32,
+              borderRadius: 6,
+              border: "none",
+              background: "transparent",
+              color: "rgba(255,255,255,.5)",
+              cursor: "pointer",
+              fontSize: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <div style={{ fontSize: 24 }}>{w.icon}</div>
-            <div style={{ fontSize: 11, color: selected === w.score ? w.color : "var(--text-muted)", fontWeight: 600, marginTop: 4 }}>{w.label}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{w.score}/10</div>
+            ×
           </button>
-        ))}
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 3, background: "rgba(255,255,255,.15)", borderRadius: 2, overflow: "hidden" }}>
+        <div
+          style={{
+            height: "100%",
+            width: `${toast.progress}%`,
+            background: isDestructive ? "#E74C3C" : "rgba(255,255,255,.6)",
+            borderRadius: 2,
+            transition: "width 100ms linear",
+          }}
+        />
       </div>
     </div>
   );
