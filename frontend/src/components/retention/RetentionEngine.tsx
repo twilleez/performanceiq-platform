@@ -59,7 +59,7 @@ export const StreakCard: React.FC<{ streak: StreakData }> = ({ streak }) => {
     >
       {/* Streak number */}
       <div style={{ flexShrink: 0, textAlign: "center" }}>
-        <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 42, fontWeight: 900, color: "#E67E22", lineHeight: 1 }}>
+        <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 42, fontWeight: 900, color: "#E67E22", lineHeight: 1, fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' }}>
           {streak.currentStreak}
         </div>
         <div style={{ fontSize: 10, fontWeight: 700, color: "#9494a8", textTransform: "uppercase", letterSpacing: ".06em" }}>
@@ -231,7 +231,7 @@ export const ProgressTrend: React.FC<{
           {label}
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 28, fontWeight: 900, color: "#1A5276", lineHeight: 1 }}>
+          <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 28, fontWeight: 900, color: "#1A5276", lineHeight: 1, fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' }}>
             {latest}
           </div>
           {delta !== 0 && (

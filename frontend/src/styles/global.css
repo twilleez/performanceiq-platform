@@ -140,8 +140,17 @@ p {
   color: var(--text-secondary);
 }
 
-/* Tabular numerals for all stat/data displays — prevents misalignment */
-.stat, .metric, [data-numeric], td.numeric, .tabular {
+/* Tabular numerals for all stat/data displays — URGENT FIX: prevents misalignment
+   Medical data integrity issue — stat column misread caused incorrect athlete HR recorded.
+   Apply [data-numeric] or className="tabular" to ALL stat cells. */
+.stat, .metric, [data-numeric], td.numeric, .tabular,
+[data-stat], .piq-score-value, .piq-stat {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Monospace numeric — for values where precise alignment is critical (tables, analytics) */
+.stat-mono, td.stat-mono, [data-stat-mono] {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   font-family: var(--font-mono);

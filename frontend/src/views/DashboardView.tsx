@@ -1,36 +1,49 @@
 // ============================================================
-// DashboardView — Role-aware home screen
-// Shows PIQ Score, streak, ACWR, quick-log prompt
+// DashboardView — Phase 1 complete
+// Role-aware: Coach → Team Roster | Athlete → PIQ + Streak
+// Parent → Athlete Summary | Admin → Overview
 // ============================================================
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useDevice, useFocalPoint } from "../hooks/useDevice";
 import { useAppStore } from "../context/AppStore";
 import { trainingService, type PIQScoreComponents } from "../lib/trainingService";
 import { StreakCard, ProgressTrend } from "../components/retention/RetentionEngine";
 import { DashboardKPIGrid } from "../components/ui/AccessibilitySystem";
+import { CoachDashboard, ParentDashboard } from "../components/dashboard/CoachDashboard";
 import { Tooltip } from "../components/ui/TooltipSystem";
 import { analytics } from "../lib/analytics";
 
 export default function DashboardView() {
   const { user } = useAppStore();
-  const { isMobile, isDesktop } = useDevice();
+  const { isMobile } = useDevice();
   const { setFocal, jumpToFocal } = useFocalPoint();
+  const focalRef = useRef<HTMLDivElement>(null);
   const [piq, setPiq] = useState<PIQScoreComponents | null>(null);
-  const [streak, setStreak] = useState({ currentStreak: 0, longestStreak: 0, lastLogDate: null as string | null, streakAtRisk: false, weekActivity: Array(7).fill(false) });
+  const [streak] = useState({
+    currentStreak: 0, longestStreak: 0,
+    lastLogDate: null as string | null,
+    streakAtRisk: false,
+    weekActivity: Array(7).fill(false),
+  });
   const [trend, setTrend] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const focalRef = React.useRef<HTMLDivElement>(null);
+  const [insightsTab, setInsightsTab] = useState("analytics");
 
   useEffect(() => {
     if (!user) return;
     setFocal(focalRef.current);
+    jumpToFocal({ behavior: "smooth", highlightDuration: 0 });
     loadData();
     analytics.track("dashboard_viewed", { role: user.role });
   }, [user?.id]);
 
   const loadData = async () => {
     if (!user) return;
+    if (user.role === "coach" || user.role === "admin") {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [piqScore, trendData] = await Promise.all([
@@ -46,15 +59,31 @@ export default function DashboardView() {
     }
   };
 
+  // ── COACH: team roster as default ──────────────────────
+  if (user?.role === "coach" || user?.role === "admin") {
+    return (
+      <div ref={focalRef} className="piq-page">
+        <CoachDashboard coachId={user.id} />
+      </div>
+    );
+  }
+
+  // ── PARENT: athlete summary ─────────────────────────────
+  if (user?.role === "parent") {
+    return (
+      <div ref={focalRef} className="piq-page">
+        <ParentDashboard parentId={user.id} onGoToReports={() => {}} />
+      </div>
+    );
+  }
+
+  // ── ATHLETE / SOLO ATHLETE: PIQ + streak + trend ────────
   const kpiData = piq ? {
-    piqScore:       { value: piq.total,         delta: 0,            trend: "flat" as const },
-    streak:         { value: streak.currentStreak,                                           },
-    acwr:           { value: piq.acwr,           delta: 0,                                  },
-    wellness:       { value: piq.readiness > 0 ? (piq.readiness / 10).toFixed(1) : "--"     },
-    compliance:     { value: piq.compliance,                                                 },
-    teamCompliance: { value: piq.compliance,                                                 },
-    athletePIQ:     { value: piq.total,                                                      },
-    programCount:   { value: "--"                                                            },
+    piqScore:    { value: piq.total,      trend: "flat" as const },
+    streak:      { value: streak.currentStreak },
+    acwr:        { value: piq.acwr },
+    wellness:    { value: piq.readiness > 0 ? (piq.readiness / 10).toFixed(1) : "--" },
+    compliance:  { value: piq.compliance },
   } : {};
 
   return (
@@ -65,12 +94,12 @@ export default function DashboardView() {
         </div>
       ) : (
         <>
-          {/* KPI grid — role-specific primary metric */}
+          {/* KPI grid */}
           <div style={{ marginBottom: 20 }}>
             <DashboardKPIGrid role={user?.role ?? "athlete"} data={kpiData} />
           </div>
 
-          {/* PIQ Score explanation */}
+          {/* PIQ score breakdown */}
           {piq && (
             <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-default)", borderRadius: 12, padding: isMobile ? "14px 16px" : "16px 20px", marginBottom: 20 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
@@ -91,7 +120,16 @@ export default function DashboardView() {
                       <Tooltip id={c.id} inline>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{c.label}</span>
                       </Tooltip>
-                      <span style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 800, color: c.color }}>{c.value}</span>
+                      <span
+                        style={{
+                          fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 800, color: c.color,
+                          // URGENT FIX: tabular-nums on all score display
+                          fontVariantNumeric: "tabular-nums",
+                          fontFeatureSettings: '"tnum" 1',
+                        }}
+                      >
+                        {c.value}
+                      </span>
                     </div>
                     <div style={{ height: 5, background: "var(--border-default)", borderRadius: 3, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${c.value}%`, background: c.color, borderRadius: 3, transition: "width 600ms ease" }} />
@@ -103,7 +141,7 @@ export default function DashboardView() {
             </div>
           )}
 
-          {/* ACWR alert if out of range */}
+          {/* ACWR alert */}
           {piq && (piq.acwr > 1.3 || piq.acwr < 0.8) && (
             <div style={{
               background: piq.acwr > 1.3 ? "var(--semantic-errorBg)" : "var(--semantic-warningBg)",
@@ -119,7 +157,15 @@ export default function DashboardView() {
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                   <Tooltip id="acwr" inline>
-                    <span>ACWR {piq.acwr} — {piq.acwr > 1.3 ? "above the 1.3 safe ceiling. Consider a lighter session today." : "below 0.8 minimum. Fitness may be declining — increase training volume."}</span>
+                    <span>
+                      ACWR{" "}
+                      <span style={{ fontVariantNumeric: "tabular-nums", fontFeatureSettings: '"tnum" 1' }}>
+                        {piq.acwr.toFixed(2)}
+                      </span>
+                      {" "}— {piq.acwr > 1.3
+                        ? "above the 1.3 safe ceiling. Consider a lighter session today."
+                        : "below 0.8 minimum. Fitness may be declining — increase training volume."}
+                    </span>
                   </Tooltip>
                 </div>
               </div>
@@ -136,7 +182,7 @@ export default function DashboardView() {
             <ProgressTrend data={trend} label="30-Day PIQ Score Trend" />
           )}
 
-          {/* Empty state for new users */}
+          {/* Empty state — new user */}
           {!piq && !loading && (
             <div style={{
               textAlign: "center", padding: "40px 20px",
