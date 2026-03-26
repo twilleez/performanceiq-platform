@@ -1,126 +1,95 @@
-  // /js/views/dashboard.js
+/**
+ * PerformanceIQ — Player Dashboard (Elite)
+ * Fully wired, state-driven, Today-first UX
+ */
 
-export function renderDashboard(state) {
-  const athlete = state?.profile || {};
-  const todayWorkout = state?.todayWorkout || null;
+import {
+  getState,
+  getWeeklyGoal,
+  getAssignedWorkouts,
+  getWorkoutLog,
+  getReadinessCheckIn
+} from '../../state/state.js';
+
+import { navigate, ROUTES } from '../../router.js';
+
+export function renderPlayerHome() {
+  const state = getState();
+  const weekly = getWeeklyGoal();
+  const readiness = getReadinessCheckIn();
+
+  const assignments = getAssignedWorkouts().filter(a => !a.completed);
+  const nextWorkout = assignments[0];
+
+  const completed = weekly.completedThisWeek || 0;
+  const target = weekly.targetSessions || 4;
+  const progressPct = Math.min(100, (completed / target) * 100);
+
+  const readinessScore = readiness.quickScore || 6;
 
   return `
-  <div class="view-with-sidebar">
+    <div class="piq-view">
 
-    <div class="page-main">
+      <!-- HERO -->
+      <div class="card hero">
+        <div class="hero-left">
+          <div class="hero-title">Today</div>
+          <div class="hero-sub">
+            ${nextWorkout ? nextWorkout.title : 'No session assigned'}
+          </div>
+        </div>
 
-      <div class="page-header">
-        <h1>Welcome back, <span>${athlete.name || "Athlete"}</span></h1>
-        <p>Your daily performance overview</p>
+        <div class="hero-actions">
+          ${
+            nextWorkout
+              ? `<button class="btn primary" data-route="${ROUTES.PLAYER_TODAY}">Start Workout</button>`
+              : `<button class="btn" data-route="${ROUTES.PLAYER_BUILDER || ROUTES.PLAYER_TODAY}">Build Session</button>`
+          }
+        </div>
       </div>
 
-      ${renderTodayPlan(todayWorkout)}
-      ${renderScoreCard(state)}
-      ${renderReadinessCard(state)}
-      ${renderProgress()}
-      ${renderQuickActions()}
+      <!-- READINESS -->
+      <div class="card">
+        <div class="card-title">Readiness</div>
+        <div class="readiness-score">${readinessScore}/10</div>
 
-    </div>
-  </div>
-  `;
-}
-
-/* ---------------- COMPONENTS ---------------- */
-
-function renderTodayPlan(workout) {
-  if (!workout) {
-    return `
-    <div class="panel">
-      <div class="panel-title">Today</div>
-      <p>No workout scheduled.</p>
-      <button class="btn-primary">Generate Workout</button>
-    </div>
-    `;
-  }
-
-  return `
-  <div class="panel">
-    <div class="panel-title">Today's Plan</div>
-    <h2>${workout.title}</h2>
-    <p>${workout.duration || 60} min session</p>
-    <button class="btn-primary">Start Workout</button>
-  </div>
-  `;
-}
-
-function renderScoreCard(state) {
-  const score = state?.score || 700;
-
-  return `
-  <div class="panel">
-    <div class="panel-title">PerformanceIQ Score</div>
-    <h2>${score}</h2>
-    <p>▲ +12 this week</p>
-
-    <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
-      <strong>Why it changed:</strong><br/>
-      + Completed workouts<br/>
-      + Improved sleep<br/>
-      + Better consistency
-    </div>
-  </div>
-  `;
-}
-
-function renderReadinessCard(state) {
-  const readiness = state?.readiness || 75;
-
-  let label = "Moderate";
-  if (readiness > 85) label = "High";
-  if (readiness < 60) label = "Low";
-
-  return `
-  <div class="panel">
-    <div class="panel-title">Readiness</div>
-    <h2>${readiness}</h2>
-    <p>${label}</p>
-
-    <div style="margin-top:10px;font-size:13px;color:var(--text-muted)">
-      Sleep: 7h<br/>
-      Soreness: Low<br/>
-      Load: Moderate
-    </div>
-  </div>
-  `;
-}
-
-function renderProgress() {
-  return `
-  <div class="panel">
-    <div class="panel-title">Progress</div>
-    <div class="kpi-row">
-      <div class="kpi-card">
-        <div class="kpi-lbl">Strength</div>
-        <div class="kpi-val g">↑</div>
+        <button class="btn small" data-route="${ROUTES.PLAYER_READINESS}">
+          Update Check-In
+        </button>
       </div>
-      <div class="kpi-card">
-        <div class="kpi-lbl">Speed</div>
-        <div class="kpi-val b">↑</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-lbl">Endurance</div>
-        <div class="kpi-val">→</div>
-      </div>
-    </div>
-  </div>
-  `;
-}
 
-function renderQuickActions() {
-  return `
-  <div class="panel">
-    <div class="panel-title">Quick Actions</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn-draft">Generate Workout</button>
-      <button class="btn-draft">Log Session</button>
-      <button class="btn-draft">Wellness</button>
-      <button class="btn-draft">Progress</button>
+      <!-- WEEKLY PROGRESS -->
+      <div class="card">
+        <div class="card-title">Weekly Progress</div>
+
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${progressPct}%"></div>
+        </div>
+
+        <div class="progress-text">
+          ${completed} / ${target} sessions
+        </div>
+      </div>
+
+      <!-- QUICK ACTIONS -->
+      <div class="grid-2">
+        <button class="card action" data-route="${ROUTES.PLAYER_LOG}">
+          Log Workout
+        </button>
+
+        <button class="card action" data-route="${ROUTES.PLAYER_PROGRESS}">
+          View Progress
+        </button>
+
+        <button class="card action" data-route="${ROUTES.PLAYER_SCORE}">
+          PIQ Score
+        </button>
+
+        <button class="card action" data-route="${ROUTES.PLAYER_MESSAGES}">
+          Messages
+        </button>
+      </div>
+
     </div>
-  </div>
   `;
 }
