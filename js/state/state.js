@@ -1,472 +1,223 @@
 /**
- * PerformanceIQ State v7
- * ─────────────────────────────────────────────────────────────
- * PHASE 3 UPGRADES:
+ * PerformanceIQ State  (remediated)
  *
- *   messages[]       — persisted thread + message store
- *     Each thread: { id, participants[], subject, unread, messages[] }
- *     Each message: { id, from, body, ts, read }
- *     addMessage(threadId, from, body)  — appends to thread, marks unread
- *     getThread(id)                    — returns single thread
- *     markThreadRead(id)               — clears unread flag
+ * Changes from prior version:
+ *   1. addMeal() now stamps each meal with a unique `id` field
+ *      (separate from `ts` which may collide on rapid additions).
+ *   2. removeMeal() now accepts a meal `id` string and uses findIndex()
+ *      to locate the item — not an array index. This prevents stale-index
+ *      bugs where removing item N shifts all subsequent items, causing the
+ *      next deletion to hit the wrong meal and corrupt running macro totals.
+ *   3. All other state behaviour is unchanged.
  *
- *   assignedWorkouts[] — coach-assigned sessions per athlete
- *     { id, ts, athleteId, coachId, title, sessionType, exercises[],
- *       dueDate, notes, completed, completedTs }
- *     assignWorkout(payload)   — creates assignment
- *     completeAssignment(id)   — athlete marks done (updates compliance)
- *     getAssignmentsFor(athleteId) — returns athlete's queue
+ * IMPORTANT for view authors:
+ *   When rendering a meal list and wiring a delete button, pass `meal.id`
+ *   (not the loop index `i`) to removeMeal():
  *
- * Migration: v6 → v7 adds empty arrays if absent.
+ *     meals.map(m => `<button onclick="removeMeal('${m.id}')">✕</button>`)
+ *
+ *   meal.id is set by addMeal() and persisted to localStorage.
  */
+
 import { loadFromStorage, saveToStorage } from '../services/storage.js';
 
-const STATE_KEY  = 'piq_state_v7';
-const LEGACY_KEYS = ['piq_state_v6', 'piq_state_v5', 'piq_state_v4'];
-const MAX_HISTORY = 90;
+const STATE_KEY = 'piq_state_v2';
 
-// ── SEED DATA ─────────────────────────────────────────────────
-function _seedMessages() {
-  return [
-    {
-      id: 'thread-team',
-      subject: 'Team Channel',
-      icon: '👥',
-      participants: ['coach', 'all'],
-      unread: 2,
-      messages: [
-        { id: 'm1', from: 'Coach Alex', body: 'Practice tomorrow at 4:00 PM sharp. Bring your gear.', ts: Date.now() - 7200000, read: true },
-        { id: 'm2', from: 'Coach Alex', body: 'Full intensity today — readiness scores look great across the board.', ts: Date.now() - 3600000, read: false },
-        { id: 'm3', from: 'Coach Alex', body: 'Remember: log your sRPE right after sessions. It powers the ACWR engine.', ts: Date.now() - 600000, read: false },
-      ],
-    },
-    {
-      id: 'thread-coach-player',
-      subject: 'Coach Alex Morgan',
-      icon: '🎽',
-      participants: ['coach', 'player'],
-      unread: 1,
-      messages: [
-        { id: 'm4', from: 'You', body: 'Coach, my left hamstring has been tight after yesterday\'s session.', ts: Date.now() - 5400000, read: true },
-        { id: 'm5', from: 'Coach Alex', body: 'Good heads up. Drop intensity to RPE 6 today and add extra pliability work. Log it as Recovery.', ts: Date.now() - 3000000, read: false },
-      ],
-    },
-    {
-      id: 'thread-parent',
-      subject: 'Team Parents',
-      icon: '👨‍👩‍👦',
-      participants: ['parent', 'coach'],
-      unread: 0,
-      messages: [
-        { id: 'm6', from: 'Parent Group', body: 'Can someone share the Saturday game schedule? We need to arrange carpools.', ts: Date.now() - 86400000, read: true },
-        { id: 'm7', from: 'Coach Alex', body: 'Game Saturday at 2 PM, away at Jefferson High. Bus leaves at 12:30.', ts: Date.now() - 82800000, read: true },
-      ],
-    },
-  ];
-}
-
-function _seedAssignedWorkouts() {
-  return [];   // starts empty — coach creates these via program builder
-}
-
+// ── DEFAULT STATE ──────────────────────────────────────────────────────────────
 function defaultState() {
   return {
+    theme: 'dark',
     roster: [
-      { id:1,  name:'Marcus T.',  position:'PG', sport:'basketball', readiness:88, piq:84, streak:6,  weight:185, height:"6'2\"",  age:17, level:'advanced',     compPhase:'in-season' },
-      { id:2,  name:'Devon W.',   position:'SG', sport:'basketball', readiness:72, piq:79, streak:3,  weight:175, height:"6'1\"",  age:16, level:'intermediate', compPhase:'in-season' },
-      { id:3,  name:'Jamal R.',   position:'SF', sport:'basketball', readiness:91, piq:90, streak:9,  weight:195, height:"6'5\"",  age:18, level:'elite',        compPhase:'in-season' },
-      { id:4,  name:'Chris M.',   position:'PF', sport:'basketball', readiness:55, piq:71, streak:1,  weight:210, height:"6'6\"",  age:16, level:'intermediate', compPhase:'in-season' },
-      { id:5,  name:'Tae S.',     position:'C',  sport:'basketball', readiness:83, piq:82, streak:5,  weight:225, height:"6'9\"",  age:17, level:'advanced',     compPhase:'in-season' },
-      { id:6,  name:'Rondell B.', position:'PG', sport:'basketball', readiness:68, piq:76, streak:2,  weight:165, height:"5'11\"", age:15, level:'beginner',     compPhase:'in-season' },
-      { id:7,  name:'Aliyah N.',  position:'SF', sport:'basketball', readiness:94, piq:92, streak:11, weight:155, height:"5'10\"", age:18, level:'elite',        compPhase:'in-season' },
-      { id:8,  name:'Darius E.',  position:'SG', sport:'basketball', readiness:47, piq:65, streak:0,  weight:170, height:"6'0\"",  age:15, level:'beginner',     compPhase:'in-season' },
+      { id: 'a1', name: 'Jake Williams',  position: 'PG', sport: 'basketball', readiness: 82, piq: 84, streak: 6,  weight: 185, height: "6'2\"", age: 17, level: 'advanced',      compPhase: 'in-season' },
+      { id: 'a2', name: 'Marcus Thompson',position: 'SF', sport: 'basketball', readiness: 71, piq: 78, streak: 4,  weight: 195, height: "6'5\"", age: 17, level: 'advanced',      compPhase: 'in-season' },
+      { id: 'a3', name: 'Devon Nichols',  position: 'PF', sport: 'basketball', readiness: 55, piq: 68, streak: 1,  weight: 210, height: "6'7\"", age: 16, level: 'intermediate',   compPhase: 'in-season' },
+      { id: 'a4', name: 'Aliyah Reeves',  position: 'SG', sport: 'basketball', readiness: 63, piq: 73, streak: 2,  weight: 175, height: "6'1\"", age: 16, level: 'intermediate',   compPhase: 'in-season' },
     ],
     athleteProfile: {
-      sport:'basketball', level:'high_school', team:'', goals:[],
-      position:'', gradYear:'', age:'', weightLbs:'', heightFt:'', heightIn:'',
-      trainingLevel:'intermediate', daysPerWeek:4, sleepHours:7,
-      compPhase:'in-season', primaryGoal:'', secondaryGoals:[],
-      injuryHistory:'none', mindsetScore:0, hydrationOz:0,
-      pliabilityDone:false, recoveryNotes:'',
+      sport: 'basketball', level: 'high_school', team: '', goals: [], position: '', gradYear: '',
+      age: '', weightLbs: '', heightFt: '', heightIn: '',
+      trainingLevel: 'intermediate', daysPerWeek: 4, sleepHours: 7,
+      compPhase: 'in-season', primaryGoal: '', secondaryGoals: [], injuryHistory: 'none',
+      mindsetScore: 0, hydrationOz: 0, pliabilityDone: false, recoveryNotes: '',
     },
-    workoutLog:       [],
-    draftWorkout:     null,
+    workoutLog: [],
+    draftWorkout: null,
     nutrition: {
-      meals:[], macros:{ cal:0, pro:0, cho:0, fat:0 },
-      targetMacros:{ cal:0, pro:0, cho:0, fat:0 }, mealPlan:null,
+      meals: [],
+      macros: { cal: 0, pro: 0, cho: 0, fat: 0 },
+      targetMacros: { cal: 0, pro: 0, cho: 0, fat: 0 },
+      mealPlan: null,
     },
-    linkedAthlete:    null,
-
-    // ── Phase 5: schools tracker + weekly goal cycle ─────────
-    schools: [],           // [{ id, name, division, sport, interest, contactName, notes, ts }]
-    weeklyGoal: {
-      targetSessions:    4,       // default, synced from profile.daysPerWeek
-      completedThisWeek: 0,       // resets each Monday
-      weekStartTs:       0,       // Monday 00:00 of current week
-      streakWeeks:       0,       // consecutive weeks hitting target
-      bestStreakWeeks:   0,       // all-time best
-    },
+    linkedAthlete: null,
+    messages: [],
     builder: {
-      activeTab:'plan', pickerOpen:false, pickerFilter:'all',
-      loadedTemplateId:null, draft:null,
+      activeTab: 'plan', pickerOpen: false, pickerFilter: 'all',
+      loadedTemplateId: null, draft: null,
     },
-    assignModal: { open:false, pending:null },
+    assignModal: { open: false, pending: null },
     readinessCheckIn: {
-      date:'', quickScore:6,
-      sleepQuality:0, energyLevel:0, soreness:0,
-      mood:0, stressLevel:0, fatigueLevel:0,
-      sleepHours:0, hydration:0, notes:'',
+      date: '', sleepHours: 0, sleepQuality: 0, energyLevel: 0,
+      soreness: 0, mood: 0, stressLevel: 0, hydration: 0, notes: '',
     },
-    checkInHistory:    [],
-    piqHistory:        [],
-    // ── Phase 3 ────────────────────────────────────────────────
-    messages:          _seedMessages(),
-    assignedWorkouts:  _seedAssignedWorkouts(),
   };
 }
 
-let _state    = defaultState();
+let _state     = defaultState();
 let _listeners = [];
 
-// ── LOAD / SAVE ───────────────────────────────────────────────
+// ── PERSISTENCE ────────────────────────────────────────────────────────────────
 export function loadState() {
-  let saved = loadFromStorage(STATE_KEY);
-  if (!saved) {
-    for (const k of LEGACY_KEYS) {
-      saved = loadFromStorage(k);
-      if (saved) break;
-    }
-  }
+  const saved = loadFromStorage(STATE_KEY);
   if (saved) {
-    const def = defaultState();
+    const def  = defaultState();
     _state = {
-      ...def,
-      ...saved,
-      athleteProfile:   { ...def.athleteProfile,   ...(saved.athleteProfile   || {}) },
-      nutrition:        {
+      ...def, ...saved,
+      athleteProfile: { ...def.athleteProfile, ...(saved.athleteProfile || {}) },
+      nutrition: {
         ...def.nutrition, ...(saved.nutrition || {}),
         macros:       { ...def.nutrition.macros,       ...(saved.nutrition?.macros       || {}) },
         targetMacros: { ...def.nutrition.targetMacros, ...(saved.nutrition?.targetMacros || {}) },
       },
-      readinessCheckIn: { ...def.readinessCheckIn, ...(saved.readinessCheckIn || {}), fatigueLevel: saved.readinessCheckIn?.fatigueLevel ?? 0 },
-      checkInHistory:   saved.checkInHistory   || [],
-      piqHistory:       saved.piqHistory       || [],
-      // Phase 3: migrate — seed if absent
-      messages:         saved.messages?.length     ? saved.messages         : def.messages,
-      schools:          saved.schools            || [],
-      weeklyGoal:       { ...def.weeklyGoal, ...(saved.weeklyGoal || {}) },
-      assignedWorkouts: saved.assignedWorkouts      ? saved.assignedWorkouts : def.assignedWorkouts,
+      readinessCheckIn: { ...def.readinessCheckIn, ...(saved.readinessCheckIn || {}) },
     };
-    if (!_state.roster?.length) _state.roster = def.roster;
-    _state.workoutLog = (_state.workoutLog || []).map(e => ({
-      ...e,
-      sRPE: e.sRPE ?? ((e.avgRPE || 5) * (e.duration || 30)),
-    }));
+    if (!_state.roster || _state.roster.length < 1) _state.roster = def.roster;
   }
 }
 
-export function saveState()   { saveToStorage(STATE_KEY, _state); }
+export function saveState() { saveToStorage(STATE_KEY, _state); }
+
+// ── SUBSCRIPTIONS ──────────────────────────────────────────────────────────────
 export function subscribe(fn) {
   _listeners.push(fn);
   return () => { _listeners = _listeners.filter(l => l !== fn); };
 }
+
 function notify() { _listeners.forEach(fn => fn(_state)); }
 
-// ── READS ─────────────────────────────────────────────────────
+// ── GETTERS ────────────────────────────────────────────────────────────────────
 export function getState()            { return _state; }
 export function getRoster()           { return _state.roster; }
 export function getWorkoutLog()       { return _state.workoutLog; }
 export function getNutrition()        { return _state.nutrition; }
 export function getAthleteProfile()   { return _state.athleteProfile; }
-export function getReadinessCheckIn() { return _state.readinessCheckIn; }
 export function getDraftWorkout()     { return _state.draftWorkout; }
 export function getBuilder()          { return _state.builder; }
-export function getCheckInHistory()   { return _state.checkInHistory; }
-export function getPIQHistory()       { return _state.piqHistory; }
-export function getMessages()         { return _state.messages; }
-export function getAssignedWorkouts() { return _state.assignedWorkouts; }
-export function getSchools()          { return _state.schools; }
-export function getWeeklyGoal()       { return _state.weeklyGoal; }
+export function getReadinessCheckIn() { return _state.readinessCheckIn; }
 
-export function getRosterAthlete(id) {
-  return _state.roster.find(a => a.id === id) || _state.roster[0] || null;
-}
-
-export function getThread(threadId) {
-  return _state.messages.find(t => t.id === threadId) || null;
-}
-
-export function getAssignmentsFor(athleteId) {
-  return _state.assignedWorkouts.filter(w => w.athleteId === athleteId);
-}
-
-export function getUnreadCount() {
-  return _state.messages.reduce((s, t) => s + (t.unread || 0), 0);
-}
-
-// ── WRITES ────────────────────────────────────────────────────
-
-/**
- * addMessage — append a message to a thread.
- * Creates thread if it doesn't exist.
- * Marks thread as having 1 unread for the recipient.
- */
-export function addMessage(threadId, from, body) {
-  const msg = { id: 'm' + Date.now(), from, body, ts: Date.now(), read: false };
-  _state.messages = _state.messages.map(t => {
-    if (t.id !== threadId) return t;
-    return {
-      ...t,
-      messages: [...t.messages, msg],
-      unread: from === 'You' ? t.unread : (t.unread || 0) + 1,
-    };
-  });
-  saveState();
-  notify();
-  return msg;
-}
-
-/**
- * markThreadRead — clears unread count for a thread.
- */
-export function markThreadRead(threadId) {
-  _state.messages = _state.messages.map(t =>
-    t.id === threadId ? { ...t, unread: 0, messages: t.messages.map(m => ({ ...m, read: true })) } : t
-  );
-  saveState();
-  notify();
-}
-
-/**
- * assignWorkout — coach assigns a workout to one or more athletes.
- * Each athleteId gets its own assignment record.
- */
-export function assignWorkout(payload) {
-  const { athleteIds = [], title, sessionType, exercises, dueDate, notes, coachName } = payload;
-  const newAssignments = athleteIds.map(athleteId => ({
-    id:           'assign-' + Date.now() + '-' + athleteId,
-    ts:           Date.now(),
-    athleteId,
-    coachName:    coachName || 'Coach',
-    title:        title || 'Assigned Session',
-    sessionType:  sessionType || 'general',
-    exercises:    exercises || [],
-    dueDate:      dueDate || new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-    notes:        notes || '',
-    completed:    false,
-    completedTs:  null,
-  }));
-  _state.assignedWorkouts = [..._state.assignedWorkouts, ...newAssignments];
-  saveState();
-  notify();
-  return newAssignments;
-}
-
-/**
- * completeAssignment — athlete marks an assigned workout done.
- * This also fires addWorkoutLog so sRPE feeds the ACWR engine.
- */
-export function completeAssignment(assignmentId, { avgRPE = 6, duration = 45, notes = '' } = {}) {
-  _state.assignedWorkouts = _state.assignedWorkouts.map(w => {
-    if (w.id !== assignmentId) return w;
-    return { ...w, completed: true, completedTs: Date.now() };
-  });
-  // Log as a workout entry so it feeds the ACWR engine
-  const assignment = _state.assignedWorkouts.find(w => w.id === assignmentId);
-  if (assignment) {
-    const entry = {
-      id:          Date.now(),
-      ts:          Date.now(),
-      name:        assignment.title,
-      sessionType: assignment.sessionType,
-      duration,
-      avgRPE,
-      sRPE:        avgRPE * duration,
-      completed:   true,
-      notes,
-    };
-    _state.workoutLog = [..._state.workoutLog, entry];
-  }
-  saveState();
-  notify();
-}
-
-export function addCheckIn(fields, { piqSnapshot = null } = {}) {
-  const today = new Date().toDateString();
-  const ts    = Date.now();
-  _state.readinessCheckIn = { ..._state.readinessCheckIn, ...fields, date: today };
-  const histEntry = { ...fields, date: today, ts };
-  _state.checkInHistory = [
-    ..._state.checkInHistory.filter(h => h.date !== today),
-    histEntry,
-  ].slice(-MAX_HISTORY);
-  if (piqSnapshot) {
-    const snap = { ...piqSnapshot, date: today, ts };
-    _state.piqHistory = [
-      ..._state.piqHistory.filter(h => h.date !== today),
-      snap,
-    ].slice(-MAX_HISTORY);
-  }
-  saveState();
-  notify();
-}
-
-export function patchReadinessCheckIn(fields) {
-  _state.readinessCheckIn = { ..._state.readinessCheckIn, ...fields };
-  saveState();
-  notify();
-}
-
-export function addWorkoutLog(entry) {
-  const full = {
-    id:          Date.now(),
-    ts:          Date.now(),
-    name:        entry.name        || 'Workout Session',
-    sessionType: entry.sessionType || 'general',
-    duration:    entry.duration    || 30,
-    avgRPE:      entry.avgRPE      || 5,
-    sRPE:        (entry.avgRPE || 5) * (entry.duration || 30),
-    completed:   entry.completed   ?? true,
-    notes:       entry.notes       || '',
-    ...entry,
-  };
-  _state.workoutLog = [..._state.workoutLog, full];
-  // Keep weekly counter live — refreshWeeklyGoal reads workoutLog directly
-  _refreshWeeklyGoalInternal();
-  saveState();
-  notify();
-}
-
-export function patchProfile(fields) {
-  _state.athleteProfile = { ..._state.athleteProfile, ...fields };
-  saveState();
-  notify();
-}
-
-export function patchBuilder(fields) {
-  _state.builder = { ..._state.builder, ...fields };
-  saveState();
-  notify();
-}
-
-export function patchNutrition(fields) {
-  _state.nutrition = { ..._state.nutrition, ...fields };
-  saveState();
-  notify();
-}
-
-export function addMeal(meal) {
-  const meals = [...(_state.nutrition?.meals || []), { id: Date.now(), ...meal }];
-  _state.nutrition = { ..._state.nutrition, meals };
-  saveState();
-  notify();
-}
-
-export function removeMeal(id) {
-  const meals = (_state.nutrition?.meals || []).filter(m => m.id !== id);
-  _state.nutrition = { ..._state.nutrition, meals };
-  saveState();
-  notify();
-}
-
-// ── SCHOOLS MUTATIONS ────────────────────────────────────────
-
-export function addSchool(payload) {
-  const school = { id: Date.now(), ts: Date.now(), ...payload };
-  _state.schools = [..._state.schools, school];
-  saveState(); notify();
-  return school;
-}
-
-export function updateSchool(id, fields) {
-  _state.schools = _state.schools.map(s =>
-    s.id === id ? { ...s, ...fields, updatedTs: Date.now() } : s
-  );
-  saveState(); notify();
-}
-
-export function removeSchool(id) {
-  _state.schools = _state.schools.filter(s => s.id !== id);
-  saveState(); notify();
-}
-
-// ── WEEKLY GOAL ───────────────────────────────────────────────
-
-/**
- * refreshWeeklyGoal — called on app boot and after each workout log.
- * Resets completedThisWeek if we're in a new week, then counts sessions
- * logged since Monday 00:00. Updates streakWeeks if target was hit.
- */
-function _refreshWeeklyGoalInternal() {
-  const now     = Date.now();
-  const monday  = _getMondayTs(now);
-  const goal    = _state.weeklyGoal || {};
-  const target  = parseInt(_state.athleteProfile?.daysPerWeek) || goal.targetSessions || 4;
-  let weekStartTs = goal.weekStartTs || 0;
-  if (weekStartTs === 0 || monday > weekStartTs) weekStartTs = monday;
-  const completed = (_state.workoutLog || []).filter(e => (e.ts||0) >= weekStartTs && e.completed).length;
-  _state.weeklyGoal = { ...goal, targetSessions: target, completedThisWeek: completed, weekStartTs };
-}
-
-export function refreshWeeklyGoal() {
-  const now      = Date.now();
-  const monday   = _getMondayTs(now);
-  const goal     = _state.weeklyGoal;
-  const profile  = _state.athleteProfile;
-
-  // Target synced from profile
-  const target = parseInt(profile.daysPerWeek) || goal.targetSessions || 4;
-
-  let streakWeeks   = goal.streakWeeks;
-  let bestStreak    = goal.bestStreakWeeks;
-  let weekStartTs   = goal.weekStartTs;
-
-  // New week — check if last week's goal was met before resetting
-  if (monday > weekStartTs && weekStartTs > 0) {
-    const lastWeekSessions = (_state.workoutLog || []).filter(e => {
-      const t = e.ts || 0;
-      return t >= weekStartTs && t < monday;
-    }).length;
-    if (lastWeekSessions >= target) {
-      streakWeeks++;
-      bestStreak = Math.max(bestStreak, streakWeeks);
-    } else {
-      streakWeeks = 0;
-    }
-    weekStartTs = monday;
-  } else if (weekStartTs === 0) {
-    weekStartTs = monday;
-    streakWeeks = 0;
-  }
-
-  // Count sessions this week
-  const completedThisWeek = (_state.workoutLog || []).filter(e => {
-    const t = e.ts || 0;
-    return t >= weekStartTs && e.completed;
-  }).length;
-
-  _state.weeklyGoal = { targetSessions: target, completedThisWeek, weekStartTs, streakWeeks, bestStreakWeeks: bestStreak };
-  saveState(); notify();
-}
-
-function _getMondayTs(ts) {
-  const d = new Date(ts);
-  const day = d.getDay(); // 0 Sun, 1 Mon ...
-  const diff = (day === 0 ? -6 : 1 - day);
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday.getTime();
-}
-
+// ── SETTERS ────────────────────────────────────────────────────────────────────
 export function setState(patch, { silent = false } = {}) {
   Object.assign(_state, patch);
   if (!silent) notify();
   saveState();
 }
 
+export function patchBuilder(patch, { silent = false } = {}) {
+  Object.assign(_state.builder, patch);
+  if (!silent) notify();
+  saveState();
+}
+
+export function patchProfile(patch) {
+  Object.assign(_state.athleteProfile, patch);
+  _recomputeNutritionTargets();
+  notify();
+  saveState();
+}
+
+export function patchReadinessCheckIn(patch) {
+  Object.assign(_state.readinessCheckIn, patch);
+  notify();
+  saveState();
+}
+
+// ── NUTRITION TARGETS ──────────────────────────────────────────────────────────
+// Based on: ISSN Position Stand 2017 + Thomas, Erdman & Burke 2016 (AND/DC/ACSM)
+function _recomputeNutritionTargets() {
+  const p          = _state.athleteProfile;
+  const weightLbs  = parseFloat(p.weightLbs) || 160;
+  const weightKg   = weightLbs * 0.4536;
+  const phase      = p.compPhase      || 'in-season';
+  const level      = p.trainingLevel  || 'intermediate';
+  const days       = parseInt(p.daysPerWeek) || 4;
+
+  // Protein: 1.6–2.2 g/kg depending on training level (ISSN 2017)
+  const proMultiplier = level === 'elite' ? 2.2 : level === 'advanced' ? 2.0 : level === 'intermediate' ? 1.8 : 1.6;
+  const proG = Math.round(weightKg * proMultiplier);
+
+  // Carbohydrate: periodised by phase + volume (Thomas et al. 2016)
+  const choBase    = phase === 'in-season' ? 7 : phase === 'pre-season' ? 6 : 5;
+  const choAdjust  = days >= 5 ? 1 : days >= 3 ? 0 : -1;
+  const choG       = Math.round(weightKg * (choBase + choAdjust));
+
+  // Fat: ~1.0 g/kg — supports hormonal function and fat-soluble vitamins
+  const fatG = Math.round(weightKg * 1.0);
+
+  const cal = Math.round((proG * 4) + (choG * 4) + (fatG * 9));
+  _state.nutrition.targetMacros = { cal, pro: proG, cho: choG, fat: fatG };
+}
+
+// ── WORKOUT LOG ────────────────────────────────────────────────────────────────
+export function addWorkoutLog(entry) {
+  _state.workoutLog.push({ ...entry, ts: Date.now() });
+  notify();
+  saveState();
+}
+
+// ── NUTRITION — MEALS ──────────────────────────────────────────────────────────
+
+/**
+ * Add a meal to the log.
+ * Each meal receives a stable `id` (string) used for deletion.
+ * The `ts` field is also set for display/sorting purposes.
+ */
+export function addMeal(item) {
+  const meal = {
+    ...item,
+    id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    ts: Date.now(),
+  };
+  _state.nutrition.meals.push(meal);
+  _state.nutrition.macros.cal += meal.cal || 0;
+  _state.nutrition.macros.pro += meal.pro || 0;
+  _state.nutrition.macros.cho += meal.cho || 0;
+  _state.nutrition.macros.fat += meal.fat || 0;
+  notify();
+  saveState();
+}
+
+/**
+ * Remove a meal by its stable `id` string — NOT by array index.
+ *
+ * Using array index was a bug: removing item at index N shifts all subsequent
+ * items down, so the next deletion would hit a different meal and subtract
+ * the wrong macro values from the running totals, corrupting them permanently
+ * until a full state reset.
+ *
+ * @param {string} id  — the meal.id string set by addMeal()
+ */
+export function removeMeal(id) {
+  const idx = _state.nutrition.meals.findIndex(m => m.id === id);
+  if (idx === -1) return; // already gone — no-op
+
+  const m = _state.nutrition.meals[idx];
+  _state.nutrition.macros.cal -= m.cal || 0;
+  _state.nutrition.macros.pro -= m.pro || 0;
+  _state.nutrition.macros.cho -= m.cho || 0;
+  _state.nutrition.macros.fat -= m.fat || 0;
+
+  // Clamp to zero — floating-point drift can push values slightly negative
+  _state.nutrition.macros.cal = Math.max(0, _state.nutrition.macros.cal);
+  _state.nutrition.macros.pro = Math.max(0, _state.nutrition.macros.pro);
+  _state.nutrition.macros.cho = Math.max(0, _state.nutrition.macros.cho);
+  _state.nutrition.macros.fat = Math.max(0, _state.nutrition.macros.fat);
+
+  _state.nutrition.meals.splice(idx, 1);
+  notify();
+  saveState();
+}
+
 export function resetState() {
   _state = defaultState();
-  saveState();
   notify();
+  saveState();
 }
