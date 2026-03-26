@@ -1,16 +1,28 @@
 /**
- * PerformanceIQ Auth  (remediated)
+ * PerformanceIQ Auth  (remediated + assertNotDemo added)
  *
  * Changes from prior version:
- *   1. Non-demo sign-ins now derive a stable, deterministic user ID from the
- *      email address instead of Date.now(). Previously every sign-in created
- *      a new ID, orphaning all state saved under the prior session.
- *   2. signUp() also uses the stable ID derivation for consistency.
- *   3. All other behaviour (demo shortcut, 7-day session, role assignment) is
- *      unchanged.
+ *   1. assertNotDemo() added — required by storage.js guardedSaveToStorage()
+ *      and guardedRemoveFromStorage(). Was referenced but never implemented,
+ *      causing a hard SyntaxError crash on app load.
+ *
+ *   2. isDemo() helper exported — returns true when the active session
+ *      belongs to one of the fixed demo accounts.
+ *
+ *   3. Stable deterministic user ID from email hash (from prior remediation).
+ *      Non-demo sign-ins no longer create a new ID on every login.
+ *
+ * assertNotDemo() contract:
+ *   - Returns true  → caller may proceed with the write/delete
+ *   - Returns false → user is in demo mode; shows a toast and blocks the op
+ *   - Demo mode = session user ID is one of the 5 fixed demo IDs
  */
 
 const SESSION_KEY = 'piq_session_v2';
+
+// ── DEMO USER IDs ──────────────────────────────────────────────────────────────
+// Checked at runtime by assertNotDemo() — do not add real user IDs here.
+const DEMO_IDS = new Set(['u_coach', 'u_player', 'u_parent', 'u_admin', 'u_solo']);
 
 // ── DEMO USERS ─────────────────────────────────────────────────────────────────
 const DEMO_USERS = {
@@ -39,10 +51,8 @@ function saveSession(s) {
 
 /**
  * Derive a stable, deterministic user ID from an email address.
- * Uses a simple djb2-style hash — not cryptographically secure, but
- * collision-resistant enough for a demo/local-storage context and,
- * crucially, always produces the same ID for the same email so
- * returning users retain their persisted state.
+ * djb2-style hash — always produces the same ID for the same email
+ * so returning users retain their persisted state across sessions.
  */
 function stableIdFromEmail(email) {
   let hash = 5381;
@@ -53,23 +63,56 @@ function stableIdFromEmail(email) {
   return 'u_' + hash.toString(36);
 }
 
-// ── PUBLIC ─────────────────────────────────────────────────────────────────────
-export function initAuth()       { loadSession(); }
-export function getSession()     { return _session; }
-export function isAuthenticated(){ return !!_session; }
-export function getCurrentRole() { return _session?.role || null; }
-export function getCurrentUser() { return _session?.user || null; }
+// ── PUBLIC AUTH ────────────────────────────────────────────────────────────────
+export function initAuth()        { loadSession(); }
+export function getSession()      { return _session; }
+export function isAuthenticated() { return !!_session; }
+export function getCurrentRole()  { return _session?.role || null; }
+export function getCurrentUser()  { return _session?.user || null; }
+
+/** Returns true when the active session is one of the 5 demo accounts. */
+export function isDemo() {
+  return !!(_session?.user?.id && DEMO_IDS.has(_session.user.id));
+}
+
+/**
+ * assertNotDemo — gate function called by storage.js guarded helpers.
+ *
+ * Returns true  if the current session is a real (non-demo) user — caller
+ *               may proceed with the localStorage write or delete.
+ * Returns false if the session is a demo account — shows a toast and
+ *               signals the caller to abort the operation.
+ *
+ * Uses a dynamic import for toast() so there is no circular dependency
+ * at boot time (auth.js loads before the component layer is ready).
+ *
+ * @param {string} [message]  Optional custom toast message for context.
+ * @returns {boolean}
+ */
+export function assertNotDemo(message) {
+  if (!isDemo()) return true;
+
+  const msg = message || 'Create a free account to save your data.';
+
+  // Lazy-load toast to avoid circular import at boot — fire-and-forget
+  import('../components/toast.js')
+    .then(m => m.toast(msg, 'warning'))
+    .catch(() => console.warn('[PIQ demo guard]', msg));
+
+  return false;
+}
+
+// ── SIGN IN / SIGN UP ──────────────────────────────────────────────────────────
 
 /**
  * Sign in.
- *   - Demo addresses: fixed user objects, any password accepted.
- *   - All other valid emails: stable deterministic ID derived from email,
- *     role from roleHint (defaults to 'solo').
+ *   - Demo addresses (x@demo.com): fixed user objects, any password accepted.
+ *   - All other valid emails: stable deterministic ID derived from email hash
+ *     so returning users keep their persisted state across sessions.
  */
 export async function signIn(email, password, roleHint) {
   email = email.trim().toLowerCase();
 
-  // Demo shortcut
   const demo = DEMO_USERS[email];
   if (demo) {
     const session = { user: demo, role: demo.role, expiresAt: Date.now() + 86400000 * 7 };
@@ -77,7 +120,6 @@ export async function signIn(email, password, roleHint) {
     return { ok: true, session };
   }
 
-  // Any valid email — stable ID so returning users keep their data
   if (email && email.includes('@')) {
     const namePart = email.split('@')[0];
     const name     = namePart.split(/[._]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -105,7 +147,6 @@ export async function signUp(email, password, name, role) {
 
 export function signOut() { saveSession(null); }
 
-/** Update role after pick-role screen */
 export function setRole(role) {
   if (!_session) return;
   _session.role      = role;
@@ -113,14 +154,15 @@ export function setRole(role) {
   saveSession(_session);
 }
 
-/** Update user profile fields */
 export function updateUser(fields) {
   if (!_session) return;
   Object.assign(_session.user, fields);
   saveSession(_session);
 }
 
-export function needsOnboarding() { return _session?.user && !_session.user.onboardingDone; }
+export function needsOnboarding() {
+  return _session?.user && !_session.user.onboardingDone;
+}
 
 export function markOnboardingDone(profile) {
   if (!_session) return;
