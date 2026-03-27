@@ -1,22 +1,14 @@
 /**
- * PerformanceIQ State  (remediated + addCheckIn added)
+ * PerformanceIQ State  (remediated — full set of exports)
  *
- * Changes from prior version:
- *   1. addCheckIn() added — imported by solo/todayWorkout.js and other
- *      views to record a completed wellness check-in to the workoutLog.
- *      Was imported but never exported, causing a hard crash on load.
+ * Exports added in this pass:
+ *   completeAssignment(id) — marks a workoutLog entry as completed.
+ *     Imported by solo/todayWorkout.js "Complete Workout" button handler.
  *
- *   2. removeMeal() uses stable ID lookup (not array index) — from prior pass.
- *
- *   3. addMeal() stamps each meal with a unique `id` string — from prior pass.
- *
- * addCheckIn() contract:
- *   Accepts a check-in object and appends it to workoutLog with:
- *     ts        — timestamp (Date.now())
- *     type      — 'checkin'
- *     completed — true (check-ins are always complete when submitted)
- *   Also patches readinessCheckIn so today's readiness score updates
- *   immediately without requiring a separate patchReadinessCheckIn() call.
+ * Previously added:
+ *   addCheckIn(checkIn)    — records a wellness check-in
+ *   addMeal(item)          — id-stamped meal entry
+ *   removeMeal(id)         — id-based deletion (not index-based)
  */
 
 import { loadFromStorage, saveToStorage } from '../services/storage.js';
@@ -131,7 +123,6 @@ export function patchReadinessCheckIn(patch) {
 }
 
 // ── NUTRITION TARGETS ──────────────────────────────────────────────────────────
-// Based on: ISSN Position Stand 2017 + Thomas, Erdman & Burke 2016
 function _recomputeNutritionTargets() {
   const p         = _state.athleteProfile;
   const weightLbs = parseFloat(p.weightLbs) || 160;
@@ -142,13 +133,11 @@ function _recomputeNutritionTargets() {
 
   const proMultiplier = level === 'elite' ? 2.2 : level === 'advanced' ? 2.0 : level === 'intermediate' ? 1.8 : 1.6;
   const proG = Math.round(weightKg * proMultiplier);
-
   const choBase   = phase === 'in-season' ? 7 : phase === 'pre-season' ? 6 : 5;
   const choAdjust = days >= 5 ? 1 : days >= 3 ? 0 : -1;
   const choG      = Math.round(weightKg * (choBase + choAdjust));
-
-  const fatG = Math.round(weightKg * 1.0);
-  const cal  = Math.round((proG * 4) + (choG * 4) + (fatG * 9));
+  const fatG      = Math.round(weightKg * 1.0);
+  const cal       = Math.round((proG * 4) + (choG * 4) + (fatG * 9));
 
   _state.nutrition.targetMacros = { cal, pro: proG, cho: choG, fat: fatG };
 }
@@ -160,34 +149,75 @@ export function addWorkoutLog(entry) {
   saveState();
 }
 
+// ── COMPLETE ASSIGNMENT ────────────────────────────────────────────────────────
+/**
+ * completeAssignment — marks a workout log entry as completed.
+ *
+ * Imported by solo/todayWorkout.js (and potentially other views) when the
+ * athlete taps "Complete Workout". Was imported but never exported, causing
+ * a hard crash on solo/today load.
+ *
+ * Lookup strategy:
+ *   1. If `id` is provided, find the entry with matching `.id` field.
+ *   2. If no id, find the most recent entry for today that isn't already complete.
+ *   3. If nothing matches, append a new completed entry so the action always
+ *      registers (prevents silent no-ops from confusing the athlete).
+ *
+ * @param {string|null} id   Optional workoutLog entry id to mark complete.
+ * @param {object} [meta]    Optional extra fields to merge (avgRPE, duration, notes…)
+ */
+export function completeAssignment(id = null, meta = {}) {
+  const today = new Date().toDateString();
+  let idx = -1;
+
+  if (id) {
+    idx = _state.workoutLog.findIndex(w => w.id === id);
+  }
+
+  // Fallback: find today's most recent incomplete non-checkin entry
+  if (idx === -1) {
+    idx = _state.workoutLog.findLastIndex(w =>
+      w.type !== 'checkin' &&
+      w.completed !== true &&
+      new Date(w.ts).toDateString() === today
+    );
+  }
+
+  if (idx !== -1) {
+    _state.workoutLog[idx] = {
+      ..._state.workoutLog[idx],
+      ...meta,
+      completed:   true,
+      completedAt: Date.now(),
+    };
+  } else {
+    // No matching entry — append a completed session so streak/progress counts it
+    _state.workoutLog.push({
+      id:          'w_' + Date.now(),
+      type:        'workout',
+      completed:   true,
+      completedAt: Date.now(),
+      ts:          Date.now(),
+      avgRPE:      meta.avgRPE || 6,
+      duration:    meta.duration || 45,
+      ...meta,
+    });
+  }
+
+  notify();
+  saveState();
+}
+
 // ── CHECK-IN ───────────────────────────────────────────────────────────────────
 /**
  * addCheckIn — records a wellness/readiness check-in.
- *
- * Imported by solo/todayWorkout.js and other views that let the athlete
- * submit their daily check-in from outside the dedicated readiness view.
- *
- * What it does:
- *   1. Patches readinessCheckIn so today's readiness score updates immediately
- *      (same effect as patchReadinessCheckIn, but driven from a full object).
- *   2. Appends a 'checkin' entry to workoutLog so getStreak() and
- *      getWeeklyProgress() count active check-in days.
- *   3. Persists and notifies subscribers.
- *
- * @param {object} checkIn  Check-in fields: sleepHours, sleepQuality,
- *   energyLevel, soreness, mood, stressLevel, hydration, notes, mindsetScore
+ * Patches readinessCheckIn, athleteProfile wellness fields, and workoutLog.
  */
 export function addCheckIn(checkIn) {
   const today = new Date().toDateString();
 
-  // 1. Update the readiness check-in state (used by scoring engines)
-  Object.assign(_state.readinessCheckIn, {
-    ...checkIn,
-    date: today,
-  });
+  Object.assign(_state.readinessCheckIn, { ...checkIn, date: today });
 
-  // 2. Patch mindsetScore and hydrationOz into athleteProfile so
-  //    getMindsetScore() / getHydrationOz() return updated values immediately
   if (checkIn.mindsetScore !== undefined) {
     _state.athleteProfile.mindsetScore = checkIn.mindsetScore;
   }
@@ -195,8 +225,7 @@ export function addCheckIn(checkIn) {
     _state.athleteProfile.hydrationOz = checkIn.hydration;
   }
 
-  // 3. Append to workoutLog as a completed check-in entry so streak counts it.
-  //    Deduplicate: remove any existing check-in for today first.
+  // Deduplicate — remove existing check-in for today before appending
   _state.workoutLog = _state.workoutLog.filter(w =>
     !(w.type === 'checkin' && new Date(w.ts).toDateString() === today)
   );
@@ -204,8 +233,8 @@ export function addCheckIn(checkIn) {
     type:      'checkin',
     completed: true,
     ts:        Date.now(),
-    avgRPE:    checkIn.energyLevel || 5,   // proxy for load in ACWR calcs
-    duration:  15,                          // check-in = ~15 min equivalent
+    avgRPE:    checkIn.energyLevel || 5,
+    duration:  15,
     ...checkIn,
   });
 
@@ -214,9 +243,6 @@ export function addCheckIn(checkIn) {
 }
 
 // ── NUTRITION — MEALS ──────────────────────────────────────────────────────────
-/**
- * Add a meal. Each meal receives a stable `id` string used for deletion.
- */
 export function addMeal(item) {
   const meal = {
     ...item,
@@ -233,26 +259,16 @@ export function addMeal(item) {
 }
 
 /**
- * Remove a meal by stable `id` string — NOT by array index.
- * Using array index was a bug: splicing shifts subsequent indices,
- * causing the next deletion to hit the wrong meal and corrupt macros.
+ * removeMeal — remove by stable id string, not array index.
  */
 export function removeMeal(id) {
   const idx = _state.nutrition.meals.findIndex(m => m.id === id);
   if (idx === -1) return;
-
   const m = _state.nutrition.meals[idx];
-  _state.nutrition.macros.cal -= m.cal || 0;
-  _state.nutrition.macros.pro -= m.pro || 0;
-  _state.nutrition.macros.cho -= m.cho || 0;
-  _state.nutrition.macros.fat -= m.fat || 0;
-
-  // Clamp to zero — floating-point drift can push values slightly negative
-  _state.nutrition.macros.cal = Math.max(0, _state.nutrition.macros.cal);
-  _state.nutrition.macros.pro = Math.max(0, _state.nutrition.macros.pro);
-  _state.nutrition.macros.cho = Math.max(0, _state.nutrition.macros.cho);
-  _state.nutrition.macros.fat = Math.max(0, _state.nutrition.macros.fat);
-
+  _state.nutrition.macros.cal = Math.max(0, _state.nutrition.macros.cal - (m.cal || 0));
+  _state.nutrition.macros.pro = Math.max(0, _state.nutrition.macros.pro - (m.pro || 0));
+  _state.nutrition.macros.cho = Math.max(0, _state.nutrition.macros.cho - (m.cho || 0));
+  _state.nutrition.macros.fat = Math.max(0, _state.nutrition.macros.fat - (m.fat || 0));
   _state.nutrition.meals.splice(idx, 1);
   notify();
   saveState();
