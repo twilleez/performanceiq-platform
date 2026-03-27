@@ -1,30 +1,26 @@
 /**
  * PerformanceIQ Selectors  (remediated — v2 → Elite bridge)
  *
- * This file is the import target for most existing view files.
- * It re-exports all scoring/readiness functions from selectorsElite.js
- * so every consumer gets Elite v3 logic regardless of which file they import.
+ * All scoring/readiness re-exported from selectorsElite.js.
+ * This file adds missing exports that deployed view files import
+ * but were never implemented. Each pass adds the next batch.
  *
- * Exported functions added in this remediation pass:
+ * Exports added in this pass:
+ *   getACWRSeries()      — 28-day ACWR time series for chart views
+ *                          (solo/progress, solo/score)
+ *   getNutritionResult() — composite nutrition summary for solo/nutrition
  *
- *   getMindsetScore()    — athleteProfile.mindsetScore (0–10)
- *   getHydrationOz()     — athleteProfile.hydrationOz (fl oz)
- *   getPliabilityDone()  — athleteProfile.pliabilityDone (bool)
- *   getWeeklyProgress()  — { completed, target, pct, onTrack, daysLeft }
- *                          Used by solo/home.js weekly ring widget.
- *
- * getWeeklyProgress() shape (all fields the deployed view uses):
- *   completed  {number}  sessions logged this calendar week (Mon–Sun)
- *   target     {number}  athlete's daysPerWeek goal from profile
- *   pct        {number}  0–100 completion percentage
- *   onTrack    {boolean} true when pace will hit target by week end
- *   daysLeft   {number}  calendar days remaining in the week (0–6)
+ * Previously added:
+ *   getWeeklyProgress()  — weekly session ring widget
+ *   getMindsetScore()    — athleteProfile.mindsetScore
+ *   getHydrationOz()     — athleteProfile.hydrationOz
+ *   getPliabilityDone()  — athleteProfile.pliabilityDone
  */
 
 import { getState }       from './state.js';
 import { getCurrentRole } from '../core/auth.js';
 
-// ── RE-EXPORTS FROM ELITE — single source of truth for scoring ────────────────
+// ── RE-EXPORTS FROM ELITE ─────────────────────────────────────────────────────
 export {
   getScoreBreakdownElite  as getScoreBreakdown,
   getPIQScore,
@@ -38,12 +34,7 @@ export {
   getMacroProgress,
 } from './selectorsElite.js';
 
-// ── STREAK ─────────────────────────────────────────────────────────────────────
-/**
- * Consecutive training streak in days.
- * Excludes entries where completed === false (abandoned sessions).
- * Legacy entries without the completed field still count.
- */
+// ── STREAK ────────────────────────────────────────────────────────────────────
 export function getStreak() {
   const log  = getState().workoutLog;
   if (!log.length) return 0;
@@ -62,90 +53,195 @@ export function getStreak() {
   return streak;
 }
 
-// ── WORKOUT COUNT ──────────────────────────────────────────────────────────────
 export function getWorkoutCount() {
   return getState().workoutLog.length;
 }
 
-// ── MINDSET / DAILY WELLNESS SELECTORS ────────────────────────────────────────
+// ── MINDSET / DAILY WELLNESS ──────────────────────────────────────────────────
+export function getMindsetScore()   { return getState().athleteProfile?.mindsetScore  ?? 0; }
+export function getHydrationOz()    { return getState().athleteProfile?.hydrationOz   ?? 0; }
+export function getPliabilityDone() { return getState().athleteProfile?.pliabilityDone ?? false; }
 
-/**
- * Mindset score for today (0–10 scale).
- * Set by the athlete during their daily check-in.
- * Returns 0 when not yet recorded.
- */
-export function getMindsetScore() {
-  return getState().athleteProfile?.mindsetScore ?? 0;
-}
-
-/**
- * Hydration logged today in fluid ounces.
- * Returns 0 when not yet set.
- */
-export function getHydrationOz() {
-  return getState().athleteProfile?.hydrationOz ?? 0;
-}
-
-/**
- * Whether pliability/mobility work has been marked done today.
- * Returns false when not yet set.
- */
-export function getPliabilityDone() {
-  return getState().athleteProfile?.pliabilityDone ?? false;
-}
-
-// ── WEEKLY PROGRESS ────────────────────────────────────────────────────────────
+// ── WEEKLY PROGRESS ───────────────────────────────────────────────────────────
 /**
  * Weekly training progress against the athlete's session target.
- *
- * Used by the solo/home.js ring widget. Returns all fields the view uses:
- *   completed  — sessions logged this Mon–Sun calendar week
- *   target     — daysPerWeek goal from athleteProfile (default 4)
- *   pct        — completion percentage clamped 0–100
- *   onTrack    — true when current pace will reach target by Sunday
- *   daysLeft   — calendar days remaining until end of week (Sun = 0)
- *
- * "Completed" counts only sessions not explicitly marked incomplete,
- * consistent with getStreak() behaviour.
+ * Returns: { completed, target, pct, onTrack, daysLeft }
  */
 export function getWeeklyProgress() {
   const log     = getState().workoutLog;
   const profile = getState().athleteProfile;
   const target  = Math.max(1, parseInt(profile?.daysPerWeek) || 4);
 
-  // Monday-anchored week boundaries
   const now       = new Date();
-  const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon … 6 = Sat
+  const dayOfWeek = now.getDay();
   const monday    = new Date(now);
-  // Shift: Sunday (0) → go back 6 days; Mon (1) → 0; Tue (2) → 1 …
   monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
   monday.setHours(0, 0, 0, 0);
-
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   sunday.setHours(23, 59, 59, 999);
 
-  // Count completed sessions this week
   const completed = log.filter(w =>
     w.completed !== false &&
     w.ts >= monday.getTime() &&
     w.ts <= sunday.getTime()
   ).length;
 
-  const pct = Math.min(100, Math.round((completed / target) * 100));
-
-  // Days left until Sunday (inclusive of today if not yet Sunday)
+  const pct      = Math.min(100, Math.round((completed / target) * 100));
   const daysLeft = Math.max(0, 6 - ((dayOfWeek + 6) % 7));
-
-  // On track: if we complete the same number of sessions per remaining day,
-  // will we hit the target?
   const daysElapsed = 7 - daysLeft;
-  const projectedTotal = daysElapsed > 0
-    ? Math.round((completed / daysElapsed) * 7)
-    : 0;
-  const onTrack = projectedTotal >= target || completed >= target;
+  const projected   = daysElapsed > 0 ? Math.round((completed / daysElapsed) * 7) : 0;
+  const onTrack     = projected >= target || completed >= target;
 
   return { completed, target, pct, onTrack, daysLeft };
+}
+
+// ── ACWR SERIES ───────────────────────────────────────────────────────────────
+/**
+ * Returns a 28-day rolling ACWR (Acute:Chronic Workload Ratio) time series
+ * for use in progress and score charts.
+ *
+ * Each data point: { date: string, acwr: number, zone: string, load: number }
+ *   date  — 'Mon DD' label
+ *   acwr  — ratio value (acute 7-day EWMA / chronic 28-day EWMA)
+ *   zone  — 'sweet-spot' | 'spike' | 'danger' | 'undertraining' | 'no-data'
+ *   load  — sRPE for that day (RPE × duration in hours)
+ *
+ * Algorithm: Gabbett 2016 (BJSM) EWMA approach.
+ *   Acute λ  = 2/(7+1)  = 0.25
+ *   Chronic λ = 2/(28+1) = 0.069
+ *
+ * Returns empty array when fewer than 3 sessions are logged.
+ */
+export function getACWRSeries() {
+  const log = getState().workoutLog;
+  if (log.length < 3) return [];
+
+  const LAMBDA_A = 2 / 8;   // acute 7-day
+  const LAMBDA_C = 2 / 29;  // chronic 28-day
+
+  // Build a daily load map over the last 28 days
+  const now     = Date.now();
+  const DAY_MS  = 86_400_000;
+  const days    = 28;
+
+  // sRPE = RPE × duration (hours) — Foster et al. 2001
+  const sRPE = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
+
+  // Aggregate load per calendar day
+  const dailyLoad = new Array(days).fill(0);
+  log.forEach(w => {
+    const daysAgo = Math.floor((now - w.ts) / DAY_MS);
+    if (daysAgo >= 0 && daysAgo < days) {
+      dailyLoad[days - 1 - daysAgo] += sRPE(w);
+    }
+  });
+
+  // Walk through each day computing EWMA acute and chronic
+  let ewmaA = 0;
+  let ewmaC = 0;
+  const series = [];
+
+  for (let i = 0; i < days; i++) {
+    const load = dailyLoad[i];
+    ewmaA = LAMBDA_A * load + (1 - LAMBDA_A) * ewmaA;
+    ewmaC = LAMBDA_C * load + (1 - LAMBDA_C) * ewmaC;
+
+    const acwr = ewmaC > 0 ? ewmaA / ewmaC : 1.0;
+    const zone =
+      acwr > 1.50 ? 'danger'       :
+      acwr > 1.30 ? 'spike'        :
+      acwr >= 0.80 ? 'sweet-spot'  :
+      acwr >= 0.60 ? 'undertraining' :
+      i < 7       ? 'no-data'      : 'undertraining';
+
+    // Only emit points from day 7 onward (EWMA needs warmup)
+    if (i >= 6) {
+      const d = new Date(now - (days - 1 - i) * DAY_MS);
+      series.push({
+        date: d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
+        acwr: Math.round(acwr * 100) / 100,
+        zone,
+        load: Math.round(load * 10) / 10,
+      });
+    }
+  }
+
+  return series;
+}
+
+// ── NUTRITION RESULT ──────────────────────────────────────────────────────────
+/**
+ * Composite nutrition summary for the nutrition view.
+ *
+ * Returns: {
+ *   targets     — { cal, pro, cho, fat } from profile
+ *   current     — { cal, pro, cho, fat } logged today
+ *   progress    — { cal, pro, cho, fat } each with { current, target, pct }
+ *   hydration   — { oz, target, pct }
+ *   meals       — meal log array
+ *   mealCount   — number of meals logged today
+ *   calRemaining — kcal remaining to target
+ *   proRemaining — protein g remaining
+ *   onTrack     — true when calorie progress >= 40% by midday or >= 70% by evening
+ * }
+ *
+ * Views importing getNutritionResult can destructure exactly what they need.
+ */
+export function getNutritionResult() {
+  const state   = getState();
+  const profile = state.athleteProfile;
+  const nutrition = state.nutrition;
+
+  const targets = (() => {
+    const t = nutrition.targetMacros;
+    if (t && t.cal > 0) return t;
+    return { cal: 2800, pro: 160, cho: 350, fat: 80 };
+  })();
+
+  const current = nutrition.macros || { cal: 0, pro: 0, cho: 0, fat: 0 };
+
+  const pct = k => Math.min(100, current[k] > 0 && targets[k] > 0
+    ? Math.round((current[k] / targets[k]) * 100)
+    : 0);
+
+  const progress = {
+    cal: { current: current.cal, target: targets.cal, pct: pct('cal') },
+    pro: { current: current.pro, target: targets.pro, pct: pct('pro') },
+    cho: { current: current.cho, target: targets.cho, pct: pct('cho') },
+    fat: { current: current.fat, target: targets.fat, pct: pct('fat') },
+  };
+
+  // Hydration: target = bodyweight (lbs) × 0.5 oz, minimum 64 oz
+  const weightLbs  = parseFloat(profile?.weightLbs) || 160;
+  const hydTarget  = Math.max(64, Math.round(weightLbs * 0.5));
+  const hydCurrent = profile?.hydrationOz ?? 0;
+
+  const calRemaining = Math.max(0, targets.cal - current.cal);
+  const proRemaining = Math.max(0, targets.pro - current.pro);
+
+  const hour    = new Date().getHours();
+  const onTrack = hour < 12
+    ? progress.cal.pct >= 30
+    : hour < 17
+      ? progress.cal.pct >= 50
+      : progress.cal.pct >= 70;
+
+  return {
+    targets,
+    current,
+    progress,
+    hydration: {
+      oz:     hydCurrent,
+      target: hydTarget,
+      pct:    Math.min(100, Math.round((hydCurrent / hydTarget) * 100)),
+    },
+    meals:        nutrition.meals || [],
+    mealCount:    (nutrition.meals || []).length,
+    calRemaining,
+    proRemaining,
+    onTrack,
+  };
 }
 
 // ── DASHBOARD CONFIG + NAV ────────────────────────────────────────────────────
