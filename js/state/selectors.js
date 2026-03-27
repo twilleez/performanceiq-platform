@@ -2,11 +2,12 @@
  * PerformanceIQ Selectors  (remediated — full export set)
  *
  * Exports added in this pass:
- *   getReadinessResult()   — composite readiness object for solo/readiness view.
- *                            Includes score, color, ring offset, explanation,
- *                            check-in fields, hasCheckedIn flag, and factor breakdown.
+ *   getCheckInHistory(n) — last N check-in entries from workoutLog,
+ *                          newest-first. Used by solo/progress for
+ *                          historical readiness charting.
  *
- * Previously added:
+ * Previously added (all retained):
+ *   getReadinessResult()   — composite readiness object for readiness view
  *   getACWRSeries()        — 28-day ACWR time series for chart views
  *   getNutritionResult()   — composite nutrition summary
  *   getWeeklyProgress()    — weekly session ring widget
@@ -90,29 +91,60 @@ export function getWeeklyProgress() {
   return { completed, target, pct, onTrack, daysLeft };
 }
 
-// ── READINESS RESULT ──────────────────────────────────────────────────────────
+// ── CHECK-IN HISTORY ──────────────────────────────────────────────────────────
 /**
- * getReadinessResult — composite readiness object for the readiness view.
+ * getCheckInHistory — returns past check-in entries from the workout log.
  *
- * Imported by solo/readiness.js (deployed version). Combines everything the
- * view needs into a single call:
+ * Imported by solo/progress.js for historical readiness charting.
+ * Filters workoutLog to entries where type === 'checkin', sorts newest-first.
  *
- * Returns: {
- *   score        — numeric readiness score 30–99
- *   raw          — same as score (alias for compatibility)
- *   color        — hex color string for the score
- *   ringOffset   — SVG stroke-dashoffset for the readiness ring
- *   explain      — human-readable readiness explanation string
- *   hasCheckedIn — true if today's check-in is complete
- *   checkin      — the current readinessCheckIn state object
- *   trend        — 'improving' | 'stable' | 'declining'
- *   factors      — { sleep, energy, soreness, mood, stress } 0–100 each (when checked in)
- *   label        — 'High' | 'Moderate' | 'Low' | 'Critical'
- *   intensityNote — training intensity recommendation string
- *   acwr         — current acute:chronic workload ratio (number)
- *   acwrZone     — 'sweet-spot' | 'spike' | 'danger' | 'undertraining' | 'no-data'
- * }
+ * Each entry shape (set by addCheckIn in state.js):
+ *   { type: 'checkin', completed: true, ts: number,
+ *     sleepQuality, energyLevel, soreness, mood, stressLevel,
+ *     hydration, mindsetScore, notes, avgRPE, duration }
+ *
+ * Also synthesises a `readiness` score per entry so charts can plot
+ * readiness over time without needing to re-run the full engine per point.
+ *
+ * @param {number} [n=30]  Max entries to return (default: last 30 days)
+ * @returns {Array<object>}
  */
+export function getCheckInHistory(n = 30) {
+  const log = getState().workoutLog;
+
+  const checkins = log
+    .filter(w => w.type === 'checkin')
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, n)
+    .map(w => {
+      // Derive readiness score for each historical entry
+      // (same formula as getReadinessScore with check-in data)
+      let readiness = 72;
+      if (w.sleepQuality > 0) {
+        const sleep    = (w.sleepQuality / 5) * 100;
+        const energy   = ((w.energyLevel  || 3) / 5) * 100;
+        const soreness = ((6 - (w.soreness || 3))   / 5) * 100;
+        const mood     = ((w.mood         || 3) / 5) * 100;
+        const stress   = ((6 - (w.stressLevel || 3)) / 5) * 100;
+        readiness = Math.round(
+          sleep * 0.30 + energy * 0.25 + soreness * 0.20 + mood * 0.15 + stress * 0.10
+        );
+        readiness = Math.max(30, Math.min(99, readiness));
+      }
+
+      const date = new Date(w.ts);
+      return {
+        ...w,
+        readiness,
+        dateLabel: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        dayLabel:  date.toLocaleDateString('en-US', { weekday: 'short' }),
+      };
+    });
+
+  return checkins;
+}
+
+// ── READINESS RESULT ──────────────────────────────────────────────────────────
 export function getReadinessResult() {
   const state   = getState();
   const checkin = state.readinessCheckIn;
@@ -121,8 +153,7 @@ export function getReadinessResult() {
 
   const hasCheckedIn = checkin.date === today && checkin.sleepQuality > 0;
 
-  // Score — use Elite engine for best accuracy
-  let score = 72; // baseline fallback
+  let score = 72;
   let factors = {};
   let trend = 'stable';
 
@@ -142,7 +173,6 @@ export function getReadinessResult() {
     score = Math.max(30, Math.min(99, Math.round(100 - (avgRPE * 4) + (compliance * 0.2))));
   }
 
-  // Trend
   if (log.length >= 7) {
     const now   = Date.now();
     const DAY   = 86_400_000;
@@ -153,24 +183,16 @@ export function getReadinessResult() {
     else if (avg(week1) > avg(week2) + 0.5) trend = 'declining';
   }
 
-  // Color
   const color =
-    score >= 85 ? '#10b981' :
-    score >= 75 ? '#22c955' :
-    score >= 60 ? '#f59e0b' :
-    score >= 45 ? '#f97316' :
-    '#ef4444';
+    score >= 85 ? '#10b981' : score >= 75 ? '#22c955' :
+    score >= 60 ? '#f59e0b' : score >= 45 ? '#f97316' : '#ef4444';
 
-  // Label
   const label =
-    score >= 80 ? 'High' :
-    score >= 60 ? 'Moderate' :
-    score >= 45 ? 'Low' : 'Critical';
+    score >= 80 ? 'High' : score >= 60 ? 'Moderate' :
+    score >= 45 ? 'Low'  : 'Critical';
 
-  // Ring offset (circumference 289)
   const ringOffset = Math.round(((100 - score) / 100) * 289);
 
-  // Explanation
   const explain =
     score >= 90 ? '🟢 Peak readiness. Your body is fully primed — push hard and compete at your best today.' :
     score >= 80 ? '🟢 High readiness. Great sleep and load balance. Train with full intent today.' :
@@ -179,22 +201,18 @@ export function getReadinessResult() {
     score >= 45 ? '🟠 Low readiness. Active recovery day. Pliability, mobility, and technique work only.' :
     '🔴 Critical readiness. Complete rest day. Prioritize sleep and recovery protocols.';
 
-  // Intensity note
   const intensityNote =
     score >= 80 ? 'Full training — execute your planned session.' :
     score >= 60 ? 'Moderate session — reduce volume 15–20%, prioritize quality.' :
     score >= 45 ? 'Active recovery only — mobility and pliability work.' :
     'Complete rest — sleep, nutrition, and recovery only.';
 
-  // ACWR (simplified for result object)
-  const LAMBDA_A = 2 / 8;
-  const LAMBDA_C = 2 / 29;
-  const DAY_MS   = 86_400_000;
-  const now      = Date.now();
-  const sRPE     = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
-  const acute    = log.filter(w => now - w.ts < 7  * DAY_MS).reduce((s, w) => s + sRPE(w), 0);
-  const chronic  = log.filter(w => now - w.ts < 28 * DAY_MS).reduce((s, w) => s + sRPE(w), 0) / 4;
-  const acwr     = chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : 1.0;
+  const DAY_MS = 86_400_000;
+  const now    = Date.now();
+  const sRPE   = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
+  const acute  = log.filter(w => now - w.ts < 7  * DAY_MS).reduce((s, w) => s + sRPE(w), 0);
+  const chronic = log.filter(w => now - w.ts < 28 * DAY_MS).reduce((s, w) => s + sRPE(w), 0) / 4;
+  const acwr   = chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : 1.0;
   const acwrZone =
     log.length < 3  ? 'no-data'       :
     acwr > 1.50     ? 'danger'        :
@@ -203,12 +221,9 @@ export function getReadinessResult() {
     acwr >= 0.60    ? 'undertraining' : 'detraining';
 
   return {
-    score, raw: score,
-    color, ringOffset, explain,
-    hasCheckedIn, checkin,
-    trend, factors, label,
-    intensityNote,
-    acwr, acwrZone,
+    score, raw: score, color, ringOffset, explain,
+    hasCheckedIn, checkin, trend, factors, label,
+    intensityNote, acwr, acwrZone,
   };
 }
 
@@ -227,13 +242,10 @@ export function getACWRSeries() {
   const dailyLoad = new Array(days).fill(0);
   log.forEach(w => {
     const daysAgo = Math.floor((now - w.ts) / DAY_MS);
-    if (daysAgo >= 0 && daysAgo < days) {
-      dailyLoad[days - 1 - daysAgo] += sRPE(w);
-    }
+    if (daysAgo >= 0 && daysAgo < days) dailyLoad[days - 1 - daysAgo] += sRPE(w);
   });
 
-  let ewmaA = 0;
-  let ewmaC = 0;
+  let ewmaA = 0, ewmaC = 0;
   const series = [];
 
   for (let i = 0; i < days; i++) {
