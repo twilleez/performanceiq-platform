@@ -1,20 +1,18 @@
 /**
- * PerformanceIQ Selectors  (remediated — v2 → Elite bridge)
- *
- * All scoring/readiness re-exported from selectorsElite.js.
- * This file adds missing exports that deployed view files import
- * but were never implemented. Each pass adds the next batch.
+ * PerformanceIQ Selectors  (remediated — full export set)
  *
  * Exports added in this pass:
- *   getACWRSeries()      — 28-day ACWR time series for chart views
- *                          (solo/progress, solo/score)
- *   getNutritionResult() — composite nutrition summary for solo/nutrition
+ *   getReadinessResult()   — composite readiness object for solo/readiness view.
+ *                            Includes score, color, ring offset, explanation,
+ *                            check-in fields, hasCheckedIn flag, and factor breakdown.
  *
  * Previously added:
- *   getWeeklyProgress()  — weekly session ring widget
- *   getMindsetScore()    — athleteProfile.mindsetScore
- *   getHydrationOz()     — athleteProfile.hydrationOz
- *   getPliabilityDone()  — athleteProfile.pliabilityDone
+ *   getACWRSeries()        — 28-day ACWR time series for chart views
+ *   getNutritionResult()   — composite nutrition summary
+ *   getWeeklyProgress()    — weekly session ring widget
+ *   getMindsetScore()      — athleteProfile.mindsetScore
+ *   getHydrationOz()       — athleteProfile.hydrationOz
+ *   getPliabilityDone()    — athleteProfile.pliabilityDone
  */
 
 import { getState }       from './state.js';
@@ -63,10 +61,6 @@ export function getHydrationOz()    { return getState().athleteProfile?.hydratio
 export function getPliabilityDone() { return getState().athleteProfile?.pliabilityDone ?? false; }
 
 // ── WEEKLY PROGRESS ───────────────────────────────────────────────────────────
-/**
- * Weekly training progress against the athlete's session target.
- * Returns: { completed, target, pct, onTrack, daysLeft }
- */
 export function getWeeklyProgress() {
   const log     = getState().workoutLog;
   const profile = getState().athleteProfile;
@@ -96,39 +90,140 @@ export function getWeeklyProgress() {
   return { completed, target, pct, onTrack, daysLeft };
 }
 
-// ── ACWR SERIES ───────────────────────────────────────────────────────────────
+// ── READINESS RESULT ──────────────────────────────────────────────────────────
 /**
- * Returns a 28-day rolling ACWR (Acute:Chronic Workload Ratio) time series
- * for use in progress and score charts.
+ * getReadinessResult — composite readiness object for the readiness view.
  *
- * Each data point: { date: string, acwr: number, zone: string, load: number }
- *   date  — 'Mon DD' label
- *   acwr  — ratio value (acute 7-day EWMA / chronic 28-day EWMA)
- *   zone  — 'sweet-spot' | 'spike' | 'danger' | 'undertraining' | 'no-data'
- *   load  — sRPE for that day (RPE × duration in hours)
+ * Imported by solo/readiness.js (deployed version). Combines everything the
+ * view needs into a single call:
  *
- * Algorithm: Gabbett 2016 (BJSM) EWMA approach.
- *   Acute λ  = 2/(7+1)  = 0.25
- *   Chronic λ = 2/(28+1) = 0.069
- *
- * Returns empty array when fewer than 3 sessions are logged.
+ * Returns: {
+ *   score        — numeric readiness score 30–99
+ *   raw          — same as score (alias for compatibility)
+ *   color        — hex color string for the score
+ *   ringOffset   — SVG stroke-dashoffset for the readiness ring
+ *   explain      — human-readable readiness explanation string
+ *   hasCheckedIn — true if today's check-in is complete
+ *   checkin      — the current readinessCheckIn state object
+ *   trend        — 'improving' | 'stable' | 'declining'
+ *   factors      — { sleep, energy, soreness, mood, stress } 0–100 each (when checked in)
+ *   label        — 'High' | 'Moderate' | 'Low' | 'Critical'
+ *   intensityNote — training intensity recommendation string
+ *   acwr         — current acute:chronic workload ratio (number)
+ *   acwrZone     — 'sweet-spot' | 'spike' | 'danger' | 'undertraining' | 'no-data'
+ * }
  */
+export function getReadinessResult() {
+  const state   = getState();
+  const checkin = state.readinessCheckIn;
+  const log     = state.workoutLog;
+  const today   = new Date().toDateString();
+
+  const hasCheckedIn = checkin.date === today && checkin.sleepQuality > 0;
+
+  // Score — use Elite engine for best accuracy
+  let score = 72; // baseline fallback
+  let factors = {};
+  let trend = 'stable';
+
+  if (hasCheckedIn) {
+    const sleep    = (checkin.sleepQuality / 5) * 100;
+    const energy   = (checkin.energyLevel  / 5) * 100;
+    const soreness = ((6 - checkin.soreness)    / 5) * 100;
+    const mood     = (checkin.mood         / 5) * 100;
+    const stress   = ((6 - checkin.stressLevel) / 5) * 100;
+    score = Math.round(sleep * 0.30 + energy * 0.25 + soreness * 0.20 + mood * 0.15 + stress * 0.10);
+    score = Math.max(30, Math.min(99, score));
+    factors = { sleep, energy, soreness, mood, stress };
+  } else if (log.length) {
+    const recent     = log.slice(-5);
+    const avgRPE     = recent.reduce((s, w) => s + (w.avgRPE || 5), 0) / recent.length;
+    const compliance = Math.min(100, (recent.filter(w => w.completed !== false).length / 5) * 100);
+    score = Math.max(30, Math.min(99, Math.round(100 - (avgRPE * 4) + (compliance * 0.2))));
+  }
+
+  // Trend
+  if (log.length >= 7) {
+    const now   = Date.now();
+    const DAY   = 86_400_000;
+    const week1 = log.filter(w => now - w.ts < 7 * DAY);
+    const week2 = log.filter(w => now - w.ts >= 7 * DAY && now - w.ts < 14 * DAY);
+    const avg   = arr => arr.length ? arr.reduce((s, w) => s + (w.avgRPE || 5), 0) / arr.length : 5;
+    if (avg(week1) < avg(week2) - 0.5) trend = 'improving';
+    else if (avg(week1) > avg(week2) + 0.5) trend = 'declining';
+  }
+
+  // Color
+  const color =
+    score >= 85 ? '#10b981' :
+    score >= 75 ? '#22c955' :
+    score >= 60 ? '#f59e0b' :
+    score >= 45 ? '#f97316' :
+    '#ef4444';
+
+  // Label
+  const label =
+    score >= 80 ? 'High' :
+    score >= 60 ? 'Moderate' :
+    score >= 45 ? 'Low' : 'Critical';
+
+  // Ring offset (circumference 289)
+  const ringOffset = Math.round(((100 - score) / 100) * 289);
+
+  // Explanation
+  const explain =
+    score >= 90 ? '🟢 Peak readiness. Your body is fully primed — push hard and compete at your best today.' :
+    score >= 80 ? '🟢 High readiness. Great sleep and load balance. Train with full intent today.' :
+    score >= 70 ? '🟡 Good readiness. Train at 85–90% intensity. Focus on technique and power.' :
+    score >= 60 ? '🟡 Moderate readiness. Train at 75–80% intensity. Reduce volume by 15–20%.' :
+    score >= 45 ? '🟠 Low readiness. Active recovery day. Pliability, mobility, and technique work only.' :
+    '🔴 Critical readiness. Complete rest day. Prioritize sleep and recovery protocols.';
+
+  // Intensity note
+  const intensityNote =
+    score >= 80 ? 'Full training — execute your planned session.' :
+    score >= 60 ? 'Moderate session — reduce volume 15–20%, prioritize quality.' :
+    score >= 45 ? 'Active recovery only — mobility and pliability work.' :
+    'Complete rest — sleep, nutrition, and recovery only.';
+
+  // ACWR (simplified for result object)
+  const LAMBDA_A = 2 / 8;
+  const LAMBDA_C = 2 / 29;
+  const DAY_MS   = 86_400_000;
+  const now      = Date.now();
+  const sRPE     = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
+  const acute    = log.filter(w => now - w.ts < 7  * DAY_MS).reduce((s, w) => s + sRPE(w), 0);
+  const chronic  = log.filter(w => now - w.ts < 28 * DAY_MS).reduce((s, w) => s + sRPE(w), 0) / 4;
+  const acwr     = chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : 1.0;
+  const acwrZone =
+    log.length < 3  ? 'no-data'       :
+    acwr > 1.50     ? 'danger'        :
+    acwr > 1.30     ? 'spike'         :
+    acwr >= 0.80    ? 'sweet-spot'    :
+    acwr >= 0.60    ? 'undertraining' : 'detraining';
+
+  return {
+    score, raw: score,
+    color, ringOffset, explain,
+    hasCheckedIn, checkin,
+    trend, factors, label,
+    intensityNote,
+    acwr, acwrZone,
+  };
+}
+
+// ── ACWR SERIES ───────────────────────────────────────────────────────────────
 export function getACWRSeries() {
   const log = getState().workoutLog;
   if (log.length < 3) return [];
 
-  const LAMBDA_A = 2 / 8;   // acute 7-day
-  const LAMBDA_C = 2 / 29;  // chronic 28-day
+  const LAMBDA_A = 2 / 8;
+  const LAMBDA_C = 2 / 29;
+  const now      = Date.now();
+  const DAY_MS   = 86_400_000;
+  const days     = 28;
+  const sRPE     = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
 
-  // Build a daily load map over the last 28 days
-  const now     = Date.now();
-  const DAY_MS  = 86_400_000;
-  const days    = 28;
-
-  // sRPE = RPE × duration (hours) — Foster et al. 2001
-  const sRPE = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
-
-  // Aggregate load per calendar day
   const dailyLoad = new Array(days).fill(0);
   log.forEach(w => {
     const daysAgo = Math.floor((now - w.ts) / DAY_MS);
@@ -137,7 +232,6 @@ export function getACWRSeries() {
     }
   });
 
-  // Walk through each day computing EWMA acute and chronic
   let ewmaA = 0;
   let ewmaC = 0;
   const series = [];
@@ -146,16 +240,14 @@ export function getACWRSeries() {
     const load = dailyLoad[i];
     ewmaA = LAMBDA_A * load + (1 - LAMBDA_A) * ewmaA;
     ewmaC = LAMBDA_C * load + (1 - LAMBDA_C) * ewmaC;
-
     const acwr = ewmaC > 0 ? ewmaA / ewmaC : 1.0;
     const zone =
-      acwr > 1.50 ? 'danger'       :
-      acwr > 1.30 ? 'spike'        :
-      acwr >= 0.80 ? 'sweet-spot'  :
+      acwr > 1.50  ? 'danger'        :
+      acwr > 1.30  ? 'spike'         :
+      acwr >= 0.80 ? 'sweet-spot'    :
       acwr >= 0.60 ? 'undertraining' :
-      i < 7       ? 'no-data'      : 'undertraining';
+      i < 7        ? 'no-data'       : 'undertraining';
 
-    // Only emit points from day 7 onward (EWMA needs warmup)
     if (i >= 6) {
       const d = new Date(now - (days - 1 - i) * DAY_MS);
       series.push({
@@ -171,39 +263,19 @@ export function getACWRSeries() {
 }
 
 // ── NUTRITION RESULT ──────────────────────────────────────────────────────────
-/**
- * Composite nutrition summary for the nutrition view.
- *
- * Returns: {
- *   targets     — { cal, pro, cho, fat } from profile
- *   current     — { cal, pro, cho, fat } logged today
- *   progress    — { cal, pro, cho, fat } each with { current, target, pct }
- *   hydration   — { oz, target, pct }
- *   meals       — meal log array
- *   mealCount   — number of meals logged today
- *   calRemaining — kcal remaining to target
- *   proRemaining — protein g remaining
- *   onTrack     — true when calorie progress >= 40% by midday or >= 70% by evening
- * }
- *
- * Views importing getNutritionResult can destructure exactly what they need.
- */
 export function getNutritionResult() {
-  const state   = getState();
-  const profile = state.athleteProfile;
+  const state     = getState();
+  const profile   = state.athleteProfile;
   const nutrition = state.nutrition;
 
   const targets = (() => {
     const t = nutrition.targetMacros;
-    if (t && t.cal > 0) return t;
-    return { cal: 2800, pro: 160, cho: 350, fat: 80 };
+    return (t && t.cal > 0) ? t : { cal: 2800, pro: 160, cho: 350, fat: 80 };
   })();
 
   const current = nutrition.macros || { cal: 0, pro: 0, cho: 0, fat: 0 };
-
-  const pct = k => Math.min(100, current[k] > 0 && targets[k] > 0
-    ? Math.round((current[k] / targets[k]) * 100)
-    : 0);
+  const pct     = k => Math.min(100, current[k] > 0 && targets[k] > 0
+    ? Math.round((current[k] / targets[k]) * 100) : 0);
 
   const progress = {
     cal: { current: current.cal, target: targets.cal, pct: pct('cal') },
@@ -212,25 +284,13 @@ export function getNutritionResult() {
     fat: { current: current.fat, target: targets.fat, pct: pct('fat') },
   };
 
-  // Hydration: target = bodyweight (lbs) × 0.5 oz, minimum 64 oz
   const weightLbs  = parseFloat(profile?.weightLbs) || 160;
   const hydTarget  = Math.max(64, Math.round(weightLbs * 0.5));
   const hydCurrent = profile?.hydrationOz ?? 0;
-
-  const calRemaining = Math.max(0, targets.cal - current.cal);
-  const proRemaining = Math.max(0, targets.pro - current.pro);
-
-  const hour    = new Date().getHours();
-  const onTrack = hour < 12
-    ? progress.cal.pct >= 30
-    : hour < 17
-      ? progress.cal.pct >= 50
-      : progress.cal.pct >= 70;
+  const hour       = new Date().getHours();
 
   return {
-    targets,
-    current,
-    progress,
+    targets, current, progress,
     hydration: {
       oz:     hydCurrent,
       target: hydTarget,
@@ -238,9 +298,11 @@ export function getNutritionResult() {
     },
     meals:        nutrition.meals || [],
     mealCount:    (nutrition.meals || []).length,
-    calRemaining,
-    proRemaining,
-    onTrack,
+    calRemaining: Math.max(0, targets.cal - current.cal),
+    proRemaining: Math.max(0, targets.pro - current.pro),
+    onTrack: hour < 12 ? progress.cal.pct >= 30
+           : hour < 17 ? progress.cal.pct >= 50
+           : progress.cal.pct >= 70,
   };
 }
 
