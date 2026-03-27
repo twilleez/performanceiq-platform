@@ -3,25 +3,22 @@
  *
  * This file is the import target for most existing view files.
  * It re-exports all scoring/readiness functions from selectorsElite.js
- * so every consumer gets Elite v3 logic regardless of which selector
- * file they import from.
+ * so every consumer gets Elite v3 logic regardless of which file they import.
  *
- * Changes from prior version:
- *   1. getMindsetScore() added — deployed solo/home.js imports this;
- *      it was never implemented, causing a hard crash on solo/home load.
- *      Reads athleteProfile.mindsetScore (0–10 scale stored in state).
+ * Exported functions added in this remediation pass:
  *
- *   2. getHydrationOz() added — reads athleteProfile.hydrationOz.
- *      Present in the same deployed view import block.
+ *   getMindsetScore()    — athleteProfile.mindsetScore (0–10)
+ *   getHydrationOz()     — athleteProfile.hydrationOz (fl oz)
+ *   getPliabilityDone()  — athleteProfile.pliabilityDone (bool)
+ *   getWeeklyProgress()  — { completed, target, pct, onTrack, daysLeft }
+ *                          Used by solo/home.js weekly ring widget.
  *
- *   3. getPliabilityDone() added — reads athleteProfile.pliabilityDone.
- *      Present in the same deployed view import block.
- *
- *   4. All scoring/readiness re-exports from selectorsElite.js retained.
- *
- *   5. getStreak() fixed: excludes w.completed === false entries.
- *
- *   6. getDashboardConfig() and nav helpers remain authoritative here.
+ * getWeeklyProgress() shape (all fields the deployed view uses):
+ *   completed  {number}  sessions logged this calendar week (Mon–Sun)
+ *   target     {number}  athlete's daysPerWeek goal from profile
+ *   pct        {number}  0–100 completion percentage
+ *   onTrack    {boolean} true when pace will hit target by week end
+ *   daysLeft   {number}  calendar days remaining in the week (0–6)
  */
 
 import { getState }       from './state.js';
@@ -44,8 +41,8 @@ export {
 // ── STREAK ─────────────────────────────────────────────────────────────────────
 /**
  * Consecutive training streak in days.
- * Fix: entries with completed === false are excluded (abandoned sessions
- * should not count). Legacy entries without the field still count.
+ * Excludes entries where completed === false (abandoned sessions).
+ * Legacy entries without the completed field still count.
  */
 export function getStreak() {
   const log  = getState().workoutLog;
@@ -71,14 +68,11 @@ export function getWorkoutCount() {
 }
 
 // ── MINDSET / DAILY WELLNESS SELECTORS ────────────────────────────────────────
-// These read from athleteProfile which stores today's wellness inputs.
-// They were imported by deployed view files but never exported from selectors.js,
-// causing SyntaxError crashes when those views loaded.
 
 /**
  * Mindset score for today (0–10 scale).
- * Set by the athlete during their daily check-in / readiness submission.
- * Returns 0 when not yet set today.
+ * Set by the athlete during their daily check-in.
+ * Returns 0 when not yet recorded.
  */
 export function getMindsetScore() {
   return getState().athleteProfile?.mindsetScore ?? 0;
@@ -98,6 +92,60 @@ export function getHydrationOz() {
  */
 export function getPliabilityDone() {
   return getState().athleteProfile?.pliabilityDone ?? false;
+}
+
+// ── WEEKLY PROGRESS ────────────────────────────────────────────────────────────
+/**
+ * Weekly training progress against the athlete's session target.
+ *
+ * Used by the solo/home.js ring widget. Returns all fields the view uses:
+ *   completed  — sessions logged this Mon–Sun calendar week
+ *   target     — daysPerWeek goal from athleteProfile (default 4)
+ *   pct        — completion percentage clamped 0–100
+ *   onTrack    — true when current pace will reach target by Sunday
+ *   daysLeft   — calendar days remaining until end of week (Sun = 0)
+ *
+ * "Completed" counts only sessions not explicitly marked incomplete,
+ * consistent with getStreak() behaviour.
+ */
+export function getWeeklyProgress() {
+  const log     = getState().workoutLog;
+  const profile = getState().athleteProfile;
+  const target  = Math.max(1, parseInt(profile?.daysPerWeek) || 4);
+
+  // Monday-anchored week boundaries
+  const now       = new Date();
+  const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon … 6 = Sat
+  const monday    = new Date(now);
+  // Shift: Sunday (0) → go back 6 days; Mon (1) → 0; Tue (2) → 1 …
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  // Count completed sessions this week
+  const completed = log.filter(w =>
+    w.completed !== false &&
+    w.ts >= monday.getTime() &&
+    w.ts <= sunday.getTime()
+  ).length;
+
+  const pct = Math.min(100, Math.round((completed / target) * 100));
+
+  // Days left until Sunday (inclusive of today if not yet Sunday)
+  const daysLeft = Math.max(0, 6 - ((dayOfWeek + 6) % 7));
+
+  // On track: if we complete the same number of sessions per remaining day,
+  // will we hit the target?
+  const daysElapsed = 7 - daysLeft;
+  const projectedTotal = daysElapsed > 0
+    ? Math.round((completed / daysElapsed) * 7)
+    : 0;
+  const onTrack = projectedTotal >= target || completed >= target;
+
+  return { completed, target, pct, onTrack, daysLeft };
 }
 
 // ── DASHBOARD CONFIG + NAV ────────────────────────────────────────────────────
