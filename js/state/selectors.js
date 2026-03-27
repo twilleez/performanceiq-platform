@@ -1,40 +1,33 @@
 /**
  * PerformanceIQ Selectors  (remediated — v2 → Elite bridge)
  *
- * This file is the import target for most existing view files. Rather than
- * rewriting every view's import path simultaneously, this file acts as a
- * thin bridge: it re-exports from selectorsElite.js for all scoring and
- * readiness functions so every consumer automatically gets Elite v3 logic
- * regardless of which selector file they import from.
+ * This file is the import target for most existing view files.
+ * It re-exports all scoring/readiness functions from selectorsElite.js
+ * so every consumer gets Elite v3 logic regardless of which selector
+ * file they import from.
  *
  * Changes from prior version:
- *   1. All scoring / readiness functions now delegate to selectorsElite.js.
- *      The v2 implementations (getScoreBreakdown, getReadinessScore, etc.)
- *      have been removed and replaced with re-exports of the Elite versions.
- *      This eliminates the duplicate-formula bug where the dashboard ring
- *      (app.js, importing Elite) showed a different score than coach/player
- *      views (importing this file, getting v2).
+ *   1. getMindsetScore() added — deployed solo/home.js imports this;
+ *      it was never implemented, causing a hard crash on solo/home load.
+ *      Reads athleteProfile.mindsetScore (0–10 scale stored in state).
  *
- *   2. getStreak() now requires w.completed === true before counting a day.
- *      Previously a workout that was created but not finished still incremented
- *      the streak counter, overstating it.
+ *   2. getHydrationOz() added — reads athleteProfile.hydrationOz.
+ *      Present in the same deployed view import block.
  *
- *   3. getDashboardConfig() and all nav helper functions are unchanged — they
- *      are not duplicated in selectorsElite.js and remain authoritative here.
+ *   3. getPliabilityDone() added — reads athleteProfile.pliabilityDone.
+ *      Present in the same deployed view import block.
  *
- *   4. getMacroTargets() and getMacroProgress() are also re-exported from
- *      selectorsElite.js (they live there and not here in v2).
+ *   4. All scoring/readiness re-exports from selectorsElite.js retained.
  *
- * Migration note for view authors:
- *   Long-term, all imports should move to selectorsElite.js directly.
- *   Short-term, importing from either file is safe — they now return
- *   identical values for all scoring functions.
+ *   5. getStreak() fixed: excludes w.completed === false entries.
+ *
+ *   6. getDashboardConfig() and nav helpers remain authoritative here.
  */
 
-import { getState }                from './state.js';
-import { getCurrentRole }          from '../core/auth.js';
+import { getState }       from './state.js';
+import { getCurrentRole } from '../core/auth.js';
 
-// Re-export all scoring / readiness selectors from Elite — single source of truth
+// ── RE-EXPORTS FROM ELITE — single source of truth for scoring ────────────────
 export {
   getScoreBreakdownElite  as getScoreBreakdown,
   getPIQScore,
@@ -48,53 +41,66 @@ export {
   getMacroProgress,
 } from './selectorsElite.js';
 
-// ── STREAK — fixed: only count days with a completed workout ──────────────────
+// ── STREAK ─────────────────────────────────────────────────────────────────────
 /**
- * Returns the current consecutive-day training streak.
- *
- * Fix: previously any logged workout (including abandoned/incomplete ones)
- * counted toward the streak. This overstated streaks for athletes who started
- * but did not finish a session. Now only entries where completed !== false
- * are counted (i.e. completed === true OR completed is undefined/null,
- * which covers legacy log entries that predate the completed field).
- *
- * The "completed undefined = counts" rule preserves backwards compatibility
- * with existing workout log entries that were saved before the completed flag
- * was introduced. If you want strict mode (only explicit true), change the
- * filter to: w.completed === true
+ * Consecutive training streak in days.
+ * Fix: entries with completed === false are excluded (abandoned sessions
+ * should not count). Legacy entries without the field still count.
  */
 export function getStreak() {
-  const log = getState().workoutLog;
+  const log  = getState().workoutLog;
   if (!log.length) return 0;
-
-  // Filter: exclude entries explicitly marked incomplete
-  const done   = log.filter(w => w.completed !== false);
+  const done = log.filter(w => w.completed !== false);
   if (!done.length) return 0;
-
   const sorted  = [...done].sort((a, b) => b.ts - a.ts);
   let streak    = 0;
   let current   = new Date();
-
   for (const w of sorted) {
     const d = new Date(w.ts);
     if (d.toDateString() === current.toDateString()) {
       streak++;
       current.setDate(current.getDate() - 1);
-    } else {
-      break;
-    }
+    } else break;
   }
   return streak;
 }
 
-// ── WORKOUT COUNT ─────────────────────────────────────────────────────────────
+// ── WORKOUT COUNT ──────────────────────────────────────────────────────────────
 export function getWorkoutCount() {
   return getState().workoutLog.length;
 }
 
-// ── DASHBOARD CONFIG + NAV ────────────────────────────────────────────────────
-// These functions are NOT in selectorsElite.js — they live here as authoritative.
+// ── MINDSET / DAILY WELLNESS SELECTORS ────────────────────────────────────────
+// These read from athleteProfile which stores today's wellness inputs.
+// They were imported by deployed view files but never exported from selectors.js,
+// causing SyntaxError crashes when those views loaded.
 
+/**
+ * Mindset score for today (0–10 scale).
+ * Set by the athlete during their daily check-in / readiness submission.
+ * Returns 0 when not yet set today.
+ */
+export function getMindsetScore() {
+  return getState().athleteProfile?.mindsetScore ?? 0;
+}
+
+/**
+ * Hydration logged today in fluid ounces.
+ * Returns 0 when not yet set.
+ */
+export function getHydrationOz() {
+  return getState().athleteProfile?.hydrationOz ?? 0;
+}
+
+/**
+ * Whether pliability/mobility work has been marked done today.
+ * Returns false when not yet set.
+ */
+export function getPliabilityDone() {
+  return getState().athleteProfile?.pliabilityDone ?? false;
+}
+
+// ── DASHBOARD CONFIG + NAV ────────────────────────────────────────────────────
 export function getCurrentRoleSelector() { return getCurrentRole(); }
 
 export function getDashboardConfig() {
@@ -139,14 +145,14 @@ function playerNav() {
 
 function parentNav() {
   return [
-    { route: 'parent/home',     label: 'Dashboard',  icon: '🏠' },
-    { route: 'parent/child',    label: 'My Athlete', icon: '🏃' },
+    { route: 'parent/home',     label: 'Dashboard',   icon: '🏠' },
+    { route: 'parent/child',    label: 'My Athlete',  icon: '🏃' },
     { route: 'parent/week',     label: 'Weekly Plan', icon: '📅' },
-    { route: 'parent/progress', label: 'Progress',   icon: '📈' },
-    { route: 'parent/wellness', label: 'Wellness',   icon: '💚' },
-    { route: 'parent/messages', label: 'Messages',   icon: '💬' },
-    { route: 'parent/billing',  label: 'Billing',    icon: '💳' },
-    { route: 'parent/settings', label: 'Settings',   icon: '⚙️' },
+    { route: 'parent/progress', label: 'Progress',    icon: '📈' },
+    { route: 'parent/wellness', label: 'Wellness',    icon: '💚' },
+    { route: 'parent/messages', label: 'Messages',    icon: '💬' },
+    { route: 'parent/billing',  label: 'Billing',     icon: '💳' },
+    { route: 'parent/settings', label: 'Settings',    icon: '⚙️' },
   ];
 }
 
