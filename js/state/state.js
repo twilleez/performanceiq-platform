@@ -1,14 +1,19 @@
 /**
- * PerformanceIQ State  (remediated — full set of exports)
+ * PerformanceIQ State  (remediated — full export set)
  *
  * Exports added in this pass:
- *   completeAssignment(id) — marks a workoutLog entry as completed.
- *     Imported by solo/todayWorkout.js "Complete Workout" button handler.
+ *   getAssignedWorkouts()  — returns the assignedWorkouts array from state,
+ *                            or an empty array if none exist yet.
+ *                            Imported by solo/todayWorkout.js and solo/score.js.
+ *                            Solo athletes have no coach-assigned workouts by
+ *                            default; this returns [] safely so views render
+ *                            their fallback "no assignments" UI instead of crashing.
  *
- * Previously added:
- *   addCheckIn(checkIn)    — records a wellness check-in
- *   addMeal(item)          — id-stamped meal entry
- *   removeMeal(id)         — id-based deletion (not index-based)
+ * Previously added (all retained):
+ *   completeAssignment(id, meta) — marks a workout log entry as completed
+ *   addCheckIn(checkIn)          — records a wellness check-in
+ *   addMeal(item)                — id-stamped meal entry
+ *   removeMeal(id)               — id-based deletion (not index-based)
  */
 
 import { loadFromStorage, saveToStorage } from '../services/storage.js';
@@ -32,21 +37,22 @@ function defaultState() {
       compPhase: 'in-season', primaryGoal: '', secondaryGoals: [], injuryHistory: 'none',
       mindsetScore: 0, hydrationOz: 0, pliabilityDone: false, recoveryNotes: '',
     },
-    workoutLog: [],
-    draftWorkout: null,
+    workoutLog:       [],
+    assignedWorkouts: [],   // workouts pushed by a coach (empty for solo athletes)
+    draftWorkout:     null,
     nutrition: {
-      meals: [],
-      macros: { cal: 0, pro: 0, cho: 0, fat: 0 },
+      meals:        [],
+      macros:       { cal: 0, pro: 0, cho: 0, fat: 0 },
       targetMacros: { cal: 0, pro: 0, cho: 0, fat: 0 },
-      mealPlan: null,
+      mealPlan:     null,
     },
     linkedAthlete: null,
-    messages: [],
+    messages:      [],
     builder: {
       activeTab: 'plan', pickerOpen: false, pickerFilter: 'all',
       loadedTemplateId: null, draft: null,
     },
-    assignModal: { open: false, pending: null },
+    assignModal:      { open: false, pending: null },
     readinessCheckIn: {
       date: '', sleepHours: 0, sleepQuality: 0, energyLevel: 0,
       soreness: 0, mood: 0, stressLevel: 0, hydration: 0, notes: '',
@@ -71,6 +77,8 @@ export function loadState() {
         targetMacros: { ...def.nutrition.targetMacros, ...(saved.nutrition?.targetMacros || {}) },
       },
       readinessCheckIn: { ...def.readinessCheckIn, ...(saved.readinessCheckIn || {}) },
+      // Ensure assignedWorkouts always exists even in persisted state from before this field existed
+      assignedWorkouts: saved.assignedWorkouts || [],
     };
     if (!_state.roster || _state.roster.length < 1) _state.roster = def.roster;
   }
@@ -95,6 +103,22 @@ export function getAthleteProfile()   { return _state.athleteProfile; }
 export function getDraftWorkout()     { return _state.draftWorkout; }
 export function getBuilder()          { return _state.builder; }
 export function getReadinessCheckIn() { return _state.readinessCheckIn; }
+
+/**
+ * getAssignedWorkouts — returns workouts assigned by a coach.
+ *
+ * Imported by solo/todayWorkout.js and solo/score.js. Solo athletes
+ * have no coach, so this returns [] by default. When a solo athlete
+ * joins a team in the future, assigned workouts will appear here.
+ *
+ * Each entry shape (set by coach tools, not yet implemented for solo):
+ *   { id, title, exercises, assignedAt, dueDate, completed, rpeTarget }
+ *
+ * @returns {Array}
+ */
+export function getAssignedWorkouts() {
+  return _state.assignedWorkouts || [];
+}
 
 // ── SETTERS ────────────────────────────────────────────────────────────────────
 export function setState(patch, { silent = false } = {}) {
@@ -132,7 +156,7 @@ function _recomputeNutritionTargets() {
   const days      = parseInt(p.daysPerWeek) || 4;
 
   const proMultiplier = level === 'elite' ? 2.2 : level === 'advanced' ? 2.0 : level === 'intermediate' ? 1.8 : 1.6;
-  const proG = Math.round(weightKg * proMultiplier);
+  const proG      = Math.round(weightKg * proMultiplier);
   const choBase   = phase === 'in-season' ? 7 : phase === 'pre-season' ? 6 : 5;
   const choAdjust = days >= 5 ? 1 : days >= 3 ? 0 : -1;
   const choG      = Math.round(weightKg * (choBase + choAdjust));
@@ -152,19 +176,7 @@ export function addWorkoutLog(entry) {
 // ── COMPLETE ASSIGNMENT ────────────────────────────────────────────────────────
 /**
  * completeAssignment — marks a workout log entry as completed.
- *
- * Imported by solo/todayWorkout.js (and potentially other views) when the
- * athlete taps "Complete Workout". Was imported but never exported, causing
- * a hard crash on solo/today load.
- *
- * Lookup strategy:
- *   1. If `id` is provided, find the entry with matching `.id` field.
- *   2. If no id, find the most recent entry for today that isn't already complete.
- *   3. If nothing matches, append a new completed entry so the action always
- *      registers (prevents silent no-ops from confusing the athlete).
- *
- * @param {string|null} id   Optional workoutLog entry id to mark complete.
- * @param {object} [meta]    Optional extra fields to merge (avgRPE, duration, notes…)
+ * Falls back to appending a new completed entry if no match found.
  */
 export function completeAssignment(id = null, meta = {}) {
   const today = new Date().toDateString();
@@ -174,7 +186,6 @@ export function completeAssignment(id = null, meta = {}) {
     idx = _state.workoutLog.findIndex(w => w.id === id);
   }
 
-  // Fallback: find today's most recent incomplete non-checkin entry
   if (idx === -1) {
     idx = _state.workoutLog.findLastIndex(w =>
       w.type !== 'checkin' &&
@@ -191,7 +202,6 @@ export function completeAssignment(id = null, meta = {}) {
       completedAt: Date.now(),
     };
   } else {
-    // No matching entry — append a completed session so streak/progress counts it
     _state.workoutLog.push({
       id:          'w_' + Date.now(),
       type:        'workout',
@@ -209,10 +219,6 @@ export function completeAssignment(id = null, meta = {}) {
 }
 
 // ── CHECK-IN ───────────────────────────────────────────────────────────────────
-/**
- * addCheckIn — records a wellness/readiness check-in.
- * Patches readinessCheckIn, athleteProfile wellness fields, and workoutLog.
- */
 export function addCheckIn(checkIn) {
   const today = new Date().toDateString();
 
@@ -225,7 +231,6 @@ export function addCheckIn(checkIn) {
     _state.athleteProfile.hydrationOz = checkIn.hydration;
   }
 
-  // Deduplicate — remove existing check-in for today before appending
   _state.workoutLog = _state.workoutLog.filter(w =>
     !(w.type === 'checkin' && new Date(w.ts).toDateString() === today)
   );
@@ -258,9 +263,6 @@ export function addMeal(item) {
   saveState();
 }
 
-/**
- * removeMeal — remove by stable id string, not array index.
- */
 export function removeMeal(id) {
   const idx = _state.nutrition.meals.findIndex(m => m.id === id);
   if (idx === -1) return;
