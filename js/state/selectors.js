@@ -1,37 +1,59 @@
 /**
  * PerformanceIQ Selectors  (remediated — full export set)
  *
- * Exports added in this pass:
- *   getCheckInHistory(n) — last N check-in entries from workoutLog,
- *                          newest-first. Used by solo/progress for
- *                          historical readiness charting.
+ * Fixes in this pass:
  *
- * Previously added (all retained):
- *   getReadinessResult()   — composite readiness object for readiness view
- *   getACWRSeries()        — 28-day ACWR time series for chart views
- *   getNutritionResult()   — composite nutrition summary
- *   getWeeklyProgress()    — weekly session ring widget
- *   getMindsetScore()      — athleteProfile.mindsetScore
- *   getHydrationOz()       — athleteProfile.hydrationOz
- *   getPliabilityDone()    — athleteProfile.pliabilityDone
+ *   1. getReadinessScore() was re-exported as an alias for
+ *      getReadinessScoreElite() which returns a FULL OBJECT
+ *      { score, raw, color, ringOffset, … }. But every view that calls
+ *      getReadinessScore() expects a plain NUMBER (e.g. for template
+ *      literals, comparisons, and math). This caused:
+ *        - solo/today: readiness card shows "[object Object]"
+ *        - solo/readiness: "Cannot read properties of undefined
+ *          (reading 'replace')" when the view tries to use the number
+ *          as a string argument.
+ *      Fix: getReadinessScore() now calls getReadinessScoreElite().raw
+ *      to always return the numeric score.
+ *
+ *   2. getLoadSeries() added — imported by solo/progress.js for the
+ *      load/sRPE bar chart alongside the ACWR line chart.
+ *      Returns last 28 days of daily sRPE load values.
+ *
+ * All prior exports retained.
  */
 
-import { getState }       from './state.js';
-import { getCurrentRole } from '../core/auth.js';
+import { getState }                              from './state.js';
+import { getCurrentRole }                        from '../core/auth.js';
+import { getScoreBreakdownElite, getPIQScore,
+         getReadinessScoreElite,
+         getReadinessRingOffsetElite,
+         getReadinessColorElite,
+         getReadinessExplainElite,
+         getMacroTargets, getMacroProgress }     from './selectorsElite.js';
 
 // ── RE-EXPORTS FROM ELITE ─────────────────────────────────────────────────────
-export {
-  getScoreBreakdownElite  as getScoreBreakdown,
-  getPIQScore,
-  getReadinessScoreElite  as getReadinessScore,
-  getReadinessRingOffsetElite as getReadinessRingOffset,
-  getReadinessColorElite  as getReadinessColor,
-  getReadinessExplainElite as getReadinessExplain,
-  getReadinessScoreElite,
-  getScoreBreakdownElite,
-  getMacroTargets,
-  getMacroProgress,
-} from './selectorsElite.js';
+export { getScoreBreakdownElite  as getScoreBreakdown  };
+export { getPIQScore };
+export { getReadinessScoreElite };          // full object — use when you need color/offset/etc
+export { getReadinessRingOffsetElite as getReadinessRingOffset };
+export { getReadinessColorElite  as getReadinessColor  };
+export { getReadinessExplainElite as getReadinessExplain };
+export { getScoreBreakdownElite };
+export { getMacroTargets };
+export { getMacroProgress };
+
+// ── getReadinessScore — ALWAYS returns a NUMBER ───────────────────────────────
+/**
+ * Returns the readiness score as a plain integer (30–99).
+ *
+ * IMPORTANT: Do NOT alias this to getReadinessScoreElite directly —
+ * that function returns a full object { score, raw, color, … }.
+ * Views that use getReadinessScore() in template literals or arithmetic
+ * will break if they receive an object instead of a number.
+ */
+export function getReadinessScore() {
+  return getReadinessScoreElite().raw;
+}
 
 // ── STREAK ────────────────────────────────────────────────────────────────────
 export function getStreak() {
@@ -93,32 +115,17 @@ export function getWeeklyProgress() {
 
 // ── CHECK-IN HISTORY ──────────────────────────────────────────────────────────
 /**
- * getCheckInHistory — returns past check-in entries from the workout log.
- *
- * Imported by solo/progress.js for historical readiness charting.
- * Filters workoutLog to entries where type === 'checkin', sorts newest-first.
- *
- * Each entry shape (set by addCheckIn in state.js):
- *   { type: 'checkin', completed: true, ts: number,
- *     sleepQuality, energyLevel, soreness, mood, stressLevel,
- *     hydration, mindsetScore, notes, avgRPE, duration }
- *
- * Also synthesises a `readiness` score per entry so charts can plot
- * readiness over time without needing to re-run the full engine per point.
- *
- * @param {number} [n=30]  Max entries to return (default: last 30 days)
- * @returns {Array<object>}
+ * Returns last N check-in entries, newest-first, each annotated with
+ * a derived `readiness` score and display date labels.
  */
 export function getCheckInHistory(n = 30) {
   const log = getState().workoutLog;
 
-  const checkins = log
+  return log
     .filter(w => w.type === 'checkin')
     .sort((a, b) => b.ts - a.ts)
     .slice(0, n)
     .map(w => {
-      // Derive readiness score for each historical entry
-      // (same formula as getReadinessScore with check-in data)
       let readiness = 72;
       if (w.sleepQuality > 0) {
         const sleep    = (w.sleepQuality / 5) * 100;
@@ -126,12 +133,10 @@ export function getCheckInHistory(n = 30) {
         const soreness = ((6 - (w.soreness || 3))   / 5) * 100;
         const mood     = ((w.mood         || 3) / 5) * 100;
         const stress   = ((6 - (w.stressLevel || 3)) / 5) * 100;
-        readiness = Math.round(
+        readiness = Math.max(30, Math.min(99, Math.round(
           sleep * 0.30 + energy * 0.25 + soreness * 0.20 + mood * 0.15 + stress * 0.10
-        );
-        readiness = Math.max(30, Math.min(99, readiness));
+        )));
       }
-
       const date = new Date(w.ts);
       return {
         ...w,
@@ -140,11 +145,13 @@ export function getCheckInHistory(n = 30) {
         dayLabel:  date.toLocaleDateString('en-US', { weekday: 'short' }),
       };
     });
-
-  return checkins;
 }
 
 // ── READINESS RESULT ──────────────────────────────────────────────────────────
+/**
+ * Full composite readiness object for the readiness view.
+ * Use getReadinessScore() when you only need the number.
+ */
 export function getReadinessResult() {
   const state   = getState();
   const checkin = state.readinessCheckIn;
@@ -163,8 +170,9 @@ export function getReadinessResult() {
     const soreness = ((6 - checkin.soreness)    / 5) * 100;
     const mood     = (checkin.mood         / 5) * 100;
     const stress   = ((6 - checkin.stressLevel) / 5) * 100;
-    score = Math.round(sleep * 0.30 + energy * 0.25 + soreness * 0.20 + mood * 0.15 + stress * 0.10);
-    score = Math.max(30, Math.min(99, score));
+    score = Math.max(30, Math.min(99, Math.round(
+      sleep * 0.30 + energy * 0.25 + soreness * 0.20 + mood * 0.15 + stress * 0.10
+    )));
     factors = { sleep, energy, soreness, mood, stress };
   } else if (log.length) {
     const recent     = log.slice(-5);
@@ -207,12 +215,12 @@ export function getReadinessResult() {
     score >= 45 ? 'Active recovery only — mobility and pliability work.' :
     'Complete rest — sleep, nutrition, and recovery only.';
 
-  const DAY_MS = 86_400_000;
-  const now    = Date.now();
-  const sRPE   = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
-  const acute  = log.filter(w => now - w.ts < 7  * DAY_MS).reduce((s, w) => s + sRPE(w), 0);
+  const DAY_MS  = 86_400_000;
+  const now     = Date.now();
+  const sRPE    = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
+  const acute   = log.filter(w => now - w.ts < 7  * DAY_MS).reduce((s, w) => s + sRPE(w), 0);
   const chronic = log.filter(w => now - w.ts < 28 * DAY_MS).reduce((s, w) => s + sRPE(w), 0) / 4;
-  const acwr   = chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : 1.0;
+  const acwr    = chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : 1.0;
   const acwrZone =
     log.length < 3  ? 'no-data'       :
     acwr > 1.50     ? 'danger'        :
@@ -272,6 +280,50 @@ export function getACWRSeries() {
   }
 
   return series;
+}
+
+// ── LOAD SERIES ───────────────────────────────────────────────────────────────
+/**
+ * getLoadSeries — 28-day daily training load (sRPE) bar chart data.
+ *
+ * Imported by solo/progress.js alongside getACWRSeries() to render
+ * the load management chart. Returns one data point per day for the
+ * last 28 days (skipping the 7-day EWMA warmup period used by ACWR).
+ *
+ * sRPE = RPE × duration_hours (Foster et al. 2001)
+ *
+ * Each point: { date: string, load: number, hasData: boolean }
+ *   date    — 'Mon DD' short label for chart axis
+ *   load    — daily sRPE load (0 on rest days)
+ *   hasData — false on days with no logged sessions (renders differently)
+ */
+export function getLoadSeries() {
+  const log    = getState().workoutLog;
+  const now    = Date.now();
+  const DAY_MS = 86_400_000;
+  const days   = 28;
+  const sRPE   = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
+
+  // Build daily load map
+  const dailyLoad = new Array(days).fill(0);
+  const dailyHits = new Array(days).fill(false);
+
+  log.forEach(w => {
+    const daysAgo = Math.floor((now - w.ts) / DAY_MS);
+    if (daysAgo >= 0 && daysAgo < days) {
+      dailyLoad[days - 1 - daysAgo] += sRPE(w);
+      dailyHits[days - 1 - daysAgo] = true;
+    }
+  });
+
+  return dailyLoad.map((load, i) => {
+    const d = new Date(now - (days - 1 - i) * DAY_MS);
+    return {
+      date:    d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
+      load:    Math.round(load * 10) / 10,
+      hasData: dailyHits[i],
+    };
+  });
 }
 
 // ── NUTRITION RESULT ──────────────────────────────────────────────────────────
