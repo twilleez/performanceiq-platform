@@ -2,18 +2,17 @@
  * PerformanceIQ State  (remediated — full export set)
  *
  * Exports added in this pass:
- *   getAssignedWorkouts()  — returns the assignedWorkouts array from state,
- *                            or an empty array if none exist yet.
- *                            Imported by solo/todayWorkout.js and solo/score.js.
- *                            Solo athletes have no coach-assigned workouts by
- *                            default; this returns [] safely so views render
- *                            their fallback "no assignments" UI instead of crashing.
+ *   getWeeklyGoal() — returns the athlete's weekly session target from
+ *                     athleteProfile.daysPerWeek. Imported by player/home.js.
+ *                     Returns { target, completed, remaining, pct, onTrack, daysLeft }
+ *                     so the home dashboard ring widget has everything it needs.
  *
  * Previously added (all retained):
- *   completeAssignment(id, meta) — marks a workout log entry as completed
+ *   getAssignedWorkouts()        — returns assigned workouts array
+ *   completeAssignment(id, meta) — marks a workout log entry completed
  *   addCheckIn(checkIn)          — records a wellness check-in
  *   addMeal(item)                — id-stamped meal entry
- *   removeMeal(id)               — id-based deletion (not index-based)
+ *   removeMeal(id)               — id-based deletion
  */
 
 import { loadFromStorage, saveToStorage } from '../services/storage.js';
@@ -38,7 +37,7 @@ function defaultState() {
       mindsetScore: 0, hydrationOz: 0, pliabilityDone: false, recoveryNotes: '',
     },
     workoutLog:       [],
-    assignedWorkouts: [],   // workouts pushed by a coach (empty for solo athletes)
+    assignedWorkouts: [],
     draftWorkout:     null,
     nutrition: {
       meals:        [],
@@ -77,7 +76,6 @@ export function loadState() {
         targetMacros: { ...def.nutrition.targetMacros, ...(saved.nutrition?.targetMacros || {}) },
       },
       readinessCheckIn: { ...def.readinessCheckIn, ...(saved.readinessCheckIn || {}) },
-      // Ensure assignedWorkouts always exists even in persisted state from before this field existed
       assignedWorkouts: saved.assignedWorkouts || [],
     };
     if (!_state.roster || _state.roster.length < 1) _state.roster = def.roster;
@@ -106,18 +104,63 @@ export function getReadinessCheckIn() { return _state.readinessCheckIn; }
 
 /**
  * getAssignedWorkouts — returns workouts assigned by a coach.
- *
- * Imported by solo/todayWorkout.js and solo/score.js. Solo athletes
- * have no coach, so this returns [] by default. When a solo athlete
- * joins a team in the future, assigned workouts will appear here.
- *
- * Each entry shape (set by coach tools, not yet implemented for solo):
- *   { id, title, exercises, assignedAt, dueDate, completed, rpeTarget }
- *
- * @returns {Array}
+ * Returns [] for solo athletes and new accounts with no assignments.
  */
 export function getAssignedWorkouts() {
   return _state.assignedWorkouts || [];
+}
+
+/**
+ * getWeeklyGoal — returns the athlete's weekly training target plus
+ * current progress against it.
+ *
+ * Imported by player/home.js for the weekly ring widget on the dashboard.
+ * Mirrors the shape of getWeeklyProgress() in selectors.js so either
+ * can be used interchangeably by view files.
+ *
+ * Returns: {
+ *   target    — sessions per week from athleteProfile.daysPerWeek
+ *   completed — sessions logged this Mon–Sun calendar week
+ *   remaining — target - completed (floored at 0)
+ *   pct       — completion percentage 0–100
+ *   onTrack   — boolean: current pace will hit target by Sunday
+ *   daysLeft  — calendar days remaining in the week
+ * }
+ */
+export function getWeeklyGoal() {
+  const profile = _state.athleteProfile;
+  const log     = _state.workoutLog;
+  const target  = Math.max(1, parseInt(profile?.daysPerWeek) || 4);
+
+  const now       = new Date();
+  const dayOfWeek = now.getDay(); // 0=Sun
+  const monday    = new Date(now);
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  const completed = log.filter(w =>
+    w.completed !== false &&
+    w.ts >= monday.getTime() &&
+    w.ts <= sunday.getTime()
+  ).length;
+
+  const pct      = Math.min(100, Math.round((completed / target) * 100));
+  const daysLeft = Math.max(0, 6 - ((dayOfWeek + 6) % 7));
+  const daysElapsed = 7 - daysLeft;
+  const projected   = daysElapsed > 0 ? Math.round((completed / daysElapsed) * 7) : 0;
+  const onTrack     = projected >= target || completed >= target;
+
+  return {
+    target,
+    completed,
+    remaining: Math.max(0, target - completed),
+    pct,
+    onTrack,
+    daysLeft,
+  };
 }
 
 // ── SETTERS ────────────────────────────────────────────────────────────────────
@@ -174,17 +217,11 @@ export function addWorkoutLog(entry) {
 }
 
 // ── COMPLETE ASSIGNMENT ────────────────────────────────────────────────────────
-/**
- * completeAssignment — marks a workout log entry as completed.
- * Falls back to appending a new completed entry if no match found.
- */
 export function completeAssignment(id = null, meta = {}) {
   const today = new Date().toDateString();
   let idx = -1;
 
-  if (id) {
-    idx = _state.workoutLog.findIndex(w => w.id === id);
-  }
+  if (id) idx = _state.workoutLog.findIndex(w => w.id === id);
 
   if (idx === -1) {
     idx = _state.workoutLog.findLastIndex(w =>
@@ -224,12 +261,8 @@ export function addCheckIn(checkIn) {
 
   Object.assign(_state.readinessCheckIn, { ...checkIn, date: today });
 
-  if (checkIn.mindsetScore !== undefined) {
-    _state.athleteProfile.mindsetScore = checkIn.mindsetScore;
-  }
-  if (checkIn.hydration !== undefined) {
-    _state.athleteProfile.hydrationOz = checkIn.hydration;
-  }
+  if (checkIn.mindsetScore !== undefined) _state.athleteProfile.mindsetScore = checkIn.mindsetScore;
+  if (checkIn.hydration    !== undefined) _state.athleteProfile.hydrationOz  = checkIn.hydration;
 
   _state.workoutLog = _state.workoutLog.filter(w =>
     !(w.type === 'checkin' && new Date(w.ts).toDateString() === today)
