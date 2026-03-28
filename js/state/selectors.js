@@ -1,25 +1,10 @@
 /**
  * PerformanceIQ Selectors  (remediated — full export set)
  *
- * Fixes in this pass:
- *
- *   1. getReadinessScore() was re-exported as an alias for
- *      getReadinessScoreElite() which returns a FULL OBJECT
- *      { score, raw, color, ringOffset, … }. But every view that calls
- *      getReadinessScore() expects a plain NUMBER (e.g. for template
- *      literals, comparisons, and math). This caused:
- *        - solo/today: readiness card shows "[object Object]"
- *        - solo/readiness: "Cannot read properties of undefined
- *          (reading 'replace')" when the view tries to use the number
- *          as a string argument.
- *      Fix: getReadinessScore() now calls getReadinessScoreElite().raw
- *      to always return the numeric score.
- *
- *   2. getLoadSeries() added — imported by solo/progress.js for the
- *      load/sRPE bar chart alongside the ACWR line chart.
- *      Returns last 28 days of daily sRPE load values.
- *
- * All prior exports retained.
+ * Exports added in this pass:
+ *   getPIQTrend() — compares PIQ score trajectory over last 4 weeks.
+ *                   Used by solo/progress.js for trend indicator.
+ *                   Returns { direction, delta, label, color }
  */
 
 import { getState }                              from './state.js';
@@ -34,7 +19,7 @@ import { getScoreBreakdownElite, getPIQScore,
 // ── RE-EXPORTS FROM ELITE ─────────────────────────────────────────────────────
 export { getScoreBreakdownElite  as getScoreBreakdown  };
 export { getPIQScore };
-export { getReadinessScoreElite };          // full object — use when you need color/offset/etc
+export { getReadinessScoreElite };
 export { getReadinessRingOffsetElite as getReadinessRingOffset };
 export { getReadinessColorElite  as getReadinessColor  };
 export { getReadinessExplainElite as getReadinessExplain };
@@ -43,14 +28,6 @@ export { getMacroTargets };
 export { getMacroProgress };
 
 // ── getReadinessScore — ALWAYS returns a NUMBER ───────────────────────────────
-/**
- * Returns the readiness score as a plain integer (30–99).
- *
- * IMPORTANT: Do NOT alias this to getReadinessScoreElite directly —
- * that function returns a full object { score, raw, color, … }.
- * Views that use getReadinessScore() in template literals or arithmetic
- * will break if they receive an object instead of a number.
- */
 export function getReadinessScore() {
   return getReadinessScoreElite().raw;
 }
@@ -113,11 +90,64 @@ export function getWeeklyProgress() {
   return { completed, target, pct, onTrack, daysLeft };
 }
 
-// ── CHECK-IN HISTORY ──────────────────────────────────────────────────────────
+// ── PIQ TREND ─────────────────────────────────────────────────────────────────
 /**
- * Returns last N check-in entries, newest-first, each annotated with
- * a derived `readiness` score and display date labels.
+ * getPIQTrend — compares PIQ score trajectory over the last 4 weeks.
+ *
+ * Imported by solo/progress.js for the trend indicator arrow.
+ * Uses session count and compliance as a proxy for PIQ change over time,
+ * since the actual PIQ score is a point-in-time calculation (no history stored).
+ *
+ * Returns: {
+ *   direction — 'improving' | 'stable' | 'declining'
+ *   delta     — approximate score change (positive = up, negative = down)
+ *   label     — human-readable trend description
+ *   color     — hex color for UI
+ *   arrow     — '↑' | '→' | '↓'
+ * }
  */
+export function getPIQTrend() {
+  const log = getState().workoutLog;
+  const now = Date.now();
+  const DAY = 86_400_000;
+
+  // Compare session count and compliance: recent 14 days vs prior 14 days
+  const recent = log.filter(w => now - w.ts < 14 * DAY);
+  const prior  = log.filter(w => now - w.ts >= 14 * DAY && now - w.ts < 28 * DAY);
+
+  if (prior.length === 0 && recent.length === 0) {
+    return { direction: 'stable', delta: 0, label: 'Not enough data yet', color: '#888', arrow: '→' };
+  }
+
+  // Score each period: sessions + compliance rate
+  const score = arr => {
+    if (!arr.length) return 0;
+    const compliance = arr.filter(w => w.completed !== false).length / arr.length;
+    const avgRPE     = arr.reduce((s, w) => s + (w.avgRPE || 5), 0) / arr.length;
+    const loadScore  = Math.max(0, 100 - Math.abs(avgRPE - 6.5) * 14);
+    return Math.round(arr.length * 8 + compliance * 30 + loadScore * 0.3);
+  };
+
+  const recentScore = score(recent);
+  const priorScore  = score(prior);
+
+  if (priorScore === 0) {
+    return { direction: 'improving', delta: 0, label: 'Building momentum', color: '#22c955', arrow: '↑' };
+  }
+
+  const delta = recentScore - priorScore;
+  const pct   = Math.round((delta / Math.max(1, priorScore)) * 100);
+
+  if (pct >= 10) {
+    return { direction: 'improving', delta: Math.abs(pct), label: `Trending up ${Math.abs(pct)}% vs last 2 weeks`, color: '#22c955', arrow: '↑' };
+  } else if (pct <= -10) {
+    return { direction: 'declining', delta: Math.abs(pct), label: `Trending down ${Math.abs(pct)}% vs last 2 weeks`, color: '#ef4444', arrow: '↓' };
+  } else {
+    return { direction: 'stable', delta: 0, label: 'Holding steady', color: '#f59e0b', arrow: '→' };
+  }
+}
+
+// ── CHECK-IN HISTORY ──────────────────────────────────────────────────────────
 export function getCheckInHistory(n = 30) {
   const log = getState().workoutLog;
 
@@ -148,10 +178,6 @@ export function getCheckInHistory(n = 30) {
 }
 
 // ── READINESS RESULT ──────────────────────────────────────────────────────────
-/**
- * Full composite readiness object for the readiness view.
- * Use getReadinessScore() when you only need the number.
- */
 export function getReadinessResult() {
   const state   = getState();
   const checkin = state.readinessCheckIn;
@@ -283,20 +309,6 @@ export function getACWRSeries() {
 }
 
 // ── LOAD SERIES ───────────────────────────────────────────────────────────────
-/**
- * getLoadSeries — 28-day daily training load (sRPE) bar chart data.
- *
- * Imported by solo/progress.js alongside getACWRSeries() to render
- * the load management chart. Returns one data point per day for the
- * last 28 days (skipping the 7-day EWMA warmup period used by ACWR).
- *
- * sRPE = RPE × duration_hours (Foster et al. 2001)
- *
- * Each point: { date: string, load: number, hasData: boolean }
- *   date    — 'Mon DD' short label for chart axis
- *   load    — daily sRPE load (0 on rest days)
- *   hasData — false on days with no logged sessions (renders differently)
- */
 export function getLoadSeries() {
   const log    = getState().workoutLog;
   const now    = Date.now();
@@ -304,7 +316,6 @@ export function getLoadSeries() {
   const days   = 28;
   const sRPE   = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
 
-  // Build daily load map
   const dailyLoad = new Array(days).fill(0);
   const dailyHits = new Array(days).fill(false);
 
