@@ -2,9 +2,10 @@
  * PerformanceIQ Selectors  (remediated — full export set)
  *
  * Exports added in this pass:
- *   getPIQTrend() — compares PIQ score trajectory over last 4 weeks.
- *                   Used by solo/progress.js for trend indicator.
- *                   Returns { direction, delta, label, color }
+ *   getReadinessTrend() — compares readiness check-in data over the last
+ *                         14 days vs prior 14 days to return a trend object.
+ *                         Imported by solo/progress.js for the trend indicator.
+ *                         Returns { direction, label, color, arrow }
  */
 
 import { getState }                              from './state.js';
@@ -91,27 +92,11 @@ export function getWeeklyProgress() {
 }
 
 // ── PIQ TREND ─────────────────────────────────────────────────────────────────
-/**
- * getPIQTrend — compares PIQ score trajectory over the last 4 weeks.
- *
- * Imported by solo/progress.js for the trend indicator arrow.
- * Uses session count and compliance as a proxy for PIQ change over time,
- * since the actual PIQ score is a point-in-time calculation (no history stored).
- *
- * Returns: {
- *   direction — 'improving' | 'stable' | 'declining'
- *   delta     — approximate score change (positive = up, negative = down)
- *   label     — human-readable trend description
- *   color     — hex color for UI
- *   arrow     — '↑' | '→' | '↓'
- * }
- */
 export function getPIQTrend() {
   const log = getState().workoutLog;
   const now = Date.now();
   const DAY = 86_400_000;
 
-  // Compare session count and compliance: recent 14 days vs prior 14 days
   const recent = log.filter(w => now - w.ts < 14 * DAY);
   const prior  = log.filter(w => now - w.ts >= 14 * DAY && now - w.ts < 28 * DAY);
 
@@ -119,7 +104,6 @@ export function getPIQTrend() {
     return { direction: 'stable', delta: 0, label: 'Not enough data yet', color: '#888', arrow: '→' };
   }
 
-  // Score each period: sessions + compliance rate
   const score = arr => {
     if (!arr.length) return 0;
     const compliance = arr.filter(w => w.completed !== false).length / arr.length;
@@ -139,11 +123,88 @@ export function getPIQTrend() {
   const pct   = Math.round((delta / Math.max(1, priorScore)) * 100);
 
   if (pct >= 10) {
-    return { direction: 'improving', delta: Math.abs(pct), label: `Trending up ${Math.abs(pct)}% vs last 2 weeks`, color: '#22c955', arrow: '↑' };
+    return { direction: 'improving', delta: Math.abs(pct), label: `Up ${Math.abs(pct)}% vs last 2 weeks`, color: '#22c955', arrow: '↑' };
   } else if (pct <= -10) {
-    return { direction: 'declining', delta: Math.abs(pct), label: `Trending down ${Math.abs(pct)}% vs last 2 weeks`, color: '#ef4444', arrow: '↓' };
+    return { direction: 'declining', delta: Math.abs(pct), label: `Down ${Math.abs(pct)}% vs last 2 weeks`, color: '#ef4444', arrow: '↓' };
   } else {
     return { direction: 'stable', delta: 0, label: 'Holding steady', color: '#f59e0b', arrow: '→' };
+  }
+}
+
+// ── READINESS TREND ───────────────────────────────────────────────────────────
+/**
+ * getReadinessTrend — compares average readiness score over the last 14
+ * days vs the prior 14 days, using check-in entries from the workout log.
+ *
+ * Imported by solo/progress.js for the readiness trend indicator.
+ * Falls back gracefully when there are fewer than 3 check-ins.
+ *
+ * Returns: {
+ *   direction — 'improving' | 'stable' | 'declining'
+ *   avgRecent — average readiness score last 14 days (0 if no data)
+ *   avgPrior  — average readiness score prior 14 days (0 if no data)
+ *   delta     — avgRecent - avgPrior
+ *   label     — human-readable description
+ *   color     — hex color for UI
+ *   arrow     — '↑' | '→' | '↓'
+ * }
+ */
+export function getReadinessTrend() {
+  const log = getState().workoutLog;
+  const now = Date.now();
+  const DAY = 86_400_000;
+
+  // Extract check-in entries with sleep quality (proper check-ins)
+  const checkins = log.filter(w => w.type === 'checkin' && w.sleepQuality > 0);
+
+  const recent = checkins.filter(w => now - w.ts < 14 * DAY);
+  const prior  = checkins.filter(w => now - w.ts >= 14 * DAY && now - w.ts < 28 * DAY);
+
+  if (recent.length < 2 && prior.length < 2) {
+    return {
+      direction: 'stable', avgRecent: 0, avgPrior: 0, delta: 0,
+      label: 'Log 3+ check-ins to see your readiness trend',
+      color: '#888', arrow: '→',
+    };
+  }
+
+  // Compute readiness score per check-in using the same formula as getReadinessScore
+  const computeScore = w => {
+    const sleep    = (w.sleepQuality / 5) * 100;
+    const energy   = ((w.energyLevel  || 3) / 5) * 100;
+    const soreness = ((6 - (w.soreness || 3))    / 5) * 100;
+    const mood     = ((w.mood         || 3) / 5) * 100;
+    const stress   = ((6 - (w.stressLevel || 3)) / 5) * 100;
+    return Math.max(30, Math.min(99, Math.round(
+      sleep * 0.30 + energy * 0.25 + soreness * 0.20 + mood * 0.15 + stress * 0.10
+    )));
+  };
+
+  const avg = arr => arr.length
+    ? Math.round(arr.reduce((s, w) => s + computeScore(w), 0) / arr.length)
+    : 0;
+
+  const avgRecent = avg(recent);
+  const avgPrior  = avg(prior);
+  const delta     = avgRecent - avgPrior;
+
+  if (avgPrior === 0) {
+    return {
+      direction: 'stable', avgRecent, avgPrior: 0, delta: 0,
+      label: 'Not enough prior data to compare',
+      color: '#888', arrow: '→',
+    };
+  }
+
+  if (delta >= 5) {
+    return { direction: 'improving', avgRecent, avgPrior, delta,
+      label: `Up ${delta} pts vs prior 2 weeks`, color: '#22c955', arrow: '↑' };
+  } else if (delta <= -5) {
+    return { direction: 'declining', avgRecent, avgPrior, delta,
+      label: `Down ${Math.abs(delta)} pts vs prior 2 weeks`, color: '#ef4444', arrow: '↓' };
+  } else {
+    return { direction: 'stable', avgRecent, avgPrior, delta,
+      label: 'Holding steady', color: '#f59e0b', arrow: '→' };
   }
 }
 
