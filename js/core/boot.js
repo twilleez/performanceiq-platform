@@ -5,10 +5,14 @@
 import { initAuth } from './supabase.js'
 import { initRouter, navigate } from './router.js'
 import { flushOfflineQueue } from '../services/workoutService.js'
+import { initTheme } from './theme.js'
 
 // ── BOOT ──────────────────────────────────────────────────────
 export async function boot() {
   try {
+    // 0. Apply theme immediately — prevents flash of wrong theme
+    initTheme()
+
     // 1. Init auth (loads session + profile from Supabase/localStorage)
     await initAuth()
 
