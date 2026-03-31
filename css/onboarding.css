@@ -1,0 +1,249 @@
+/* ============================================================
+   onboarding.css — PerformanceIQ Onboarding Wizard
+   ============================================================ */
+
+.onboard-shell {
+  min-height: 100vh;
+  background: var(--content-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.onboard-card {
+  width: 100%;
+  max-width: 520px;
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 36px 32px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+/* ── PROGRESS ─────────────────────────────────────────────── */
+
+.onboard-progress {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.onboard-pip {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: #E8E9F0;
+  transition: background 0.25s;
+}
+
+.onboard-pip.done   { background: #24C054; }
+.onboard-pip.active { background: rgba(36,192,84,0.5); }
+
+.onboard-step-label {
+  font-size: 11px;
+  color: #9CA3AF;
+  margin-bottom: 20px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── TYPOGRAPHY ───────────────────────────────────────────── */
+
+.onboard-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1A1F36;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+.onboard-title em {
+  color: #24C054;
+  font-style: normal;
+}
+
+.onboard-sub {
+  font-size: 13px;
+  color: #6B7280;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+/* ── ROLE SELECTION ───────────────────────────────────────── */
+
+.onboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.onboard-role-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 14px 16px;
+  background: #F9FAFB;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  text-align: left;
+}
+
+.onboard-role-btn:hover {
+  border-color: #24C054;
+  background: rgba(36,192,84,0.04);
+}
+
+.onboard-role-btn.selected {
+  border-color: #24C054;
+  background: rgba(36,192,84,0.07);
+  box-shadow: 0 0 0 3px rgba(36,192,84,0.12);
+}
+
+.role-icon { font-size: 22px; margin-bottom: 2px; }
+.role-label { font-family: 'Oswald', sans-serif; font-size: 14px; font-weight: 700; color: #1A1F36; }
+.role-desc  { font-size: 11px; color: #6B7280; }
+
+/* ── SPORT SELECTION ──────────────────────────────────────── */
+
+.onboard-sport-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.onboard-sport-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  background: #F9FAFB;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+}
+
+.onboard-sport-btn span:first-child { font-size: 20px; }
+.onboard-sport-btn:hover   { border-color: #24C054; background: rgba(36,192,84,0.04); }
+.onboard-sport-btn.selected { border-color: #24C054; background: rgba(36,192,84,0.07); box-shadow: 0 0 0 3px rgba(36,192,84,0.12); }
+
+/* ── GOALS ────────────────────────────────────────────────── */
+
+.onboard-goals-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.onboard-goal-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  background: #F9FAFB;
+  border: 1.5px solid #E5E7EB;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  color: #374151;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+}
+
+.onboard-goal-btn span:first-child { font-size: 18px; }
+.onboard-goal-btn:hover   { border-color: #24C054; }
+.onboard-goal-btn.selected { border-color: #24C054; background: rgba(36,192,84,0.08); box-shadow: 0 0 0 2px rgba(36,192,84,0.15); }
+
+.onboard-goal-count {
+  font-size: 11px;
+  color: #9CA3AF;
+  text-align: right;
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+/* ── READY STATE ──────────────────────────────────────────── */
+
+.onboard-ready { text-align: center; }
+.onboard-ready-icon { font-size: 52px; margin-bottom: 16px; }
+
+.onboard-summary {
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 20px;
+  text-align: left;
+}
+
+.onboard-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 16px;
+  border-bottom: 1px solid #E5E7EB;
+  font-size: 13px;
+}
+
+.onboard-summary-row:last-child { border-bottom: none; }
+.onboard-summary-row span  { color: #6B7280; }
+.onboard-summary-row strong { color: #1A1F36; text-align: right; max-width: 60%; }
+
+/* ── BUTTONS ──────────────────────────────────────────────── */
+
+.onboard-btn {
+  width: 100%;
+  padding: 12px;
+  background: #24C054;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.onboard-btn:hover:not(:disabled) { background: #1DAF4A; }
+.onboard-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.onboard-back-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  background: none;
+  border: none;
+  color: #9CA3AF;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.onboard-back-btn:hover { color: #6B7280; }
+
+/* ── RESPONSIVE ───────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .onboard-card { padding: 24px 18px; }
+  .onboard-grid { grid-template-columns: 1fr 1fr; }
+  .onboard-sport-grid { grid-template-columns: repeat(3, 1fr); }
+  .onboard-goals-grid { grid-template-columns: repeat(3, 1fr); }
+}
