@@ -1,0 +1,310 @@
+/* ============================================================
+   theme.css — PerformanceIQ
+   Light and dark mode CSS variable overrides.
+   Applied via [data-theme="light"] / [data-theme="dark"] on <html>.
+   Import this AFTER tokens.css and layout.css.
+   ============================================================ */
+
+/* ── DEFAULT = LIGHT ─────────────────────────────────────────
+   layout.css already defines the light values as the default :root.
+   This block makes them explicit so the toggle works cleanly.
+   ──────────────────────────────────────────────────────────── */
+
+[data-theme="light"] {
+  /* Page background — the #E6EAF4 we set */
+  --content-bg:        #E6EAF4;
+  --card-bg:           #FFFFFF;
+  --card-border:       #E2E6F0;
+  --card-shadow:       0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+
+  /* Text */
+  --text-primary:      #1A1F36;
+  --text-secondary:    #6B7280;
+  --text-muted:        #9CA3AF;
+
+  /* Nav stays dark in both modes — it's the brand navy */
+  --nav-bg:            #0D1B40;
+  --nav-active-bg:     rgba(111,217,79,0.14);
+  --nav-active-color:  #6FD94F;
+  --nav-text:          rgba(255,255,255,0.65);
+  --nav-border:        rgba(255,255,255,0.07);
+  --nav-hover-bg:      rgba(255,255,255,0.07);
+
+  /* Progress track background */
+  --prog-track-bg:     #D4D9EE;
+
+  /* Input fields */
+  --input-bg:          #FFFFFF;
+  --input-border:      #D1D5DB;
+  --input-focus:       #24C054;
+
+  /* Accent */
+  --accent-green:      #24C054;
+  --accent-green-dim:  rgba(36,192,84,0.10);
+  --accent-green-border: rgba(36,192,84,0.30);
+  --accent-blue:       #3B82F6;
+  --accent-blue-dim:   rgba(59,130,246,0.10);
+  --accent-red:        #EF4444;
+  --accent-amber:      #F59E0B;
+}
+
+/* ── DARK MODE ───────────────────────────────────────────────── */
+
+[data-theme="dark"] {
+  /* Page background */
+  --content-bg:        #0D1220;
+  --card-bg:           #131C30;
+  --card-border:       rgba(255,255,255,0.08);
+  --card-shadow:       0 1px 4px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+
+  /* Text */
+  --text-primary:      #E8EDF8;
+  --text-secondary:    #8892A8;
+  --text-muted:        #5A6580;
+
+  /* Nav — slightly lighter in dark mode for contrast */
+  --nav-bg:            #080F1E;
+  --nav-active-bg:     rgba(111,217,79,0.14);
+  --nav-active-color:  #6FD94F;
+  --nav-text:          rgba(255,255,255,0.60);
+  --nav-border:        rgba(255,255,255,0.06);
+  --nav-hover-bg:      rgba(255,255,255,0.06);
+
+  /* Progress track */
+  --prog-track-bg:     rgba(255,255,255,0.08);
+
+  /* Input fields */
+  --input-bg:          #1A2540;
+  --input-border:      rgba(255,255,255,0.12);
+  --input-focus:       #6FD94F;
+
+  /* Accent — slightly brighter in dark */
+  --accent-green:      #6FD94F;
+  --accent-green-dim:  rgba(111,217,79,0.12);
+  --accent-green-border: rgba(111,217,79,0.30);
+  --accent-blue:       #60A5FA;
+  --accent-blue-dim:   rgba(96,165,250,0.12);
+  --accent-red:        #F87171;
+  --accent-amber:      #FBBF24;
+
+  /* Badge overrides for dark */
+  --badge-done-bg:     rgba(36,192,84,0.15);  --badge-done-txt: #6FD94F;
+  --badge-next-bg:     rgba(96,165,250,0.15); --badge-next-txt: #60A5FA;
+  --badge-sat-bg:      rgba(255,255,255,0.06);--badge-sat-txt:  #8892A8;
+  --badge-warn-bg:     rgba(251,191,36,0.15); --badge-warn-txt: #FBBF24;
+  --badge-red-bg:      rgba(248,113,113,0.15);--badge-red-txt:  #F87171;
+}
+
+/* ── DARK MODE COMPONENT OVERRIDES ───────────────────────────── */
+
+[data-theme="dark"] body {
+  background: var(--content-bg);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .panel {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+}
+
+[data-theme="dark"] .panel-head {
+  border-bottom-color: var(--card-border);
+}
+
+[data-theme="dark"] .kpi-card {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+}
+
+[data-theme="dark"] .session-row {
+  border-bottom-color: var(--card-border);
+}
+
+[data-theme="dark"] .session-row:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+[data-theme="dark"] .session-name {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .prog-track {
+  background: var(--prog-track-bg);
+}
+
+/* Form inputs in dark mode */
+[data-theme="dark"] input[type="text"],
+[data-theme="dark"] input[type="email"],
+[data-theme="dark"] input[type="password"],
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] input[type="date"],
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] textarea:focus,
+[data-theme="dark"] select:focus {
+  border-color: var(--input-focus) !important;
+  box-shadow: 0 0 0 3px rgba(111,217,79,0.12) !important;
+}
+
+/* Auth card in dark mode */
+[data-theme="dark"] .auth-card {
+  background: #131C30;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+
+[data-theme="dark"] .auth-title,
+[data-theme="dark"] .auth-logo-word {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .auth-subtitle {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .auth-label {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .auth-input {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text-primary);
+}
+
+/* Onboarding in dark mode */
+[data-theme="dark"] .onboard-card {
+  background: #131C30;
+}
+
+[data-theme="dark"] .onboard-title {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .onboard-sub {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .onboard-role-btn,
+[data-theme="dark"] .onboard-sport-btn,
+[data-theme="dark"] .onboard-goal-btn {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--card-border);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .onboard-summary {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--card-border);
+}
+
+[data-theme="dark"] .onboard-summary-row {
+  border-bottom-color: var(--card-border);
+}
+
+[data-theme="dark"] .onboard-summary-row strong {
+  color: var(--text-primary);
+}
+
+/* View page title in dark */
+[data-theme="dark"] .view-page-title {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .view-page-subtitle {
+  color: var(--text-secondary);
+}
+
+/* KPI labels in dark */
+[data-theme="dark"] .kpi-lbl {
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .kv-navy {
+  color: #A0B4D4;
+}
+
+/* Modal in dark */
+[data-theme="dark"] .piq-modal {
+  background: var(--card-bg);
+}
+
+[data-theme="dark"] .piq-modal__title {
+  color: var(--text-primary);
+}
+
+/* Toast in dark */
+[data-theme="dark"] .piq-toast {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+  border-left-color: var(--accent-green);
+}
+
+[data-theme="dark"] .piq-toast__title {
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .piq-toast__body {
+  color: var(--text-secondary);
+}
+
+/* Alert boxes in dark */
+[data-theme="dark"] .alert-warning {
+  background: rgba(251,191,36,0.10);
+  border-color: rgba(251,191,36,0.25);
+  color: #FBBF24;
+}
+
+[data-theme="dark"] .alert-error {
+  background: rgba(248,113,113,0.10);
+  border-color: rgba(248,113,113,0.25);
+  color: #F87171;
+}
+
+[data-theme="dark"] .alert-success {
+  background: rgba(111,217,79,0.10);
+  border-color: rgba(111,217,79,0.25);
+  color: #6FD94F;
+}
+
+/* Scrollbar in dark */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.08);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* Empty states */
+[data-theme="dark"] .piq-empty__title {
+  color: var(--text-primary) !important;
+}
+[data-theme="dark"] .piq-empty__body {
+  color: var(--text-secondary) !important;
+}
+
+/* ── TRANSITION — smooth theme switch ────────────────────────── */
+
+*, *::before, *::after {
+  transition:
+    background-color 0.2s ease,
+    border-color     0.2s ease,
+    color            0.15s ease;
+}
+
+/* But don't animate things that should be instant */
+input, textarea, select,
+.piq-skeleton,
+.piq-boot-ring,
+[class*="prog-fill"],
+.piq-nav-item,
+.sidebar-item,
+.topnav-link {
+  transition: none;
+}
