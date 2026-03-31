@@ -1,8 +1,8 @@
 // js/views/settings.js — PerformanceIQ
 import { getProfile, updateProfile, signOut } from '../core/supabase.js'
 import { navigate } from '../core/router.js'
-import { getNotifications, markAllRead } from '../services/notificationService.js'
-import { requestPushPermission, getPushStatus } from '../services/notificationService.js'
+import { getNotifications, markAllRead, requestPushPermission, getPushStatus } from '../services/notificationService.js'
+import { getTheme, setTheme } from '../core/theme.js'
 
 export async function render(container) {
   const profile = getProfile()
@@ -18,6 +18,26 @@ export async function render(container) {
 
     <div class="two-col">
       <div>
+        <!-- Theme -->
+        <div class="panel" style="margin-bottom:18px">
+          <div class="panel-head"><span class="panel-title">Appearance</span></div>
+          <div style="padding:16px 20px">
+            <label style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:10px">Theme</label>
+            <div style="display:flex;gap:8px">
+              ${['light','dark','system'].map(t => `
+                <button class="theme-btn" data-val="${t}" style="
+                  flex:1;padding:10px 8px;border-radius:8px;cursor:pointer;
+                  border:1.5px solid ${getTheme()===t ? 'var(--accent-green)' : 'var(--card-border)'};
+                  background:${getTheme()===t ? 'var(--accent-green-dim)' : 'transparent'};
+                  font-size:12px;font-weight:600;color:var(--text-primary);
+                  transition:all 0.15s;display:flex;flex-direction:column;align-items:center;gap:4px">
+                  <span style="font-size:18px">${t==='light'?'☀️':t==='dark'?'🌙':'💻'}</span>
+                  <span style="text-transform:capitalize">${t}</span>
+                </button>`).join('')}
+            </div>
+          </div>
+        </div>
+
         <!-- Profile card -->
         <div class="panel" style="margin-bottom:18px">
           <div class="panel-head"><span class="panel-title">Profile</span></div>
@@ -98,6 +118,15 @@ export async function render(container) {
       </div>
     </div>
   `
+
+  // Theme buttons
+  container.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setTheme(btn.dataset.val)
+      // Re-render to update active state
+      render(container)
+    })
+  })
 
   // Save profile
   container.querySelector('#save-profile')?.addEventListener('click', async (e) => {
