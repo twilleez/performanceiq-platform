@@ -4,7 +4,7 @@
 
 import { initAuth } from './supabase.js'
 import { initRouter, navigate } from './router.js'
-import { flushOfflineQueue } from '../services/sessionService.js'
+import { flushOfflineQueue } from '../services/workoutService.js'
 
 // ── BOOT ──────────────────────────────────────────────────────
 export async function boot() {
@@ -36,7 +36,10 @@ async function _registerSW() {
   if (!('serviceWorker' in navigator)) return
 
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    const swPath = location.pathname.replace(/\/[^/]*$/, '/sw.js')
+    const reg = await navigator.serviceWorker.register(swPath, {
+      scope: location.pathname.replace(/\/[^/]*$/, '/')
+    })
     console.log('[PIQ] SW registered:', reg.scope)
 
     // Prompt user to refresh when new SW is available
