@@ -5,6 +5,7 @@ import { boot } from './core/boot.js'
 import { onRouteChange } from './core/router.js'
 import { getProfile, onAuthChange, signOut } from './core/supabase.js'
 import { getUnreadCount, subscribeToNotifications } from './services/notificationService.js'
+import { toggleTheme, getResolvedTheme, onThemeChange } from './core/theme.js'
 
 // ── VIEW REGISTRY ─────────────────────────────────────────────
 // Lazy-load each view module only when first navigated to.
@@ -47,6 +48,28 @@ async function init() {
     }
   })
 
+  // Theme toggle
+  document.getElementById('topnav-theme')?.addEventListener('click', () => {
+    toggleTheme()
+  })
+
+  // Keep theme icon in sync if theme changes externally
+  onThemeChange((mode, resolved) => {
+    const btn = document.getElementById('topnav-theme')
+    if (btn) {
+      btn.textContent = resolved === 'dark' ? '☀️' : '🌙'
+      btn.title       = resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+    }
+  })
+
+  // Set correct icon on load
+  const themeBtn = document.getElementById('topnav-theme')
+  if (themeBtn) {
+    const resolved = getResolvedTheme()
+    themeBtn.textContent = resolved === 'dark' ? '☀️' : '🌙'
+    themeBtn.title       = resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+  }
+
   // Boot (auth + router init + SW)
   await boot()
 }
@@ -68,6 +91,7 @@ function _renderShell() {
         <button class="topnav-link" data-route="/piq-score">PIQ Score</button>
       </div>
       <div class="topnav-right">
+        <button class="topnav-icon-btn" id="topnav-theme" data-theme-icon title="Toggle theme">🌙</button>
         <button class="topnav-icon-btn" id="topnav-notify" title="Notifications">🔔</button>
         <span class="topnav-role-badge" id="topnav-role">SOLO</span>
         <div class="topnav-avatar" id="topnav-avatar">?</div>
