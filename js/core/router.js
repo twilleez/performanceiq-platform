@@ -2,7 +2,7 @@
 // Hash-based SPA router with auth guards, role guards, and preloading.
 
 import { isAuthed, getProfile, onAuthChange } from './supabase.js'
-import { flushOfflineQueue } from '../services/sessionService.js'
+import { flushOfflineQueue } from '../services/workoutService.js'
 
 // ── ROUTE TABLE ───────────────────────────────────────────────
 const ROUTES = {
