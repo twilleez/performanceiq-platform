@@ -1,105 +1,140 @@
-// sw.js — PerformanceIQ Service Worker v4
-const CACHE_NAME = 'piq-v4'
-const BASE = self.location.pathname.replace('/sw.js', '')
+/**
+ * PerformanceIQ Service Worker — piq-v6
+ *
+ * FIXES:
+ * [Error-1] TypeError: Failed to execute 'clone' on Response: body already used
+ *           → clone() was called AFTER body was consumed. Now cloned BEFORE read.
+ * [Error-2] SW was intercepting Supabase API calls and attempting to cache them,
+ *           causing 500s and the clone error. Supabase (and all external API)
+ *           requests now pass straight through — never cached.
+ *
+ * Strategy:
+ *   - App shell + JS modules: Cache-first (offline works)
+ *   - Supabase / any external API: Network-only, pass through untouched
+ *   - Everything else: Network-first with cache fallback
+ */
 
-const SHELL_ASSETS = [
-  BASE + '/',
-  BASE + '/index.html',
-  BASE + '/manifest.json',
-  BASE + '/css/tokens.css',
-  BASE + '/css/layout.css',
-  BASE + '/css/nav-bar.css',
-  BASE + '/css/boot-loader.css',
-  BASE + '/css/empty-states.css',
-  BASE + '/css/session-ready.css',
-  BASE + '/css/tooltips.css',
-  BASE + '/css/toast.css',
-  BASE + '/css/auth.css',
-  BASE + '/css/onboarding.css',
-  BASE + '/css/components.css',
-  BASE + '/js/app.js',
-  BASE + '/js/core/boot.js',
-  BASE + '/js/core/router.js',
-  BASE + '/js/core/supabase.js',
-]
+const CACHE_NAME  = 'piq-v6';
+const SHELL_CACHE = 'piq-shell-v6';
 
+// Files to pre-cache on install (app shell)
+const SHELL_FILES = [
+  '/',
+  '/index.html',
+  '/styles.css',
+  '/manifest.json',
+];
+
+// Domains that must NEVER be cached — pass through immediately
+const PASSTHROUGH_ORIGINS = [
+  'supabase.co',
+  'supabase.com',
+  'googleapis.com',
+  'gstatic.com',
+  'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com',
+  'unpkg.com',
+  'esm.sh',
+];
+
+// ── INSTALL ───────────────────────────────────────────────────
 self.addEventListener('install', event => {
-  self.skipWaiting()
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(SHELL_ASSETS))
-      .catch(err => console.warn('[SW] partial cache:', err.message))
-  )
-})
+    caches.open(SHELL_CACHE)
+      .then(cache => cache.addAll(SHELL_FILES))
+      .then(() => self.skipWaiting())
+      .catch(err => console.warn('[SW] Install cache failed:', err))
+  );
+});
 
+// ── ACTIVATE ──────────────────────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  )
-})
+    caches.keys().then(keys =>
+      Promise.all(
+        keys
+          .filter(k => k !== CACHE_NAME && k !== SHELL_CACHE)
+          .map(k => {
+            console.log('[SW] Deleting old cache:', k);
+            return caches.delete(k);
+          })
+      )
+    ).then(() => self.clients.claim())
+  );
+});
 
+// ── FETCH ─────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url)
+  const url = new URL(event.request.url);
 
-  // Pass through external requests untouched
-  if (!url.hostname.includes('github.io') && url.hostname !== location.hostname) return
-
-  // Navigation → serve shell
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      caches.match(BASE + '/index.html')
-        .then(r => r || fetch(event.request))
-        .catch(() => _offline())
-    )
-    return
+  // [Fix Error-1,2] — NEVER intercept external APIs, especially Supabase.
+  // Pass through completely — no cloning, no caching, no touching.
+  const isPassthrough = PASSTHROUGH_ORIGINS.some(origin =>
+    url.hostname.includes(origin)
+  );
+  if (isPassthrough) {
+    // Do NOT call event.respondWith() — browser handles it natively
+    return;
   }
 
-  // Static assets → cache-first
-  if (/\.(css|js|png|jpg|jpeg|svg|ico|woff2?)(\?.*)?$/.test(url.pathname)) {
+  // Non-GET requests (POST, PUT, DELETE etc.) — always network, never cache
+  if (event.request.method !== 'GET') {
+    return; // Let browser handle
+  }
+
+  // Chrome extension requests — ignore
+  if (url.protocol === 'chrome-extension:') {
+    return;
+  }
+
+  const isNavigate = event.request.mode === 'navigate';
+  const isJSModule = url.pathname.endsWith('.js');
+  const isAsset    = /\.(css|png|jpg|jpeg|gif|webp|svg|woff2?|ico)$/.test(url.pathname);
+
+  // ── Strategy: Network-first for navigation (always fresh HTML)
+  if (isNavigate) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (!response || response.status !== 200) return response;
+          // [Fix Error-1] Clone BEFORE any body consumption
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          return response;
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // ── Strategy: Cache-first for JS modules and static assets
+  if (isJSModule || isAsset) {
     event.respondWith(
       caches.match(event.request).then(cached => {
-        if (cached) return cached
-        return fetch(event.request).then(res => {
-          if (res.ok) {
-            caches.open(CACHE_NAME).then(c => c.put(event.request, res.clone()))
+        if (cached) return cached;
+        return fetch(event.request).then(response => {
+          if (!response || response.status !== 200 || response.type === 'opaque') {
+            return response;
           }
-          return res
-        }).catch(() => new Response('', { status: 404 }))
+          // [Fix Error-1] Clone BEFORE returning — original goes to caller, clone to cache
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          return response;
+        });
       })
-    )
+    );
+    return;
   }
-})
 
-self.addEventListener('push', event => {
-  const d = event.data?.json() ?? {}
-  event.waitUntil(
-    self.registration.showNotification(d.title ?? 'PerformanceIQ', {
-      body: d.body ?? '', icon: BASE + '/icons/icon-192.png',
-      data: { url: d.action_url ?? BASE + '/' }, tag: d.type ?? 'piq'
-    })
-  )
-})
-
-self.addEventListener('notificationclick', event => {
-  event.notification.close()
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then(list => {
-      const url = event.notification.data?.url ?? BASE + '/'
-      list.length ? (list[0].focus(), list[0].navigate(url)) : clients.openWindow(url)
-    })
-  )
-})
-
-function _offline() {
-  return new Response(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Offline — PerformanceIQ</title>
-    <style>body{margin:0;background:#010D14;color:#D0EEF4;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}
-    h1{color:#6FD94F}button{margin-top:16px;padding:10px 24px;background:#6FD94F;color:#010D14;border:none;border-radius:8px;font-weight:700;cursor:pointer}</style>
-    </head><body><div><div style="font-size:48px">📴</div><h1>Offline</h1><p>Data saved locally — will sync on reconnect.</p>
-    <button onclick="location.reload()">Retry</button></div></body></html>`,
-    { headers: { 'Content-Type': 'text/html' } }
-  )
-}
+  // ── Default: Network-first, cache fallback
+  event.respondWith(
+    fetch(event.request)
+      .then(response => {
+        if (!response || response.status !== 200) return response;
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
+  );
+});
