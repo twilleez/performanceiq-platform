@@ -1,22 +1,65 @@
 // js/views/onboarding.js — PerformanceIQ
-// 4-step onboarding wizard. Fires once after signup, sets onboarding_done = true.
+// 4-step onboarding wizard. Fires once after first sign-up.
+// FIX: includes email in profile upsert (NOT NULL constraint)
+// FIX: guards against null session mid-flow
+// FIX: shows user-facing error on save failure instead of silent navigate
 
-import { updateProfile, getProfile } from '../core/supabase.js'
-import { navigate, suppressNextGuard } from '../core/router.js'
+import { updateProfile, getUser, getProfile } from '../core/supabase.js'
+import { navigate } from '../core/router.js'
+
+// ── CONSTANTS ─────────────────────────────────────────────────
 
 const STEPS = ['role', 'sport', 'goals', 'ready']
 
+const ROLES = [
+  { val: 'solo_athlete',  label: 'Solo Athlete',   desc: 'Track my own training',  emoji: '🏃' },
+  { val: 'team_athlete',  label: 'Team Athlete',   desc: 'Join a coached team',     emoji: '🏅' },
+  { val: 'coach',         label: 'Coach',          desc: 'Manage a roster',         emoji: '📋' },
+  { val: 'parent',        label: 'Parent',         desc: 'Monitor my athlete',      emoji: '👨‍👩‍👧' },
+]
+
+const SPORTS = [
+  { val: 'basketball', label: 'Basketball', emoji: '🏀' },
+  { val: 'football',   label: 'Football',   emoji: '🏈' },
+  { val: 'soccer',     label: 'Soccer',     emoji: '⚽' },
+  { val: 'baseball',   label: 'Baseball',   emoji: '⚾' },
+  { val: 'volleyball', label: 'Volleyball', emoji: '🏐' },
+  { val: 'track',      label: 'Track',      emoji: '🏃' },
+  { val: 'swimming',   label: 'Swimming',   emoji: '🏊' },
+  { val: 'tennis',     label: 'Tennis',     emoji: '🎾' },
+  { val: 'lacrosse',   label: 'Lacrosse',   emoji: '🥍' },
+  { val: 'wrestling',  label: 'Wrestling',  emoji: '🤼' },
+  { val: 'other',      label: 'Other',      emoji: '🏆' },
+]
+
+const GOALS = [
+  { val: 'strength',    label: 'Build Strength',          emoji: '💪' },
+  { val: 'speed',       label: 'Improve Speed',           emoji: '⚡' },
+  { val: 'endurance',   label: 'Increase Endurance',      emoji: '🫀' },
+  { val: 'muscle',      label: 'Gain Muscle',             emoji: '🏋️' },
+  { val: 'athleticism', label: 'Overall Athleticism',     emoji: '🎯' },
+  { val: 'recovery',    label: 'Better Recovery',         emoji: '😴' },
+]
+
+// ── MODULE STATE ─────────────────────────────────────────────
+
 let _step = 0
-let _data = {}
+let _data = {}     // accumulates selections across steps
+
+// ── PUBLIC API ────────────────────────────────────────────────
 
 export function render(container) {
   _step = 0
   _data = {}
+
+  // Pre-fill role if already set (e.g. from pick-role screen)
   const profile = getProfile()
-  if (profile?.role)  _data.role  = profile.role
-  if (profile?.sport) _data.sport = profile.sport
+  if (profile?.role) _data.role = profile.role
+
   _renderStep(container)
 }
+
+// ── INTERNAL ──────────────────────────────────────────────────
 
 function _renderStep(container) {
   container.innerHTML = `
@@ -32,141 +75,132 @@ function _renderStep(container) {
 
 function _progressBar() {
   return `
-    <div class="onboard-progress">
+    <div class="onboard-progress" role="progressbar"
+         aria-valuenow="${_step + 1}" aria-valuemin="1" aria-valuemax="${STEPS.length}"
+         aria-label="Step ${_step + 1} of ${STEPS.length}">
       ${STEPS.map((_, i) => `
         <div class="onboard-pip ${i < _step ? 'done' : ''} ${i === _step ? 'active' : ''}"></div>
       `).join('')}
     </div>
-    <p class="onboard-step-label">Step ${_step + 1} of ${STEPS.length}</p>
+    <p class="onboard-step-label">STEP ${_step + 1} OF ${STEPS.length}</p>
   `
 }
 
 function _stepContent() {
   switch (STEPS[_step]) {
 
-    case 'role': return `
-      <h2 class="onboard-title">How will you use <em>PerformanceIQ</em>?</h2>
-      <p class="onboard-sub">This customizes your experience and dashboard.</p>
-      <div class="onboard-grid">
-        ${[
-          { val: 'solo',    icon: '🏃', label: 'Solo Athlete', desc: 'Track my own training' },
-          { val: 'athlete', icon: '🏅', label: 'Team Athlete', desc: 'Join a coached team' },
-          { val: 'coach',   icon: '📋', label: 'Coach',        desc: 'Manage a roster' },
-          { val: 'parent',  icon: '👪', label: 'Parent',       desc: 'Monitor my athlete' },
-        ].map(r => `
-          <button class="onboard-role-btn ${_data.role === r.val ? 'selected' : ''}" data-val="${r.val}">
-            <span class="role-icon">${r.icon}</span>
-            <span class="role-label">${r.label}</span>
-            <span class="role-desc">${r.desc}</span>
-          </button>
-        `).join('')}
-      </div>
-      <button id="onboard-next" class="onboard-btn" ${_data.role ? '' : 'disabled'}>Continue →</button>
-    `
-
-    case 'sport': return `
-      <h2 class="onboard-title">Your primary sport?</h2>
-      <p class="onboard-sub">Used to tailor exercises, templates, and recommendations.</p>
-      <div class="onboard-sport-grid">
-        ${[
-          { val: 'basketball', icon: '🏀', label: 'Basketball' },
-          { val: 'football',   icon: '🏈', label: 'Football' },
-          { val: 'soccer',     icon: '⚽', label: 'Soccer' },
-          { val: 'baseball',   icon: '⚾', label: 'Baseball' },
-          { val: 'volleyball', icon: '🏐', label: 'Volleyball' },
-          { val: 'track',      icon: '🏃', label: 'Track & Field' },
-          { val: 'other',      icon: '🎯', label: 'Other' },
-        ].map(s => `
-          <button class="onboard-sport-btn ${_data.sport === s.val ? 'selected' : ''}" data-val="${s.val}">
-            <span>${s.icon}</span>
-            <span>${s.label}</span>
-          </button>
-        `).join('')}
-      </div>
-      <button id="onboard-next" class="onboard-btn" ${_data.sport ? '' : 'disabled'}>Continue →</button>
-      <button class="onboard-back-btn" id="onboard-back">← Back</button>
-    `
-
-    case 'goals': return `
-      <h2 class="onboard-title">What are your goals?</h2>
-      <p class="onboard-sub">Choose up to 3. These shape your workout recommendations and PIQ score weighting.</p>
-      <div class="onboard-goals-grid">
-        ${[
-          { val: 'strength',          icon: '💪', label: 'Strength' },
-          { val: 'speed',             icon: '⚡', label: 'Speed' },
-          { val: 'endurance',         icon: '🫀', label: 'Endurance' },
-          { val: 'flexibility',       icon: '🤸', label: 'Flexibility' },
-          { val: 'conditioning',      icon: '🔥', label: 'Conditioning' },
-          { val: 'recovery',          icon: '💚', label: 'Recovery' },
-          { val: 'vertical_jump',     icon: '⬆️', label: 'Vertical Jump' },
-          { val: 'injury_prevention', icon: '🛡',  label: 'Injury Prevention' },
-          { val: 'nutrition',         icon: '🥗', label: 'Nutrition' },
-          { val: 'recruiting',        icon: '🎓', label: 'Recruiting' },
-        ].map(g => `
-          <button class="onboard-goal-btn ${(_data.goals ?? []).includes(g.val) ? 'selected' : ''}" data-val="${g.val}">
-            <span>${g.icon}</span>
-            <span>${g.label}</span>
-          </button>
-        `).join('')}
-      </div>
-      <p class="onboard-goal-count">${(_data.goals ?? []).length}/3 selected</p>
-      <button id="onboard-next" class="onboard-btn" ${(_data.goals ?? []).length ? '' : 'disabled'}>Continue →</button>
-      <button class="onboard-back-btn" id="onboard-back">← Back</button>
-    `
-
-    case 'ready': return `
-      <div class="onboard-ready">
-        <div class="onboard-ready-icon">🚀</div>
-        <h2 class="onboard-title">You're all set!</h2>
-        <p class="onboard-sub">
-          Your PerformanceIQ dashboard is ready. Start by logging your first
-          readiness check-in to get your initial score.
-        </p>
-        <div class="onboard-summary">
-          <div class="onboard-summary-row">
-            <span>Role</span>
-            <strong>${_capitalize(_data.role)}</strong>
-          </div>
-          <div class="onboard-summary-row">
-            <span>Sport</span>
-            <strong>${_capitalize(_data.sport)}</strong>
-          </div>
-          <div class="onboard-summary-row">
-            <span>Goals</span>
-            <strong>${(_data.goals ?? []).map(_capitalize).join(', ')}</strong>
-          </div>
+    case 'role':
+      return `
+        <h1 class="onboard-title">How will you use<br><span class="onboard-brand">PerformanceIQ</span>?</h1>
+        <p class="onboard-subtitle">This customizes your experience and dashboard.</p>
+        <div class="onboard-grid">
+          ${ROLES.map(r => `
+            <button class="onboard-role-btn ${_data.role === r.val ? 'selected' : ''}"
+                    data-val="${r.val}" aria-pressed="${_data.role === r.val}">
+              <span class="onboard-role-emoji">${r.emoji}</span>
+              <strong>${r.label}</strong>
+              <span class="onboard-role-desc">${r.desc}</span>
+            </button>
+          `).join('')}
         </div>
+        <button id="onboard-next" class="onboard-btn" ${!_data.role ? 'disabled' : ''}>
+          Continue →
+        </button>
+      `
+
+    case 'sport':
+      return `
+        <h1 class="onboard-title">What's your <span class="onboard-brand">primary sport</span>?</h1>
+        <p class="onboard-subtitle">We'll tailor workouts and tracking to your sport.</p>
+        <div class="onboard-sport-grid">
+          ${SPORTS.map(s => `
+            <button class="onboard-sport-btn ${_data.sport === s.val ? 'selected' : ''}"
+                    data-val="${s.val}" aria-pressed="${_data.sport === s.val}">
+              <span>${s.emoji}</span>
+              <span>${s.label}</span>
+            </button>
+          `).join('')}
+        </div>
+        <button id="onboard-next" class="onboard-btn" ${!_data.sport ? 'disabled' : ''}>
+          Continue →
+        </button>
+        <button id="onboard-back" class="onboard-back-btn">← Back</button>
+      `
+
+    case 'goals':
+      return `
+        <h1 class="onboard-title">What are your <span class="onboard-brand">goals</span>?</h1>
+        <p class="onboard-subtitle">Choose up to 3 — we'll prioritize accordingly.</p>
+        <div class="onboard-goals-grid">
+          ${GOALS.map(g => `
+            <button class="onboard-goal-btn ${(_data.goals ?? []).includes(g.val) ? 'selected' : ''}"
+                    data-val="${g.val}" aria-pressed="${(_data.goals ?? []).includes(g.val)}">
+              <span>${g.emoji}</span>
+              <span>${g.label}</span>
+            </button>
+          `).join('')}
+        </div>
+        <p class="onboard-goal-count">${(_data.goals ?? []).length}/3 selected</p>
+        <button id="onboard-next" class="onboard-btn" ${!(_data.goals?.length) ? 'disabled' : ''}>
+          Continue →
+        </button>
+        <button id="onboard-back" class="onboard-back-btn">← Back</button>
+      `
+
+    case 'ready': {
+      const roleName  = ROLES.find(r => r.val === _data.role)?.label  ?? _data.role  ?? '—'
+      const sportName = SPORTS.find(s => s.val === _data.sport)?.label ?? _data.sport ?? '—'
+      const goalNames = (_data.goals ?? [])
+        .map(v => GOALS.find(g => g.val === v)?.label ?? v)
+        .join(', ') || '—'
+      return `
+        <h1 class="onboard-title">You're all set,<br><span class="onboard-brand">let's go! 🎉</span></h1>
+        <p class="onboard-subtitle">Start by logging your first readiness check-in to get your initial PIQ Score.</p>
+        <div class="onboard-summary">
+          <div class="onboard-summary-row"><span>Role</span><strong>${roleName}</strong></div>
+          <div class="onboard-summary-row"><span>Sport</span><strong>${sportName}</strong></div>
+          <div class="onboard-summary-row"><span>Goals</span><strong>${goalNames}</strong></div>
+        </div>
+        <div id="onboard-error" class="onboard-error" style="display:none"></div>
         <button id="onboard-finish" class="onboard-btn" style="margin-top:24px">Go to Dashboard →</button>
-      </div>
-    `
+        <button id="onboard-back" class="onboard-back-btn">← Back</button>
+      `
+    }
+
+    default:
+      return ''
   }
 }
 
 function _bindStep(container) {
 
-  // Role selection
+  // ── Role selection ────────────────────────────────────────
   container.querySelectorAll('.onboard-role-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      container.querySelectorAll('.onboard-role-btn').forEach(b => b.classList.remove('selected'))
-      btn.classList.add('selected')
       _data.role = btn.dataset.val
+      container.querySelectorAll('.onboard-role-btn').forEach(b => {
+        b.classList.toggle('selected', b.dataset.val === _data.role)
+        b.setAttribute('aria-pressed', b.dataset.val === _data.role)
+      })
       const next = container.querySelector('#onboard-next')
       if (next) next.disabled = false
     })
   })
 
-  // Sport selection
+  // ── Sport selection ───────────────────────────────────────
   container.querySelectorAll('.onboard-sport-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      container.querySelectorAll('.onboard-sport-btn').forEach(b => b.classList.remove('selected'))
-      btn.classList.add('selected')
       _data.sport = btn.dataset.val
+      container.querySelectorAll('.onboard-sport-btn').forEach(b => {
+        b.classList.toggle('selected', b.dataset.val === _data.sport)
+        b.setAttribute('aria-pressed', b.dataset.val === _data.sport)
+      })
       const next = container.querySelector('#onboard-next')
       if (next) next.disabled = false
     })
   })
 
-  // Goal selection (multi, max 3)
+  // ── Goal selection (multi, max 3) ─────────────────────────
   container.querySelectorAll('.onboard-goal-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const val = btn.dataset.val
@@ -175,58 +209,87 @@ function _bindStep(container) {
       if (idx >= 0) {
         _data.goals.splice(idx, 1)
         btn.classList.remove('selected')
+        btn.setAttribute('aria-pressed', 'false')
       } else if (_data.goals.length < 3) {
         _data.goals.push(val)
         btn.classList.add('selected')
+        btn.setAttribute('aria-pressed', 'true')
       }
-      const count = container.querySelector('.onboard-goal-count')
-      if (count) count.textContent = `${_data.goals.length}/3 selected`
+      const countEl = container.querySelector('.onboard-goal-count')
+      if (countEl) countEl.textContent = `${_data.goals.length}/3 selected`
       const next = container.querySelector('#onboard-next')
       if (next) next.disabled = _data.goals.length === 0
     })
   })
 
-  // Next
+  // ── Next ──────────────────────────────────────────────────
   container.querySelector('#onboard-next')?.addEventListener('click', () => {
     _step++
     _renderStep(container)
   })
 
-  // Back
+  // ── Back ──────────────────────────────────────────────────
   container.querySelector('#onboard-back')?.addEventListener('click', () => {
     _step--
     _renderStep(container)
   })
 
-  // Finish
+  // ── Finish ────────────────────────────────────────────────
   container.querySelector('#onboard-finish')?.addEventListener('click', async () => {
-    const btn = container.querySelector('#onboard-finish')
-    btn.disabled = true
-    btn.textContent = 'Saving…'
+    const btn      = container.querySelector('#onboard-finish')
+    const errorEl  = container.querySelector('#onboard-error')
+    const backBtn  = container.querySelector('#onboard-back')
 
-    // Tell the router to skip the next onAuthChange re-resolve.
-    // Without this, _notify() inside updateProfile triggers the guard
-    // which sees onboarded=false mid-save and bounces back to /onboarding.
-    suppressNextGuard()
+    btn.disabled     = true
+    btn.textContent  = 'Saving…'
+    if (errorEl)  errorEl.style.display = 'none'
+    if (backBtn)  backBtn.disabled = true
 
     try {
-      await updateProfile({
-        display_name: _data.name ?? _data.role,
-        role:         _data.role,
-        sport:        _data.sport,
-        goals:        _data.goals ?? [],
-        onboarded:    true,
-      })
-    } catch (err) {
-      console.warn('[PIQ] onboarding save warning (navigating anyway):', err)
-    }
+      // ── FIX: get email from current session and include in upsert ──
+      const user = getUser()
+      if (!user) throw new Error('Session expired — please sign in again.')
 
-    // navigate() clears _skipNextGuard so normal auth guarding resumes
-    navigate('/dashboard')
+      const email = user.email
+        ?? user.supabaseSession?.user?.email
+        ?? ''
+
+      if (!email) {
+        throw new Error('Could not read email from session. Please sign in again.')
+      }
+
+      await updateProfile({
+        email,                                  // ← NOT NULL constraint satisfied
+        role:            _data.role     ?? 'solo_athlete',
+        sport:           _data.sport    ?? 'other',
+        goals:           _data.goals    ?? [],
+        onboarded:       true,                  // maps to onboarding_done in supabase.js
+      })
+
+      // Navigate to dashboard on success
+      navigate('/dashboard')
+
+    } catch (err) {
+      console.error('[PIQ] onboarding save error:', err)
+
+      // Show user-facing error instead of silent navigate
+      if (errorEl) {
+        errorEl.textContent = err.message?.includes('Session expired')
+          ? err.message
+          : 'Failed to save your profile. Please try again.'
+        errorEl.style.display = 'block'
+      }
+
+      btn.disabled    = false
+      btn.textContent = 'Try Again'
+      if (backBtn) backBtn.disabled = false
+    }
   })
 }
 
+// ── HELPERS ───────────────────────────────────────────────────
+
 function _capitalize(str) {
   if (!str) return ''
-  return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return str.charAt(0).toUpperCase() + str.slice(1).replace(/_/g, ' ')
 }

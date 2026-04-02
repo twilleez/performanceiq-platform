@@ -1,163 +1,210 @@
 // js/views/auth.js — PerformanceIQ
-// Handles /login, /signup, /reset-password views.
+// Handles /login, /signup, /reset-password routes.
+// FIX: On signup, immediately inserts a profile row with email + id,
+//      so the profiles.email NOT NULL constraint is satisfied BEFORE
+//      onboarding tries to update the row.
 
-import { signInWithEmail, signUpWithEmail, resetPassword } from '../core/supabase.js'
+import {
+  signInWithEmail,
+  signUpWithEmail,
+  resetPassword,
+  createInitialProfile,
+} from '../core/supabase.js'
 import { navigate } from '../core/router.js'
 
 // ── RENDER ────────────────────────────────────────────────────
 
-export function render(container, route) {
-  const mode = route === '/signup' ? 'signup'
-    : route === '/reset-password' ? 'reset'
-    : 'login'
+export function render(container, path) {
+  const mode = path === '/signup'         ? 'signup'
+             : path === '/reset-password' ? 'reset'
+             : 'login'
 
-  container.innerHTML = _template(mode)
-  _bind(container, mode)
-}
-
-function _template(mode) {
-  const isLogin  = mode === 'login'
-  const isSignup = mode === 'signup'
-  const isReset  = mode === 'reset'
-
-  return `
+  container.innerHTML = `
     <div class="auth-shell">
       <div class="auth-card">
         <div class="auth-logo">
-          <span class="auth-logo-word">Performance<em>IQ</em></span>
+          <span class="auth-logo-text">Performance<span class="auth-logo-iq">IQ</span></span>
         </div>
-
-        <h1 class="auth-title">
-          ${isLogin ? 'Welcome back' : isSignup ? 'Create your account' : 'Reset password'}
-        </h1>
-        <p class="auth-subtitle">
-          ${isLogin ? 'Sign in to your PerformanceIQ account'
-            : isSignup ? 'Start your performance journey'
-            : 'Enter your email and we\'ll send a reset link'}
-        </p>
-
-        <div id="auth-error" class="auth-error" style="display:none"></div>
-        <div id="auth-success" class="auth-success" style="display:none"></div>
-
-        <form id="auth-form" class="auth-form" novalidate>
-          ${isSignup ? `
-            <div class="auth-field">
-              <label class="auth-label">Your Name</label>
-              <input id="auth-name" type="text" class="auth-input" placeholder="First Last" autocomplete="name" required />
-            </div>
-          ` : ''}
-
-          <div class="auth-field">
-            <label class="auth-label">Email</label>
-            <input id="auth-email" type="email" class="auth-input" placeholder="you@example.com" autocomplete="email" required />
-          </div>
-
-          ${!isReset ? `
-            <div class="auth-field">
-              <label class="auth-label">Password</label>
-              <div class="auth-pw-wrap">
-                <input id="auth-password" type="password" class="auth-input" placeholder="${isSignup ? 'Min 8 characters' : '••••••••'}" autocomplete="${isSignup ? 'new-password' : 'current-password'}" required minlength="8" />
-                <button type="button" id="auth-pw-toggle" class="auth-pw-toggle" aria-label="Toggle password visibility">👁</button>
-              </div>
-            </div>
-          ` : ''}
-
-          ${isSignup ? `
-            <div class="auth-field">
-              <label class="auth-label">I am a</label>
-              <select id="auth-role" class="auth-input auth-select">
-                <option value="solo">Solo Athlete</option>
-                <option value="athlete">Team Athlete</option>
-                <option value="coach">Coach</option>
-                <option value="parent">Parent</option>
-              </select>
-            </div>
-          ` : ''}
-
-          <button type="submit" id="auth-submit" class="auth-btn">
-            ${isLogin ? 'Sign In' : isSignup ? 'Create Account' : 'Send Reset Link'}
-          </button>
-        </form>
-
-        <div class="auth-footer">
-          ${isLogin ? `
-            <a class="auth-link" data-route="/reset-password">Forgot password?</a>
-            <span class="auth-sep">·</span>
-            <a class="auth-link" data-route="/signup">Create account</a>
-          ` : isSignup ? `
-            <a class="auth-link" data-route="/login">Already have an account? Sign in</a>
-          ` : `
-            <a class="auth-link" data-route="/login">Back to sign in</a>
-          `}
-        </div>
+        ${_formFor(mode)}
       </div>
     </div>
   `
+
+  _bindForm(container, mode)
 }
 
-// ── BIND ──────────────────────────────────────────────────────
+// ── TEMPLATES ─────────────────────────────────────────────────
 
-function _bind(container, mode) {
-  const form     = container.querySelector('#auth-form')
+function _formFor(mode) {
+  if (mode === 'login') return `
+    <h2 class="auth-heading">Welcome back</h2>
+    <div class="auth-field">
+      <label for="auth-email">Email</label>
+      <input id="auth-email" type="email" autocomplete="email"
+             placeholder="you@example.com" />
+    </div>
+    <div class="auth-field">
+      <label for="auth-pass">Password</label>
+      <input id="auth-pass" type="password" autocomplete="current-password"
+             placeholder="••••••••" />
+    </div>
+    <div id="auth-error" class="auth-error" style="display:none"></div>
+    <button id="auth-submit" class="auth-btn">Sign In</button>
+    <div class="auth-footer">
+      <a class="auth-link" data-route="/signup">Create account</a>
+      <span class="auth-sep">·</span>
+      <a class="auth-link" data-route="/reset-password">Forgot password?</a>
+    </div>
+  `
+
+  if (mode === 'signup') return `
+    <h2 class="auth-heading">Create your account</h2>
+    <div class="auth-field">
+      <label for="auth-name">Your name</label>
+      <input id="auth-name" type="text" autocomplete="name"
+             placeholder="e.g. Alex Johnson" />
+    </div>
+    <div class="auth-field">
+      <label for="auth-email">Email</label>
+      <input id="auth-email" type="email" autocomplete="email"
+             placeholder="you@example.com" />
+    </div>
+    <div class="auth-field">
+      <label for="auth-pass">Password <span class="auth-hint">(min 8 characters)</span></label>
+      <input id="auth-pass" type="password" autocomplete="new-password"
+             placeholder="••••••••" />
+    </div>
+    <div id="auth-error" class="auth-error" style="display:none"></div>
+    <button id="auth-submit" class="auth-btn">Create Account</button>
+    <div class="auth-footer">
+      <span>Already have an account?</span>
+      <a class="auth-link" data-route="/login">Sign in</a>
+    </div>
+  `
+
+  if (mode === 'reset') return `
+    <h2 class="auth-heading">Reset your password</h2>
+    <p class="auth-desc">Enter your email and we'll send a reset link.</p>
+    <div class="auth-field">
+      <label for="auth-email">Email</label>
+      <input id="auth-email" type="email" autocomplete="email"
+             placeholder="you@example.com" />
+    </div>
+    <div id="auth-error" class="auth-error" style="display:none"></div>
+    <div id="auth-success" class="auth-success" style="display:none"></div>
+    <button id="auth-submit" class="auth-btn">Send Reset Link</button>
+    <div class="auth-footer">
+      <a class="auth-link" data-route="/login">← Back to sign in</a>
+    </div>
+  `
+
+  return ''
+}
+
+// ── BINDING ────────────────────────────────────────────────────
+
+function _bindForm(container, mode) {
+  const submit   = container.querySelector('#auth-submit')
   const errorEl  = container.querySelector('#auth-error')
-  const successEl= container.querySelector('#auth-success')
-  const submitBtn= container.querySelector('#auth-submit')
-  const pwToggle = container.querySelector('#auth-pw-toggle')
-  const pwInput  = container.querySelector('#auth-password')
+  const successEl = container.querySelector('#auth-success')
 
-  // Password toggle
-  pwToggle?.addEventListener('click', () => {
-    const isHidden = pwInput.type === 'password'
-    pwInput.type = isHidden ? 'text' : 'password'
-    pwToggle.textContent = isHidden ? '🙈' : '👁'
+  function _showError(msg) {
+    if (!errorEl) return
+    errorEl.textContent = msg
+    errorEl.style.display = 'block'
+  }
+  function _hideError() {
+    if (errorEl) errorEl.style.display = 'none'
+  }
+
+  // Allow pressing Enter to submit
+  container.querySelectorAll('input').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submit?.click()
+    })
   })
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault()
-    _clearMessages(errorEl, successEl)
+  submit?.addEventListener('click', async () => {
+    _hideError()
 
-    const email    = container.querySelector('#auth-email')?.value.trim()
-    const password = container.querySelector('#auth-password')?.value
-    const name     = container.querySelector('#auth-name')?.value.trim()
-    const role     = container.querySelector('#auth-role')?.value ?? 'solo'
+    const email  = container.querySelector('#auth-email')?.value.trim()
+    const pass   = container.querySelector('#auth-pass')?.value
+    const name   = container.querySelector('#auth-name')?.value.trim()
 
-    if (!email) { _showError(errorEl, 'Please enter your email.'); return }
-    if (mode !== 'reset' && !password) { _showError(errorEl, 'Please enter your password.'); return }
-    if (mode === 'signup' && password?.length < 8) { _showError(errorEl, 'Password must be at least 8 characters.'); return }
+    // ── Validation ─────────────────────────────────────────
+    if (!email || !email.includes('@')) {
+      _showError('Please enter a valid email address.')
+      return
+    }
+    if (mode !== 'reset' && (!pass || pass.length < 8)) {
+      _showError('Password must be at least 8 characters.')
+      return
+    }
+    if (mode === 'signup' && !name) {
+      _showError('Please enter your name.')
+      return
+    }
 
-    submitBtn.disabled = true
-    submitBtn.textContent = 'Please wait…'
+    submit.disabled    = true
+    submit.textContent = mode === 'login'  ? 'Signing in…'
+                       : mode === 'signup' ? 'Creating account…'
+                       : 'Sending link…'
 
     try {
+
+      // ── LOGIN ─────────────────────────────────────────────
       if (mode === 'login') {
-        await signInWithEmail(email, password)
-        navigate('/dashboard')
-      } else if (mode === 'signup') {
-        await signUpWithEmail(email, password, { display_name: name || email, role })
-        _showSuccess(successEl, 'Account created! Check your email to confirm, then sign in.')
-        setTimeout(() => navigate('/login'), 3000)
-      } else if (mode === 'reset') {
-        await resetPassword(email)
-        _showSuccess(successEl, 'Reset link sent! Check your inbox.')
+        await signInWithEmail(email, pass)
+        // onAuthChange in router will redirect to /dashboard or /onboarding
+        return
       }
+
+      // ── SIGNUP ────────────────────────────────────────────
+      if (mode === 'signup') {
+        const { user } = await signUpWithEmail(email, pass, { name })
+
+        // FIX: Create the profile row immediately with email + id.
+        // This prevents the NOT NULL constraint violation when onboarding
+        // later calls updateProfile() — the row already exists with email set.
+        if (user) {
+          await createInitialProfile(user.id, email, { name })
+        }
+
+        navigate('/onboarding')
+        return
+      }
+
+      // ── RESET ─────────────────────────────────────────────
+      if (mode === 'reset') {
+        await resetPassword(email)
+        if (successEl) {
+          successEl.textContent = `Reset link sent to ${email}. Check your inbox.`
+          successEl.style.display = 'block'
+        }
+        submit.textContent = 'Sent!'
+        // Don't re-enable — avoid double-sends
+        return
+      }
+
     } catch (err) {
-      _showError(errorEl, _friendlyError(err.message))
-    } finally {
-      submitBtn.disabled = false
-      submitBtn.textContent = mode === 'login' ? 'Sign In'
-        : mode === 'signup' ? 'Create Account' : 'Send Reset Link'
+      console.error('[PIQ] auth error:', err)
+      _showError(_friendlyError(err.message))
+      submit.disabled    = false
+      submit.textContent = mode === 'login'  ? 'Sign In'
+                         : mode === 'signup' ? 'Create Account'
+                         : 'Send Reset Link'
     }
   })
 }
 
-function _showError(el, msg)   { el.textContent = msg; el.style.display = 'block' }
-function _showSuccess(el, msg) { el.textContent = msg; el.style.display = 'block' }
-function _clearMessages(...els){ els.forEach(el => { el.textContent = ''; el.style.display = 'none' }) }
+// ── HELPERS ────────────────────────────────────────────────────
 
-function _friendlyError(msg) {
-  if (msg.includes('Invalid login')) return 'Incorrect email or password.'
-  if (msg.includes('Email not confirmed')) return 'Please confirm your email first.'
-  if (msg.includes('already registered')) return 'An account with this email already exists.'
-  if (msg.includes('rate limit')) return 'Too many attempts. Please wait a moment.'
-  return msg
+function _friendlyError(msg = '') {
+  if (msg.includes('Invalid login credentials'))   return 'Incorrect email or password.'
+  if (msg.includes('Email not confirmed'))         return 'Please check your email and confirm your account first.'
+  if (msg.includes('User already registered'))     return 'An account with this email already exists. Try signing in.'
+  if (msg.includes('Password should be'))          return 'Password must be at least 8 characters.'
+  if (msg.includes('rate limit'))                  return 'Too many attempts. Please wait a moment and try again.'
+  if (msg.includes('network'))                     return 'Network error. Check your connection and try again.'
+  return msg || 'Something went wrong. Please try again.'
 }
