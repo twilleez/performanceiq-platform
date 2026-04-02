@@ -1,0 +1,342 @@
+/* ============================================================
+   PIQ Workout Builder — Component Styles (v2)
+   Add to your main stylesheet or import as builder.css
+   ============================================================ */
+
+/* ── Sport Filter Pills ────────────────────────────────────── */
+.piq-sport-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.piq-sf-btn {
+  padding: 6px 14px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-1);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.piq-sf-btn:hover,
+.piq-sf-btn.active {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* ── Program Grid ──────────────────────────────────────────── */
+.piq-prog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.piq-prog-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color .12s, box-shadow .12s;
+}
+.piq-prog-card:hover {
+  border-color: var(--border-strong);
+}
+.piq-prog-sport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+}
+.piq-sport-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.piq-prog-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.piq-prog-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.piq-chip {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.piq-chip-focus {
+  background: #E6F1FB;
+  color: #185FA5;
+  border-color: #B5D4F4;
+}
+.piq-chip-pop {
+  background: #EAF3DE;
+  color: #3B6D11;
+  border-color: #C0DD97;
+}
+
+/* ── Phase Bar ─────────────────────────────────────────────── */
+.piq-phase-bar {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.piq-phase-seg {
+  height: 100%;
+  border-radius: 2px;
+  min-width: 6px;
+}
+
+/* ── Program Source ────────────────────────────────────────── */
+.piq-prog-source {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── Load Button ───────────────────────────────────────────── */
+.piq-load-btn {
+  margin-top: 4px;
+  width: 100%;
+  padding: 7px 0;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background .1s;
+}
+.piq-load-btn:hover {
+  background: var(--surface-2);
+}
+
+/* ── Loaded Banner ─────────────────────────────────────────── */
+.piq-loaded-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #EAF3DE;
+  color: #3B6D11;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  border: 1px solid #C0DD97;
+}
+.piq-banner-x {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #3B6D11;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+/* ── Add Exercise Button (in panel header) ─────────────────── */
+.piq-add-ex-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-weight: 600;
+}
+.piq-add-ex-btn:hover {
+  background: var(--surface-2);
+}
+
+/* ── Exercise Table Rows ───────────────────────────────────── */
+.ex-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 52px 60px 68px 1fr 28px;
+  gap: 8px;
+  padding: 6px 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.ex-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 52px 60px 68px 1fr 28px;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border-light, var(--border));
+}
+.ex-row:last-child {
+  border-bottom: none;
+}
+.ex-row input[type=text],
+.ex-row input[type=number] {
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  width: 100%;
+}
+.ex-row input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+.ex-empty-state {
+  padding: 20px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── Category Tag (inline) ─────────────────────────────────── */
+.piq-cat-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.piq-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+/* ── Library Search ────────────────────────────────────────── */
+.piq-lib-search-row {
+  margin-bottom: 12px;
+}
+.piq-lib-search-row input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+.piq-lib-search-row input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+/* ── Category Pills (library) ──────────────────────────────── */
+.piq-cat-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.piq-cat-pill {
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 20px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: background .1s, color .1s;
+}
+
+/* ── Exercise Grid (library) ───────────────────────────────── */
+.piq-ex-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+@media (max-width: 520px) {
+  .piq-ex-grid { grid-template-columns: 1fr; }
+}
+.piq-ex-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .1s, border-color .1s;
+}
+.piq-ex-item:hover {
+  background: var(--surface-2);
+}
+.piq-ex-item.piq-ex-added {
+  border-color: #B5D4F4;
+  background: rgba(230, 241, 251, 0.25);
+}
+.piq-ex-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.piq-ex-add-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.piq-ex-add-btn:hover,
+.piq-ex-item.piq-ex-added .piq-ex-add-btn {
+  background: #E6F1FB;
+  color: #185FA5;
+  border-color: #85B7EB;
+}
+
+/* ── Responsive: stack ex-header on narrow screens ─────────── */
+@media (max-width: 640px) {
+  .ex-header,
+  .ex-row {
+    grid-template-columns: 2fr 52px 52px 52px;
+  }
+  .ex-header span:nth-child(2),
+  .ex-row .piq-cat-tag,
+  .ex-row .ex-rest,
+  .ex-row .ex-note {
+    display: none;
+  }
+}
