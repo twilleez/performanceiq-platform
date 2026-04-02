@@ -31,14 +31,26 @@ const ROUTES = {
 const DEFAULT_AUTHED   = '/dashboard'
 const DEFAULT_UNAUTHED = '/login'
 
-let _currentRoute = null
-let _listeners    = new Set()
+let _currentRoute  = null
+let _listeners     = new Set()
+let _skipNextGuard = false   // set true while profile is being saved
 
 // ── PUBLIC API ────────────────────────────────────────────────
 
 export function getCurrentRoute() { return _currentRoute }
 
+/**
+ * Call immediately before any profile update that triggers onAuthChange/_notify.
+ * Prevents the onboarding guard from re-routing during the save window.
+ * Automatically cleared when navigate() is called or after 3 s.
+ */
+export function suppressNextGuard() {
+  _skipNextGuard = true
+  setTimeout(() => { _skipNextGuard = false }, 3000)
+}
+
 export function navigate(path, { replace = false } = {}) {
+  _skipNextGuard = false          // explicit navigation — re-enable guard
   const url = '#' + path
   if (replace) {
     history.replaceState(null, '', url)
@@ -61,8 +73,13 @@ export function initRouter() {
     _resolve(_getHashPath())
   })
 
-  // Handle auth state changes — re-resolve current route
+  // Handle auth state changes — re-resolve current route.
+  // Skip one cycle if suppressNextGuard() was called (profile mid-save).
   onAuthChange(() => {
+    if (_skipNextGuard) {
+      _skipNextGuard = false
+      return
+    }
     _resolve(_currentRoute ?? _getHashPath())
   })
 
@@ -87,7 +104,6 @@ async function _resolve(path) {
   const route = ROUTES[path]
 
   if (!route) {
-    // 404 → send to default
     navigate(isAuthed() ? DEFAULT_AUTHED : DEFAULT_UNAUTHED, { replace: true })
     return
   }
@@ -146,11 +162,9 @@ function _getHashPath() {
 }
 
 function _updateNavActive(path) {
-  // Sidebar items
   document.querySelectorAll('.sidebar-item[data-route], .topnav-link[data-route]').forEach(el => {
     el.classList.toggle('active', el.dataset.route === path)
   })
-  // Bottom nav
   document.querySelectorAll('.piq-nav-item[data-route]').forEach(el => {
     el.classList.toggle('active', el.dataset.route === path ||
       (el.dataset.route === '/dashboard' && path === DEFAULT_AUTHED))
