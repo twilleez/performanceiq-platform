@@ -1,223 +1,476 @@
 /**
- * PerformanceIQ — Solo Workout Builder v2
+ * Solo Builder — v2
+ * Three-tab layout: Top Programs | Workout Builder | Exercise Library
+ * Mirrors coach programBuilder pattern; personal/solo mode only.
+ * Evidence sources: NSCA CSCS 2022, Bompa & Buzzichelli 2019, Gabbett BJSM 2016,
+ *   Morin & Samozino 2016, Petersen et al. 2011, Markovic 2007
  */
-import { buildSidebar }                    from '../../components/nav.js';
-import { TRAINING_TEMPLATES, SPORT_EMOJI } from '../../data/exerciseLibrary.js';
-import { getState, patchBuilder, addWorkoutLog } from '../../state/state.js';
-import { showToast }                       from '../../core/notifications.js';
-import { navigate }                        from '../../router.js';
+import { buildSidebar }                          from '../../components/nav.js';
+import { EXERCISES, TRAINING_TEMPLATES,
+         SPORT_EMOJI }                            from '../../data/exerciseLibrary.js';
+import { getState, patchBuilder, addWorkoutLog }  from '../../state/state.js';
+import { showToast }                             from '../../core/notifications.js';
+import { navigate }                              from '../../router.js';
 
-function exRow(ex, i) {
-  return `<div class="ex-row" id="ex-row-${i}" style="display:grid;grid-template-columns:1fr 70px 70px 80px 32px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-    <input type="text"   class="ex-name" value="${ex.name||''}" placeholder="Exercise name" data-idx="${i}" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text-primary);font-size:13px;width:100%">
-    <input type="number" class="ex-sets" value="${ex.sets||3}" min="1" max="20" data-idx="${i}" style="padding:7px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text-primary);font-size:13px;width:100%;text-align:center">
-    <input type="number" class="ex-reps" value="${ex.reps||8}" min="1" max="100" data-idx="${i}" style="padding:7px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text-primary);font-size:13px;width:100%;text-align:center">
-    <input type="number" class="ex-rest" value="${ex.rest||60}" min="0" max="600" data-idx="${i}" style="padding:7px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text-primary);font-size:13px;width:100%;text-align:center">
-    <button class="ex-del" data-idx="${i}" style="width:28px;height:28px;border-radius:6px;border:none;background:#ef444422;color:#ef4444;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>
-  </div>`;
-}
+// ── CONSTANTS ─────────────────────────────────────────────────
+const SPORTS     = ['basketball','football','soccer','baseball','volleyball','track'];
+const CATEGORIES = ['strength','power','speed','agility','core','mobility','recovery'];
+const CAT_COLORS = {
+  strength:'#EEEDFE', power:'#FAECE7', speed:'#EAF3DE',
+  agility:'#FAEEDA',  core:'#E6F1FB',  mobility:'#E1F5EE', recovery:'#F1EFE8',
+};
+const CAT_TEXT = {
+  strength:'#534AB7', power:'#993C1D', speed:'#3B6D11',
+  agility:'#854F0B',  core:'#185FA5',  mobility:'#0F6E56', recovery:'#5F5E5A',
+};
+const SPORT_DOT = {
+  basketball:'#E24B4A', football:'#EF9F27', soccer:'#639922',
+  baseball:'#1D9E75',   volleyball:'#7F77DD', track:'#D85A30',
+};
+const PROG_SOURCE = {
+  'bb-preseason-12w':  'NSCA CSCS 2022 – basketball periodization',
+  'bb-inseason-4w':    'Bompa & Buzzichelli 2019 – in-season load management',
+  'bb-guard-speed-4w': 'Morin & Samozino 2016 – sprint force-velocity',
+  'bb-strength-8w':    'NSCA CSCS 2022 – youth strength foundation',
+  'fb-offseason-16w':  'Bompa & Buzzichelli 2019 – off-season strength-power block',
+  'fb-speed-6w':       'Morin & Samozino 2016 – acceleration mechanics',
+  'fb-preseason-8w':   'Gabbett BJSM 2016 – training load and injury risk',
+  'sc-hamstring-4w':   'Petersen et al. 2011 (BJSM) – Nordic curl RCT',
+  'sc-preseason-8w':   'Gabbett BJSM 2016 – pre-season conditioning load',
+  'ba-rotational-12w': 'Fleisig & Andrews 2012 – rotational mechanics in baseball',
+  'ba-arm-care-6w':    'NSCA CSCS 2022 – overhead athlete arm care',
+  'ba-preseason-8w':   'Bompa & Buzzichelli 2019 – full athletic preparation',
+  'vb-jump-6w':        'Markovic 2007 – plyometric training meta-analysis',
+  'vb-preseason-8w':   'NSCA CSCS 2022 – volleyball periodization',
+  'vb-shoulder-4w':    'NSCA CSCS 2022 – overhead athlete shoulder resilience',
+  'tr-speed-8w':       'Morin & Samozino 2016 – max velocity sprint program',
+  'tr-strength-6w':    'Bompa & Buzzichelli 2019 – posterior chain strength',
+  'tr-xc-10w':         'NSCA CSCS 2022 – cross-country aerobic base',
+  'tr-taper-3w':       'Bompa & Buzzichelli 2019 – competition taper protocol',
+};
 
+// ── RENDER ────────────────────────────────────────────────────
 export function renderSoloBuilder() {
   const BS = getState().builder;
-  const d  = BS.draft;
-
   return `
 <div class="view-with-sidebar">
   ${buildSidebar('solo','solo/builder')}
   <main class="page-main">
     <div class="page-header">
       <h1>Workout <span>Builder</span></h1>
-      <p>Design your own training or load a template.</p>
+      <p>Build your own session or load from proven programs.</p>
     </div>
 
-    <div class="tab-bar" style="display:flex;gap:6px;margin-bottom:20px">
-      <button class="tab-btn ${BS.activeTab==='plan'?'active':''}" id="tab-plan" style="padding:9px 20px;border-radius:8px;border:1px solid var(--border);background:${BS.activeTab==='plan'?'var(--piq-green)':'var(--surface-2)'};color:${BS.activeTab==='plan'?'#0d1b3e':'var(--text-muted)'};font-weight:600;font-size:13px;cursor:pointer">My Plans</button>
-      <button class="tab-btn ${BS.activeTab!=='plan'?'active':''}" id="tab-build" style="padding:9px 20px;border-radius:8px;border:1px solid var(--border);background:${BS.activeTab!=='plan'?'var(--piq-green)':'var(--surface-2)'};color:${BS.activeTab!=='plan'?'#0d1b3e':'var(--text-muted)'};font-weight:600;font-size:13px;cursor:pointer">Builder</button>
+    <div class="tab-bar">
+      <button class="tab-btn ${BS.activeTab==='programs'?'active':''}" id="tab-programs">Top Programs</button>
+      <button class="tab-btn ${BS.activeTab==='builder'?'active':''}"  id="tab-build">Workout Builder</button>
+      <button class="tab-btn ${BS.activeTab==='library'?'active':''}"  id="tab-library">Exercise Library</button>
     </div>
 
-    <div id="plan-view" ${BS.activeTab!=='plan'?'style="display:none"':''}>
-      <div class="panel" style="margin-bottom:16px">
-        <div class="panel-title">Popular Templates</div>
-        ${TRAINING_TEMPLATES.filter(t=>t.popular).slice(0,5).map(t=>`
-        <div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">
-          <span style="font-size:20px;flex-shrink:0">${SPORT_EMOJI[t.sport]||'📋'}</span>
-          <div style="flex:1">
-            <div style="font-weight:600;font-size:13px;color:var(--text-primary)">${t.title}</div>
-            <div style="font-size:11.5px;color:var(--text-muted)">${t.duration}wk · ${t.focus} · ${t.sessions_per_week}×/week</div>
-          </div>
-          <button class="btn-draft" style="font-size:11px;padding:5px 12px;flex-shrink:0" data-route="solo/builder">Load</button>
-        </div>`).join('')}
-      </div>
+    <!-- TOP PROGRAMS -->
+    <div id="view-programs" ${BS.activeTab!=='programs'?'style="display:none"':''}>
+      ${programsHTML()}
     </div>
 
-    <div id="builder-view" ${BS.activeTab==='plan'?'style="display:none"':''}>
-
-      <!-- Template trigger -->
-      <div id="tpl-trigger" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;margin-bottom:16px;background:var(--surface-2);transition:border-color .15s">
-        <div>
-          <div style="font-weight:600;font-size:13.5px;color:var(--text-primary)">📋 ${d ? `Loaded: ${d.title||'Untitled'}` : 'Load a Training Template'}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${d ? `${d.sport||''} · ${d.duration||'?'}wk` : 'Start from proven programs for any sport'}</div>
-        </div>
-        <span style="font-size:18px;color:var(--text-muted)">⬇️</span>
-      </div>
-
-      <div class="panel" style="margin-bottom:16px">
-        <div class="panel-title">Workout Details</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-          <div class="b-field"><label>Workout Name</label><input type="text" id="b-title" value="${d?.title||''}" placeholder="e.g. Lower Body Power"></div>
-          <div class="b-field"><label>Sport</label>
-            <select id="b-sport">
-              ${['basketball','football','soccer','baseball','volleyball','track'].map(s=>`<option value="${s}" ${(d?.sport||'basketball')===s?'selected':''}>${SPORT_EMOJI[s]||''} ${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
-            </select></div>
-          <div class="b-field"><label>Session Type</label>
-            <select id="b-day-type">
-              ${['Strength','Power','Speed','Conditioning','Recovery'].map(dt=>`<option ${(d?.day_type||'Strength')===dt?'selected':''}>${dt}</option>`).join('')}
-            </select></div>
-          <div class="b-field"><label>Date</label><input type="date" id="b-date" value="${new Date().toISOString().slice(0,10)}"></div>
-        </div>
-      </div>
-
-      <div class="panel" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div class="panel-title" style="margin:0">Exercises</div>
-          <div style="display:grid;grid-template-columns:1fr 70px 70px 80px 32px;gap:8px;font-size:11px;font-weight:700;color:var(--text-muted);padding-right:2px">
-            <span>Name</span><span style="text-align:center">Sets</span><span style="text-align:center">Reps</span><span style="text-align:center">Rest(s)</span><span></span>
-          </div>
-        </div>
-        <div id="ex-list">
-          ${(d?.exercises||[{name:'',sets:3,reps:8,rest:60}]).map((ex,i)=>exRow(ex,i)).join('')}
-        </div>
-        <button id="btn-add-ex" style="margin-top:10px;padding:8px 16px;border:1px dashed var(--border);border-radius:8px;background:transparent;color:var(--piq-green);font-size:13px;font-weight:600;cursor:pointer;width:100%">+ Add Exercise</button>
-      </div>
-
-      <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <button class="btn-primary" id="btn-log" style="font-size:13px;padding:12px 24px">✅ Log Workout</button>
-        <button class="btn-draft" id="btn-draft" style="font-size:13px;padding:12px 20px">💾 Save Draft</button>
-      </div>
+    <!-- BUILDER -->
+    <div id="view-builder" ${BS.activeTab!=='builder'?'style="display:none"':''}>
+      ${builderHTML(BS)}
     </div>
 
+    <!-- LIBRARY -->
+    <div id="view-library" ${BS.activeTab!=='library'?'style="display:none"':''}>
+      ${libraryHTML()}
+    </div>
   </main>
-</div>
-
-<!-- Template Picker Sheet -->
-<div id="tpl-picker-sheet" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)">
-  <div style="position:absolute;bottom:0;left:0;right:0;max-height:80vh;background:var(--surface);border-radius:16px 16px 0 0;overflow:hidden;display:flex;flex-direction:column">
-    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <h3 style="font-family:'Oswald',sans-serif;font-size:16px;font-weight:700">Load Template</h3>
-      <button id="tpl-close-btn" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted)">✕</button>
-    </div>
-    <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap" id="tpl-filters">
-      <button class="tpl-sport-btn active" data-filter="all" style="padding:6px 14px;border-radius:16px;border:1px solid var(--border);background:var(--piq-green);color:#0d1b3e;font-size:12px;font-weight:600;cursor:pointer">All</button>
-      ${['basketball','football','soccer','baseball','volleyball','track'].map(s=>`
-      <button class="tpl-sport-btn" data-filter="${s}" style="padding:6px 14px;border-radius:16px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer">${SPORT_EMOJI[s]||''} ${s.charAt(0).toUpperCase()+s.slice(1)}</button>`).join('')}
-    </div>
-    <div id="tpl-grid" style="overflow-y:auto;padding:12px 20px;display:flex;flex-direction:column;gap:8px"></div>
-  </div>
 </div>`;
 }
 
-function _renderGrid(filter) {
-  const grid = document.getElementById('tpl-grid');
-  if (!grid) return;
-  const templates = filter === 'all' ? TRAINING_TEMPLATES : TRAINING_TEMPLATES.filter(t => t.sport === filter);
-  grid.innerHTML = templates.map(t => `
-  <div class="tpl-picker-row" data-tpl="${t.id}" style="padding:14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s;background:var(--surface-2)">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
-      <div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-bottom:2px">${SPORT_EMOJI[t.sport]||''} ${t.sport?.toUpperCase()}</div>
-        <div style="font-weight:700;font-size:13.5px;color:var(--text-primary)">${t.title}</div>
-      </div>
-      ${t.popular?`<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#22c95522;color:#22c955;font-weight:700;flex-shrink:0">⭐ POPULAR</span>`:''}
-    </div>
-    <div style="display:flex;gap:3px;margin-bottom:8px">
-      ${(t.phases||[]).map(ph=>`<div style="flex:${ph.weeks};height:4px;background:${ph.color};border-radius:2px" title="${ph.label} ${ph.weeks}wk"></div>`).join('')}
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:var(--surface);color:var(--text-muted);border:1px solid var(--border)">${t.duration}wk</span>
-      <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:var(--surface);color:var(--text-muted);border:1px solid var(--border)">${t.sessions_per_week}×/wk</span>
-      <span style="font-size:11px;padding:2px 8px;border-radius:8px;background:var(--surface);color:var(--text-muted);border:1px solid var(--border)">${t.focus}</span>
-    </div>
-  </div>`).join('');
-
-  grid.querySelectorAll('[data-tpl]').forEach(el => {
-    el.addEventListener('click', () => {
-      const t = TRAINING_TEMPLATES.find(x => x.id === el.dataset.tpl);
-      if (!t) return;
-      patchBuilder({ draft: { ...t, exercises: t.exercises.map(name => ({name,sets:3,reps:8,rest:60})) } });
-      document.getElementById('tpl-picker-sheet').style.display = 'none';
-      navigate('solo/builder');
-    });
-  });
+// ── TOP PROGRAMS ──────────────────────────────────────────────
+function programsHTML() {
+  return `
+<div class="piq-sport-filters" id="prog-sport-filters">
+  <button class="piq-sf-btn active" data-sport="all">All Sports</button>
+  ${SPORTS.map(s=>`<button class="piq-sf-btn" data-sport="${s}">${SPORT_EMOJI[s]} ${s[0].toUpperCase()+s.slice(1)}</button>`).join('')}
+</div>
+<div class="piq-prog-grid" id="prog-grid">
+  ${renderProgCards('all')}
+</div>`;
 }
 
-document.addEventListener('piq:viewRendered', e => {
-  if (e.detail?.route !== 'solo/builder') return;
+function renderProgCards(sport) {
+  const list = sport === 'all' ? TRAINING_TEMPLATES : TRAINING_TEMPLATES.filter(t=>t.sport===sport);
+  if (!list.length) return '<p style="color:var(--text-muted);padding:1rem">No programs for this sport yet.</p>';
+  return list.map(t => {
+    const dotColor = SPORT_DOT[t.sport] || '#888';
+    const source   = PROG_SOURCE[t.id]  || 'NSCA CSCS 2022';
+    return `
+<div class="piq-prog-card">
+  <div class="piq-prog-sport">
+    <span class="piq-sport-dot" style="background:${dotColor}"></span>
+    ${SPORT_EMOJI[t.sport]||''} ${t.sport}
+  </div>
+  <div class="piq-prog-title">${esc(t.title)}</div>
+  <div class="piq-prog-chips">
+    <span class="piq-chip">${t.duration}wk</span>
+    <span class="piq-chip">${t.sessions_per_week}x/wk</span>
+    <span class="piq-chip piq-chip-focus">${esc(t.focus)}</span>
+    <span class="piq-chip">${esc(t.level)}</span>
+    ${t.popular ? '<span class="piq-chip piq-chip-pop">Popular</span>' : ''}
+  </div>
+  <div class="piq-phase-bar">
+    ${(t.phases||[]).map(ph=>`<div class="piq-phase-seg" style="flex:${ph.weeks};background:${ph.color}" title="${esc(ph.label)} – ${ph.weeks}wk"></div>`).join('')}
+  </div>
+  <div class="piq-prog-source">Source: ${esc(source)}</div>
+  <button class="piq-load-btn" data-tpl="${t.id}">Load into builder</button>
+</div>`;
+  }).join('');
+}
 
-  document.getElementById('tab-plan')?.addEventListener('click', () => {
-    patchBuilder({ activeTab:'plan' });
-    document.getElementById('plan-view').style.display  = 'block';
-    document.getElementById('builder-view').style.display = 'none';
-    document.getElementById('tab-plan').style.background  = 'var(--piq-green)';
-    document.getElementById('tab-plan').style.color       = '#0d1b3e';
-    document.getElementById('tab-build').style.background = 'var(--surface-2)';
-    document.getElementById('tab-build').style.color      = 'var(--text-muted)';
-  });
-  document.getElementById('tab-build')?.addEventListener('click', () => {
-    patchBuilder({ activeTab:'builder' });
-    document.getElementById('plan-view').style.display  = 'none';
-    document.getElementById('builder-view').style.display = 'block';
-    document.getElementById('tab-build').style.background = 'var(--piq-green)';
-    document.getElementById('tab-build').style.color      = '#0d1b3e';
-    document.getElementById('tab-plan').style.background  = 'var(--surface-2)';
-    document.getElementById('tab-plan').style.color       = 'var(--text-muted)';
+// ── BUILDER ───────────────────────────────────────────────────
+function builderHTML(BS) {
+  const d = BS.draft;
+  const exRows = (d?.exercises||[]).map((ex,i) => exRow(ex,i)).join('');
+  return `
+${d ? `
+<div class="piq-loaded-banner" id="loaded-banner">
+  ✅ <strong>${esc(d.title)}</strong> loaded — ${(d.exercises||[]).length} exercises ready
+  <button class="piq-banner-x" id="banner-dismiss">×</button>
+</div>` : ''}
+
+<div class="panel">
+  <div class="panel-title">Workout details</div>
+  <div class="b-field-row">
+    <div class="b-field">
+      <label>Workout name</label>
+      <input type="text" id="b-title" value="${esc(d?.title||'')}" placeholder="e.g. Speed Day – Week 3">
+    </div>
+    <div class="b-field">
+      <label>Sport</label>
+      <select id="b-sport">
+        ${SPORTS.map(s=>`<option value="${s}" ${d?.sport===s?'selected':''}>${SPORT_EMOJI[s]} ${s[0].toUpperCase()+s.slice(1)}</option>`).join('')}
+      </select>
+    </div>
+  </div>
+  <div class="b-field-row">
+    <div class="b-field">
+      <label>Session type</label>
+      <select id="b-day-type">
+        ${['Strength','Power','Speed','Conditioning','Recovery'].map(v=>`<option ${d?.day_type===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+    </div>
+    <div class="b-field">
+      <label>Phase</label>
+      <select id="b-phase">
+        ${['Pre-Season','In-Season','Off-Season','Post-Season'].map(v=>`<option ${d?.phase===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+    </div>
+    <div class="b-field">
+      <label>Date</label>
+      <input type="date" id="b-date" value="${new Date().toISOString().split('T')[0]}">
+    </div>
+  </div>
+  ${d?.phases ? `
+  <div class="plan-phase-bar" style="margin:12px 0 0">
+    ${d.phases.map(ph=>`<div class="plan-phase-segment" style="background:${ph.color};flex:${ph.weeks}" title="${esc(ph.label)}">${ph.label}</div>`).join('')}
+  </div>` : ''}
+</div>
+
+<div class="panel" style="margin-top:16px">
+  <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Exercises <span id="ex-count" style="font-weight:400;color:var(--text-muted)">(${(d?.exercises||[]).length})</span></span>
+    <button class="piq-add-ex-btn" id="btn-go-library">+ Browse library</button>
+  </div>
+
+  <div class="ex-header">
+    <span style="flex:2">Exercise</span>
+    <span>Category</span>
+    <span>Sets</span>
+    <span>Reps</span>
+    <span>Rest (s)</span>
+    <span>Note</span>
+    <span></span>
+  </div>
+  <div id="ex-list">
+    ${exRows || `<div class="ex-empty-state" id="ex-empty">No exercises yet — browse the library or load a program above.</div>`}
+  </div>
+  <div style="margin-top:10px">
+    <button class="btn-add-ex" id="btn-add-ex">+ Add blank row</button>
+  </div>
+</div>
+
+<div style="display:flex;gap:12px;margin-top:20px;flex-wrap:wrap">
+  <button class="btn-assign" id="btn-log">✅ Log this workout</button>
+  <button class="btn-draft"  id="btn-draft">💾 Save draft</button>
+</div>`;
+}
+
+function exRow(ex, i) {
+  const cat = ex.category || ex.cat || 'strength';
+  const bg  = CAT_COLORS[cat] || '#f5f5f5';
+  const fg  = CAT_TEXT[cat]   || '#333';
+  return `<div class="ex-row" id="ex-row-${i}">
+  <input type="text"   class="ex-name" value="${esc(ex.name||'')}" placeholder="Exercise name" data-idx="${i}">
+  <span class="piq-cat-tag" style="background:${bg};color:${fg}">${cat}</span>
+  <input type="number" class="ex-sets" value="${ex.sets||3}"  min="1" max="20"  data-idx="${i}">
+  <input type="text"   class="ex-reps" value="${ex.reps||'8'}" placeholder="8" data-idx="${i}" style="width:58px">
+  <input type="number" class="ex-rest" value="${ex.rest||90}" min="0" max="600" step="5" data-idx="${i}">
+  <input type="text"   class="ex-note" value="${esc(ex.note||'')}" placeholder="coaching cue…" data-idx="${i}">
+  <button class="ex-del" data-idx="${i}">×</button>
+</div>`;
+}
+
+// ── EXERCISE LIBRARY ──────────────────────────────────────────
+function libraryHTML() {
+  const counts = CATEGORIES.map(c=>({cat:c, n: EXERCISES.filter(e=>e.category===c).length}));
+  return `
+<div class="piq-lib-search-row">
+  <input type="text" id="lib-search" placeholder="Search exercises by name or tag…">
+</div>
+<div class="piq-cat-pills" id="lib-cat-pills">
+  ${catPillHTML('all', EXERCISES.length, true)}
+  ${counts.map(c=>catPillHTML(c.cat, c.n, false)).join('')}
+</div>
+<div class="piq-ex-grid" id="lib-ex-grid">
+  ${renderExGrid('all', '')}
+</div>
+<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+  <button class="btn-draft" id="btn-back-builder" style="width:100%">← Back to builder</button>
+</div>`;
+}
+
+function catPillHTML(cat, count, active) {
+  const label = cat === 'all' ? 'All' : cat.charAt(0).toUpperCase()+cat.slice(1);
+  const bg  = active ? (CAT_COLORS[cat]||'var(--surface-2)') : 'var(--surface-1)';
+  const fg  = active ? (CAT_TEXT[cat]||'var(--text-primary)') : 'var(--text-muted)';
+  return `<button class="piq-cat-pill ${active?'active':''}" data-cat="${cat}"
+    style="background:${bg};color:${fg}">${label} <span style="opacity:.6">(${count})</span></button>`;
+}
+
+function renderExGrid(cat, query) {
+  const added = new Set(collectExercises().map(e=>e.name));
+  let list = cat === 'all' ? EXERCISES : EXERCISES.filter(e=>e.category===cat);
+  if (query) {
+    const q = query.toLowerCase();
+    list = list.filter(e=>e.name.toLowerCase().includes(q) || e.tags.some(t=>t.includes(q)));
+  }
+  if (!list.length) return '<div style="padding:1rem;color:var(--text-muted);font-size:13px">No exercises found.</div>';
+  return list.map(e => {
+    const isAdded = added.has(e.name);
+    const bg  = CAT_COLORS[e.category] || '#f5f5f5';
+    const fg  = CAT_TEXT[e.category]   || '#333';
+    return `
+<div class="piq-ex-item ${isAdded?'piq-ex-added':''}" data-exid="${e.id}">
+  <div>
+    <div class="piq-ex-name">${esc(e.name)}</div>
+    <div style="margin-top:3px">
+      <span class="piq-cat-tag" style="background:${bg};color:${fg}">${e.category}</span>
+      ${e.tags.slice(0,2).map(t=>`<span class="piq-tag">${esc(t)}</span>`).join('')}
+    </div>
+  </div>
+  <button class="piq-ex-add-btn" title="${isAdded?'Remove':'Add'}">${isAdded?'✓':'+'}</button>
+</div>`;
+  }).join('');
+}
+
+// ── EVENT BINDING ─────────────────────────────────────────────
+document.addEventListener('piq:viewRendered', wireBuilder);
+
+function wireBuilder() {
+  document.getElementById('tab-programs')?.addEventListener('click', () => switchTab('programs'));
+  document.getElementById('tab-build')?.addEventListener('click',    () => switchTab('builder'));
+  document.getElementById('tab-library')?.addEventListener('click',  () => switchTab('library'));
+  document.getElementById('btn-go-library')?.addEventListener('click', () => switchTab('library'));
+  document.getElementById('btn-back-builder')?.addEventListener('click', () => switchTab('builder'));
+
+  document.getElementById('banner-dismiss')?.addEventListener('click', () => {
+    document.getElementById('loaded-banner')?.remove();
   });
 
-  document.getElementById('tpl-trigger')?.addEventListener('click', () => {
-    document.getElementById('tpl-picker-sheet').style.display = 'block';
-    _renderGrid('all');
+  document.getElementById('prog-sport-filters')?.addEventListener('click', e => {
+    const btn = e.target.closest('.piq-sf-btn');
+    if (!btn) return;
+    document.querySelectorAll('.piq-sf-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const grid = document.getElementById('prog-grid');
+    if (grid) grid.innerHTML = renderProgCards(btn.dataset.sport);
+    bindLoadButtons();
   });
-  document.getElementById('tpl-close-btn')?.addEventListener('click', () => {
-    document.getElementById('tpl-picker-sheet').style.display = 'none';
-  });
+  bindLoadButtons();
 
-  document.querySelectorAll('.tpl-sport-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tpl-sport-btn').forEach(b => {
-        b.style.background = 'var(--surface-2)'; b.style.color = 'var(--text-muted)';
-      });
-      btn.style.background = 'var(--piq-green)'; btn.style.color = '#0d1b3e';
-      _renderGrid(btn.dataset.filter);
-    });
-  });
-
-  document.getElementById('btn-add-ex')?.addEventListener('click', () => {
-    const list = document.getElementById('ex-list');
-    const idx  = list.querySelectorAll('.ex-row').length;
-    const div  = document.createElement('div');
-    div.innerHTML = exRow({name:'',sets:3,reps:8,rest:60}, idx);
-    list.appendChild(div.firstElementChild);
-  });
+  document.getElementById('btn-add-ex')?.addEventListener('click', addBlankRow);
   document.getElementById('ex-list')?.addEventListener('click', e => {
     if (e.target.classList.contains('ex-del')) {
-      document.getElementById(`ex-row-${e.target.dataset.idx}`)?.remove();
+      e.target.closest('.ex-row')?.remove();
+      refreshExCount();
     }
   });
 
+  // Log workout
   document.getElementById('btn-log')?.addEventListener('click', () => {
-    const title = document.getElementById('b-title')?.value.trim() || 'Solo Workout';
-    const exercises = Array.from(document.querySelectorAll('#ex-list .ex-row'))
-      .map(row => ({ name: row.querySelector('.ex-name')?.value||'', sets:+(row.querySelector('.ex-sets')?.value||3), reps:+(row.querySelector('.ex-reps')?.value||8), rest:+(row.querySelector('.ex-rest')?.value||60) }))
-      .filter(e => e.name.trim());
-    addWorkoutLog({ title, exercises: exercises.length, sport: document.getElementById('b-sport')?.value, completed:true, avgRPE:6, duration:45 });
+    saveDraft();
+    const title = document.getElementById('b-title')?.value?.trim() || 'Solo Workout';
+    const exercises = collectExercises();
+    addWorkoutLog({
+      title,
+      exercises: exercises.length,
+      sport:     document.getElementById('b-sport')?.value,
+      phase:     document.getElementById('b-phase')?.value,
+      date:      document.getElementById('b-date')?.value,
+      completed: true,
+      avgRPE:    6,
+    });
     patchBuilder({ draft: null });
     showToast(`✅ "${title}" logged!`);
     navigate('solo/home');
   });
 
   document.getElementById('btn-draft')?.addEventListener('click', () => {
-    const exercises = Array.from(document.querySelectorAll('#ex-list .ex-row'))
-      .map(row => ({ name: row.querySelector('.ex-name')?.value||'', sets:+(row.querySelector('.ex-sets')?.value||3), reps:+(row.querySelector('.ex-reps')?.value||8), rest:+(row.querySelector('.ex-rest')?.value||60) }));
-    patchBuilder({ draft: { title: document.getElementById('b-title')?.value||'', sport: document.getElementById('b-sport')?.value||'basketball', exercises } });
+    saveDraft();
     showToast('💾 Draft saved');
   });
-});
+
+  document.getElementById('lib-search')?.addEventListener('input', e => {
+    const cat = document.querySelector('.piq-cat-pill.active')?.dataset.cat || 'all';
+    const grid = document.getElementById('lib-ex-grid');
+    if (grid) grid.innerHTML = renderExGrid(cat, e.target.value);
+    bindExAddButtons();
+  });
+
+  document.getElementById('lib-cat-pills')?.addEventListener('click', e => {
+    const pill = e.target.closest('.piq-cat-pill');
+    if (!pill) return;
+    document.querySelectorAll('.piq-cat-pill').forEach(p => {
+      p.classList.remove('active');
+      const c = p.dataset.cat;
+      p.style.background = CAT_COLORS[c] || 'var(--surface-1)';
+      p.style.color = CAT_TEXT[c] || 'var(--text-muted)';
+    });
+    pill.classList.add('active');
+    const c = pill.dataset.cat;
+    pill.style.background = c==='all' ? 'var(--surface-2)' : (CAT_COLORS[c]||'var(--surface-2)');
+    pill.style.color = c==='all' ? 'var(--text-primary)' : (CAT_TEXT[c]||'var(--text-primary)');
+    const q = document.getElementById('lib-search')?.value || '';
+    const grid = document.getElementById('lib-ex-grid');
+    if (grid) grid.innerHTML = renderExGrid(c, q);
+    bindExAddButtons();
+  });
+
+  bindExAddButtons();
+}
+
+function switchTab(tab) {
+  patchBuilder({ activeTab: tab });
+  ['programs','builder','library'].forEach(t => {
+    const view = document.getElementById('view-'+t);
+    const btn  = document.getElementById('tab-'+(t==='builder'?'build':t));
+    if (view) view.style.display = t === tab ? '' : 'none';
+    if (btn)  btn.classList.toggle('active', t === tab);
+  });
+  if (tab === 'library') bindExAddButtons();
+  if (tab === 'builder') refreshExCount();
+}
+
+function bindLoadButtons() {
+  document.querySelectorAll('.piq-load-btn').forEach(btn => {
+    btn.addEventListener('click', () => loadTemplate(btn.dataset.tpl));
+  });
+}
+
+function bindExAddButtons() {
+  document.querySelectorAll('.piq-ex-add-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item  = btn.closest('.piq-ex-item');
+      const exId  = item?.dataset.exid;
+      const ex    = EXERCISES.find(e => e.id === exId);
+      if (!ex) return;
+      const list = document.getElementById('ex-list');
+      if (!list) return;
+
+      const existing = Array.from(list.querySelectorAll('.ex-name')).find(i=>i.value===ex.name);
+      if (existing) {
+        existing.closest('.ex-row')?.remove();
+        item.classList.remove('piq-ex-added');
+        btn.textContent = '+';
+      } else {
+        const idx = list.querySelectorAll('.ex-row').length;
+        const div = document.createElement('div');
+        div.innerHTML = exRow({ name:ex.name, category:ex.category, sets:3, reps:'8', rest:90, note:'' }, idx);
+        const empty = document.getElementById('ex-empty');
+        if (empty) empty.remove();
+        list.appendChild(div.firstElementChild);
+        item.classList.add('piq-ex-added');
+        btn.textContent = '✓';
+      }
+      refreshExCount();
+    });
+  });
+}
+
+function loadTemplate(id) {
+  const t = TRAINING_TEMPLATES.find(x=>x.id===id);
+  if (!t) return;
+  const draft = {
+    ...t,
+    exercises: t.exercises.map(name => {
+      const ex = EXERCISES.find(e=>e.name===name);
+      return { name, category: ex?.category||'strength', sets:3, reps:'8', rest:90, note:'' };
+    }),
+    loadedTemplateId: id,
+  };
+  patchBuilder({ draft, loadedTemplateId: id, activeTab: 'builder' });
+  const bv = document.getElementById('view-builder');
+  if (bv) {
+    bv.innerHTML = builderHTML(getState().builder);
+    wireBuilder();
+  }
+  switchTab('builder');
+  showToast(`✅ Loaded: ${t.title}`);
+}
+
+function addBlankRow() {
+  const list = document.getElementById('ex-list');
+  if (!list) return;
+  const empty = document.getElementById('ex-empty');
+  if (empty) empty.remove();
+  const idx = list.querySelectorAll('.ex-row').length;
+  const div = document.createElement('div');
+  div.innerHTML = exRow({ name:'', category:'strength', sets:3, reps:'8', rest:90, note:'' }, idx);
+  list.appendChild(div.firstElementChild);
+  refreshExCount();
+}
+
+function refreshExCount() {
+  const n = document.querySelectorAll('#ex-list .ex-row').length;
+  const el = document.getElementById('ex-count');
+  if (el) el.textContent = `(${n})`;
+}
+
+function collectExercises() {
+  return Array.from(document.querySelectorAll('#ex-list .ex-row')).map(row => ({
+    name:     row.querySelector('.ex-name')?.value?.trim() || '',
+    category: row.querySelector('.piq-cat-tag')?.textContent?.trim() || 'strength',
+    sets:     +(row.querySelector('.ex-sets')?.value  || 3),
+    reps:     row.querySelector('.ex-reps')?.value    || '8',
+    rest:     +(row.querySelector('.ex-rest')?.value  || 90),
+    note:     row.querySelector('.ex-note')?.value    || '',
+  })).filter(e => e.name);
+}
+
+function saveDraft() {
+  patchBuilder({
+    draft: {
+      ...getState().builder.draft,
+      title:    document.getElementById('b-title')?.value    || '',
+      sport:    document.getElementById('b-sport')?.value    || 'basketball',
+      day_type: document.getElementById('b-day-type')?.value || 'Strength',
+      phase:    document.getElementById('b-phase')?.value    || 'In-Season',
+      exercises: collectExercises(),
+    }
+  });
+}
+
+// ── UTILITY ───────────────────────────────────────────────────
+function esc(str) {
+  if (typeof str !== 'string') return String(str ?? '');
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
