@@ -2,7 +2,7 @@
 // 4-step onboarding wizard. Fires once after signup, sets onboarding_done = true.
 
 import { updateProfile, getProfile } from '../core/supabase.js'
-import { navigate }                  from '../core/router.js'
+import { navigate, suppressNextGuard } from '../core/router.js'
 
 const STEPS = ['role', 'sport', 'goals', 'ready']
 
@@ -198,11 +198,16 @@ function _bindStep(container) {
     _renderStep(container)
   })
 
-  // Finish — navigate regardless of save outcome so user is never stuck
+  // Finish
   container.querySelector('#onboard-finish')?.addEventListener('click', async () => {
     const btn = container.querySelector('#onboard-finish')
     btn.disabled = true
     btn.textContent = 'Saving…'
+
+    // Tell the router to skip the next onAuthChange re-resolve.
+    // Without this, _notify() inside updateProfile triggers the guard
+    // which sees onboarded=false mid-save and bounces back to /onboarding.
+    suppressNextGuard()
 
     try {
       await updateProfile({
@@ -213,18 +218,11 @@ function _bindStep(container) {
         onboarded:    true,
       })
     } catch (err) {
-      // Log but don't block — upsert may have partially succeeded
-      // and we never want the user stuck on this screen
       console.warn('[PIQ] onboarding save warning (navigating anyway):', err)
     }
 
-    // Always navigate — hash-based fallback if navigate() doesn't fire
-    navigate('dashboard')
-    setTimeout(() => {
-      if (window.location.hash.includes('onboarding')) {
-        window.location.hash = '#dashboard'
-      }
-    }, 400)
+    // navigate() clears _skipNextGuard so normal auth guarding resumes
+    navigate('/dashboard')
   })
 }
 
