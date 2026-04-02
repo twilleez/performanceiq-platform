@@ -1,8 +1,8 @@
 // js/views/onboarding.js — PerformanceIQ
-// 4-step onboarding wizard. Fires once after signup, sets profile.onboarded = true.
+// 4-step onboarding wizard. Fires once after signup, sets onboarding_done = true.
 
 import { updateProfile, getProfile } from '../core/supabase.js'
-import { navigate } from '../core/router.js'
+import { navigate }                  from '../core/router.js'
 
 const STEPS = ['role', 'sport', 'goals', 'ready']
 
@@ -13,7 +13,8 @@ export function render(container) {
   _step = 0
   _data = {}
   const profile = getProfile()
-  if (profile?.role) _data.role = profile.role
+  if (profile?.role)  _data.role  = profile.role
+  if (profile?.sport) _data.sport = profile.sport
   _renderStep(container)
 }
 
@@ -42,15 +43,16 @@ function _progressBar() {
 
 function _stepContent() {
   switch (STEPS[_step]) {
+
     case 'role': return `
       <h2 class="onboard-title">How will you use <em>PerformanceIQ</em>?</h2>
       <p class="onboard-sub">This customizes your experience and dashboard.</p>
       <div class="onboard-grid">
         ${[
-          { val: 'solo',    icon: '🏃', label: 'Solo Athlete',  desc: 'Track my own training' },
-          { val: 'athlete', icon: '🏅', label: 'Team Athlete',  desc: 'Join a coached team' },
-          { val: 'coach',   icon: '📋', label: 'Coach',         desc: 'Manage a roster' },
-          { val: 'parent',  icon: '👪', label: 'Parent',        desc: 'Monitor my athlete' },
+          { val: 'solo',    icon: '🏃', label: 'Solo Athlete', desc: 'Track my own training' },
+          { val: 'athlete', icon: '🏅', label: 'Team Athlete', desc: 'Join a coached team' },
+          { val: 'coach',   icon: '📋', label: 'Coach',        desc: 'Manage a roster' },
+          { val: 'parent',  icon: '👪', label: 'Parent',       desc: 'Monitor my athlete' },
         ].map(r => `
           <button class="onboard-role-btn ${_data.role === r.val ? 'selected' : ''}" data-val="${r.val}">
             <span class="role-icon">${r.icon}</span>
@@ -97,7 +99,7 @@ function _stepContent() {
           { val: 'conditioning',      icon: '🔥', label: 'Conditioning' },
           { val: 'recovery',          icon: '💚', label: 'Recovery' },
           { val: 'vertical_jump',     icon: '⬆️', label: 'Vertical Jump' },
-          { val: 'injury_prevention', icon: '🛡', label: 'Injury Prevention' },
+          { val: 'injury_prevention', icon: '🛡',  label: 'Injury Prevention' },
           { val: 'nutrition',         icon: '🥗', label: 'Nutrition' },
           { val: 'recruiting',        icon: '🎓', label: 'Recruiting' },
         ].map(g => `
@@ -141,7 +143,6 @@ function _stepContent() {
 }
 
 function _bindStep(container) {
-  const step = STEPS[_step]
 
   // Role selection
   container.querySelectorAll('.onboard-role-btn').forEach(btn => {
@@ -149,7 +150,8 @@ function _bindStep(container) {
       container.querySelectorAll('.onboard-role-btn').forEach(b => b.classList.remove('selected'))
       btn.classList.add('selected')
       _data.role = btn.dataset.val
-      container.querySelector('#onboard-next').disabled = false
+      const next = container.querySelector('#onboard-next')
+      if (next) next.disabled = false
     })
   })
 
@@ -159,7 +161,8 @@ function _bindStep(container) {
       container.querySelectorAll('.onboard-sport-btn').forEach(b => b.classList.remove('selected'))
       btn.classList.add('selected')
       _data.sport = btn.dataset.val
-      container.querySelector('#onboard-next').disabled = false
+      const next = container.querySelector('#onboard-next')
+      if (next) next.disabled = false
     })
   })
 
@@ -195,25 +198,33 @@ function _bindStep(container) {
     _renderStep(container)
   })
 
-  // Finish
+  // Finish — navigate regardless of save outcome so user is never stuck
   container.querySelector('#onboard-finish')?.addEventListener('click', async () => {
     const btn = container.querySelector('#onboard-finish')
     btn.disabled = true
     btn.textContent = 'Saving…'
+
     try {
       await updateProfile({
-        display_name:   _data.name ?? _data.role,  // maps to DB 'name'
-        role:           _data.role,
-        sport:          _data.sport,
-        goals:          _data.goals ?? [],          // maps to primary_goal + secondary_goals
-        onboarded:      true                        // maps to DB 'onboarding_done'
+        display_name: _data.name ?? _data.role,
+        role:         _data.role,
+        sport:        _data.sport,
+        goals:        _data.goals ?? [],
+        onboarded:    true,
       })
-      navigate('/dashboard')
     } catch (err) {
-      console.error('[PIQ] onboarding save failed:', err)
-      btn.disabled = false
-      btn.textContent = 'Try Again'
+      // Log but don't block — upsert may have partially succeeded
+      // and we never want the user stuck on this screen
+      console.warn('[PIQ] onboarding save warning (navigating anyway):', err)
     }
+
+    // Always navigate — hash-based fallback if navigate() doesn't fire
+    navigate('dashboard')
+    setTimeout(() => {
+      if (window.location.hash.includes('onboarding')) {
+        window.location.hash = '#dashboard'
+      }
+    }, 400)
   })
 }
 
