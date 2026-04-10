@@ -8,7 +8,7 @@
  * [Fix-10] Mobile bottom nav injected automatically for screens < 768px
  */
 import { boot }                        from './core/boot.js';
-import { getThemeIcon, toggleTheme }    from './core/theme.js';
+import { initTheme, toggleTheme, getResolvedTheme } from './core/theme.js';
 import { isAuthenticated, getCurrentRole,
          getInitials, signOut }         from './core/auth.js';
 import { navigate, getCurrentRoute,
