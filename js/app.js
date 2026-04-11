@@ -1,8 +1,14 @@
 /**
  * PerformanceIQ — App Bootstrap
  *
+ * FIXES IN THIS VERSION:
+ * [ThemeFix] Replaced non-existent getThemeIcon() / cycleTheme() with
+ *            getResolvedTheme() and toggleTheme() from theme.js.
+ * [EventFix] appView() now passes `route` to piq:viewRendered detail
+ *            so every view receives e.detail.route correctly.
+ *
  * UX FIXES APPLIED:
- * [Fix-1]  Skeleton shimmer loader during route transitions — no more blank flash
+ * [Fix-1]  Skeleton shimmer loader during route transitions
  * [Fix-3]  Nav active state has smooth transition + pulse animation
  * [Fix-4]  KPI cards get cursor:pointer + hover lift via CSS class injection
  * [Fix-10] Mobile bottom nav injected automatically for screens < 768px
@@ -63,13 +69,12 @@ async function init() {
   requestAnimationFrame(() => { requestAnimationFrame(_hideLoader); });
 }
 
-// [Fix-1] Skeleton shimmer CSS + [Fix-3] Nav animation + [Fix-4] KPI hover + [Fix-10] Mobile nav
+// ── GLOBAL STYLES ─────────────────────────────────────────────
 function _injectGlobalStyles() {
   if (document.getElementById('piq-ux-styles')) return;
   const s = document.createElement('style');
   s.id = 'piq-ux-styles';
   s.textContent = `
-    /* [Fix-1] Skeleton shimmer */
     @keyframes piq-shimmer {
       0%   { background-position: -600px 0; }
       100% { background-position:  600px 0; }
@@ -80,150 +85,82 @@ function _injectGlobalStyles() {
       animation: piq-shimmer 1.4s infinite linear;
       border-radius: 8px;
     }
-    .piq-skeleton-page {
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      width: 100%;
-    }
-    .piq-skeleton-header { height: 32px; width: 40%; }
-    .piq-skeleton-sub    { height: 14px; width: 25%; margin-top: -8px; }
-    .piq-skeleton-kpi-row {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 14px;
-    }
-    .piq-skeleton-kpi    { height: 80px; border-radius: 12px; }
-    .piq-skeleton-panel  { height: 200px; border-radius: 14px; }
-    .piq-skeleton-panel-sm { height: 120px; border-radius: 14px; }
-    .piq-skeleton-2col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
+    .piq-skeleton-page { padding:24px; display:flex; flex-direction:column; gap:16px; width:100%; }
+    .piq-skeleton-header { height:32px; width:40%; }
+    .piq-skeleton-sub    { height:14px; width:25%; margin-top:-8px; }
+    .piq-skeleton-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+    .piq-skeleton-kpi    { height:80px; border-radius:12px; }
+    .piq-skeleton-panel  { height:200px; border-radius:14px; }
+    .piq-skeleton-panel-sm { height:120px; border-radius:14px; }
+    .piq-skeleton-2col   { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 
-    /* [Fix-3] Nav active pulse */
     @keyframes piq-nav-pulse {
       0%   { transform: scale(1); }
       40%  { transform: scale(0.96); }
       100% { transform: scale(1); }
     }
-    #nav-links button {
-      transition: background 0.18s ease, color 0.18s ease;
-    }
-    #nav-links button.active {
-      animation: piq-nav-pulse 0.25s ease;
-    }
+    #nav-links button { transition: background 0.18s ease, color 0.18s ease; }
+    #nav-links button.active { animation: piq-nav-pulse 0.25s ease; }
 
-    /* [Fix-4] KPI card hover lift */
-    .kpi-card[data-route] {
-      cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    .kpi-card[data-route]:hover {
-      transform: translateY(-2px);
-    }
-    .kpi-card[data-route]:active {
-      transform: translateY(0) scale(0.98);
-    }
+    .kpi-card[data-route] { cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease; }
+    .kpi-card[data-route]:hover  { transform:translateY(-2px); }
+    .kpi-card[data-route]:active { transform:translateY(0) scale(0.98); }
 
-    /* [Fix-9] Coming-soon tooltip */
-    [data-coming-soon] {
-      position: relative;
-    }
+    [data-coming-soon] { position:relative; }
     [data-coming-soon]:hover::after {
-      content: attr(data-coming-soon);
-      position: absolute;
-      bottom: calc(100% + 6px);
-      left: 50%;
-      transform: translateX(-50%);
-      background: #0d1b3e;
-      color: #fff;
-      font-size: 11px;
-      padding: 5px 10px;
-      border-radius: 6px;
-      white-space: nowrap;
-      pointer-events: none;
-      z-index: 100;
+      content:attr(data-coming-soon);
+      position:absolute; bottom:calc(100% + 6px); left:50%;
+      transform:translateX(-50%);
+      background:#0d1b3e; color:#fff; font-size:11px;
+      padding:5px 10px; border-radius:6px;
+      white-space:nowrap; pointer-events:none; z-index:100;
     }
     [data-coming-soon]:hover::before {
-      content: '';
-      position: absolute;
-      bottom: calc(100% + 2px);
-      left: 50%;
-      transform: translateX(-50%);
-      border: 5px solid transparent;
-      border-top-color: #0d1b3e;
-      pointer-events: none;
-      z-index: 100;
+      content:''; position:absolute; bottom:calc(100% + 2px); left:50%;
+      transform:translateX(-50%);
+      border:5px solid transparent; border-top-color:#0d1b3e;
+      pointer-events:none; z-index:100;
     }
 
-    /* [Fix-10] Mobile bottom nav */
     #piq-mobile-nav {
-      display: none;
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      height: 60px;
-      background: var(--surface-1);
-      border-top: 1px solid var(--border);
-      z-index: 500;
-      padding: 0 8px;
+      display:none; position:fixed; bottom:0; left:0; right:0;
+      height:60px; background:var(--surface-1);
+      border-top:1px solid var(--border); z-index:500; padding:0 8px;
     }
     #piq-mobile-nav .mob-nav-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-around;
-      height: 100%;
+      display:flex; align-items:center; justify-content:space-around; height:100%;
     }
     .mob-nav-btn {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 6px 12px;
-      border-radius: 10px;
-      transition: background 0.15s;
-      flex: 1;
+      display:flex; flex-direction:column; align-items:center; gap:3px;
+      background:none; border:none; cursor:pointer;
+      padding:6px 12px; border-radius:10px; transition:background 0.15s; flex:1;
     }
-    .mob-nav-btn.active { background: var(--piq-green)14; }
-    .mob-nav-btn .mob-icon { font-size: 18px; line-height: 1; }
+    .mob-nav-btn.active { background:var(--piq-green)14; }
+    .mob-nav-btn .mob-icon { font-size:18px; line-height:1; }
     .mob-nav-btn .mob-label {
-      font-size: 9.5px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: .04em;
+      font-size:9.5px; font-weight:600; color:var(--text-muted);
+      text-transform:uppercase; letter-spacing:.04em;
     }
-    .mob-nav-btn.active .mob-label { color: var(--piq-green); }
-    @media (max-width: 768px) {
-      #piq-mobile-nav { display: block; }
-      #piq-main, .view-with-sidebar > main { padding-bottom: 72px !important; }
-      .view-with-sidebar aside, .sidebar { display: none !important; }
+    .mob-nav-btn.active .mob-label { color:var(--piq-green); }
+    @media (max-width:768px) {
+      #piq-mobile-nav { display:block; }
+      #piq-main, .view-with-sidebar > main { padding-bottom:72px !important; }
+      .view-with-sidebar aside, .sidebar { display:none !important; }
     }
-    @media (min-width: 769px) {
-      #piq-mobile-nav { display: none !important; }
-    }
+    @media (min-width:769px) { #piq-mobile-nav { display:none !important; } }
 
-    /* [Fix-11] Streak celebration */
     @keyframes piq-streak-pop {
-      0%   { transform: scale(0.5); opacity: 0; }
-      60%  { transform: scale(1.15); }
-      100% { transform: scale(1); opacity: 1; }
+      0%   { transform:scale(0.5); opacity:0; }
+      60%  { transform:scale(1.15); }
+      100% { transform:scale(1); opacity:1; }
     }
-    .streak-milestone {
-      animation: piq-streak-pop 0.4s cubic-bezier(0.175,0.885,0.32,1.275) forwards;
-    }
+    .streak-milestone { animation:piq-streak-pop 0.4s cubic-bezier(0.175,0.885,0.32,1.275) forwards; }
 
-    /* [Fix-13] Check-in motivational copy fade */
     @keyframes piq-fade-up {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
     }
-    .checkin-motivational { animation: piq-fade-up 0.35s ease forwards; }
+    .checkin-motivational { animation:piq-fade-up 0.35s ease forwards; }
   `;
   document.head.appendChild(s);
 }
@@ -234,6 +171,9 @@ function buildShell() {
   const logoImg = LOGO_URI
     ? `<img src="${LOGO_URI}" alt="PerformanceIQ">`
     : `<span style="font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;color:var(--piq-green);letter-spacing:2px">PIQ</span>`;
+
+  // [ThemeFix] Use getResolvedTheme() — no getThemeIcon() exists in theme.js
+  const themeIcon = getResolvedTheme() === 'dark' ? '☀️' : '🌙';
 
   return `
 <div id="piq-splash" class="${authed ? 'hidden' : ''}">
@@ -249,7 +189,7 @@ function buildShell() {
     <div class="nav-logo" id="nav-logo-btn">${logoImg}</div>
     <ul class="nav-links" id="nav-links"></ul>
     <div class="nav-right">
-      <button class="nav-theme-btn" id="theme-toggle-btn" title="Toggle theme">${getThemeIcon()}</button>
+      <button class="nav-theme-btn" id="theme-toggle-btn" title="Toggle theme">${themeIcon}</button>
       <span class="nav-role-badge" id="nav-role-badge">${getCurrentRole() || ''}</span>
       <div class="nav-avatar" id="nav-avatar">${getInitials()}</div>
     </div>
@@ -276,9 +216,11 @@ function buildShell() {
 
 // ── SHELL EVENTS ──────────────────────────────────────────────
 function bindShellEvents() {
+  // [ThemeFix] toggleTheme() replaces cycleTheme(); inline expression replaces getThemeIcon()
   document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
-    cycleTheme();
-    document.getElementById('theme-toggle-btn').textContent = getThemeIcon();
+    toggleTheme();
+    const btn = document.getElementById('theme-toggle-btn');
+    if (btn) btn.textContent = getResolvedTheme() === 'dark' ? '☀️' : '🌙';
   });
   document.getElementById('nav-logo-btn')?.addEventListener('click', () => {
     if (isAuthenticated()) navigate(ROLE_HOME[getCurrentRole()] || ROUTES.WELCOME);
@@ -307,15 +249,12 @@ function renderNav(activeRoute) {
   document.getElementById('nav-role-badge').textContent = getCurrentRole() || '';
   document.getElementById('nav-avatar').textContent     = getInitials();
 
-  // [Fix-10] Mobile nav
   _renderMobileNav(activeRoute);
 }
 
-// [Fix-10] Mobile bottom nav
 function _renderMobileNav(activeRoute) {
   const inner = document.getElementById('mob-nav-inner');
   if (!inner || !isAuthenticated()) return;
-  const role  = getCurrentRole();
   const items = getDashboardConfig().navItems.slice(0, 5);
   inner.innerHTML = items.map(it => `
     <button class="mob-nav-btn ${activeRoute === it.route ? 'active' : ''}" data-route="${it.route}">
@@ -326,7 +265,7 @@ function _renderMobileNav(activeRoute) {
     el.addEventListener('click', () => navigate(el.dataset.route)));
 }
 
-// ── DYNAMIC VIEW LOADER ───────────────────────────────────────
+// ── VIEW MAP ──────────────────────────────────────────────────
 const VIEW_MAP = {
   [ROUTES.WELCOME]:          ['./views/shared/welcome.js',         'renderWelcome'],
   [ROUTES.SIGN_IN]:          ['./views/shared/signin.js',          'renderSignIn'],
@@ -399,7 +338,6 @@ async function renderRoute(route) {
   await loadAndRender(...entry, route);
 }
 
-// [Fix-1] Show skeleton during async import
 function _showSkeleton() {
   const $main = document.getElementById('piq-main');
   if (!$main) return;
@@ -424,7 +362,6 @@ async function loadAndRender(modulePath, exportName, route) {
   const isAuthRoute = !isAuthenticated() ||
     [ROUTES.WELCOME, ROUTES.SIGN_IN, ROUTES.SIGN_UP, ROUTES.PICK_ROLE, ROUTES.ONBOARDING].includes(route);
 
-  // [Fix-1] Show skeleton immediately for app views (not auth views)
   if (!isAuthRoute) _showSkeleton();
 
   try {
@@ -435,7 +372,7 @@ async function loadAndRender(modulePath, exportName, route) {
     if (!isAuthenticated() || isAuthRoute) {
       authView(renderFn);
     } else {
-      appView(renderFn);
+      appView(renderFn, route);
     }
   } catch (err) {
     console.error(`[PIQ] Failed to load ${modulePath}:`, err);
@@ -453,7 +390,7 @@ function authView(renderFn) {
   document.dispatchEvent(new CustomEvent('piq:authRendered'));
 }
 
-function appView(renderFn) {
+function appView(renderFn, route) {
   if (!isAuthenticated()) { navigate(ROUTES.WELCOME); return; }
   document.getElementById('piq-splash')?.classList.add('hidden');
   document.getElementById('piq-app')?.classList.add('mounted');
@@ -462,12 +399,11 @@ function appView(renderFn) {
   if (!$main) return;
   $main.innerHTML = renderFn();
   bindLinks($main);
-  // [Fix-9] Annotate Coming Soon buttons
   _annotateComingSoon($main);
-  document.dispatchEvent(new CustomEvent('piq:viewRendered'));
+  // [EventFix] pass route in detail so view listeners work correctly
+  document.dispatchEvent(new CustomEvent('piq:viewRendered', { detail: { route } }));
 }
 
-// [Fix-9] Add tooltip attribute to disabled Coming Soon buttons
 function _annotateComingSoon(container) {
   container.querySelectorAll('button[disabled]').forEach(btn => {
     const txt = btn.textContent.trim().toLowerCase();
