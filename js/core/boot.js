@@ -1,11 +1,11 @@
 // js/core/boot.js — PerformanceIQ
-// App entry point. Called once from index.html.
-// Initializes auth, router, PWA, and online/offline detection.
+// App entry point. Called once from js/app.js.
+// Initializes auth, PWA service worker, and online/offline detection.
+// NOTE: Router is initialized by app.js directly via js/router.js — not here.
 
-import { initAuth } from './supabase.js'
-import { initRouter, navigate } from './router.js'
+import { initAuth }         from './supabase.js'
 import { flushOfflineQueue } from '../services/workoutService.js'
-import { initTheme } from './theme.js'
+import { initTheme }        from './theme.js'
 
 // ── BOOT ──────────────────────────────────────────────────────
 export async function boot() {
@@ -16,16 +16,13 @@ export async function boot() {
     // 1. Init auth (loads session + profile from Supabase/localStorage)
     await initAuth()
 
-    // 2. Init router (resolves initial route, sets up listeners)
-    initRouter()
-
-    // 3. Register PWA service worker
+    // 2. Register PWA service worker
     await _registerSW()
 
-    // 4. Online/offline detection + offline queue flush
+    // 3. Online/offline detection + offline queue flush
     _initNetworkDetection()
 
-    // 5. Remove boot loader
+    // 4. Remove boot loader
     _hideBoot()
 
     console.log('[PIQ] Boot complete')
@@ -41,12 +38,10 @@ async function _registerSW() {
 
   try {
     const swPath = location.pathname.replace(/\/[^/]*$/, '/sw.js')
-    const reg = await navigator.serviceWorker.register(swPath, {
-      scope: location.pathname.replace(/\/[^/]*$/, '/')
-    })
+    const scope  = location.pathname.replace(/\/[^/]*$/, '/')
+    const reg = await navigator.serviceWorker.register(swPath, { scope })
     console.log('[PIQ] SW registered:', reg.scope)
 
-    // Prompt user to refresh when new SW is available
     reg.addEventListener('updatefound', () => {
       const newWorker = reg.installing
       newWorker?.addEventListener('statechange', () => {
@@ -62,12 +57,12 @@ async function _registerSW() {
 
 // ── NETWORK DETECTION ─────────────────────────────────────────
 function _initNetworkDetection() {
-  const _setOnline  = () => { document.body.classList.remove('piq-offline'); flushOfflineQueue() }
-  const _setOffline = () => { document.body.classList.add('piq-offline') }
+  const setOnline  = () => { document.body.classList.remove('piq-offline'); flushOfflineQueue() }
+  const setOffline = () => document.body.classList.add('piq-offline')
 
-  window.addEventListener('online',  _setOnline)
-  window.addEventListener('offline', _setOffline)
-  if (!navigator.onLine) _setOffline()
+  window.addEventListener('online',  setOnline)
+  window.addEventListener('offline', setOffline)
+  if (!navigator.onLine) setOffline()
 }
 
 // ── BOOT LOADER ───────────────────────────────────────────────
@@ -80,35 +75,32 @@ function _hideBoot() {
 
 function _showBootError(msg) {
   const loader = document.getElementById('piq-boot-loader')
-  if (loader) {
-    loader.innerHTML = `
-      <div style="text-align:center;color:#ef4444;font-family:sans-serif;padding:24px">
-        <div style="font-size:24px;margin-bottom:8px">⚠️</div>
-        <div style="font-weight:600;margin-bottom:4px">Failed to start</div>
-        <div style="font-size:12px;opacity:0.7">${msg}</div>
-        <button onclick="location.reload()" style="margin-top:16px;padding:8px 16px;background:#6FD94F;border:none;border-radius:6px;cursor:pointer;font-weight:600">Retry</button>
-      </div>
-    `
-  }
+  if (!loader) return
+  loader.innerHTML = `
+    <div style="text-align:center;color:#ef4444;font-family:sans-serif;padding:24px">
+      <div style="font-size:24px;margin-bottom:8px">⚠️</div>
+      <div style="font-weight:600;margin-bottom:4px">Failed to start</div>
+      <div style="font-size:12px;opacity:0.7">${msg}</div>
+      <button onclick="location.reload()" style="margin-top:16px;padding:8px 16px;background:#39e66b;border:none;border-radius:6px;cursor:pointer;font-weight:600">Retry</button>
+    </div>
+  `
 }
 
 // ── UPDATE BANNER ─────────────────────────────────────────────
 function _showUpdateBanner() {
+  if (document.getElementById('piq-update-banner')) return
   const banner = document.createElement('div')
   banner.id = 'piq-update-banner'
-  banner.innerHTML = `
-    <span>🚀 Update available</span>
-    <button onclick="window.location.reload()">Refresh</button>
-  `
+  banner.innerHTML = `<span>🚀 Update available</span><button onclick="location.reload()">Refresh</button>`
   banner.style.cssText = `
     position:fixed;bottom:72px;left:50%;transform:translateX(-50%);
-    background:#0D1B40;color:white;border:1px solid rgba(111,217,79,0.4);
+    background:#0D1B40;color:white;border:1px solid rgba(57,230,107,0.4);
     border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:12px;
     font-family:'DM Sans',sans-serif;font-size:13px;z-index:9999;
     box-shadow:0 4px 20px rgba(0,0,0,0.3);
   `
   banner.querySelector('button').style.cssText = `
-    background:#6FD94F;color:#010D14;border:none;border-radius:6px;
+    background:#39e66b;color:#0D1B40;border:none;border-radius:6px;
     padding:5px 12px;font-weight:700;cursor:pointer;font-family:inherit;
   `
   document.body.appendChild(banner)

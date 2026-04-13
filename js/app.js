@@ -20,8 +20,6 @@ import { isAuthenticated, getCurrentRole,
 import { navigate, getCurrentRoute,
          onRouteChange, ROUTES, ROLE_HOME } from './router.js';
 import { getDashboardConfig }          from './state/selectors.js';
-import { getScoreBreakdownElite, getReadinessScoreElite } from './state/selectorsElite.js';
-import { calculateMacroTargetsElite, getMealPlanForProfileElite } from './data/nutritionEngineElite.js';
 
 const LOGO_URI = document.getElementById('piq-logo-data')?.src || '';
 
@@ -31,7 +29,9 @@ async function init() {
 
   try { await boot(); } catch(e) { console.error('[PIQ] boot failed:', e); }
 
-  document.getElementById('piq-root').innerHTML = buildShell();
+  const _root = document.getElementById('piq-root');
+  if (!_root) { console.error('[PIQ] #piq-root missing from index.html'); return; }
+  _root.innerHTML = buildShell();
   bindShellEvents();
   onRouteChange(route => renderRoute(route));
 
@@ -435,4 +435,9 @@ function showLoadError(route, msg) {
   }
 }
 
-init();
+// Guard: ES modules are deferred but be explicit for GH Pages edge cases
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
