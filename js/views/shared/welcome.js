@@ -1,14 +1,17 @@
 /**
  * PerformanceIQ — Welcome / Landing View
- * Overrides #piq-splash centering so we control full-page layout.
- * All buttons wired to router.js navigate() and auth.js signIn().
+ *
+ * FIX: piq:authRendered fires for EVERY auth view (signin, signup, etc).
+ * All views attach listeners to document and they accumulate — never removed.
+ * Guard: check document.getElementById('wlc-root') before doing anything,
+ * so stale welcome listeners silently no-op when other views are active.
  */
 import { navigate, ROLE_HOME, ROUTES } from '../../router.js';
 import { signIn }                       from '../../core/auth.js';
 
 export function renderWelcome() {
   return `
-<div class="wlc-root">
+<div class="wlc-root" id="wlc-root">
 
   <div class="wlc-bg" aria-hidden="true">
     <div class="wlc-grid"></div>
@@ -18,7 +21,7 @@ export function renderWelcome() {
 
   <nav class="wlc-nav">
     <div class="wlc-logo">
-      <svg width="34" height="34" viewBox="0 0 40 40" fill="none" aria-label="PerformanceIQ logo">
+      <svg width="34" height="34" viewBox="0 0 40 40" fill="none" aria-label="PerformanceIQ">
         <defs>
           <linearGradient id="wlc-wg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stop-color="#103050"/>
@@ -170,271 +173,93 @@ export function renderWelcome() {
 </div>
 
 <style>
-/* ── Override #piq-splash so welcome can be full-page ── */
-#piq-splash {
-  display: block !important;
-  align-items: unset !important;
-  justify-content: unset !important;
-  padding: 0 !important;
-  background: transparent !important;
-  min-height: 100vh;
-}
-/* Hide the splash logo above auth-view-slot when welcome is active */
-#piq-splash .splash-logo { display: none !important; }
-
-/* ── Root ── */
-.wlc-root {
-  position: relative; width: 100%; min-height: 100vh;
-  background: var(--piq-bg);
-  font-family: var(--font-body);
-  color: var(--piq-text);
-  overflow-x: hidden;
-  display: flex; flex-direction: column;
-}
-.wlc-bg { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
-.wlc-grid {
-  position: absolute; inset: 0;
-  background-image:
-    linear-gradient(rgba(111,217,79,0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(111,217,79,0.028) 1px, transparent 1px);
-  background-size: 48px 48px;
-}
-.wlc-orb { position: absolute; border-radius: 50%; filter: blur(88px); pointer-events: none; }
-.wlc-orb1 { width: 500px; height: 500px; background: rgba(111,217,79,0.07); top: -130px; left: -130px; }
-.wlc-orb2 { width: 400px; height: 400px; background: rgba(80,144,160,0.06); bottom: 80px; right: -80px; }
-
-/* ── Nav ── */
-.wlc-nav {
-  position: relative; z-index: 10;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 24px; height: 60px;
-  border-bottom: 1px solid var(--piq-border);
-  background: rgba(1,13,20,0.88);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  flex-shrink: 0;
-}
-.wlc-logo { display: flex; align-items: center; gap: 10px; }
-.wlc-logo-text { display: flex; flex-direction: column; gap: 1px; }
-.wlc-logo-name {
-  font-family: var(--font-display);
-  font-size: 20px; font-weight: 700; letter-spacing: 3px; line-height: 1; color: #fff;
-}
-.wlc-logo-name em { color: var(--piq-green); font-style: normal; }
-.wlc-logo-sub {
-  font-family: var(--font-num);
-  font-size: 9px; font-weight: 500; letter-spacing: 2.5px; text-transform: uppercase;
-  color: var(--piq-muted); line-height: 1;
-}
-.wlc-nav-right { display: flex; align-items: center; gap: 10px; }
-.wlc-nav-link {
-  background: none; border: none; cursor: pointer;
-  font-family: var(--font-body); font-size: 13px; font-weight: 400;
-  color: var(--piq-muted); padding: 6px 10px; border-radius: 6px;
-  transition: color 0.2s;
-}
-.wlc-nav-link:hover { color: var(--piq-green); }
-.wlc-nav-cta {
-  background: var(--piq-green-glow); border: 1px solid var(--piq-green-border);
-  color: var(--piq-green); cursor: pointer;
-  font-family: var(--font-body); font-size: 13px; font-weight: 500;
-  padding: 7px 18px; border-radius: 6px;
-  transition: background 0.2s, border-color 0.2s;
-}
-.wlc-nav-cta:hover { background: rgba(111,217,79,0.22); border-color: rgba(111,217,79,0.5); }
-
-/* ── Hero ── */
-.wlc-hero {
-  position: relative; z-index: 1;
-  padding: 60px 24px 48px; max-width: 820px;
-}
-.wlc-eyebrow {
-  display: inline-flex; align-items: center; gap: 12px;
-  font-family: var(--font-num); font-size: 11px; font-weight: 500;
-  letter-spacing: 4px; text-transform: uppercase;
-  color: var(--piq-green); margin-bottom: 20px;
-  animation: wlc-up 0.5s ease both;
-}
-.wlc-eyebrow-line { display: block; width: 22px; height: 1px; background: var(--piq-green); }
-.wlc-h1 {
-  font-family: var(--font-display);
-  font-size: clamp(32px, 6vw, 60px);
-  font-weight: 700; line-height: 1.0; letter-spacing: -0.5px;
-  color: #fff; margin-bottom: 18px;
-  animation: wlc-up 0.5s 0.08s ease both;
-}
-.wlc-accent { color: var(--piq-green); }
-.wlc-sub {
-  font-size: 15px; font-weight: 300;
-  color: rgba(208,238,244,0.6); line-height: 1.75;
-  max-width: 500px; margin-bottom: 32px;
-  animation: wlc-up 0.5s 0.15s ease both;
-}
-.wlc-actions {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  margin-bottom: 40px;
-  animation: wlc-up 0.5s 0.22s ease both;
-}
-.wlc-btn-main {
-  display: inline-flex; align-items: center; gap: 9px;
-  font-size: 14px; padding: 13px 28px;
-  color: var(--piq-navy);
-}
-.wlc-arr { color: var(--piq-navy); transition: transform 0.2s; }
-.wlc-btn-main:hover .wlc-arr { transform: translateX(4px); }
-.wlc-ghost {
-  background: none; border: none; cursor: pointer;
-  font-family: var(--font-body); font-size: 13px; font-weight: 400;
-  color: rgba(208,238,244,0.45);
-  text-decoration: underline; text-underline-offset: 3px;
-  transition: color 0.2s; padding: 0;
-}
-.wlc-ghost:hover { color: var(--piq-green); }
-
-/* ── Trust strip ── */
-.wlc-trust {
-  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
-  padding-top: 32px; border-top: 1px solid var(--piq-border);
-  animation: wlc-up 0.5s 0.28s ease both;
-}
-.wlc-trust-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--piq-muted); }
-.wlc-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--piq-green); opacity: 0.6; flex-shrink: 0; }
-
-/* ── Stats bar ── */
-.wlc-stats {
-  position: relative; z-index: 1;
-  display: flex;
-  border-top: 1px solid var(--piq-border);
-  border-bottom: 1px solid var(--piq-border);
-  background: rgba(255,255,255,0.015); flex-shrink: 0;
-}
-.wlc-stat {
-  flex: 1; padding: 20px 12px; text-align: center;
-  border-right: 1px solid var(--piq-border); transition: background 0.2s;
-}
-.wlc-stat:last-child { border-right: none; }
-.wlc-stat:hover { background: rgba(111,217,79,0.04); }
-.wlc-stat-n {
-  font-family: var(--font-display); font-size: 24px; font-weight: 700;
-  color: var(--piq-green); letter-spacing: -0.5px; line-height: 1; margin-bottom: 4px;
-}
-.wlc-stat-l {
-  font-family: var(--font-num); font-size: 9px; font-weight: 500;
-  color: var(--piq-muted); letter-spacing: 1.8px; text-transform: uppercase;
-}
-
-/* ── Roles ── */
-.wlc-roles-section { position: relative; z-index: 1; padding: 36px 24px 56px; flex: 1; }
-.wlc-section-label {
-  font-family: var(--font-num); font-size: 10px; font-weight: 500;
-  letter-spacing: 3.5px; text-transform: uppercase;
-  color: rgba(74,120,136,0.6); text-align: center; margin-bottom: 20px;
-}
-.wlc-roles {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 1px; background: var(--piq-border);
-  border: 1px solid var(--piq-border); border-radius: 8px; overflow: hidden;
-  max-width: 900px; margin: 0 auto;
-}
-.wlc-role-card {
-  background: var(--piq-s1); padding: 24px 18px 20px;
-  position: relative; cursor: pointer; text-align: left;
-  border: none; color: inherit; font-family: var(--font-body);
-  transition: background 0.25s; display: flex; flex-direction: column;
-}
-.wlc-role-card:hover { background: var(--piq-s2); }
-.wlc-role-card::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, var(--piq-green), rgba(111,217,79,0.12));
-  transform: scaleX(0); transform-origin: left;
-  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-}
-.wlc-role-card:hover::before { transform: scaleX(1); }
-.wlc-role-card:disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
-.wlc-role-icon {
-  width: 40px; height: 40px; border-radius: 9px;
-  background: var(--piq-green-glow); border: 1px solid var(--piq-green-border);
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 14px; flex-shrink: 0;
-  transition: background 0.25s, border-color 0.25s;
-}
-.wlc-role-card:hover .wlc-role-icon { background: rgba(111,217,79,0.18); border-color: rgba(111,217,79,0.4); }
-.wlc-role-name {
-  font-family: var(--font-display); font-size: 16px; font-weight: 600;
-  color: #fff; letter-spacing: 0.4px; margin-bottom: 4px;
-}
-.wlc-role-desc { font-size: 11px; font-weight: 300; color: var(--piq-muted); line-height: 1.6; margin-bottom: 12px; }
-.wlc-role-list { list-style: none; display: flex; flex-direction: column; gap: 6px; flex: 1; margin: 0; padding: 0; }
-.wlc-role-list li {
-  font-size: 11px; font-weight: 400; color: rgba(208,238,244,0.42);
-  display: flex; align-items: flex-start; gap: 7px; line-height: 1.5;
-}
-.wlc-role-list li::before {
-  content: ''; width: 4px; height: 4px; border-radius: 50%;
-  background: var(--piq-green); opacity: 0.5; margin-top: 5px; flex-shrink: 0;
-}
-.wlc-role-cta {
-  font-family: var(--font-num); font-size: 10px; font-weight: 500;
-  letter-spacing: 1.5px; text-transform: uppercase;
-  color: var(--piq-green); margin-top: 18px; opacity: 0.6; transition: opacity 0.2s;
-}
-.wlc-role-card:hover .wlc-role-cta { opacity: 1; }
-
-/* ── Footer ── */
-.wlc-footer {
-  position: relative; z-index: 1;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 24px; border-top: 1px solid var(--piq-border);
-  flex-wrap: wrap; gap: 10px; flex-shrink: 0;
-}
-.wlc-footer-left { font-size: 11px; color: rgba(74,120,136,0.5); }
-.wlc-footer-right { display: flex; gap: 18px; }
-.wlc-footer-link { font-size: 11px; color: rgba(74,120,136,0.5); cursor: default; }
-
-/* ── Animation ── */
-@keyframes wlc-up {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ── Responsive ── */
-@media (max-width: 800px) {
-  .wlc-roles { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 520px) {
-  .wlc-nav { padding: 0 16px; }
-  .wlc-logo-sub { display: none; }
-  .wlc-hero { padding: 44px 16px 36px; }
-  .wlc-roles-section { padding: 28px 16px 44px; }
-  .wlc-roles { grid-template-columns: 1fr; }
-  .wlc-stats { flex-wrap: wrap; }
-  .wlc-stat { min-width: 50%; border-bottom: 1px solid var(--piq-border); }
-  .wlc-footer { padding: 14px 16px; }
-  .wlc-trust { gap: 12px; }
-  .wlc-actions { flex-direction: column; align-items: flex-start; gap: 10px; }
-}
+#piq-splash{display:block!important;align-items:unset!important;justify-content:unset!important;padding:0!important;background:transparent!important;min-height:100vh}
+#piq-splash .splash-logo{display:none!important}
+.wlc-root{position:relative;width:100%;min-height:100vh;background:var(--piq-bg);font-family:var(--font-body);color:var(--piq-text);overflow-x:hidden;display:flex;flex-direction:column}
+.wlc-bg{position:fixed;inset:0;pointer-events:none;z-index:0}
+.wlc-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(111,217,79,0.028) 1px,transparent 1px),linear-gradient(90deg,rgba(111,217,79,0.028) 1px,transparent 1px);background-size:48px 48px}
+.wlc-orb{position:absolute;border-radius:50%;filter:blur(88px);pointer-events:none}
+.wlc-orb1{width:500px;height:500px;background:rgba(111,217,79,0.07);top:-130px;left:-130px}
+.wlc-orb2{width:400px;height:400px;background:rgba(80,144,160,0.06);bottom:80px;right:-80px}
+.wlc-nav{position:relative;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:60px;border-bottom:1px solid var(--piq-border);background:rgba(1,13,20,0.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);flex-shrink:0}
+.wlc-logo{display:flex;align-items:center;gap:10px}
+.wlc-logo-text{display:flex;flex-direction:column;gap:1px}
+.wlc-logo-name{font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:3px;line-height:1;color:#fff}
+.wlc-logo-name em{color:var(--piq-green);font-style:normal}
+.wlc-logo-sub{font-family:var(--font-num);font-size:9px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--piq-muted);line-height:1}
+.wlc-nav-right{display:flex;align-items:center;gap:10px}
+.wlc-nav-link{background:none;border:none;cursor:pointer;font-family:var(--font-body);font-size:13px;font-weight:400;color:var(--piq-muted);padding:6px 10px;border-radius:6px;transition:color 0.2s}
+.wlc-nav-link:hover{color:var(--piq-green)}
+.wlc-nav-cta{background:var(--piq-green-glow);border:1px solid var(--piq-green-border);color:var(--piq-green);cursor:pointer;font-family:var(--font-body);font-size:13px;font-weight:500;padding:7px 18px;border-radius:6px;transition:background 0.2s,border-color 0.2s}
+.wlc-nav-cta:hover{background:rgba(111,217,79,0.22);border-color:rgba(111,217,79,0.5)}
+.wlc-hero{position:relative;z-index:1;padding:60px 24px 48px;max-width:820px}
+.wlc-eyebrow{display:inline-flex;align-items:center;gap:12px;font-family:var(--font-num);font-size:11px;font-weight:500;letter-spacing:4px;text-transform:uppercase;color:var(--piq-green);margin-bottom:20px;animation:wlc-up 0.5s ease both}
+.wlc-eyebrow-line{display:block;width:22px;height:1px;background:var(--piq-green)}
+.wlc-h1{font-family:var(--font-display);font-size:clamp(32px,6vw,60px);font-weight:700;line-height:1.0;letter-spacing:-0.5px;color:#fff;margin-bottom:18px;animation:wlc-up 0.5s 0.08s ease both}
+.wlc-accent{color:var(--piq-green)}
+.wlc-sub{font-size:15px;font-weight:300;color:rgba(208,238,244,0.6);line-height:1.75;max-width:500px;margin-bottom:32px;animation:wlc-up 0.5s 0.15s ease both}
+.wlc-actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:40px;animation:wlc-up 0.5s 0.22s ease both}
+.wlc-btn-main{display:inline-flex;align-items:center;gap:9px;font-size:14px;padding:13px 28px;color:var(--piq-navy)}
+.wlc-arr{color:var(--piq-navy);transition:transform 0.2s}
+.wlc-btn-main:hover .wlc-arr{transform:translateX(4px)}
+.wlc-ghost{background:none;border:none;cursor:pointer;font-family:var(--font-body);font-size:13px;font-weight:400;color:rgba(208,238,244,0.45);text-decoration:underline;text-underline-offset:3px;transition:color 0.2s;padding:0}
+.wlc-ghost:hover{color:var(--piq-green)}
+.wlc-trust{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding-top:32px;border-top:1px solid var(--piq-border);animation:wlc-up 0.5s 0.28s ease both}
+.wlc-trust-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--piq-muted)}
+.wlc-dot{width:5px;height:5px;border-radius:50%;background:var(--piq-green);opacity:0.6;flex-shrink:0}
+.wlc-stats{position:relative;z-index:1;display:flex;border-top:1px solid var(--piq-border);border-bottom:1px solid var(--piq-border);background:rgba(255,255,255,0.015);flex-shrink:0}
+.wlc-stat{flex:1;padding:20px 12px;text-align:center;border-right:1px solid var(--piq-border);transition:background 0.2s}
+.wlc-stat:last-child{border-right:none}
+.wlc-stat:hover{background:rgba(111,217,79,0.04)}
+.wlc-stat-n{font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--piq-green);letter-spacing:-0.5px;line-height:1;margin-bottom:4px}
+.wlc-stat-l{font-family:var(--font-num);font-size:9px;font-weight:500;color:var(--piq-muted);letter-spacing:1.8px;text-transform:uppercase}
+.wlc-roles-section{position:relative;z-index:1;padding:36px 24px 56px;flex:1}
+.wlc-section-label{font-family:var(--font-num);font-size:10px;font-weight:500;letter-spacing:3.5px;text-transform:uppercase;color:rgba(74,120,136,0.6);text-align:center;margin-bottom:20px}
+.wlc-roles{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--piq-border);border:1px solid var(--piq-border);border-radius:8px;overflow:hidden;max-width:900px;margin:0 auto}
+.wlc-role-card{background:var(--piq-s1);padding:24px 18px 20px;position:relative;cursor:pointer;text-align:left;border:none;color:inherit;font-family:var(--font-body);transition:background 0.25s;display:flex;flex-direction:column}
+.wlc-role-card:hover{background:var(--piq-s2)}
+.wlc-role-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--piq-green),rgba(111,217,79,0.12));transform:scaleX(0);transform-origin:left;transition:transform 0.3s cubic-bezier(0.4,0,0.2,1)}
+.wlc-role-card:hover::before{transform:scaleX(1)}
+.wlc-role-card:disabled{opacity:0.55;cursor:not-allowed;pointer-events:none}
+.wlc-role-icon{width:40px;height:40px;border-radius:9px;background:var(--piq-green-glow);border:1px solid var(--piq-green-border);display:flex;align-items:center;justify-content:center;margin-bottom:14px;flex-shrink:0;transition:background 0.25s,border-color 0.25s}
+.wlc-role-card:hover .wlc-role-icon{background:rgba(111,217,79,0.18);border-color:rgba(111,217,79,0.4)}
+.wlc-role-name{font-family:var(--font-display);font-size:16px;font-weight:600;color:#fff;letter-spacing:0.4px;margin-bottom:4px}
+.wlc-role-desc{font-size:11px;font-weight:300;color:var(--piq-muted);line-height:1.6;margin-bottom:12px}
+.wlc-role-list{list-style:none;display:flex;flex-direction:column;gap:6px;flex:1;margin:0;padding:0}
+.wlc-role-list li{font-size:11px;font-weight:400;color:rgba(208,238,244,0.42);display:flex;align-items:flex-start;gap:7px;line-height:1.5}
+.wlc-role-list li::before{content:'';width:4px;height:4px;border-radius:50%;background:var(--piq-green);opacity:0.5;margin-top:5px;flex-shrink:0}
+.wlc-role-cta{font-family:var(--font-num);font-size:10px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;color:var(--piq-green);margin-top:18px;opacity:0.6;transition:opacity 0.2s}
+.wlc-role-card:hover .wlc-role-cta{opacity:1}
+.wlc-footer{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-top:1px solid var(--piq-border);flex-wrap:wrap;gap:10px;flex-shrink:0}
+.wlc-footer-left{font-size:11px;color:rgba(74,120,136,0.5)}
+.wlc-footer-right{display:flex;gap:18px}
+.wlc-footer-link{font-size:11px;color:rgba(74,120,136,0.5)}
+@keyframes wlc-up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:800px){.wlc-roles{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.wlc-nav{padding:0 16px}.wlc-logo-sub{display:none}.wlc-hero{padding:44px 16px 36px}.wlc-roles-section{padding:28px 16px 44px}.wlc-roles{grid-template-columns:1fr}.wlc-stats{flex-wrap:wrap}.wlc-stat{min-width:50%;border-bottom:1px solid var(--piq-border)}.wlc-footer{padding:14px 16px}.wlc-trust{gap:12px}.wlc-actions{flex-direction:column;align-items:flex-start;gap:10px}}
 </style>`;
 }
 
-// ── Event wiring — after HTML is injected into DOM ────────────────────────
+// ── Event wiring ──────────────────────────────────────────────────────────
+// IMPORTANT: piq:authRendered fires for EVERY auth view (signin, signup, etc.)
+// and listeners on `document` are never removed — they accumulate across renders.
+// Guard: bail immediately if #wlc-root is not in the DOM, meaning another view
+// is currently active and this handler is a stale leftover.
 document.addEventListener('piq:authRendered', () => {
+  if (!document.getElementById('wlc-root')) return; // ← stale listener guard
 
-  // "Get started" CTA (hero) → signup
   document.getElementById('wlc-get-started')
     ?.addEventListener('click', () => navigate(ROUTES.SIGN_UP));
 
-  // "Sign in to your account" ghost link (hero)
   document.getElementById('wlc-signin')
     ?.addEventListener('click', () => navigate(ROUTES.SIGN_IN));
 
-  // Nav: Sign in
   document.getElementById('wlc-nav-signin')
     ?.addEventListener('click', () => navigate(ROUTES.SIGN_IN));
 
-  // Nav: Get started
   document.getElementById('wlc-nav-signup')
     ?.addEventListener('click', () => navigate(ROUTES.SIGN_UP));
 
-  // Demo role cards
   document.querySelectorAll('.wlc-role-card[data-demo]').forEach(card => {
     card.addEventListener('click', async () => {
       if (card.disabled) return;
