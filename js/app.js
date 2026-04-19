@@ -1,64 +1,55 @@
 /**
- * PerformanceIQ — App Bootstrap
+ * PerformanceIQ — app.js
+ * App bootstrap.  Single entry point.
  *
- * FIXES IN THIS VERSION:
- * [ThemeFix] Replaced non-existent getThemeIcon() / cycleTheme() with
- *            getResolvedTheme() and toggleTheme() from theme.js.
- * [EventFix] appView() now passes `route` to piq:viewRendered detail
- *            so every view receives e.detail.route correctly.
- *
- * UX FIXES APPLIED:
- * [Fix-1]  Skeleton shimmer loader during route transitions
- * [Fix-3]  Nav active state has smooth transition + pulse animation
- * [Fix-4]  KPI cards get cursor:pointer + hover lift via CSS class injection
- * [Fix-10] Mobile bottom nav injected automatically for screens < 768px
+ * Auth contract
+ * ─────────────
+ * • core/auth.js  owns the session (localStorage).
+ * • router.js     owns navigation + guards.
+ * • Supabase       is DB/storage only — never called here.
+ * • core/router.js is a shim for legacy view imports — never called here.
  */
-import { boot }                        from './core/boot.js';
-import { initTheme, toggleTheme, getResolvedTheme } from './core/theme.js';
+import { boot }                         from './core/boot.js';
+import { getThemeIcon, cycleTheme }     from './core/theme.js';
 import { isAuthenticated, getCurrentRole,
-         getInitials, signOut }         from './core/auth.js';
+         getInitials, signOut }          from './core/auth.js';
 import { navigate, getCurrentRoute,
-         onRouteChange, ROUTES, ROLE_HOME } from './router.js';
-import { getDashboardConfig }          from './state/selectors.js';
+         onRouteChange, ROUTES,
+         ROLE_HOME, suppressNextGuard }  from './router.js';
+import { getDashboardConfig }           from './state/selectors.js';
 
 const LOGO_URI = document.getElementById('piq-logo-data')?.src || '';
 
 // ── BOOTSTRAP ─────────────────────────────────────────────────
 async function init() {
-  _injectGlobalStyles();
+  try {
+    await boot();   // theme → auth → state → route guard → SW
+  } catch (e) {
+    console.error('[PIQ] boot failed:', e);
+  }
 
-  try { await boot(); } catch(e) { console.error('[PIQ] boot failed:', e); }
-
-  const _root = document.getElementById('piq-root');
-  if (!_root) { console.error('[PIQ] #piq-root missing from index.html'); return; }
-  _root.innerHTML = buildShell();
+  document.getElementById('piq-root').innerHTML = buildShell();
   bindShellEvents();
   onRouteChange(route => renderRoute(route));
 
+  // Determine start route — guard in router.js will redirect if needed
   const start = isAuthenticated()
     ? (ROLE_HOME[getCurrentRole()] || ROUTES.PICK_ROLE)
     : ROUTES.WELCOME;
 
   navigate(start);
 
-  const _loaderStart = Date.now();
-  const _hideLoader = () => {
-    const elapsed = Date.now() - _loaderStart;
-    const remaining = Math.max(0, 1000 - elapsed);
-    const bar   = document.getElementById('splash-bar');
-    const label = document.getElementById('splash-label');
-    if (bar)   bar.style.width = '100%';
-    if (label) label.textContent = 'Ready!';
-    setTimeout(() => {
-      document.getElementById('piq-loader')?.classList.add('hidden');
-    }, remaining + 300);
-  };
-  const _progressSteps = [
-    { pct:30, label:'Loading profile…',    delay:100 },
-    { pct:60, label:'Building your plan…', delay:350 },
-    { pct:85, label:'Almost ready…',       delay:650 },
+  // Branded splash: progress bar → hide
+  _animateSplash();
+}
+
+function _animateSplash() {
+  const steps = [
+    { pct: 30, label: 'Loading profile…',    delay: 100 },
+    { pct: 60, label: 'Building your plan…', delay: 350 },
+    { pct: 85, label: 'Almost ready…',       delay: 650 },
   ];
-  _progressSteps.forEach(({ pct, label, delay }) => {
+  steps.forEach(({ pct, label, delay }) => {
     setTimeout(() => {
       const bar = document.getElementById('splash-bar');
       const lbl = document.getElementById('splash-label');
@@ -66,114 +57,27 @@ async function init() {
       if (lbl) lbl.textContent = label;
     }, delay);
   });
-  requestAnimationFrame(() => { requestAnimationFrame(_hideLoader); });
-}
 
-// ── GLOBAL STYLES ─────────────────────────────────────────────
-function _injectGlobalStyles() {
-  if (document.getElementById('piq-ux-styles')) return;
-  const s = document.createElement('style');
-  s.id = 'piq-ux-styles';
-  s.textContent = `
-    @keyframes piq-shimmer {
-      0%   { background-position: -600px 0; }
-      100% { background-position:  600px 0; }
-    }
-    .piq-skeleton {
-      background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-1) 50%, var(--surface-2) 75%);
-      background-size: 600px 100%;
-      animation: piq-shimmer 1.4s infinite linear;
-      border-radius: 8px;
-    }
-    .piq-skeleton-page { padding:24px; display:flex; flex-direction:column; gap:16px; width:100%; }
-    .piq-skeleton-header { height:32px; width:40%; }
-    .piq-skeleton-sub    { height:14px; width:25%; margin-top:-8px; }
-    .piq-skeleton-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
-    .piq-skeleton-kpi    { height:80px; border-radius:12px; }
-    .piq-skeleton-panel  { height:200px; border-radius:14px; }
-    .piq-skeleton-panel-sm { height:120px; border-radius:14px; }
-    .piq-skeleton-2col   { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-
-    @keyframes piq-nav-pulse {
-      0%   { transform: scale(1); }
-      40%  { transform: scale(0.96); }
-      100% { transform: scale(1); }
-    }
-    #nav-links button { transition: background 0.18s ease, color 0.18s ease; }
-    #nav-links button.active { animation: piq-nav-pulse 0.25s ease; }
-
-    .kpi-card[data-route] { cursor:pointer; transition:transform 0.15s ease, box-shadow 0.15s ease; }
-    .kpi-card[data-route]:hover  { transform:translateY(-2px); }
-    .kpi-card[data-route]:active { transform:translateY(0) scale(0.98); }
-
-    [data-coming-soon] { position:relative; }
-    [data-coming-soon]:hover::after {
-      content:attr(data-coming-soon);
-      position:absolute; bottom:calc(100% + 6px); left:50%;
-      transform:translateX(-50%);
-      background:#0d1b3e; color:#fff; font-size:11px;
-      padding:5px 10px; border-radius:6px;
-      white-space:nowrap; pointer-events:none; z-index:100;
-    }
-    [data-coming-soon]:hover::before {
-      content:''; position:absolute; bottom:calc(100% + 2px); left:50%;
-      transform:translateX(-50%);
-      border:5px solid transparent; border-top-color:#0d1b3e;
-      pointer-events:none; z-index:100;
-    }
-
-    #piq-mobile-nav {
-      display:none; position:fixed; bottom:0; left:0; right:0;
-      height:60px; background:var(--surface-1);
-      border-top:1px solid var(--border); z-index:500; padding:0 8px;
-    }
-    #piq-mobile-nav .mob-nav-inner {
-      display:flex; align-items:center; justify-content:space-around; height:100%;
-    }
-    .mob-nav-btn {
-      display:flex; flex-direction:column; align-items:center; gap:3px;
-      background:none; border:none; cursor:pointer;
-      padding:6px 12px; border-radius:10px; transition:background 0.15s; flex:1;
-    }
-    .mob-nav-btn.active { background:var(--piq-green)14; }
-    .mob-nav-btn .mob-icon { font-size:18px; line-height:1; }
-    .mob-nav-btn .mob-label {
-      font-size:9.5px; font-weight:600; color:var(--text-muted);
-      text-transform:uppercase; letter-spacing:.04em;
-    }
-    .mob-nav-btn.active .mob-label { color:var(--piq-green); }
-    @media (max-width:768px) {
-      #piq-mobile-nav { display:block; }
-      #piq-main, .view-with-sidebar > main { padding-bottom:72px !important; }
-      .view-with-sidebar aside, .sidebar { display:none !important; }
-    }
-    @media (min-width:769px) { #piq-mobile-nav { display:none !important; } }
-
-    @keyframes piq-streak-pop {
-      0%   { transform:scale(0.5); opacity:0; }
-      60%  { transform:scale(1.15); }
-      100% { transform:scale(1); opacity:1; }
-    }
-    .streak-milestone { animation:piq-streak-pop 0.4s cubic-bezier(0.175,0.885,0.32,1.275) forwards; }
-
-    @keyframes piq-fade-up {
-      from { opacity:0; transform:translateY(6px); }
-      to   { opacity:1; transform:translateY(0); }
-    }
-    .checkin-motivational { animation:piq-fade-up 0.35s ease forwards; }
-  `;
-  document.head.appendChild(s);
+  const start = Date.now();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const bar   = document.getElementById('splash-bar');
+    const label = document.getElementById('splash-label');
+    if (bar)   bar.style.width = '100%';
+    if (label) label.textContent = 'Ready!';
+    const remaining = Math.max(0, 1000 - (Date.now() - start));
+    setTimeout(() => {
+      document.getElementById('piq-loader')?.classList.add('hidden');
+    }, remaining + 300);
+  }));
 }
 
 // ── SHELL HTML ────────────────────────────────────────────────
 function buildShell() {
-  const authed  = isAuthenticated();
+  const authed = isAuthenticated();
   const logoImg = LOGO_URI
     ? `<img src="${LOGO_URI}" alt="PerformanceIQ">`
-    : `<span style="font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;color:var(--piq-green);letter-spacing:2px">PIQ</span>`;
-
-  // [ThemeFix] Use getResolvedTheme() — no getThemeIcon() exists in theme.js
-  const themeIcon = getResolvedTheme() === 'dark' ? '☀️' : '🌙';
+    : `<span style="font-family:'Oswald',sans-serif;font-size:22px;font-weight:700;
+        color:var(--piq-green);letter-spacing:2px">PIQ</span>`;
 
   return `
 <div id="piq-splash" class="${authed ? 'hidden' : ''}">
@@ -185,88 +89,150 @@ function buildShell() {
 </div>
 
 <div id="piq-app" class="${authed ? 'mounted' : ''}">
-  <nav id="piq-nav">
-    <div class="nav-logo" id="nav-logo-btn">${logoImg}</div>
-    <ul class="nav-links" id="nav-links"></ul>
-    <div class="nav-right">
-      <button class="nav-theme-btn" id="theme-toggle-btn" title="Toggle theme">${themeIcon}</button>
-      <span class="nav-role-badge" id="nav-role-badge">${getCurrentRole() || ''}</span>
-      <div class="nav-avatar" id="nav-avatar">${getInitials()}</div>
+  <header id="piq-topbar">
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <button id="btn-menu" class="icon-btn" aria-label="Menu">☰</button>
+        <span class="topbar-title" id="topbar-title">PerformanceIQ</span>
+      </div>
+      <div class="topbar-right">
+        <button id="btn-theme" class="icon-btn" aria-label="Toggle theme">${getThemeIcon()}</button>
+        <button id="btn-avatar" class="avatar-btn" aria-label="Profile">${getInitials()}</button>
+      </div>
     </div>
-  </nav>
-  <div id="piq-main"></div>
-</div>
+  </header>
 
-<div id="assign-modal" class="modal-overlay hidden">
-  <div class="modal-card">
-    <h3>Assign Workout</h3>
-    <div class="modal-detail" id="assign-modal-detail"></div>
-    <div class="modal-athlete-list" id="assign-modal-athletes"></div>
-    <div class="modal-btns">
-      <button class="modal-cancel" id="modal-cancel-btn">Cancel</button>
-      <button class="modal-confirm" id="modal-confirm-btn">Assign ✓</button>
-    </div>
+  <div id="piq-layout">
+    <nav id="piq-sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <span id="nav-role-badge" class="role-badge">${getCurrentRole() || ''}</span>
+        <div id="nav-avatar" class="nav-avatar">${getInitials()}</div>
+      </div>
+      <ul id="sidebar-links" class="sidebar-links"></ul>
+      <div class="sidebar-footer">
+        <button class="sidebar-signout" data-signout>Sign Out</button>
+      </div>
+    </nav>
+
+    <main id="piq-main" class="main-content" role="main"></main>
   </div>
-</div>
-
-<nav id="piq-mobile-nav">
-  <div class="mob-nav-inner" id="mob-nav-inner"></div>
-</nav>`.trim();
+</div>`;
 }
 
-// ── SHELL EVENTS ──────────────────────────────────────────────
+// ── SHELL EVENT BINDINGS ──────────────────────────────────────
 function bindShellEvents() {
-  // [ThemeFix] toggleTheme() replaces cycleTheme(); inline expression replaces getThemeIcon()
-  document.getElementById('theme-toggle-btn')?.addEventListener('click', () => {
-    toggleTheme();
-    const btn = document.getElementById('theme-toggle-btn');
-    if (btn) btn.textContent = getResolvedTheme() === 'dark' ? '☀️' : '🌙';
+  document.getElementById('btn-theme')?.addEventListener('click', () => {
+    cycleTheme();
+    const btn = document.getElementById('btn-theme');
+    if (btn) btn.textContent = getThemeIcon();
   });
-  document.getElementById('nav-logo-btn')?.addEventListener('click', () => {
-    if (isAuthenticated()) navigate(ROLE_HOME[getCurrentRole()] || ROUTES.WELCOME);
+
+  document.getElementById('btn-avatar')?.addEventListener('click', () => {
+    const role = getCurrentRole();
+    if (role) navigate(`${role}/settings`);
   });
-  document.getElementById('nav-avatar')?.addEventListener('click', () => {
-    if (isAuthenticated()) navigate(getCurrentRole() + '/settings');
+
+  document.getElementById('btn-menu')?.addEventListener('click', () => {
+    document.getElementById('piq-sidebar')?.classList.toggle('open');
   });
-  document.getElementById('modal-cancel-btn')?.addEventListener('click', () =>
-    document.getElementById('assign-modal').classList.add('hidden'));
-  document.getElementById('modal-confirm-btn')?.addEventListener('click', () =>
-    document.dispatchEvent(new CustomEvent('piq:confirmAssign')));
+
+  // Sign-out anywhere in the shell
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-signout]')) {
+      signOut();
+      navigate(ROUTES.WELCOME);
+    }
+  });
 }
 
-// ── TOPNAV ────────────────────────────────────────────────────
+// ── SIDEBAR NAV ───────────────────────────────────────────────
+const NAV_ITEMS = {
+  coach:  [
+    { route: ROUTES.COACH_HOME,      icon: '🏠', label: 'Dashboard' },
+    { route: ROUTES.COACH_ROSTER,    icon: '👥', label: 'Roster'    },
+    { route: ROUTES.COACH_PROGRAM,   icon: '📋', label: 'Program'   },
+    { route: ROUTES.COACH_READINESS, icon: '💚', label: 'Readiness' },
+    { route: ROUTES.COACH_ANALYTICS, icon: '📊', label: 'Analytics' },
+    { route: ROUTES.COACH_CALENDAR,  icon: '📅', label: 'Calendar'  },
+    { route: ROUTES.COACH_MESSAGES,  icon: '💬', label: 'Messages'  },
+    { route: ROUTES.COACH_SETTINGS,  icon: '⚙️', label: 'Settings'  },
+  ],
+  player: [
+    { route: ROUTES.PLAYER_HOME,      icon: '🏠', label: 'Dashboard'  },
+    { route: ROUTES.PLAYER_TODAY,     icon: '⚡', label: 'Today'      },
+    { route: ROUTES.PLAYER_LOG,       icon: '📝', label: 'Log'        },
+    { route: ROUTES.PLAYER_READINESS, icon: '💚', label: 'Readiness'  },
+    { route: ROUTES.PLAYER_PROGRESS,  icon: '📈', label: 'Progress'   },
+    { route: ROUTES.PLAYER_SCORE,     icon: '🎯', label: 'PIQ Score'  },
+    { route: ROUTES.PLAYER_NUTRITION, icon: '🥗', label: 'Nutrition'  },
+    { route: ROUTES.PLAYER_SETTINGS,  icon: '⚙️', label: 'Settings'   },
+  ],
+  parent: [
+    { route: ROUTES.PARENT_HOME,     icon: '🏠', label: 'Dashboard' },
+    { route: ROUTES.PARENT_CHILD,    icon: '👤', label: 'Athlete'   },
+    { route: ROUTES.PARENT_WEEK,     icon: '📅', label: 'This Week' },
+    { route: ROUTES.PARENT_PROGRESS, icon: '📈', label: 'Progress'  },
+    { route: ROUTES.PARENT_WELLNESS, icon: '💚', label: 'Wellness'  },
+    { route: ROUTES.PARENT_MESSAGES, icon: '💬', label: 'Messages'  },
+    { route: ROUTES.PARENT_BILLING,  icon: '💳', label: 'Billing'   },
+    { route: ROUTES.PARENT_SETTINGS, icon: '⚙️', label: 'Settings'  },
+  ],
+  admin: [
+    { route: ROUTES.ADMIN_HOME,       icon: '🏠', label: 'Dashboard'  },
+    { route: ROUTES.ADMIN_ORG,        icon: '🏛️', label: 'Org'        },
+    { route: ROUTES.ADMIN_TEAMS,      icon: '👥', label: 'Teams'      },
+    { route: ROUTES.ADMIN_COACHES,    icon: '🎽', label: 'Coaches'    },
+    { route: ROUTES.ADMIN_ATHLETES,   icon: '⚡', label: 'Athletes'   },
+    { route: ROUTES.ADMIN_REPORTS,    icon: '📊', label: 'Reports'    },
+    { route: ROUTES.ADMIN_COMPLIANCE, icon: '✅', label: 'Compliance' },
+    { route: ROUTES.ADMIN_BILLING,    icon: '💳', label: 'Billing'    },
+    { route: ROUTES.ADMIN_SETTINGS,   icon: '⚙️', label: 'Settings'   },
+  ],
+  solo: [
+    { route: ROUTES.SOLO_HOME,      icon: '🏠', label: 'Dashboard' },
+    { route: ROUTES.SOLO_TODAY,     icon: '⚡', label: 'Today'     },
+    { route: ROUTES.SOLO_BUILDER,   icon: '🔨', label: 'Builder'   },
+    { route: ROUTES.SOLO_READINESS, icon: '💚', label: 'Readiness' },
+    { route: ROUTES.SOLO_PROGRESS,  icon: '📈', label: 'Progress'  },
+    { route: ROUTES.SOLO_SCORE,     icon: '🎯', label: 'PIQ Score' },
+    { route: ROUTES.SOLO_GOALS,     icon: '🏆', label: 'Goals'     },
+    { route: ROUTES.SOLO_NUTRITION, icon: '🥗', label: 'Nutrition' },
+    { route: ROUTES.SOLO_SETTINGS,  icon: '⚙️', label: 'Settings'  },
+  ],
+};
+
 function renderNav(activeRoute) {
-  const $links = document.getElementById('nav-links');
-  if (!$links || !isAuthenticated()) return;
-  const items = getDashboardConfig().navItems.slice(0, 6);
-  $links.innerHTML = items.map(it =>
-    `<li><button class="${activeRoute === it.route ? 'active' : ''}" data-route="${it.route}">
-      <span>${it.icon}</span> ${it.label}
-    </button></li>`
+  const role   = getCurrentRole();
+  const items  = NAV_ITEMS[role] || [];
+  const $links = document.getElementById('sidebar-links');
+  if (!$links) return;
+
+  $links.innerHTML = items.map(it => `
+    <li>
+      <button class="sidebar-link ${activeRoute === it.route ? 'active' : ''}"
+              data-route="${it.route}">
+        <span class="link-icon">${it.icon}</span>
+        <span>${it.label}</span>
+      </button>
+    </li>`
   ).join('');
+
   $links.querySelectorAll('[data-route]').forEach(el =>
-    el.addEventListener('click', () => navigate(el.dataset.route)));
-  document.getElementById('nav-role-badge').textContent = getCurrentRole() || '';
-  document.getElementById('nav-avatar').textContent     = getInitials();
+    el.addEventListener('click', () => {
+      document.getElementById('piq-sidebar')?.classList.remove('open');
+      navigate(el.dataset.route);
+    }));
 
-  _renderMobileNav(activeRoute);
-}
-
-function _renderMobileNav(activeRoute) {
-  const inner = document.getElementById('mob-nav-inner');
-  if (!inner || !isAuthenticated()) return;
-  const items = getDashboardConfig().navItems.slice(0, 5);
-  inner.innerHTML = items.map(it => `
-    <button class="mob-nav-btn ${activeRoute === it.route ? 'active' : ''}" data-route="${it.route}">
-      <span class="mob-icon">${it.icon}</span>
-      <span class="mob-label">${it.label}</span>
-    </button>`).join('');
-  inner.querySelectorAll('[data-route]').forEach(el =>
-    el.addEventListener('click', () => navigate(el.dataset.route)));
+  const badge  = document.getElementById('nav-role-badge');
+  const avatar = document.getElementById('nav-avatar');
+  if (badge)  badge.textContent  = role || '';
+  if (avatar) avatar.textContent = getInitials();
 }
 
 // ── VIEW MAP ──────────────────────────────────────────────────
+// [modulePath, exportName]
 const VIEW_MAP = {
+  // Auth / shared
   [ROUTES.WELCOME]:          ['./views/shared/welcome.js',         'renderWelcome'],
   [ROUTES.SIGN_IN]:          ['./views/shared/signin.js',          'renderSignIn'],
   [ROUTES.SIGN_UP]:          ['./views/shared/signup.js',          'renderSignUp'],
@@ -274,6 +240,7 @@ const VIEW_MAP = {
   [ROUTES.ONBOARDING]:       ['./views/shared/onboarding.js',      'renderOnboarding'],
   [ROUTES.SETTINGS_THEME]:   ['./views/shared/settingsTheme.js',   'renderSettingsTheme'],
   [ROUTES.SETTINGS_PROFILE]: ['./views/shared/settingsProfile.js', 'renderSettingsProfile'],
+  // Coach
   [ROUTES.COACH_HOME]:       ['./views/coach/home.js',             'renderCoachHome'],
   [ROUTES.COACH_TEAM]:       ['./views/coach/team.js',             'renderCoachTeam'],
   [ROUTES.COACH_ROSTER]:     ['./views/coach/roster.js',           'renderCoachRoster'],
@@ -286,6 +253,7 @@ const VIEW_MAP = {
   [ROUTES.COACH_CALENDAR]:   ['./views/coach/calendar.js',         'renderCoachCalendar'],
   [ROUTES.COACH_REPORTS]:    ['./views/coach/reports.js',          'renderCoachReports'],
   [ROUTES.COACH_SETTINGS]:   ['./views/coach/settings.js',         'renderCoachSettings'],
+  // Player
   [ROUTES.PLAYER_HOME]:      ['./views/player/home.js',            'renderPlayerHome'],
   [ROUTES.PLAYER_TODAY]:     ['./views/player/todayWorkout.js',    'renderPlayerToday'],
   [ROUTES.PLAYER_LOG]:       ['./views/player/logWorkout.js',      'renderPlayerLog'],
@@ -297,6 +265,7 @@ const VIEW_MAP = {
   [ROUTES.PLAYER_RECRUITING]:['./views/player/recruiting.js',      'renderPlayerRecruiting'],
   [ROUTES.PLAYER_SETTINGS]:  ['./views/player/settings.js',        'renderPlayerSettings'],
   [ROUTES.PLAYER_NUTRITION]: ['./views/player/nutrition.js',       'renderPlayerNutrition'],
+  // Parent
   [ROUTES.PARENT_HOME]:      ['./views/parent/home.js',            'renderParentHome'],
   [ROUTES.PARENT_CHILD]:     ['./views/parent/childOverview.js',   'renderParentChild'],
   [ROUTES.PARENT_WEEK]:      ['./views/parent/weeklyPlan.js',      'renderParentWeek'],
@@ -305,6 +274,7 @@ const VIEW_MAP = {
   [ROUTES.PARENT_MESSAGES]:  ['./views/parent/messages.js',        'renderParentMessages'],
   [ROUTES.PARENT_BILLING]:   ['./views/parent/billing.js',         'renderParentBilling'],
   [ROUTES.PARENT_SETTINGS]:  ['./views/parent/settings.js',        'renderParentSettings'],
+  // Admin
   [ROUTES.ADMIN_HOME]:       ['./views/admin/home.js',             'renderAdminHome'],
   [ROUTES.ADMIN_ORG]:        ['./views/admin/org.js',              'renderAdminOrg'],
   [ROUTES.ADMIN_TEAMS]:      ['./views/admin/teams.js',            'renderAdminTeams'],
@@ -315,129 +285,106 @@ const VIEW_MAP = {
   [ROUTES.ADMIN_COMPLIANCE]: ['./views/admin/compliance.js',       'renderAdminCompliance'],
   [ROUTES.ADMIN_BILLING]:    ['./views/admin/billing.js',          'renderAdminBilling'],
   [ROUTES.ADMIN_SETTINGS]:   ['./views/admin/settings.js',         'renderAdminSettings'],
-  [ROUTES.SOLO_HOME]:        ['./views/solo/home.js',              'renderSoloHome'],
-  [ROUTES.SOLO_TODAY]:       ['./views/solo/todayWorkout.js',      'renderSoloToday'],
-  [ROUTES.SOLO_BUILDER]:     ['./views/solo/builder.js',           'renderSoloBuilder'],
-  [ROUTES.SOLO_LIBRARY]:     ['./views/solo/library.js',           'renderSoloLibrary'],
-  [ROUTES.SOLO_PROGRESS]:    ['./views/solo/progress.js',          'renderSoloProgress'],
-  [ROUTES.SOLO_SCORE]:       ['./views/solo/score.js',             'renderSoloScore'],
-  [ROUTES.SOLO_READINESS]:   ['./views/solo/readiness.js',         'renderSoloReadiness'],
-  [ROUTES.SOLO_GOALS]:       ['./views/solo/goals.js',             'renderSoloGoals'],
-  [ROUTES.SOLO_SUBSCRIPTION]:['./views/solo/subscription.js',      'renderSoloSubscription'],
-  [ROUTES.SOLO_SETTINGS]:    ['./views/solo/settings.js',          'renderSoloSettings'],
-  [ROUTES.SOLO_NUTRITION]:   ['./views/solo/nutrition.js',         'renderSoloNutrition'],
+  // Solo
+  [ROUTES.SOLO_HOME]:         ['./views/solo/home.js',             'renderSoloHome'],
+  [ROUTES.SOLO_TODAY]:        ['./views/solo/todayWorkout.js',     'renderSoloToday'],
+  [ROUTES.SOLO_BUILDER]:      ['./views/solo/builder.js',          'renderSoloBuilder'],
+  [ROUTES.SOLO_LIBRARY]:      ['./views/solo/library.js',          'renderSoloLibrary'],
+  [ROUTES.SOLO_PROGRESS]:     ['./views/solo/progress.js',         'renderSoloProgress'],
+  [ROUTES.SOLO_SCORE]:        ['./views/solo/score.js',            'renderSoloScore'],
+  [ROUTES.SOLO_READINESS]:    ['./views/solo/readiness.js',        'renderSoloReadiness'],
+  [ROUTES.SOLO_GOALS]:        ['./views/solo/goals.js',            'renderSoloGoals'],
+  [ROUTES.SOLO_SUBSCRIPTION]: ['./views/solo/subscription.js',    'renderSoloSubscription'],
+  [ROUTES.SOLO_SETTINGS]:     ['./views/solo/settings.js',         'renderSoloSettings'],
+  [ROUTES.SOLO_NUTRITION]:    ['./views/solo/nutrition.js',        'renderSoloNutrition'],
 };
 
+// ── ROUTE RENDERING ───────────────────────────────────────────
 async function renderRoute(route) {
   const entry = VIEW_MAP[route];
   if (!entry) {
-    const fallback = VIEW_MAP[isAuthenticated() ? (ROLE_HOME[getCurrentRole()] || ROUTES.WELCOME) : ROUTES.WELCOME];
-    if (fallback) await loadAndRender(...fallback, route);
+    // Unknown route → fall back to home
+    const homeRoute = isAuthenticated()
+      ? ROLE_HOME[getCurrentRole()]
+      : ROUTES.WELCOME;
+    const fallback = VIEW_MAP[homeRoute];
+    if (fallback) await _loadAndRender(...fallback, homeRoute);
     return;
   }
-  await loadAndRender(...entry, route);
+  await _loadAndRender(...entry, route);
 }
 
-function _showSkeleton() {
-  const $main = document.getElementById('piq-main');
-  if (!$main) return;
-  $main.innerHTML = `
-  <div class="piq-skeleton-page">
-    <div class="piq-skeleton piq-skeleton-header"></div>
-    <div class="piq-skeleton piq-skeleton-sub"></div>
-    <div class="piq-skeleton-kpi-row">
-      <div class="piq-skeleton piq-skeleton-kpi"></div>
-      <div class="piq-skeleton piq-skeleton-kpi"></div>
-      <div class="piq-skeleton piq-skeleton-kpi"></div>
-      <div class="piq-skeleton piq-skeleton-kpi"></div>
-    </div>
-    <div class="piq-skeleton-2col">
-      <div class="piq-skeleton piq-skeleton-panel"></div>
-      <div class="piq-skeleton piq-skeleton-panel-sm"></div>
-    </div>
-  </div>`;
-}
+const AUTH_SCREEN_ROUTES = new Set([
+  ROUTES.WELCOME, ROUTES.SIGN_IN, ROUTES.SIGN_UP,
+  ROUTES.FORGOT_PASSWORD, ROUTES.PICK_ROLE, ROUTES.ONBOARDING,
+]);
 
-async function loadAndRender(modulePath, exportName, route) {
-  const isAuthRoute = !isAuthenticated() ||
-    [ROUTES.WELCOME, ROUTES.SIGN_IN, ROUTES.SIGN_UP, ROUTES.PICK_ROLE, ROUTES.ONBOARDING].includes(route);
-
-  if (!isAuthRoute) _showSkeleton();
-
+async function _loadAndRender(modulePath, exportName, route) {
+  const isAuthScreen = !isAuthenticated() || AUTH_SCREEN_ROUTES.has(route);
   try {
     const mod      = await import(modulePath);
     const renderFn = mod[exportName];
-    if (typeof renderFn !== 'function')
+    if (typeof renderFn !== 'function') {
       throw new Error(`${exportName} not exported from ${modulePath}`);
-    if (!isAuthenticated() || isAuthRoute) {
-      authView(renderFn);
-    } else {
-      appView(renderFn, route);
     }
+    isAuthScreen ? _renderAuth(renderFn) : _renderApp(renderFn, route);
   } catch (err) {
     console.error(`[PIQ] Failed to load ${modulePath}:`, err);
-    showLoadError(route, err.message);
+    _renderError(route, err.message);
   }
 }
 
-function authView(renderFn) {
+function _renderAuth(renderFn) {
   document.getElementById('piq-splash')?.classList.remove('hidden');
   document.getElementById('piq-app')?.classList.remove('mounted');
   const $slot = document.getElementById('auth-view-slot');
   if (!$slot) return;
   $slot.innerHTML = renderFn();
-  bindLinks($slot);
+  _bindLinks($slot);
   document.dispatchEvent(new CustomEvent('piq:authRendered'));
 }
 
-function appView(renderFn, route) {
+function _renderApp(renderFn, route) {
   if (!isAuthenticated()) { navigate(ROUTES.WELCOME); return; }
   document.getElementById('piq-splash')?.classList.add('hidden');
   document.getElementById('piq-app')?.classList.add('mounted');
-  renderNav(getCurrentRoute());
+  renderNav(route);
   const $main = document.getElementById('piq-main');
   if (!$main) return;
   $main.innerHTML = renderFn();
-  bindLinks($main);
-  _annotateComingSoon($main);
-  // [EventFix] pass route in detail so view listeners work correctly
+  _bindLinks($main);
   document.dispatchEvent(new CustomEvent('piq:viewRendered', { detail: { route } }));
 }
 
-function _annotateComingSoon(container) {
-  container.querySelectorAll('button[disabled]').forEach(btn => {
-    const txt = btn.textContent.trim().toLowerCase();
-    if (txt.includes('coming soon') || txt.includes('coming')) {
-      btn.setAttribute('data-coming-soon', 'Available in the next release');
-      btn.style.cursor = 'not-allowed';
-    }
-  });
-}
-
-function bindLinks(container) {
+function _bindLinks(container) {
   container.querySelectorAll('[data-route]').forEach(el =>
-    el.addEventListener('click', e => { e.preventDefault(); navigate(el.dataset.route); }));
+    el.addEventListener('click', e => {
+      e.preventDefault();
+      navigate(el.dataset.route);
+    }));
   container.querySelectorAll('[data-signout]').forEach(el =>
-    el.addEventListener('click', () => { signOut(); navigate(ROUTES.WELCOME); }));
+    el.addEventListener('click', () => {
+      signOut();
+      navigate(ROUTES.WELCOME);
+    }));
 }
 
-function showLoadError(route, msg) {
-  const $main = document.getElementById('piq-main') || document.getElementById('auth-view-slot');
-  if ($main) {
-    $main.innerHTML = `
-    <div style="padding:40px;text-align:center;font-family:sans-serif">
+function _renderError(route, msg) {
+  const $target = document.getElementById('piq-main')
+    || document.getElementById('auth-view-slot');
+  if (!$target) return;
+  $target.innerHTML = `
+    <div style="padding:40px;text-align:center">
       <div style="font-size:32px;margin-bottom:12px">⚠️</div>
-      <div style="font-weight:600;margin-bottom:8px;color:var(--text-primary)">Could not load view</div>
-      <code style="font-size:11px;color:var(--text-muted)">${route}: ${msg}</code>
-      <br><br>
-      <button onclick="location.reload()" style="padding:10px 24px;background:var(--piq-green);border:none;border-radius:8px;font-weight:700;color:var(--piq-navy);cursor:pointer">Reload</button>
+      <div style="font-weight:600;margin-bottom:8px;color:var(--text-primary)">View failed to load</div>
+      <code style="font-size:11px;color:var(--text-muted)">${route}: ${msg}</code><br><br>
+      <button onclick="location.reload()"
+        style="padding:10px 24px;background:var(--piq-green);border:none;
+               border-radius:8px;font-weight:700;color:var(--piq-navy);cursor:pointer">
+        Reload
+      </button>
     </div>`;
-  }
 }
 
-// Guard: ES modules are deferred but be explicit for GH Pages edge cases
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
+// ── START ─────────────────────────────────────────────────────
+init();
