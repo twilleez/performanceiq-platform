@@ -1,149 +1,104 @@
 /**
- * PerformanceIQ — core/supabase.js
- *
- * Supabase is used ONLY for database queries and file storage.
- * Auth is handled exclusively by core/auth.js + localStorage.
- *
- * Reasons:
- *  1. GitHub Pages has no server; localStorage sessions are correct.
- *  2. supabase.auth.onAuthStateChange() creates a second listener loop
- *     that conflicts with app.js's onRouteChange.
- *  3. isAuthed() in this file was dead code — app.js never called it.
- *
- * If/when native Supabase auth is enabled (post-Capacitor migration),
- * add a thin bridge here that calls core/auth.js's saveSession() so
- * the rest of the app remains unchanged.
+ * PerformanceIQ — Supabase Client
+ * Single source of truth for the Supabase client instance.
+ * All DB/auth operations go through this module.
  */
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
-// ── CONFIG ────────────────────────────────────────────────────
-const SUPABASE_URL = typeof window !== 'undefined'
-  ? (window.__PIQ_SUPABASE_URL__ || '')
-  : '';
-const SUPABASE_ANON_KEY = typeof window !== 'undefined'
-  ? (window.__PIQ_SUPABASE_ANON_KEY__ || '')
-  : '';
+const SUPABASE_URL  = 'https://jijqjbgmhhlvokgtuema.supabase.co';
+const SUPABASE_ANON = 'YOUR_ANON_KEY'; // replace with your actual anon key
 
-// ── CLIENT ────────────────────────────────────────────────────
-let _client = null;
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
+  auth: {
+    persistSession:    true,
+    autoRefreshToken:  true,
+    detectSessionInUrl: true,
+  },
+});
+
+// ── VALID ENUM VALUES (must match DB constraints exactly) ─────
+const VALID_ROLES = ['coach', 'player', 'parent', 'admin', 'solo'];
+const VALID_GOALS = [
+  'strength', 'speed', 'endurance', 'power', 'agility',
+  'weight_loss', 'muscle_gain', 'recovery', 'recruiting',
+  'general_fitness', 'sport_performance',
+];
+
+// Display/legacy → DB enum mapping for primary_goal
+const GOAL_DISPLAY_MAP = {
+  'speed & agility':      'speed',
+  'agility':              'agility',
+  'weight loss':          'weight_loss',
+  'muscle gain':          'muscle_gain',
+  'general fitness':      'general_fitness',
+  'sport performance':    'sport_performance',
+  'college recruiting':   'recruiting',
+  'recovery & longevity': 'recovery',
+  'injury prevention':    'recovery',
+  'injury_prev':          'recovery',
+  'flexibility':          'endurance',
+  'conditioning':         'endurance',
+  'vertical':             'power',
+  'vertical jump':        'power',
+  'nutrition':            'general_fitness',
+};
 
 /**
- * Returns the Supabase JS client, or null if config is absent.
- * All DB helpers below call this — they silently no-op when
- * Supabase is not configured (demo / offline mode).
+ * upsertProfile — hardened Supabase profiles upsert.
+ * Normalizes all constrained fields before write.
+ * Safe to call from onboarding finish and settings/profile save.
+ *
+ * @param {string} userId   — auth.uid() from Supabase session
+ * @param {object} profile  — raw profile data from onboarding/state
+ * @returns {{ ok: boolean, error?: string, code?: string }}
  */
-export function getSupabase() {
-  if (_client) return _client;
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+export async function upsertProfile(userId, profile) {
+  if (!userId) return { ok: false, error: 'No user ID — not authenticated.' };
 
-  try {
-    // Supabase JS v2 loaded via CDN in index.html
-    const { createClient } = window.supabase;
-    _client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        // Disable Supabase's own session persistence — we own the session
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    });
-  } catch (err) {
-    console.warn('[PIQ] Supabase client init failed:', err);
-    _client = null;
+  // ── Normalize role ────────────────────────────────────────
+  const role = VALID_ROLES.includes(profile.role) ? profile.role : 'solo';
+
+  // ── Normalize sport (lowercase, no DB constraint) ─────────
+  const sport = (profile.sport || '').toLowerCase().trim() || null;
+
+  // ── Normalize primary_goal ────────────────────────────────
+  const rawGoal    = (profile.primaryGoal || profile.primary_goal || '').toLowerCase().trim();
+  const primaryGoal = VALID_GOALS.includes(rawGoal)
+    ? rawGoal
+    : (GOAL_DISPLAY_MAP[rawGoal] || null);
+
+  // ── Build payload ─────────────────────────────────────────
+  const payload = {
+    id:             userId,
+    name:           (profile.name  || '').trim()  || null,
+    email:          (profile.email || '').toLowerCase().trim() || null,
+    role,
+    sport,
+    primary_goal:   primaryGoal,
+    team:           (profile.team     || '').trim() || null,
+    position:       (profile.position || '').trim() || null,
+    grad_year:      profile.gradYear      ? Number(profile.gradYear)      : null,
+    age:            profile.age           ? Number(profile.age)           : null,
+    weight_lbs:     profile.weight        ? Number(profile.weight)        : null,
+    height_in:      profile.heightIn      ? Number(profile.heightIn)      : null,
+    training_level: profile.trainingLevel || 'intermediate',
+    comp_phase:     profile.compPhase     || 'in-season',
+    days_per_week:  profile.daysPerWeek   ? Number(profile.daysPerWeek)   : 4,
+    sleep_hours:    profile.sleepHours    ? Number(profile.sleepHours)    : 7,
+    injury_history: profile.injuries || profile.injuryHistory || null,
+    goals:          Array.isArray(profile.goals) ? profile.goals : [],
+    onboarded:      true,
+    updated_at:     new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('profiles')
+    .upsert(payload, { onConflict: 'id' });
+
+  if (error) {
+    console.error('[PIQ] upsertProfile failed:', error);
+    return { ok: false, error: error.message, code: error.code, hint: error.hint || null };
   }
 
-  return _client;
-}
-
-/** True only when the Supabase client is available. */
-export function isSupabaseReady() {
-  return !!getSupabase();
-}
-
-// ── DB HELPERS ────────────────────────────────────────────────
-// All helpers return { data, error } — same shape as raw Supabase calls.
-// Callers should check `error` before using `data`.
-
-/**
- * Upsert a user profile row.
- * Table: profiles  |  PK: id (user id from core/auth.js session)
- */
-export async function upsertProfile(profile) {
-  const sb = getSupabase();
-  if (!sb) return { data: null, error: new Error('Supabase not configured') };
-  return sb.from('profiles').upsert(profile, { onConflict: 'id' });
-}
-
-/**
- * Fetch a single profile by user id.
- */
-export async function fetchProfile(userId) {
-  const sb = getSupabase();
-  if (!sb) return { data: null, error: new Error('Supabase not configured') };
-  return sb
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
-}
-
-/**
- * Fetch teams the current user belongs to.
- * Uses athlete_id (not user_id — see team_members schema).
- */
-export async function fetchMyTeams(userId) {
-  const sb = getSupabase();
-  if (!sb) return { data: [], error: new Error('Supabase not configured') };
-  return sb
-    .from('team_members')
-    .select('team_id, role, jersey, teams(*)')
-    .eq('athlete_id', userId);
-}
-
-/**
- * Fetch all athletes on a team (coach view).
- * RLS: caller must own or coach the team.
- */
-export async function fetchTeamRoster(teamId) {
-  const sb = getSupabase();
-  if (!sb) return { data: [], error: new Error('Supabase not configured') };
-  return sb
-    .from('team_members')
-    .select('athlete_id, role, jersey, profiles(*)')
-    .eq('team_id', teamId);
-}
-
-/**
- * Log a training session.
- * Table: sessions
- */
-export async function logSession(sessionData) {
-  const sb = getSupabase();
-  if (!sb) return { data: null, error: new Error('Supabase not configured') };
-  return sb.from('sessions').insert(sessionData);
-}
-
-/**
- * Fetch recent sessions for a user, newest first.
- */
-export async function fetchRecentSessions(userId, limit = 14) {
-  const sb = getSupabase();
-  if (!sb) return { data: [], error: new Error('Supabase not configured') };
-  return sb
-    .from('sessions')
-    .select('*')
-    .eq('user_id', userId)
-    .order('session_date', { ascending: false })
-    .limit(limit);
-}
-
-/**
- * Upsert a daily readiness / wellness check-in.
- * Table: readiness_logs  |  unique on (user_id, log_date)
- */
-export async function upsertReadiness(entry) {
-  const sb = getSupabase();
-  if (!sb) return { data: null, error: new Error('Supabase not configured') };
-  return sb
-    .from('readiness_logs')
-    .upsert(entry, { onConflict: 'user_id,log_date' });
+  return { ok: true };
 }
