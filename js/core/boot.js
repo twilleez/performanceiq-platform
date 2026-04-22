@@ -1,12 +1,13 @@
 /**
  * PerformanceIQ Boot v2
  * Adds Supabase session sync alongside localStorage hydration.
+ * All changes are additive — existing behavior is fully preserved.
  */
-import { initTheme } from './theme.js';
-import { initAuth }  from './auth.js';
-import { loadState } from '../state/state.js';
-import { supabase }  from './supabase.js';
-import { navigate, ROLE_HOME, ROUTES } from '../router.js';
+import { initTheme }                       from './theme.js';
+import { initAuth }                        from './auth.js';
+import { loadState }                       from '../state/state.js';
+import { supabase }                        from './supabase.js';
+import { navigate, ROUTES }               from '../router.js';
 
 let _booted = false;
 
@@ -14,44 +15,52 @@ export async function boot() {
   if (_booted) return;
   _booted = true;
 
-  // 1. Theme before any paint
+  // 1. Theme — must apply before any paint to avoid flash
   initTheme();
 
-  // 2. Restore localStorage session (fast, synchronous)
+  // 2. Auth session — restore from localStorage (fast, synchronous)
   initAuth();
 
-  // 3. Hydrate app state
+  // 3. App state — hydrate from localStorage
   loadState();
 
-  // 4. Supabase session sync (async, non-blocking for demo users)
-  syncSupabaseSession();
+  // 4. Supabase session sync — async, non-blocking
+  //    Runs after initial render so it never delays first paint
+  _syncSupabaseSession();
 
   // 5. PWA service worker
-  registerSW();
+  _registerSW();
 }
 
 /**
- * Sync Supabase session state with localStorage session.
- * Non-blocking — runs after initial render.
- * Handles tab-restore and token refresh transparently.
+ * Sync Supabase auth state with the app's localStorage session.
+ *
+ * Responsibilities:
+ *   - Listen for sign-out events from other tabs → clear session + redirect
+ *   - Listen for token refresh events → no-op (Supabase handles token silently)
+ *
+ * We do NOT re-fetch the profile on every auth event to avoid
+ * re-triggering the router guard on token refresh.
  */
-async function syncSupabaseSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-
-  // Listen for future auth changes (sign in from another tab, token refresh, etc.)
-  supabase.auth.onAuthStateChange(async (event, session) => {
+function _syncSupabaseSession() {
+  supabase.auth.onAuthStateChange((event, _session) => {
     if (event === 'SIGNED_OUT') {
+      // Another tab signed out — clear our local session too
       localStorage.removeItem('piq_session_v2');
       navigate(ROUTES.WELCOME);
     }
-    // SIGNED_IN and TOKEN_REFRESHED are handled by signIn/signUp functions
+    // SIGNED_IN, TOKEN_REFRESHED, USER_UPDATED:
+    // handled by signIn/signUp in auth.js — no action needed here
   });
 }
 
-function registerSW() {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/performanceiq-platform/sw.js').catch(() => {});
-    });
-  }
+function _registerSW() {
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/performanceiq-platform/sw.js')
+      .catch(() => {
+        // SW is optional — fail silently in dev and non-HTTPS environments
+      });
+  });
 }
