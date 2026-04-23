@@ -24,6 +24,22 @@ export function renderSignUp() {
 </div>`;
 }
 
+/* Legacy auth-card (shared/signup.js path) */
+.auth-card {
+  background: #ffffff;
+  color: #0f172a;
+}
+.auth-card h2         { color: #0f172a; }
+.auth-card .role-tab  { color: #475569; }
+.auth-card .role-tab.active { color: #0f172a; }
+.auth-card .input-wrap input {
+  color: #0f172a;
+  background: #f8fafc;
+}
+.auth-card .input-wrap input::placeholder { color: #94a3b8; }
+.auth-card .auth-foot { color: #475569; }
+.auth-card .auth-foot a { color: #39e66b; }
+
 document.addEventListener('piq:authRendered', () => {
   let selectedRole = 'player';
   document.querySelectorAll('#su-role-tabs .role-tab').forEach(tab => {
