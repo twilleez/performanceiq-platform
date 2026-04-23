@@ -151,11 +151,12 @@ function buildShell() {
 
 // ── SHELL EVENT BINDINGS ──────────────────────────────────────
 function bindShellEvents() {
-  document.getElementById('btn-theme')?.addEventListener('click', () => {
-    cycleTheme();
+   document.getElementById('btn-theme')?.addEventListener('click', () => {
+    toggleTheme();
     const btn = document.getElementById('btn-theme');
     if (btn) btn.textContent = getThemeIcon();
   });
+
 
   document.getElementById('btn-avatar')?.addEventListener('click', () => {
     const role = getCurrentRole();
