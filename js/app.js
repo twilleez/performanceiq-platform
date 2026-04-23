@@ -12,7 +12,7 @@
 import { boot }                         from './core/boot.js';
 import { getThemeIcon, cycleTheme }     from './core/theme.js';
 import { isAuthenticated, getCurrentRole,
-         getInitials, signOut }          from './core/auth.js';
+         getInitials, signOut, signIn }  from './core/auth.js';
 import { navigate, getCurrentRoute,
          onRouteChange, ROUTES,
          ROLE_HOME, suppressNextGuard }  from './router.js';
@@ -32,10 +32,35 @@ async function init() {
   bindShellEvents();
   onRouteChange(route => renderRoute(route));
 
+  // Read initial URL hash for deep-link routing (e.g. /#/signup, /#/demo/coach)
+  const hash = window.location.hash.replace(/^#\//, '');
+
+  // Demo auto-login: /#/demo/<role> signs in the matching demo account
+  if (!isAuthenticated() && hash.startsWith('demo/')) {
+    const role = hash.split('/')[1];
+    const DEMO_EMAIL = {
+      coach:   'coach@demo.com',
+      athlete: 'player@demo.com',
+      player:  'player@demo.com',
+      parent:  'parent@demo.com',
+      admin:   'admin@demo.com',
+      solo:    'solo@demo.com',
+    };
+    const demoEmail = DEMO_EMAIL[role];
+    if (demoEmail) {
+      const res = await signIn(demoEmail, 'demo');
+      if (res.ok) {
+        navigate(ROLE_HOME[res.session.role] || ROUTES.WELCOME);
+        _animateSplash();
+        return;
+      }
+    }
+  }
+
   // Determine start route — guard in router.js will redirect if needed
   const start = isAuthenticated()
     ? (ROLE_HOME[getCurrentRole()] || ROUTES.PICK_ROLE)
-    : ROUTES.WELCOME;
+    : (hash === 'signup' ? ROUTES.SIGN_UP : ROUTES.WELCOME);
 
   navigate(start);
 
