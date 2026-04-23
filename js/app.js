@@ -10,13 +10,18 @@
  * • core/router.js is a shim for legacy view imports — never called here.
  */
 import { boot }                         from './core/boot.js';
-import { getThemeIcon, cycleTheme }     from './core/theme.js';
+import { toggleTheme, getResolvedTheme } from './core/theme.js';
 import { isAuthenticated, getCurrentRole,
          getInitials, signOut, signIn }  from './core/auth.js';
 import { navigate, getCurrentRoute,
          onRouteChange, ROUTES,
          ROLE_HOME, suppressNextGuard }  from './router.js';
 import { getDashboardConfig }           from './state/selectors.js';
+
+function getThemeIcon() {
+  return getResolvedTheme() === 'dark' ? '☀️' : '🌙';
+}
+
 
 const LOGO_URI = document.getElementById('piq-logo-data')?.src || '';
 
