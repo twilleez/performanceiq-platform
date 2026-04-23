@@ -212,4 +212,91 @@
     padding: 28px 20px;
     border-radius: 16px;
   }
+/* =====================================================
+   AUTH SCREEN — TEXT VISIBILITY FIX
+   The .auth-screen container renders on a white card;
+   all child text must use dark tokens, not the global
+   dark-bg defaults set in styles.css.
+   ===================================================== */
+
+/* Wrapper: white card, dark text */
+.auth-screen {
+  color: var(--text-primary, #0f172a);
+  background: #ffffff;
+}
+
+/* Headings */
+.auth-screen .auth-title {
+  color: #0f172a;
+}
+
+/* Subtitle / helper text */
+.auth-screen .auth-sub {
+  color: #475569;
+}
+
+/* Section labels */
+.auth-screen .section-label {
+  color: #64748b;
+}
+
+/* Step labels in progress indicator */
+.auth-screen .onboarding-step span {
+  color: #475569;
+}
+
+/* Inputs: dark text on light background */
+.auth-screen .field-input {
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+}
+
+.auth-screen .field-input::placeholder {
+  color: #94a3b8;
+}
+
+.auth-screen .field-input:focus {
+  outline: none;
+  border-color: #39e66b;
+  box-shadow: 0 0 0 3px rgba(57, 230, 107, 0.15);
+}
+
+/* Role cards: dark label + desc text */
+.auth-screen .role-card .role-label {
+  color: #0f172a;
+}
+
+.auth-screen .role-card .role-desc {
+  color: #64748b;
+}
+
+/* Ghost button legible on white */
+.auth-screen .btn-ghost {
+  color: #475569;
+}
+
+.auth-screen .btn-ghost:hover {
+  color: #0f172a;
+}
+
+/* Back button */
+.auth-screen .back-btn {
+  color: #475569;
+}
+
+/* Error/warning messages */
+.auth-screen .field-error,
+.auth-screen .auth-msg-warn {
+  color: #ef4444;
+}
+
+/* Onboarding pip labels */
+.auth-screen .onboarding-pip {
+  color: #94a3b8;
+}
+.auth-screen .onboarding-pip.active,
+.auth-screen .onboarding-pip.done {
+  color: #ffffff; /* number inside active/done pip stays white */
+}
 }
