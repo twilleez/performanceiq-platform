@@ -36,6 +36,8 @@ export function renderSignIn() {
 
 document.addEventListener('piq:authRendered', () => {
   document.getElementById('si-signup-link')?.addEventListener('click', () => navigate(ROUTES.SIGN_UP));
+  document.getElementById('si-forgot-link')?.addEventListener('click', () =>
+    navigate(ROUTES.FORGOT_PASSWORD));
   document.getElementById('si-submit')?.addEventListener('click', async () => {
     const email = document.getElementById('si-email')?.value.trim();
     const pass  = document.getElementById('si-pass')?.value;
