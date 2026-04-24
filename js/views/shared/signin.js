@@ -11,8 +11,12 @@ export function renderSignIn() {
   </div>
   <p id="si-error" style="color:#f87171;font-size:12.5px;margin-bottom:12px;display:none"></p>
   <button class="btn-primary" id="si-submit" style="width:100%">Sign In</button>
-  <div class="auth-foot" style="margin-top:14px">
-    Don't have an account? <a id="si-signup-link" style="cursor:pointer">Create one</a>
+ <div class="auth-foot">
+    New here? <a id="si-signup-link" style="cursor:pointer">Create account</a>
+    &nbsp;·&nbsp;
+    <a id="si-forgot-link" style="cursor:pointer">Forgot password?</a>
+    &nbsp;·&nbsp;
+    <a id="si-back-link" style="cursor:pointer">← Back</a>
   </div>
   <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
     <p style="font-size:10.5px;color:rgba(255,255,255,.3);margin-bottom:10px;text-align:center;font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;text-transform:uppercase">Quick demo access</p>
