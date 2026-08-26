@@ -23,7 +23,16 @@
   overflow: hidden;
 }
 
-.ob2-panel { padding: 24px; color: #0f172a; }
+/* The current wizard renders every step into the DOM. Exactly one panel must
+   be visible. This rule is intentionally part of the final override so older
+   styles can never expose multiple onboarding steps at once. */
+.ob2-panel {
+  display: none;
+  padding: 24px;
+  color: #0f172a;
+}
+.ob2-panel.active { display: block; }
+
 .ob2-panel h1,
 .ob2-panel h2,
 .ob2-panel h3 { color: #0f172a; }
