@@ -9,6 +9,9 @@ const assert = (name, condition, detail = '') => checks.push({ name, ok: Boolean
 
 const requiredFiles = [
   'index.html',
+  'styles.css',
+  'manifest.json',
+  'sw.js',
   'js/app.js',
   'js/router.js',
   'js/core/auth.js',
@@ -18,11 +21,10 @@ const requiredFiles = [
   'js/views/shared/onboarding.js',
   'css/auth-hotfix.css',
   'css/onboarding-hotfix.css',
+  '.github/workflows/deploy.yml',
 ];
 
-for (const rel of requiredFiles) {
-  assert(`file exists: ${rel}`, fs.existsSync(path.join(root, rel)));
-}
+for (const rel of requiredFiles) assert(`file exists: ${rel}`, fs.existsSync(path.join(root, rel)));
 
 const index = read('index.html');
 const router = read('js/router.js');
@@ -30,6 +32,9 @@ const auth = read('js/core/auth.js');
 const boot = read('js/core/boot.js');
 const signup = read('js/views/shared/signup.js');
 const supabase = read('js/core/supabase.js');
+const deploy = read('.github/workflows/deploy.yml');
+const sw = read('sw.js');
+const pkg = JSON.parse(read('package.json'));
 
 const authHotfixAt = index.indexOf('css/auth-hotfix.css');
 const onboardingHotfixAt = index.indexOf('css/onboarding-hotfix.css');
@@ -52,6 +57,16 @@ assert('signup fields have accessible labels', signup.includes('for="su-name"') 
 assert('signup role controls expose pressed state', signup.includes('aria-pressed'));
 assert('signup password has minimum length', /minlength=["']8["']/.test(signup));
 assert('signup message is announced', signup.includes('aria-live="polite"'));
+
+assert('root package has no legacy workspaces', !Object.hasOwn(pkg, 'workspaces'));
+assert('root package test delegates to smoke checks', pkg.scripts?.test === 'npm run test:smoke');
+assert('deployment stages a dedicated Pages directory', deploy.includes('mkdir -p .pages'));
+assert('deployment does not upload entire repository', !/path:\s*['"]?\.['"]?\s*(?:#.*)?$/m.test(deploy));
+assert('deployment excludes frontend from Pages artifact', deploy.includes('test ! -e .pages/frontend'));
+assert('deployment excludes backend from Pages artifact', deploy.includes('test ! -e .pages/backend'));
+assert('deployment runs smoke checks before upload', deploy.indexOf('npm run test:smoke') < deploy.indexOf('actions/upload-pages-artifact'));
+assert('service worker uses registration scope', sw.includes('self.registration.scope'));
+assert('service worker does not precache account-root index', !sw.includes("'/index.html'"));
 
 const failed = checks.filter(c => !c.ok);
 for (const check of checks) {
