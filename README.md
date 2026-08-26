@@ -1,228 +1,74 @@
--- ============================================================
--- 002_workout_engine.sql
--- Run AFTER 001_all_phases.sql
--- ORDER: all tables first, then indexes, then RLS + policies,
---        then functions, then triggers, then views
--- ============================================================
+# PerformanceIQ
 
--- ── TABLE 1: PROFILES ────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS profiles (
-  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  first_name  TEXT,
-  last_name   TEXT,
-  role        TEXT DEFAULT 'athlete'
-    CHECK (role IN ('coach','athlete','parent','solo_athlete','admin')),
-  sport       TEXT,
-  team_name   TEXT,
-  avatar_url  TEXT,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
-);
+**Elite Training. Smart Results.**
 
--- ── TABLE 2: COACH–ATHLETE LINKS ─────────────────────────────
-CREATE TABLE IF NOT EXISTS coach_athlete_links (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  coach_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  athlete_id  UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  linked_at   TIMESTAMPTZ DEFAULT NOW(),
-  is_active   BOOLEAN DEFAULT TRUE,
-  UNIQUE(coach_id, athlete_id)
-);
+PerformanceIQ is a multi-role athlete performance platform designed to turn wellness, training, and performance signals into clearer daily actions for athletes and coaches.
 
--- ── TABLE 3: PARENT–ATHLETE LINKS ────────────────────────────
-CREATE TABLE IF NOT EXISTS parent_athlete_links (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  parent_id   UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  athlete_id  UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  linked_at   TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(parent_id, athlete_id)
-);
+## Live application
 
--- ── TABLE 4: WORKOUT LOGS ─────────────────────────────────────
--- Depends on nothing above — safe to create here
-CREATE TABLE IF NOT EXISTS workout_logs (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id             UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  activity_type       TEXT NOT NULL DEFAULT 'other',
-  duration_minutes    INTEGER NOT NULL DEFAULT 0,
-  intensity           SMALLINT CHECK (intensity BETWEEN 0 AND 10),
-  training_load       INTEGER GENERATED ALWAYS AS (intensity * duration_minutes) STORED,
-  wellness_score      DECIMAL(3,1) CHECK (wellness_score BETWEEN 0 AND 10),
-  notes               TEXT,
-  compliance_score    DECIMAL(4,3) DEFAULT 1.0 CHECK (compliance_score BETWEEN 0 AND 1),
-  piq_score_at_log    SMALLINT CHECK (piq_score_at_log BETWEEN 0 AND 100),
-  prescribed_by       UUID REFERENCES auth.users(id),
-  workout_template_id UUID,
-  logged_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_at          TIMESTAMPTZ DEFAULT NOW()
-);
+Production: https://twilleez.github.io/performanceiq-platform/
 
--- ── TABLE 5: PIQ SCORE HISTORY ───────────────────────────────
-CREATE TABLE IF NOT EXISTS piq_score_history (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id          UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  total            SMALLINT NOT NULL CHECK (total BETWEEN 0 AND 100),
-  consistency      SMALLINT CHECK (consistency BETWEEN 0 AND 100),
-  readiness        SMALLINT CHECK (readiness BETWEEN 0 AND 100),
-  compliance       SMALLINT CHECK (compliance BETWEEN 0 AND 100),
-  load_management  SMALLINT CHECK (load_management BETWEEN 0 AND 100),
-  acwr             DECIMAL(4,2),
-  calculated_at    TIMESTAMPTZ DEFAULT NOW()
-);
+## Product roles
 
--- ── TABLE 6: PIQ REPORT LOG ───────────────────────────────────
-CREATE TABLE IF NOT EXISTS piq_report_log (
-  id          TEXT PRIMARY KEY,
-  coach_id    UUID NOT NULL REFERENCES auth.users(id),
-  athlete_id  UUID NOT NULL REFERENCES auth.users(id),
-  file_path   TEXT NOT NULL,
-  share_url   TEXT NOT NULL,
-  expires_in  TEXT DEFAULT '30d',
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
+- **Coach** — roster, programming, readiness, analytics, calendar, messaging and reporting.
+- **Player/Athlete** — today's training, workout logging, readiness, progress, PIQ score and nutrition.
+- **Parent** — linked-athlete progress, wellness, schedule and communication views.
+- **Admin** — organization, teams, coaches, athletes, reporting, compliance and billing surfaces.
+- **Solo athlete** — independent training, readiness, progress, goals, PIQ score and nutrition.
 
--- ============================================================
--- INDEXES (after all tables exist)
--- ============================================================
+## Current architecture
 
-CREATE INDEX IF NOT EXISTS idx_workout_logs_user_date
-  ON workout_logs(user_id, logged_at DESC);
+The GitHub Pages production entry point is `index.html`, which loads `js/app.js` as an ES module. The root `js/` tree contains the current role router, views, state, services, authentication integration, and Supabase client. Styling is split across `styles.css` and modular files in `css/`.
 
-CREATE INDEX IF NOT EXISTS idx_workout_logs_date
-  ON workout_logs(logged_at DESC);
+The repository also contains `frontend/` and `backend/` trees. These should be treated as separate/experimental architecture until the consolidation work in the Program Manager backlog is completed; do not assume they are the GitHub Pages production entry point.
 
-CREATE INDEX IF NOT EXISTS idx_piq_score_user
-  ON piq_score_history(user_id, calculated_at DESC);
+## Supabase
 
--- ============================================================
--- ROW LEVEL SECURITY + POLICIES
--- All referenced tables now exist — safe to define policies
--- ============================================================
+The browser client is initialized in `js/core/supabase.js`. Only browser-safe publishable/anon credentials may be present in frontend code. Never commit a service-role key or other secret credential.
 
--- profiles
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+Database SQL lives under `database/migrations/`. Schema and RLS changes must be tested against the connected Supabase project before production sign-off.
 
-CREATE POLICY profiles_select ON profiles
-  FOR SELECT USING (TRUE);
+## Local development
 
-CREATE POLICY profiles_update ON profiles
-  FOR UPDATE USING (auth.uid() = id);
+Because the application uses ES modules, serve the repository through a local HTTP server instead of opening `index.html` directly from the filesystem.
 
-CREATE POLICY profiles_insert ON profiles
-  FOR INSERT WITH CHECK (auth.uid() = id);
+Example:
 
--- coach_athlete_links
-ALTER TABLE coach_athlete_links ENABLE ROW LEVEL SECURITY;
+```bash
+python -m http.server 8000
+```
 
-CREATE POLICY cal_participant ON coach_athlete_links
-  FOR ALL USING (auth.uid() = coach_id OR auth.uid() = athlete_id);
+Then open `http://localhost:8000`.
 
--- parent_athlete_links
-ALTER TABLE parent_athlete_links ENABLE ROW LEVEL SECURITY;
+## Demo accounts
 
-CREATE POLICY pal_participant ON parent_athlete_links
-  FOR ALL USING (auth.uid() = parent_id OR auth.uid() = athlete_id);
+The current demo pathway supports role-specific `@demo.com` users for product demonstrations without writing demo data to Supabase. Demo behavior must remain isolated from production user data.
 
--- workout_logs — coaches can see their athletes' logs
-ALTER TABLE workout_logs ENABLE ROW LEVEL SECURITY;
+## Product quality process
 
-CREATE POLICY workout_logs_own ON workout_logs
-  FOR ALL USING (
-    auth.uid() = user_id
-    OR EXISTS (
-      SELECT 1 FROM coach_athlete_links
-      WHERE coach_id = auth.uid() AND athlete_id = user_id
-    )
-  );
+The release process is governed by:
 
--- piq_score_history — coaches and parents can see their athletes'
-ALTER TABLE piq_score_history ENABLE ROW LEVEL SECURITY;
+- `docs/PROGRAM_MANAGER_PRODUCT_AUDIT.md`
+- `docs/TEAM_BACKLOG.md`
+- `docs/RELEASE_ACCEPTANCE_CHECKLIST.md`
 
-CREATE POLICY piq_score_own ON piq_score_history
-  FOR ALL USING (
-    auth.uid() = user_id
-    OR EXISTS (
-      SELECT 1 FROM coach_athlete_links
-      WHERE coach_id = auth.uid() AND athlete_id = user_id
-    )
-    OR EXISTS (
-      SELECT 1 FROM parent_athlete_links
-      WHERE parent_id = auth.uid() AND athlete_id = user_id
-    )
-  );
+The Program Manager is the release gate. Engineering, Design, and Marketing findings are not considered complete until implementation evidence exists, testing passes, and PM acceptance is recorded.
 
--- piq_report_log — coach who created it
-ALTER TABLE piq_report_log ENABLE ROW LEVEL SECURITY;
+## Release priorities
 
-CREATE POLICY report_log_coach ON piq_report_log
-  FOR ALL USING (auth.uid() = coach_id);
+Before calling the product production-ready for broad commercial use, resolve the P0/P1 items in the team backlog, especially:
 
--- ============================================================
--- FUNCTIONS
--- ============================================================
+1. frontend/database role contract alignment;
+2. canonical profile schema alignment;
+3. Supabase RLS and authorization hardening;
+4. production auth/session convergence;
+5. architecture consolidation and automated release testing;
+6. mobile/accessibility/usability acceptance.
 
--- Auto-create profile, streak row, and preferences on signup
-CREATE OR REPLACE FUNCTION create_profile_for_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO profiles (id, first_name, last_name, role)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'athlete')
-  )
-  ON CONFLICT (id) DO NOTHING;
+## Deployment
 
-  INSERT INTO piq_streaks (user_id)
-  VALUES (NEW.id)
-  ON CONFLICT (user_id) DO NOTHING;
+GitHub Pages deployment configuration is stored under `.github/workflows/`. A successful workflow run is necessary but not sufficient for release acceptance: the deployed production URL must also pass the PM smoke-test checklist.
 
-  INSERT INTO piq_user_preferences (user_id)
-  VALUES (NEW.id)
-  ON CONFLICT (user_id) DO NOTHING;
+## Security
 
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- ============================================================
--- TRIGGERS
--- ============================================================
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION create_profile_for_user();
-
--- ============================================================
--- VIEWS
--- ============================================================
-
--- ACWR per user: acute 7-day load / chronic 28-day load
-CREATE OR REPLACE VIEW piq_acwr AS
-SELECT
-  user_id,
-  COALESCE(
-    SUM(CASE WHEN logged_at >= NOW() - INTERVAL '7 days'
-        THEN training_load ELSE 0 END) / 7.0, 0
-  ) AS acute_load,
-  COALESCE(
-    SUM(CASE WHEN logged_at >= NOW() - INTERVAL '28 days'
-        THEN training_load ELSE 0 END) / 28.0, 0
-  ) AS chronic_load,
-  CASE
-    WHEN SUM(CASE WHEN logged_at >= NOW() - INTERVAL '28 days'
-             THEN training_load ELSE 0 END) > 0
-    THEN ROUND(
-      (SUM(CASE WHEN logged_at >= NOW() - INTERVAL '7 days'
-           THEN training_load ELSE 0 END) / 7.0) /
-      (SUM(CASE WHEN logged_at >= NOW() - INTERVAL '28 days'
-           THEN training_load ELSE 0 END) / 28.0), 2
-    )
-    ELSE 1.0
-  END AS acwr
-FROM workout_logs
-WHERE logged_at >= NOW() - INTERVAL '28 days'
-GROUP BY user_id;
+PerformanceIQ handles athlete and wellness-related information. Apply least-privilege authorization, validate row-level security, avoid exposing secret keys, minimize sensitive data collection, and clearly communicate the limits of readiness/risk analytics. Production authorization must be enforced by Supabase/database policy, not only by hidden UI routes.
