@@ -4,7 +4,7 @@ Updated: 2026-08-26
 
 ## Release decision: NOT SIGNED OFF
 
-PerformanceIQ has completed the backend security/performance phase and has now passed the first authenticated frontend/data workflow phase for the two live roles that currently exist. Final release acceptance is still blocked by missing Coach/Parent/Admin live-role tests, browser-level onboarding/mobile QA, architecture cleanup, automated tests, and Design/Marketing acceptance.
+PerformanceIQ has completed the backend security/performance phase, the first authenticated Player/Solo workflow phase, and the Design/Browser static-QA phase. Final release acceptance is still blocked by missing Coach/Parent/Admin live-role tests, physical rendered-browser/device verification, duplicate architecture cleanup, broader automated journey tests, leaked-password protection configuration, and Marketing acceptance.
 
 ### Completed
 - Live Supabase project `jijqjbgmhhlvokgtuema` verified directly.
@@ -27,24 +27,29 @@ PerformanceIQ has completed the backend security/performance phase and has now p
 - Production auth bootstrap hardened so cached local sessions are validated against Supabase before authenticated routing.
 - Cross-tab sign-out now clears both storage and in-memory auth state.
 - Email-confirmation signup flow no longer creates a fake local authenticated session when Supabase has not issued a session.
-- Signup text-visibility hotfix loaded last in the CSS cascade.
-- Frontend/auth QA results recorded in `docs/FRONTEND_AUTH_QA_2026-08-26.md`.
+- Signup visibility and contrast are isolated with a final auth stylesheet.
+- Active `ob2-*` onboarding wizard is isolated with a final production onboarding stylesheet for readable text, visible inputs, mobile grids, focus states, safe-area spacing, and reduced-motion behavior.
+- Signup converted to semantic form submission with labels, required/email/password validation, `aria-pressed` role state, live status messages, keyboard-operable sign-in, and busy state.
+- Root static smoke suite added at `scripts/smoke-static.mjs` and exposed as `npm run test:smoke`.
+- GitHub Actions production smoke workflow added; initial run 32997813219 completed successfully.
+- Design/browser QA results recorded in `docs/DESIGN_BROWSER_QA_2026-08-26.md`.
 
 ### Current test coverage reality
 The live `profiles` table currently contains one `player` profile and one `solo` profile. There are no live `coach`, `parent`, or `admin` profiles available for truthful end-to-end account tests. Those three role tests remain pending until dedicated accounts exist or are supplied.
 
-Player and Solo positive-path database workflows are now verified with rollback test rows; no QA data was left behind.
+Player and Solo positive-path database workflows are verified with rollback test rows; no QA data was left behind.
+
+The current tooling verifies source, database behavior, and CI checks, but does not provide a full interactive physical/mobile browser rendering session. Therefore final visual-device acceptance remains pending rather than being claimed as complete.
 
 ### Remaining PM blockers
 - Dedicated Coach account and coach→athlete relationship test.
 - Dedicated Parent account and parent→athlete relationship test.
 - Dedicated Admin account and admin authorization test.
-- Browser-level real-account signup → confirmation (if enabled) → sign-in → onboarding → home regression test.
-- Visual regression test of signup/onboarding at phone widths after the contrast fix.
+- Browser-level real-account signup → confirmation (if enabled) → sign-in → onboarding → home regression test on a rendered browser.
+- Rendered visual verification at representative phone widths and desktop.
 - Enable leaked-password protection in Supabase Auth if available for the project plan/configuration.
-- Resolve duplicate root/frontend architecture.
-- Add automated role and core-journey tests.
-- Complete Design/mobile/accessibility acceptance.
+- Resolve duplicate root/`frontend` architecture and make the production source of truth explicit.
+- Add broader automated role/core-journey tests beyond static smoke checks.
 - Complete Marketing conversion/trust-layer validation.
 
 ### PM rule
