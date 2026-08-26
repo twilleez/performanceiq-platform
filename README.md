@@ -16,15 +16,17 @@ Production: https://twilleez.github.io/performanceiq-platform/
 - **Admin** — organization, teams, coaches, athletes, reporting, compliance and billing surfaces.
 - **Solo athlete** — independent training, readiness, progress, goals, PIQ score and nutrition.
 
-## Current architecture
+## Production architecture
 
-The GitHub Pages production entry point is `index.html`, which loads `js/app.js` as an ES module. The root `js/` tree contains the current role router, views, state, services, authentication integration, and Supabase client. Styling is split across `styles.css` and modular files in `css/`.
+There is one authoritative production frontend: the repository-root static application.
 
-The repository also contains `frontend/` and `backend/` trees. These should be treated as separate/experimental architecture until the consolidation work in the Program Manager backlog is completed; do not assume they are the GitHub Pages production entry point.
+`index.html` loads `js/app.js` as an ES module. The root `js/` tree contains routing, role views, state, authentication, and the Supabase browser client. Styling is provided by `styles.css` and the modular `css/` tree. GitHub Pages deploys only this production surface plus required assets, icons, manifest, and service worker.
+
+`frontend/` is retained as legacy/reference React/Vite code only. `backend/` is retained as a future trusted-server prototype. Neither is part of the GitHub Pages runtime or the root npm workspace. See `docs/ARCHITECTURE.md` for the production contract.
 
 ## Supabase
 
-The browser client is initialized in `js/core/supabase.js`. Only browser-safe publishable/anon credentials may be present in frontend code. Never commit a service-role key or other secret credential.
+The browser client is initialized in `js/core/supabase.js`. Only browser-safe publishable credentials may be present in frontend code. Never commit a service-role key or another privileged secret to browser code.
 
 Database SQL lives under `database/migrations/`. Schema and RLS changes must be tested against the connected Supabase project before production sign-off.
 
@@ -32,43 +34,42 @@ Database SQL lives under `database/migrations/`. Schema and RLS changes must be 
 
 Because the application uses ES modules, serve the repository through a local HTTP server instead of opening `index.html` directly from the filesystem.
 
-Example:
-
 ```bash
 python -m http.server 8000
 ```
 
 Then open `http://localhost:8000`.
 
+## Quality checks
+
+Run the production smoke suite with:
+
+```bash
+npm test
+```
+
+The same checks run automatically in GitHub Actions and again inside the deployment workflow before the Pages artifact is uploaded.
+
 ## Demo accounts
 
-The current demo pathway supports role-specific `@demo.com` users for product demonstrations without writing demo data to Supabase. Demo behavior must remain isolated from production user data.
+The demo pathway supports role-specific `@demo.com` users for demonstrations without writing demo data to Supabase. Demo behavior must remain isolated from production user data.
 
 ## Product quality process
 
-The release process is governed by:
+Release governance lives in:
 
 - `docs/PROGRAM_MANAGER_PRODUCT_AUDIT.md`
 - `docs/TEAM_BACKLOG.md`
 - `docs/RELEASE_ACCEPTANCE_CHECKLIST.md`
+- `docs/PM_STATUS.md`
+- `docs/ARCHITECTURE.md`
 
-The Program Manager is the release gate. Engineering, Design, and Marketing findings are not considered complete until implementation evidence exists, testing passes, and PM acceptance is recorded.
-
-## Release priorities
-
-Before calling the product production-ready for broad commercial use, resolve the P0/P1 items in the team backlog, especially:
-
-1. frontend/database role contract alignment;
-2. canonical profile schema alignment;
-3. Supabase RLS and authorization hardening;
-4. production auth/session convergence;
-5. architecture consolidation and automated release testing;
-6. mobile/accessibility/usability acceptance.
+The Program Manager is the release gate. Engineering, Design, and Marketing findings are not complete until implementation evidence exists, testing passes, and PM acceptance is recorded.
 
 ## Deployment
 
-GitHub Pages deployment configuration is stored under `.github/workflows/`. A successful workflow run is necessary but not sufficient for release acceptance: the deployed production URL must also pass the PM smoke-test checklist.
+`.github/workflows/deploy.yml` stages a production-only `.pages/` artifact. Development source trees, database migrations, documentation, and legacy applications are not published as part of the website.
 
 ## Security
 
-PerformanceIQ handles athlete and wellness-related information. Apply least-privilege authorization, validate row-level security, avoid exposing secret keys, minimize sensitive data collection, and clearly communicate the limits of readiness/risk analytics. Production authorization must be enforced by Supabase/database policy, not only by hidden UI routes.
+Production authorization is enforced by Supabase/database policy rather than hidden UI routes alone. Apply least privilege, validate RLS, never expose privileged keys, minimize sensitive data collection, and clearly communicate the limits of readiness/risk analytics.
