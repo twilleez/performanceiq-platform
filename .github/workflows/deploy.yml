@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -21,16 +21,49 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout full repo
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run production smoke checks
+        run: npm run test:smoke
+
+      - name: Stage production site
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .pages
+          mkdir -p .pages
+          cp index.html styles.css manifest.json sw.js .pages/
+          cp -R js css .pages/
+          if [ -d assets ]; then cp -R assets .pages/; fi
+          if [ -d icons ]; then cp -R icons .pages/; fi
+          touch .pages/.nojekyll
+
+      - name: Verify staged artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .pages/index.html
+          test -f .pages/js/app.js
+          test -f .pages/js/core/supabase.js
+          test -f .pages/css/auth-hotfix.css
+          test -f .pages/css/onboarding-hotfix.css
+          test ! -e .pages/frontend
+          test ! -e .pages/backend
+          test ! -e .pages/database
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Upload entire repo as Pages artifact
+      - name: Upload production artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'   # <-- deploys everything from repo root
+          path: .pages
 
       - name: Deploy to GitHub Pages
         id: deployment
