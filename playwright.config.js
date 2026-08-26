@@ -6,9 +6,7 @@ export default defineConfig({
   expect: { timeout: 8000 },
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI
-    ? [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]]
-    : [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL: process.env.PIQ_BASE_URL || 'http://127.0.0.1:4173',
     trace: 'retain-on-failure',
@@ -18,10 +16,12 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
+      grepInvert: /phone-width/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'mobile-chromium',
+      grep: /phone-width/,
       use: {
         ...devices['iPhone 13'],
         browserName: 'chromium',
