@@ -1,5 +1,17 @@
-/* PerformanceIQ auth visibility hotfix
+/* PerformanceIQ auth visibility + accessibility hardening
    Loaded LAST so legacy dark-card rules cannot override signup/login contrast. */
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
 
 #piq-root .auth-card {
   background: #ffffff !important;
@@ -16,23 +28,21 @@
   color: #0f172a !important;
 }
 
-#piq-root .auth-card .role-tabs {
-  gap: 8px;
-}
+#piq-root .auth-card .role-tabs { gap: 8px; }
 
 #piq-root .auth-card .role-tab {
   background: #ffffff !important;
   color: #334155 !important;
   border: 1.5px solid #cbd5e1 !important;
-  min-height: 40px;
+  min-height: 44px;
 }
 
 #piq-root .auth-card .role-tab:hover,
 #piq-root .auth-card .role-tab:focus-visible {
   border-color: #22c955 !important;
   color: #0f172a !important;
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(34,201,85,.14);
+  outline: 3px solid rgba(34,201,85,.18);
+  outline-offset: 2px;
 }
 
 #piq-root .auth-card .role-tab.active {
@@ -77,22 +87,41 @@
 #piq-root .auth-card .input-wrap input:focus {
   background: #ffffff !important;
   border-color: #22c955 !important;
-  outline: none !important;
-  box-shadow: 0 0 0 3px rgba(34,201,85,.14) !important;
+  outline: 3px solid rgba(34,201,85,.18) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
 }
 
-#piq-root .auth-card .auth-foot {
-  color: #475569 !important;
+#piq-root .auth-card .auth-help {
+  display: block;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
-#piq-root .auth-card .auth-foot a {
-  color: #16a34a !important;
-  font-weight: 600;
-  text-decoration: none;
+#piq-root .auth-card .auth-foot { color: #475569 !important; }
+
+#piq-root .auth-card .auth-inline-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #15803d;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+#piq-root .auth-card .auth-inline-link:hover { text-decoration: underline; }
+#piq-root .auth-card .auth-inline-link:focus-visible {
+  outline: 3px solid rgba(34,201,85,.22);
+  outline-offset: 2px;
 }
 
 #piq-root .auth-card .btn-primary {
-  color: #ffffff !important;
+  color: #052e16 !important;
   background: #22c955 !important;
   min-height: 48px;
 }
@@ -112,7 +141,5 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  #piq-root .auth-card .role-tab {
-    width: 100%;
-  }
+  #piq-root .auth-card .role-tab { width: 100%; }
 }
