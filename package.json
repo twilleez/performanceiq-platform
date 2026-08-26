@@ -8,6 +8,7 @@
     "dev:backend":  "npm --workspace=backend run dev",
     "dev":          "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build":        "npm --workspaces run build",
+    "test:smoke":   "node scripts/smoke-static.mjs",
     "db:migrate":   "psql $DATABASE_URL -f database/migrations/001_all_phases.sql && psql $DATABASE_URL -f database/migrations/002_workout_engine.sql",
     "db:migrate:1": "psql $DATABASE_URL -f database/migrations/001_all_phases.sql",
     "db:migrate:2": "psql $DATABASE_URL -f database/migrations/002_workout_engine.sql",
