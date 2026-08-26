@@ -4,7 +4,7 @@ Updated: 2026-08-26
 
 ## Release decision: NOT SIGNED OFF
 
-PerformanceIQ has completed the backend security/performance phase, the first authenticated Player/Solo workflow phase, and the Design/Browser static-QA phase. Final release acceptance is still blocked by missing Coach/Parent/Admin live-role tests, physical rendered-browser/device verification, duplicate architecture cleanup, broader automated journey tests, leaked-password protection configuration, and Marketing acceptance.
+PerformanceIQ has completed the backend security/performance phase, authenticated Player/Solo workflow testing, Design/Browser static QA, and architecture consolidation. Final release acceptance is still blocked by missing Coach/Parent/Admin live-role tests, rendered-browser/device verification, broader automated journey tests, leaked-password protection configuration, and Marketing acceptance.
 
 ### Completed
 - Live Supabase project `jijqjbgmhhlvokgtuema` verified directly.
@@ -30,16 +30,23 @@ PerformanceIQ has completed the backend security/performance phase, the first au
 - Signup visibility and contrast are isolated with a final auth stylesheet.
 - Active `ob2-*` onboarding wizard is isolated with a final production onboarding stylesheet for readable text, visible inputs, mobile grids, focus states, safe-area spacing, and reduced-motion behavior.
 - Signup converted to semantic form submission with labels, required/email/password validation, `aria-pressed` role state, live status messages, keyboard-operable sign-in, and busy state.
-- Root static smoke suite added at `scripts/smoke-static.mjs` and exposed as `npm run test:smoke`.
-- GitHub Actions production smoke workflow added; initial run 32997813219 completed successfully.
-- Design/browser QA results recorded in `docs/DESIGN_BROWSER_QA_2026-08-26.md`.
+- Root static smoke suite added at `scripts/smoke-static.mjs` and exposed as `npm run test:smoke` / `npm test`.
+- GitHub Actions production smoke workflow passes on the consolidated architecture; run `33002321312` completed successfully.
+- Architecture consolidation PASS: the root static application is the single authoritative production frontend.
+- Root `package.json` no longer treats `frontend/` and `backend/` as active workspaces.
+- `frontend/` is explicitly documented as legacy/reference code and `backend/` as a non-production server prototype.
+- GitHub Pages now stages a production-only `.pages/` artifact instead of uploading the entire repository.
+- Deployment verification explicitly excludes `frontend/`, `backend/`, and `database/` from the public artifact.
+- Service worker upgraded to scope-aware `piq-v7` for GitHub Pages project-path hosting.
+- Pages deployment run `33002321306` successfully passed smoke checks, staging, staged-artifact verification, upload, and deployment.
+- Architecture contract documented in `docs/ARCHITECTURE.md` and QA evidence in `docs/ARCHITECTURE_CONSOLIDATION_2026-08-26.md`.
 
 ### Current test coverage reality
 The live `profiles` table currently contains one `player` profile and one `solo` profile. There are no live `coach`, `parent`, or `admin` profiles available for truthful end-to-end account tests. Those three role tests remain pending until dedicated accounts exist or are supplied.
 
 Player and Solo positive-path database workflows are verified with rollback test rows; no QA data was left behind.
 
-The current tooling verifies source, database behavior, and CI checks, but does not provide a full interactive physical/mobile browser rendering session. Therefore final visual-device acceptance remains pending rather than being claimed as complete.
+Current tooling verifies source, database behavior, CI, and production artifact construction, but does not provide a full interactive physical/mobile browser rendering session. Final visual-device acceptance therefore remains pending.
 
 ### Remaining PM blockers
 - Dedicated Coach account and coach→athlete relationship test.
@@ -48,7 +55,6 @@ The current tooling verifies source, database behavior, and CI checks, but does 
 - Browser-level real-account signup → confirmation (if enabled) → sign-in → onboarding → home regression test on a rendered browser.
 - Rendered visual verification at representative phone widths and desktop.
 - Enable leaked-password protection in Supabase Auth if available for the project plan/configuration.
-- Resolve duplicate root/`frontend` architecture and make the production source of truth explicit.
 - Add broader automated role/core-journey tests beyond static smoke checks.
 - Complete Marketing conversion/trust-layer validation.
 
