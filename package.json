@@ -4,8 +4,13 @@
   "private": true,
   "description": "PerformanceIQ production static application",
   "scripts": {
-    "test": "npm run test:smoke",
-    "test:smoke": "node scripts/smoke-static.mjs"
+    "test": "npm run test:smoke && npm run test:e2e",
+    "test:smoke": "node scripts/smoke-static.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
   },
   "engines": {
     "node": ">=20"
