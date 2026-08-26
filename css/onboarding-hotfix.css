@@ -1,0 +1,154 @@
+/* PerformanceIQ — production onboarding + accessibility hardening
+   Loaded last so the active ob2-* wizard wins over legacy onboarding styles. */
+
+/* Keep auth/onboarding controls readable regardless of global theme tokens. */
+.ob2-wrap {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 18px 14px 32px;
+  color: #0f172a;
+}
+
+.ob2-card {
+  width: min(760px, 100%);
+  max-width: 100%;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(2, 6, 23, 0.22);
+  overflow: hidden;
+}
+
+.ob2-panel { padding: 24px; color: #0f172a; }
+.ob2-panel h1,
+.ob2-panel h2,
+.ob2-panel h3 { color: #0f172a; }
+.ob2-sub,
+.ob2-opt,
+.ob2-step span { color: #475569; }
+
+.ob2-field label {
+  color: #334155;
+  font-weight: 700;
+}
+
+.ob2-field input,
+.ob2-field select,
+.ob2-field textarea {
+  width: 100%;
+  min-height: 44px;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  font: inherit;
+}
+
+.ob2-field input::placeholder,
+.ob2-field textarea::placeholder { color: #64748b; opacity: 1; }
+
+.ob2-field input:focus,
+.ob2-field select:focus,
+.ob2-field textarea:focus,
+.ob2-role-card:focus-visible,
+.ob2-sport-card:focus-visible,
+.ob2-phase-card:focus-visible,
+.ob2-day-btn:focus-visible,
+.ob2-goal-card:focus-visible,
+.ob2-btn-next:focus-visible,
+.ob2-btn-back:focus-visible {
+  outline: 3px solid rgba(34, 201, 85, 0.28);
+  outline-offset: 2px;
+  border-color: #16a34a;
+}
+
+.ob2-role-card,
+.ob2-sport-card,
+.ob2-phase-card,
+.ob2-day-btn,
+.ob2-goal-card {
+  min-height: 44px;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1.5px solid #dbe3ee;
+}
+
+.ob2-role-label,
+.ob2-sport-label { color: #0f172a; }
+.ob2-role-sub { color: #64748b; }
+
+.ob2-role-card.sel,
+.ob2-sport-card.sel,
+.ob2-phase-card.sel,
+.ob2-day-btn.sel,
+.ob2-goal-card.sel {
+  color: #052e16;
+  background: #dcfce7;
+  border-color: #22c55e;
+}
+
+.ob2-btn-next {
+  min-height: 44px;
+  background: #22c955;
+  color: #052e16;
+  border: 0;
+  font-weight: 800;
+}
+
+.ob2-btn-next:hover { background: #1fb34c; }
+.ob2-btn-next:disabled { opacity: .55; cursor: not-allowed; }
+.ob2-btn-back { min-height: 44px; color: #334155; }
+
+#ob2-error {
+  color: #b91c1c !important;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+/* Prevent content from disappearing behind mobile viewport chrome. */
+@media (max-width: 640px) {
+  .ob2-wrap {
+    padding: 8px 8px calc(24px + env(safe-area-inset-bottom));
+  }
+  .ob2-card {
+    border-radius: 14px;
+    box-shadow: 0 10px 32px rgba(2, 6, 23, 0.2);
+  }
+  .ob2-panel { padding: 18px 14px 20px; }
+  .ob2-role-grid,
+  .ob2-sport-grid,
+  .ob2-goals-grid,
+  .ob2-phase-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .ob2-field-row { grid-template-columns: 1fr; }
+  .ob2-nav { gap: 10px; }
+  .ob2-btn-back,
+  .ob2-btn-next { flex: 1; }
+  .ob2-steps { overflow-x: auto; scrollbar-width: none; }
+  .ob2-steps::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 380px) {
+  .ob2-role-grid,
+  .ob2-sport-grid,
+  .ob2-goals-grid,
+  .ob2-phase-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob2-card *,
+  .auth-card * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
