@@ -22,6 +22,9 @@ const requiredFiles = [
   'css/auth-hotfix.css',
   'css/onboarding-hotfix.css',
   '.github/workflows/deploy.yml',
+  '.github/workflows/browser-journeys.yml',
+  'playwright.config.js',
+  'tests/e2e/core-journeys.spec.js',
 ];
 
 for (const rel of requiredFiles) assert(`file exists: ${rel}`, fs.existsSync(path.join(root, rel)));
@@ -33,6 +36,7 @@ const boot = read('js/core/boot.js');
 const signup = read('js/views/shared/signup.js');
 const supabase = read('js/core/supabase.js');
 const deploy = read('.github/workflows/deploy.yml');
+const browserWorkflow = read('.github/workflows/browser-journeys.yml');
 const sw = read('sw.js');
 const pkg = JSON.parse(read('package.json'));
 
@@ -59,7 +63,11 @@ assert('signup password has minimum length', /minlength=["']8["']/.test(signup))
 assert('signup message is announced', signup.includes('aria-live="polite"'));
 
 assert('root package has no legacy workspaces', !Object.hasOwn(pkg, 'workspaces'));
-assert('root package test delegates to smoke checks', pkg.scripts?.test === 'npm run test:smoke');
+assert('root package exposes smoke test', pkg.scripts?.['test:smoke'] === 'node scripts/smoke-static.mjs');
+assert('root package exposes browser journey test', pkg.scripts?.['test:e2e'] === 'playwright test');
+assert('root package test runs smoke before browser journeys', pkg.scripts?.test === 'npm run test:smoke && npm run test:e2e');
+assert('browser workflow runs Playwright journeys', browserWorkflow.includes('npm run test:e2e'));
+assert('browser workflow starts production-equivalent HTTP server', browserWorkflow.includes('python3 -m http.server 4173'));
 assert('deployment stages a dedicated Pages directory', deploy.includes('mkdir -p .pages'));
 assert('deployment does not upload entire repository', !/path:\s*['"]?\.['"]?\s*(?:#.*)?$/m.test(deploy));
 assert('deployment excludes frontend from Pages artifact', deploy.includes('test ! -e .pages/frontend'));
