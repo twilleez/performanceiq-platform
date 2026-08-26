@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 async function waitForApp(page) {
   await page.waitForSelector('#piq-root');
-  await page.waitForTimeout(1400);
+  await expect(page.locator('#piq-loader')).toHaveClass(/hidden/, { timeout: 8000 });
 }
 
 async function openDemo(page, role) {
