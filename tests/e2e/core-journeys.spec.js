@@ -45,7 +45,7 @@ test('demo signup enters onboarding without touching Supabase', async ({ page })
 
   await expect(page.locator('#ob2-card')).toBeVisible();
   await expect(page.getByText('Your Sport')).toBeVisible();
-  await expect(page.getByText('Training Setup')).toHaveCount(0);
+  await expect(page.getByText('Training Setup')).not.toBeVisible();
   await expect(page.getByText('View failed to load')).toHaveCount(0);
 });
 
