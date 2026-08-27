@@ -48,8 +48,10 @@ test('public signup is readable and exposes quick demos', async ({ page }) => {
 });
 
 test('sign-in quick demo opens immediately without hanging', async ({ page }) => {
-  await page.goto('/#/signin');
+  await page.goto('/');
   await waitForApp(page);
+  await page.getByRole('button', { name: 'Sign In' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible();
   await expect(page.getByText('Quick Demo Access')).toBeVisible();
   await page.locator('[data-demo-role="coach"]').click();
   await expect(page.locator('#piq-app')).toHaveClass(/mounted/, { timeout: 3000 });
