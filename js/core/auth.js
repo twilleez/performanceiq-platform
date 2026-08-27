@@ -1,5 +1,5 @@
 /**
- * PerformanceIQ Auth v3
+ * PerformanceIQ Auth v4
  * Supabase is authoritative for production sessions.
  * Demo mode remains local/offline and never touches the database.
  */
@@ -14,6 +14,11 @@ const DEMO_USERS = {
   'admin@demo.com':  { id: 'u_admin',  name: 'Sam Taylor',    role: 'admin',  sport: null },
   'solo@demo.com':   { id: 'u_solo',   name: 'Jordan Lee',    role: 'solo',   sport: 'track' },
 };
+
+const DEMO_BY_ROLE = Object.values(DEMO_USERS).reduce((acc, user) => {
+  acc[user.role] = user;
+  return acc;
+}, {});
 
 let _session = null;
 
@@ -33,6 +38,15 @@ function loadSession() {
   }
 }
 
+function makeDemoSession(demo, onboardingDone = true) {
+  return {
+    user: { ...demo, onboardingDone },
+    role: demo.role,
+    expiresAt: Date.now() + 86400000 * 7,
+    isDemo: true,
+  };
+}
+
 async function fetchProfile(userId) {
   const { data, error } = await supabase
     .from('profiles')
@@ -50,10 +64,16 @@ export function getCurrentRole() { return _session?.role || null; }
 export function getCurrentUser() { return _session?.user || null; }
 export function clearAuthSession() { saveSession(null); }
 
-/**
- * Validate any restored production session against Supabase before the app
- * treats it as authenticated. Demo sessions intentionally skip this step.
- */
+/** Deterministic offline demo start. No network request and no password path. */
+export function startDemo(role) {
+  const normalized = role === 'athlete' ? 'player' : role;
+  const demo = DEMO_BY_ROLE[normalized];
+  if (!demo) return { ok: false, error: 'Unknown demo role.' };
+  const session = makeDemoSession(demo, true);
+  saveSession(session);
+  return { ok: true, session };
+}
+
 export async function reconcileSupabaseSession() {
   if (!_session || _session.isDemo) return true;
 
@@ -94,16 +114,7 @@ export async function signIn(email, password, roleHint) {
   email = email.trim().toLowerCase();
 
   const demo = DEMO_USERS[email];
-  if (demo) {
-    const session = {
-      user: { ...demo, onboardingDone: true },
-      role: demo.role,
-      expiresAt: Date.now() + 86400000 * 7,
-      isDemo: true,
-    };
-    saveSession(session);
-    return { ok: true, session };
-  }
+  if (demo) return startDemo(demo.role);
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { ok: false, error: error.message };
@@ -156,8 +167,6 @@ export async function signUp(email, password, name, role) {
   });
   if (error) return { ok: false, error: error.message };
 
-  // When email confirmation is enabled Supabase creates the user but does not
-  // issue an authenticated session. Do not create a fake local session.
   if (!data.session) {
     saveSession(null);
     return { ok: true, isNew: true, requiresEmailConfirmation: true };
