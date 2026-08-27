@@ -33,15 +33,28 @@ test('public landing communicates value and converts to signup', async ({ page }
   await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible();
 });
 
-test('public signup is readable and keyboard accessible', async ({ page }) => {
+test('public signup is readable and exposes quick demos', async ({ page }) => {
   await page.goto('/#/signup');
   await waitForApp(page);
   await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible();
   await expect(page.getByLabel('Full name')).toBeVisible();
   await expect(page.getByLabel('Email address')).toBeVisible();
   await expect(page.getByLabel('Create password')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Athlete' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Athlete' }).first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Quick Demo Access')).toBeVisible();
+  await expect(page.locator('[data-demo-role="coach"]')).toBeVisible();
+  await expect(page.locator('[data-demo-role="parent"]')).toBeVisible();
   await expect(page.getByRole('button', { name: /Create Account/ })).toBeEnabled();
+});
+
+test('sign-in quick demo opens immediately without hanging', async ({ page }) => {
+  await page.goto('/#/signin');
+  await waitForApp(page);
+  await expect(page.getByText('Quick Demo Access')).toBeVisible();
+  await page.locator('[data-demo-role="coach"]').click();
+  await expect(page.locator('#piq-app')).toHaveClass(/mounted/, { timeout: 3000 });
+  await expect(page.locator('#nav-role-badge')).toContainText('coach');
+  await expect(page.getByText('View failed to load')).toHaveCount(0);
 });
 
 test('demo signup enters onboarding without touching Supabase', async ({ page }) => {
@@ -63,6 +76,14 @@ for (const role of ['coach', 'player', 'parent', 'admin', 'solo']) {
     await expect(page.locator('.sidebar-link').first()).toBeVisible();
   });
 }
+
+test('authenticated first-run experience uses branded dark theme', async ({ page }) => {
+  await page.addInitScript(() => localStorage.removeItem('piq_theme'));
+  await openDemo(page, 'player');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  const bodyBg = await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(bodyBg).not.toBe('rgb(244, 246, 251)');
+});
 
 test('player core navigation renders Today, Readiness, Progress and Nutrition', async ({ page }) => {
   await openDemo(page, 'player');
@@ -103,7 +124,7 @@ test('sign out returns to the public landing page', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /Know how ready you are/ })).toBeVisible();
 });
 
-test('phone signup keeps form controls visible', async ({ page }, testInfo) => {
+test('phone signup keeps form and demo controls visible', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-chromium', 'mobile visual contract');
   await page.goto('/#/signup');
   await waitForApp(page);
@@ -112,4 +133,6 @@ test('phone signup keeps form controls visible', async ({ page }, testInfo) => {
   await expect(page.getByLabel('Full name')).toBeVisible();
   await expect(page.getByLabel('Email address')).toBeVisible();
   await expect(page.getByLabel('Create password')).toBeVisible();
+  await expect(page.locator('[data-demo-role="coach"]')).toBeVisible();
+  await expect(page.locator('[data-demo-role="parent"]')).toBeVisible();
 });
