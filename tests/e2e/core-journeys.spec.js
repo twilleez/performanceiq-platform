@@ -87,6 +87,29 @@ test('authenticated first-run experience uses branded dark theme', async ({ page
   expect(bodyBg).not.toBe('rgb(244, 246, 251)');
 });
 
+test('authenticated desktop shell is fully styled and readable', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'desktop shell contract');
+  await openDemo(page, 'player');
+  const shell = await page.locator('#piq-layout').evaluate(el => {
+    const sidebar = document.querySelector('#piq-sidebar');
+    const main = document.querySelector('#piq-main');
+    const link = document.querySelector('.sidebar-link');
+    const topbar = document.querySelector('#piq-topbar');
+    return {
+      layout: getComputedStyle(el).display,
+      sidebarWidth: sidebar?.getBoundingClientRect().width || 0,
+      mainWidth: main?.getBoundingClientRect().width || 0,
+      linkColor: link ? getComputedStyle(link).color : '',
+      topbarHeight: topbar?.getBoundingClientRect().height || 0,
+    };
+  });
+  expect(shell.layout).toBe('grid');
+  expect(shell.sidebarWidth).toBeGreaterThanOrEqual(220);
+  expect(shell.mainWidth).toBeGreaterThan(500);
+  expect(shell.topbarHeight).toBeGreaterThanOrEqual(56);
+  expect(shell.linkColor).not.toBe('rgb(0, 0, 0)');
+});
+
 test('player core navigation renders Today, Readiness, Progress and Nutrition', async ({ page }) => {
   await openDemo(page, 'player');
   await clickSidebar(page, 'Today');
