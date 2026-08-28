@@ -1,0 +1,52 @@
+name: Create release certification auth accounts
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/qa-create-release-accounts.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  create-qa-auth-users:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Parent and Admin-candidate Auth users
+        shell: bash
+        env:
+          SUPABASE_URL: https://jijqjbgmhhlvokgtuema.supabase.co
+          SUPABASE_KEY: sb_publishable_-5KfMIVCS5es4nlW-97xQQ_DFJp5RHg
+        run: |
+          set -euo pipefail
+          PARENT_EMAIL='piq.parent.qa.20260827@example.com'
+          ADMIN_EMAIL='piq.admin.qa.20260827@example.com'
+          PARENT_PASSWORD="$(openssl rand -base64 36 | tr -d '\n')Aa1!"
+          ADMIN_PASSWORD="$(openssl rand -base64 36 | tr -d '\n')Bb2!"
+
+          signup () {
+            local email="$1"
+            local password="$2"
+            local name="$3"
+            local role="$4"
+            local outfile="$5"
+            curl --fail-with-body --silent --show-error \
+              -X POST "$SUPABASE_URL/auth/v1/signup" \
+              -H "apikey: $SUPABASE_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"email\":\"$email\",\"password\":\"$password\",\"data\":{\"name\":\"$name\",\"role\":\"$role\"}}" \
+              > "$outfile"
+          }
+
+          signup "$PARENT_EMAIL" "$PARENT_PASSWORD" 'PIQ Parent QA' 'parent' /tmp/parent.json
+          signup "$ADMIN_EMAIL" "$ADMIN_PASSWORD" 'PIQ Admin QA' 'solo' /tmp/admin.json
+
+          python3 - <<'PY'
+          import json
+          for path, label in [('/tmp/parent.json','parent'),('/tmp/admin.json','admin-candidate')]:
+              data=json.load(open(path))
+              if not data.get('id') and not data.get('user',{}).get('id'):
+                  raise SystemExit(f'{label} signup did not return an auth user id')
+          print('QA auth users created successfully')
+          PY
