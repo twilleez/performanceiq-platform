@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           rm -rf .pages
           mkdir -p .pages
-          cp index.html styles.css manifest.json sw.js .pages/
+          cp index.html styles.css manifest.json sw.js robots.txt sitemap.xml .pages/
           cp -R js css .pages/
           if [ -d assets ]; then cp -R assets .pages/; fi
           if [ -d icons ]; then cp -R icons .pages/; fi
@@ -49,10 +49,14 @@ jobs:
         run: |
           set -euo pipefail
           test -f .pages/index.html
+          test -f .pages/robots.txt
+          test -f .pages/sitemap.xml
           test -f .pages/js/app.js
           test -f .pages/js/core/supabase.js
           test -f .pages/css/auth-hotfix.css
           test -f .pages/css/onboarding-hotfix.css
+          grep -q "Know how ready you are" .pages/index.html
+          grep -q "Sitemap:" .pages/robots.txt
           test ! -e .pages/frontend
           test ! -e .pages/backend
           test ! -e .pages/database
