@@ -110,6 +110,17 @@ test('authenticated desktop shell is fully styled and readable', async ({ page }
   expect(shell.linkColor).not.toBe('rgb(0, 0, 0)');
 });
 
+test('controlled beta feedback panel opens without writing demo data', async ({ page }) => {
+  await openDemo(page, 'player');
+  const feedback = page.getByRole('button', { name: 'Send beta feedback' });
+  await expect(feedback).toBeVisible();
+  await feedback.click();
+  await expect(page.getByRole('heading', { name: 'Tell us what happened' })).toBeVisible();
+  await expect(page.getByText(/Demo mode: feedback can be reviewed here/i)).toBeVisible();
+  await expect(page.getByLabel('What happened?')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send feedback' })).toBeVisible();
+});
+
 test('player core navigation renders Today, Readiness, Progress and Nutrition', async ({ page }) => {
   await openDemo(page, 'player');
   await clickSidebar(page, 'Today');
