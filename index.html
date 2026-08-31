@@ -16,15 +16,7 @@
   <meta name="twitter:title" content="PerformanceIQ — Athlete Readiness, Training & Progress" />
   <meta name="twitter:description" content="Readiness → Today → Log → Progress. A focused performance platform for athletes, coaches and families." />
   <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "PerformanceIQ",
-    "applicationCategory": "HealthApplication",
-    "operatingSystem": "Web",
-    "url": "https://twilleez.github.io/performanceiq-platform/",
-    "description": "Athlete readiness, daily training, workout logging, progress tracking and coaching workflows in one performance platform."
-  }
+  {"@context":"https://schema.org","@type":"SoftwareApplication","name":"PerformanceIQ","applicationCategory":"HealthApplication","operatingSystem":"Web","url":"https://twilleez.github.io/performanceiq-platform/","description":"Athlete readiness, daily training, workout logging, progress tracking and coaching workflows in one performance platform."}
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -42,68 +34,21 @@
   <link rel="stylesheet" href="css/onboarding-hotfix.css" />
   <link rel="stylesheet" href="css/shell-hotfix.css" />
   <link rel="stylesheet" href="css/beta-feedback.css" />
-  <link rel="stylesheet" href="css/self-workout.css" />
+  <link rel="stylesheet" href="css/workout-runner.css" />
   <link rel="manifest" href="manifest.json" />
   <style>
-    .piq-static-shell{min-height:100vh;background:#010d14;color:#d0eef4;font-family:'DM Sans',system-ui,sans-serif;padding:56px 24px 72px}
-    .piq-static-inner{max-width:980px;margin:0 auto}
-    .piq-static-brand{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:.08em;color:#6fd94f;font-size:28px}
-    .piq-static-eyebrow{font-family:'Barlow Condensed',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#70b0c0;margin-top:8px}
-    .piq-static-shell h1{font-family:'Oswald',sans-serif;font-size:clamp(40px,7vw,72px);line-height:1.02;max-width:820px;margin:52px 0 20px;color:#fff}
-    .piq-static-lead{font-size:18px;line-height:1.7;max-width:720px;color:#a9c7d0}
-    .piq-static-loop{margin:30px 0;padding:16px 20px;border:1px solid rgba(111,217,79,.28);border-radius:14px;background:rgba(111,217,79,.08);font-weight:700;color:#a0f070;display:inline-block}
-    .piq-static-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:36px}
-    .piq-static-card{border:1px solid rgba(80,144,160,.2);border-radius:14px;padding:20px;background:#0a1e28}
-    .piq-static-card h2{font-family:'Oswald',sans-serif;font-size:20px;color:#fff;margin:0 0 8px}
-    .piq-static-card p{margin:0;color:#8fb0ba;line-height:1.55}
-    .piq-static-note{margin-top:38px;color:#6f929d;font-size:13px;max-width:760px}
-    @media(max-width:760px){.piq-static-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.piq-static-shell{padding:36px 18px 56px}}
-    @media(max-width:430px){.piq-static-grid{grid-template-columns:1fr}}
+    .piq-static-shell{min-height:100vh;background:#010d14;color:#d0eef4;font-family:'DM Sans',system-ui,sans-serif;padding:56px 24px 72px}.piq-static-inner{max-width:980px;margin:0 auto}.piq-static-brand{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:.08em;color:#6fd94f;font-size:28px}.piq-static-eyebrow{font-family:'Barlow Condensed',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#70b0c0;margin-top:8px}.piq-static-shell h1{font-family:'Oswald',sans-serif;font-size:clamp(40px,7vw,72px);line-height:1.02;max-width:820px;margin:52px 0 20px;color:#fff}.piq-static-lead{font-size:18px;line-height:1.7;max-width:720px;color:#a9c7d0}.piq-static-loop{margin:30px 0;padding:16px 20px;border:1px solid rgba(111,217,79,.28);border-radius:14px;background:rgba(111,217,79,.08);font-weight:700;color:#a0f070;display:inline-block}.piq-static-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:36px}.piq-static-card{border:1px solid rgba(80,144,160,.2);border-radius:14px;padding:20px;background:#0a1e28}.piq-static-card h2{font-family:'Oswald',sans-serif;font-size:20px;color:#fff;margin:0 0 8px}.piq-static-card p{margin:0;color:#8fb0ba;line-height:1.55}.piq-static-note{margin-top:38px;color:#6f929d;font-size:13px;max-width:760px}@media(max-width:760px){.piq-static-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.piq-static-shell{padding:36px 18px 56px}}@media(max-width:430px){.piq-static-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <div id="piq-loader">
-    <div class="loader-inner">
-      <div class="loader-logo">
-        <svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-          <defs><linearGradient id="lg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#103050"/><stop offset="100%" stop-color="#204060"/></linearGradient></defs>
-          <path d="M5 32 L9 10 L28 6 L36 20 L21 26 L13 34 Z" fill="url(#lg)" stroke="rgba(111,217,79,0.25)" stroke-width="1"/>
-          <path d="M9 28 L12 14 L25 11 L31 21 L20 25 Z" fill="rgba(255,255,255,0.04)"/>
-          <path d="M28 6 L36 20 L29 17 Z" fill="#6FD94F"/>
-          <line x1="13" y1="20" x2="22" y2="18" stroke="rgba(111,217,79,0.3)" stroke-width="1" stroke-linecap="round"/>
-          <line x1="12" y1="24" x2="19" y2="22" stroke="rgba(111,217,79,0.18)" stroke-width="0.8" stroke-linecap="round"/>
-          <circle cx="15" cy="24" r="1.5" fill="rgba(111,217,79,0.45)"/>
-        </svg>
-        <div class="splash-tagline">Elite Training. Smart Results.</div>
-      </div>
-      <div class="loader-bar-track"><div class="loader-bar" id="splash-bar"></div></div>
-      <div class="loader-label" id="splash-label">PerformanceIQ</div>
-    </div>
-  </div>
-
-  <div id="piq-root">
-    <main class="piq-static-shell" id="piq-static-content">
-      <div class="piq-static-inner">
-        <div class="piq-static-brand">PIQ · PerformanceIQ</div>
-        <div class="piq-static-eyebrow">Elite Training. Smart Results.</div>
-        <h1>Know how ready you are. Train with purpose. See your progress.</h1>
-        <p class="piq-static-lead">PerformanceIQ brings athlete readiness, today's training, workout logging, progress tracking and coaching workflows together in one focused performance platform.</p>
-        <div class="piq-static-loop">Readiness → Today → Log → Progress</div>
-        <section class="piq-static-grid" aria-label="PerformanceIQ roles">
-          <article class="piq-static-card"><h2>Athletes</h2><p>See today's work, record readiness, log training and follow progress over time.</p></article>
-          <article class="piq-static-card"><h2>Coaches</h2><p>Organize athletes, assign training and review readiness and performance workflows.</p></article>
-          <article class="piq-static-card"><h2>Parents</h2><p>Follow linked-athlete wellness, plans and progress through a role-specific view.</p></article>
-          <article class="piq-static-card"><h2>Solo Training</h2><p>Use the core readiness, training and progress tools without joining a team.</p></article>
-        </section>
-        <p class="piq-static-note">PerformanceIQ readiness and performance information is designed to support training decisions and is not a medical diagnosis or a substitute for professional medical advice.</p>
-      </div>
-    </main>
-  </div>
+  <div id="piq-loader"><div class="loader-inner"><div class="loader-logo"><svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#103050"/><stop offset="100%" stop-color="#204060"/></linearGradient></defs><path d="M5 32 L9 10 L28 6 L36 20 L21 26 L13 34 Z" fill="url(#lg)" stroke="rgba(111,217,79,0.25)" stroke-width="1"/><path d="M9 28 L12 14 L25 11 L31 21 L20 25 Z" fill="rgba(255,255,255,0.04)"/><path d="M28 6 L36 20 L29 17 Z" fill="#6FD94F"/><line x1="13" y1="20" x2="22" y2="18" stroke="rgba(111,217,79,0.3)" stroke-width="1" stroke-linecap="round"/><line x1="12" y1="24" x2="19" y2="22" stroke="rgba(111,217,79,0.18)" stroke-width="0.8" stroke-linecap="round"/><circle cx="15" cy="24" r="1.5" fill="rgba(111,217,79,0.45)"/></svg><div class="splash-tagline">Elite Training. Smart Results.</div></div><div class="loader-bar-track"><div class="loader-bar" id="splash-bar"></div></div><div class="loader-label" id="splash-label">PerformanceIQ</div></div></div>
+  <div id="piq-root"><main class="piq-static-shell" id="piq-static-content"><div class="piq-static-inner"><div class="piq-static-brand">PIQ · PerformanceIQ</div><div class="piq-static-eyebrow">Elite Training. Smart Results.</div><h1>Know how ready you are. Train with purpose. See your progress.</h1><p class="piq-static-lead">PerformanceIQ brings athlete readiness, today's training, workout logging, progress tracking and coaching workflows together in one focused performance platform.</p><div class="piq-static-loop">Readiness → Today → Log → Progress</div><section class="piq-static-grid" aria-label="PerformanceIQ roles"><article class="piq-static-card"><h2>Athletes</h2><p>See today's work, record readiness, log training and follow progress over time.</p></article><article class="piq-static-card"><h2>Coaches</h2><p>Organize athletes, assign training and review readiness and performance workflows.</p></article><article class="piq-static-card"><h2>Parents</h2><p>Follow linked-athlete wellness, plans and progress through a role-specific view.</p></article><article class="piq-static-card"><h2>Solo Training</h2><p>Use the core readiness, training and progress tools without joining a team.</p></article></section><p class="piq-static-note">PerformanceIQ readiness and performance information is designed to support training decisions and is not a medical diagnosis or a substitute for professional medical advice.</p></div></main></div>
   <noscript><style>#piq-loader{display:none!important}</style></noscript>
   <script type="module" src="js/app.js"></script>
   <script type="module" src="js/coachAssignmentHotfix.js"></script>
   <script type="module" src="js/playerTodayHotfix.js"></script>
-  <script type="module" src="js/selfWorkoutPicker.js"></script>
+  <script type="module" src="js/selfServiceWorkouts.js"></script>
+  <script type="module" src="js/selfServiceWorkoutUI.js"></script>
   <script type="module" src="js/betaFeedback.js"></script>
 </body>
 </html>
