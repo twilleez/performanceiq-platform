@@ -1,0 +1,293 @@
+/* Solo Workout Builder production repair */
+
+/* The authenticated app shell already owns navigation. Hide the legacy nested sidebar
+   rendered by js/views/solo/builder.js so the page does not create a second nav rail. */
+#piq-main .view-with-sidebar {
+  display: block !important;
+  min-height: 100%;
+  width: 100%;
+}
+
+#piq-main .view-with-sidebar > .sidebar,
+#piq-main .view-with-sidebar > aside.sidebar,
+#piq-main .view-with-sidebar > nav.sidebar {
+  display: none !important;
+}
+
+#piq-main .view-with-sidebar > .page-main {
+  width: 100% !important;
+  max-width: 1440px;
+  min-width: 0;
+  margin: 0;
+  padding: 28px 32px 64px;
+  color: var(--text-primary, #e8edf8);
+}
+
+#piq-main .page-header {
+  margin-bottom: 22px;
+}
+
+#piq-main .page-header h1 {
+  margin: 0;
+  font-family: 'Oswald', sans-serif;
+  font-size: clamp(28px, 3vw, 38px);
+  line-height: 1.05;
+  color: #fff;
+}
+
+#piq-main .page-header h1 span {
+  color: #6fd94f;
+}
+
+#piq-main .page-header p {
+  margin: 8px 0 0;
+  color: #9bb7c2;
+  font-size: 14px;
+}
+
+/* Tabs */
+#piq-main .tab-bar {
+  display: inline-flex;
+  gap: 6px;
+  margin: 0 0 24px;
+  padding: 5px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 13px;
+  background: #0a1829;
+}
+
+#piq-main .tab-btn {
+  min-height: 42px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #9cb5c0;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#piq-main .tab-btn:hover,
+#piq-main .tab-btn:focus-visible {
+  color: #fff;
+  background: rgba(255,255,255,.06);
+  outline: none;
+}
+
+#piq-main .tab-btn.active {
+  background: rgba(111,217,79,.14);
+  color: #a0f070;
+  box-shadow: inset 0 0 0 1px rgba(111,217,79,.24);
+}
+
+/* Builder panels */
+#piq-main .panel {
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #0b192a 0%, #0a1625 100%);
+  padding: 20px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.15);
+}
+
+#piq-main .panel-title {
+  color: #fff;
+  font-family: 'Oswald', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  margin-bottom: 14px;
+}
+
+#piq-main .b-field-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+#piq-main .b-field-row:first-of-type {
+  grid-template-columns: 2fr 1fr;
+}
+
+#piq-main .b-field {
+  min-width: 0;
+}
+
+#piq-main .b-field label {
+  display: block;
+  margin-bottom: 7px;
+  color: #b9ced6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#piq-main .b-field input,
+#piq-main .b-field select,
+#piq-main .piq-lib-search-row input,
+#piq-main .ex-row input {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px;
+  background: #071321;
+  color: #fff;
+  padding: 9px 11px;
+}
+
+#piq-main .b-field input:focus,
+#piq-main .b-field select:focus,
+#piq-main .piq-lib-search-row input:focus,
+#piq-main .ex-row input:focus {
+  outline: none;
+  border-color: rgba(111,217,79,.72);
+  box-shadow: 0 0 0 3px rgba(111,217,79,.1);
+}
+
+/* Top programs */
+#piq-main .piq-prog-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+#piq-main .piq-prog-card {
+  min-height: 210px;
+  padding: 18px;
+  background: #0b192a;
+  border-color: rgba(255,255,255,.09);
+  color: #d8e8ed;
+  box-shadow: 0 10px 26px rgba(0,0,0,.12);
+}
+
+#piq-main .piq-prog-card:hover {
+  border-color: rgba(111,217,79,.42);
+  transform: translateY(-1px);
+}
+
+#piq-main .piq-prog-title {
+  color: #fff;
+  font-size: 16px;
+}
+
+#piq-main .piq-prog-sport,
+#piq-main .piq-prog-source,
+#piq-main .piq-chip {
+  color: #91adb8;
+}
+
+#piq-main .piq-load-btn,
+#piq-main .piq-add-ex-btn,
+#piq-main .btn-add-ex,
+#piq-main .btn-draft {
+  min-height: 40px;
+  border: 1px solid rgba(111,217,79,.25);
+  border-radius: 9px;
+  background: rgba(111,217,79,.08);
+  color: #a0f070;
+  font-weight: 700;
+}
+
+#piq-main .piq-load-btn:hover,
+#piq-main .piq-add-ex-btn:hover,
+#piq-main .btn-add-ex:hover,
+#piq-main .btn-draft:hover {
+  background: rgba(111,217,79,.15);
+  border-color: rgba(111,217,79,.5);
+}
+
+#piq-main .btn-assign {
+  min-height: 46px;
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #6fd94f;
+  color: #06131d;
+  font-weight: 900;
+}
+
+#piq-main .ex-header {
+  margin-top: 10px;
+  padding: 10px 8px;
+  border-bottom-color: rgba(255,255,255,.09);
+  color: #7897a2;
+}
+
+#piq-main .ex-row {
+  padding: 9px 8px;
+  border-bottom-color: rgba(255,255,255,.06);
+}
+
+#piq-main .ex-empty-state {
+  padding: 34px 16px;
+  border: 1px dashed rgba(255,255,255,.1);
+  border-radius: 12px;
+  color: #7897a2;
+  background: rgba(255,255,255,.018);
+}
+
+#piq-main .piq-sport-filters,
+#piq-main .piq-cat-pills {
+  gap: 8px;
+}
+
+#piq-main .piq-sf-btn,
+#piq-main .piq-cat-pill {
+  border-color: rgba(255,255,255,.09);
+  background: #0a1829 !important;
+  color: #9cb5c0 !important;
+}
+
+#piq-main .piq-sf-btn.active,
+#piq-main .piq-cat-pill.active {
+  border-color: rgba(111,217,79,.35);
+  background: rgba(111,217,79,.13) !important;
+  color: #a0f070 !important;
+}
+
+#piq-main .piq-ex-grid {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  max-height: none;
+}
+
+#piq-main .piq-ex-item {
+  min-height: 64px;
+  border-color: rgba(255,255,255,.08);
+  background: #0b192a;
+}
+
+#piq-main .piq-ex-name {
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  #piq-main .view-with-sidebar > .page-main {
+    padding: 20px 16px 48px;
+  }
+
+  #piq-main .tab-bar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+  }
+
+  #piq-main .tab-btn {
+    padding: 9px 8px;
+  }
+
+  #piq-main .b-field-row,
+  #piq-main .b-field-row:first-of-type {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  #piq-main .tab-bar {
+    grid-template-columns: 1fr;
+  }
+
+  #piq-main .piq-prog-grid,
+  #piq-main .piq-ex-grid {
+    grid-template-columns: 1fr;
+  }
+}
