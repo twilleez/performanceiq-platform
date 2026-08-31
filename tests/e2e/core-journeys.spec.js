@@ -144,6 +144,27 @@ test('coach navigation exposes coach workflow and no player logging nav', async 
   await expect(page.locator('.sidebar-link').filter({ hasText: 'Log' })).toHaveCount(0);
 });
 
+test('coach can choose workout type, athlete and assign a workout visible on Player Today', async ({ page }) => {
+  await openDemo(page, 'coach');
+  await clickSidebar(page, 'Program');
+  await page.getByRole('button', { name: 'Workout Builder' }).click();
+  await expect(page.getByLabel('Workout type')).toBeVisible();
+  await page.getByLabel('Workout type').selectOption('Speed');
+  await page.locator('#b-title').fill('Demo Speed Session');
+  await page.locator('#btn-add-ex').click();
+  await page.locator('.ex-name').last().fill('Acceleration Sprint');
+  await expect(page.getByLabel('Athlete')).toBeVisible();
+  await page.getByLabel('Athlete').selectOption({ index: 1 });
+  await page.getByRole('button', { name: /Assign Workout/ }).click();
+  await expect(page.locator('#piq-assign-status')).toContainText('assigned to');
+
+  await page.goto('/#/demo/player');
+  await waitForApp(page);
+  await clickSidebar(page, 'Today');
+  await expect(page.locator('#piq-main')).toContainText('Demo Speed Session');
+  await expect(page.locator('#piq-main')).toContainText('Acceleration Sprint');
+});
+
 test('solo Today workout can be logged and Progress still renders', async ({ page }) => {
   await openDemo(page, 'solo');
   await clickSidebar(page, 'Today');
