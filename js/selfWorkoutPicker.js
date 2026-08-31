@@ -112,7 +112,7 @@ function renderSoloSelected(type) {
         </div>
       </div>
 
-      ${pickerHTML({ title:'Pick your training focus', subtitle:'Choose the session that fits what you need today. You can switch before completing the workout.', activeType:type })}
+      ${pickerHTML({ title:'Choose today’s workout', subtitle:'Choose the session that fits what you need today. You can switch before completing the workout.', activeType:type })}
 
       <section class="piq-self-selected" aria-labelledby="piq-current-workout-title">
         <div class="piq-self-selected-top">
@@ -163,7 +163,7 @@ function renderSoloSelected(type) {
             <label><span>Session effort</span><div class="piq-input-unit"><input id="piq-self-rpe" type="number" min="1" max="10" value="7"><em>RPE / 10</em></div></label>
           </div>
           <label class="piq-self-notes"><span>Workout notes <small>optional</small></span><textarea id="piq-self-notes" rows="3" placeholder="PRs, weights used, how you felt, anything to remember…"></textarea></label>
-          <button class="piq-self-complete" id="piq-self-complete" type="button"><span>✓</span> Complete & Save Workout</button>
+          <button class="piq-self-complete" id="piq-self-complete" type="button" aria-label="Complete Workout"><span>✓</span> Complete & Save Workout</button>
           <div id="piq-self-complete-status" class="piq-self-status" role="status"></div>
         </section>
       </section>
@@ -190,7 +190,7 @@ function renderSoloSelected(type) {
       ts:Date.now(),
     });
     const status = document.getElementById('piq-self-complete-status');
-    if (status) status.textContent = '✓ Workout saved. Your Progress and streak can now update.';
+    if (status) status.textContent = '✓ Workout logged and saved. Your Progress and streak can now update.';
     const btn = document.getElementById('piq-self-complete');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span>✓</span> Workout Complete'; }
   });
