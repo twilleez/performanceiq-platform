@@ -124,11 +124,20 @@ test('controlled beta feedback panel opens without writing demo data', async ({ 
 test('player core navigation renders Today, Readiness, Progress and Nutrition', async ({ page }) => {
   await openDemo(page, 'player');
   await clickSidebar(page, 'Today');
-  await expect(page.locator('#piq-main')).toContainText(/No workout assigned|Exercises|Log Session/);
+  await expect(page.locator('#piq-main')).toContainText(/No workout assigned|Exercises|Log Session|SELF-SERVICE TRAINING/);
   await clickSidebar(page, 'Readiness');
   await clickSidebar(page, 'Progress');
   await clickSidebar(page, 'Nutrition');
   await expect(page.locator('#piq-main')).not.toBeEmpty();
+});
+
+test('uncoached Player can choose a self-service workout', async ({ page }) => {
+  await openDemo(page, 'player');
+  await clickSidebar(page, 'Today');
+  await expect(page.getByRole('heading', { name: /No Coach workout today/i })).toBeVisible();
+  await page.getByRole('button', { name: /Speed Acceleration/ }).click();
+  await expect(page.locator('#piq-main')).toContainText('Acceleration & Speed');
+  await expect(page.locator('#piq-main')).toContainText('10-Yard Sprint');
 });
 
 test('player navigation does not expose coach-only roster controls', async ({ page }) => {
@@ -165,12 +174,16 @@ test('coach can choose workout type, athlete and assign a workout visible on Pla
   await expect(page.locator('#piq-main')).toContainText('Acceleration Sprint');
 });
 
-test('solo Today workout can be logged and Progress still renders', async ({ page }) => {
+test('Solo can choose workout type and log the selected session', async ({ page }) => {
   await openDemo(page, 'solo');
   await clickSidebar(page, 'Today');
-  await expect(page.getByRole('heading', { name: /Today's.*Workout/ })).toBeVisible();
-  const logButton = page.locator('#log-workout-btn');
-  if (await logButton.count()) await logButton.click();
+  await expect(page.getByRole('heading', { name: /Choose today’s workout/i })).toBeVisible();
+  await expect(page.locator('#piq-main')).toContainText('Total-Body Strength');
+  await page.getByRole('button', { name: /Power Explosive/ }).click();
+  await expect(page.locator('#piq-main')).toContainText('Explosive Power Session');
+  await expect(page.locator('#piq-main')).toContainText('Countermovement Jump');
+  await page.getByRole('button', { name: 'Complete Workout' }).click();
+  await expect(page.locator('#piq-self-complete-status')).toContainText('Workout logged');
   await clickSidebar(page, 'Progress');
   await expect(page.locator('#piq-main')).not.toBeEmpty();
 });
