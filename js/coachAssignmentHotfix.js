@@ -134,7 +134,9 @@ function installAssignmentPanel() {
       } else {
         await assignWorkoutToAthlete({
           athleteId, title, sport, dayType, scheduledDate, exercises,
-          templateId: draft.loadedTemplateId || null,
+          // Built-in browser templates use string IDs; the live DB template_id is UUID-backed.
+          // Store the exercises directly and leave template_id null unless a DB template is used.
+          templateId: null,
         });
       }
       status.textContent = `✓ ${title} assigned to ${athlete.name} for ${scheduledDate}.`;
