@@ -4,7 +4,9 @@
    explicitly style the production shell and prevent the unstyled layout regression. */
 
 #piq-app.mounted {
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
   background: var(--bg, #0a1628);
   color: var(--text-primary, #e2e8f0);
 }
@@ -67,23 +69,27 @@
 #piq-layout {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
-  min-height: calc(100vh - 64px);
+  height: calc(100vh - 64px);
+  min-height: 0;
   width: 100%;
+  overflow: hidden;
   background: var(--bg, #0a1628);
 }
 
 #piq-sidebar.sidebar {
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 64px;
   width: 240px;
-  height: calc(100vh - 64px);
+  height: 100%;
+  min-height: 0;
   padding: 18px 12px;
   overflow-y: auto;
+  overflow-x: hidden;
   background: #081426;
   border-right: 1px solid rgba(111,217,79,.12);
   color: #d0eef4;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111,217,79,.35) transparent;
 }
 
 .sidebar-header {
@@ -176,17 +182,38 @@
   border-top: 1px solid rgba(255,255,255,.07);
 }
 
-.sidebar-signout {
-  color: #8fb0ba;
-}
+.sidebar-signout { color: #8fb0ba; }
 
 #piq-main.main-content {
   min-width: 0;
   width: 100%;
-  min-height: calc(100vh - 64px);
-  overflow-x: hidden;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(111,217,79,.45) rgba(255,255,255,.04);
   background: var(--bg, #0a1628);
   color: var(--text-primary, #e2e8f0);
+}
+
+#piq-main.main-content::-webkit-scrollbar { width: 10px; }
+#piq-main.main-content::-webkit-scrollbar-track { background: rgba(255,255,255,.035); }
+#piq-main.main-content::-webkit-scrollbar-thumb {
+  background: rgba(111,217,79,.42);
+  border-radius: 999px;
+  border: 2px solid #0a1628;
+}
+#piq-main.main-content::-webkit-scrollbar-thumb:hover { background: rgba(111,217,79,.68); }
+
+#piq-main .piq-view {
+  width: 100%;
+  max-width: 1400px;
+  min-height: min-content;
+  padding: 28px 32px 56px;
 }
 
 /* Keep older views readable when they use raw/default text instead of tokens. */
@@ -201,14 +228,15 @@
 }
 
 [data-theme="dark"] #piq-app .muted,
-[data-theme="dark"] #piq-app small {
-  color: var(--text-secondary, #8892a8);
-}
+[data-theme="dark"] #piq-app small { color: var(--text-secondary, #8892a8); }
 
 @media (max-width: 900px) {
+  #piq-app.mounted { height: 100dvh; }
+
   #piq-layout {
     display: block;
-    min-height: calc(100vh - 58px);
+    height: calc(100dvh - 58px);
+    min-height: 0;
   }
 
   #piq-topbar,
@@ -231,7 +259,12 @@
   #piq-sidebar.sidebar.open { transform: translateX(0); }
 
   #piq-main.main-content {
-    min-height: calc(100dvh - 58px);
+    height: 100%;
+    min-height: 0;
     width: 100%;
+    overflow-y: auto !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
+  #piq-main .piq-view { padding: 18px 16px 44px; }
 }
