@@ -1,5 +1,5 @@
 /**
- * PerformanceIQ Auth v4
+ * PerformanceIQ Auth v5
  * Supabase is authoritative for production sessions.
  * Demo mode remains local/offline and never touches the database.
  */
@@ -57,6 +57,49 @@ async function fetchProfile(userId) {
   return { profile: data, error: null };
 }
 
+async function fetchProfileWithRetry(userId, attempts = 4) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    const res = await fetchProfile(userId);
+    if (res.profile) return res;
+    lastError = res.error;
+    if (i < attempts - 1) await new Promise(resolve => setTimeout(resolve, 150 * (i + 1)));
+  }
+  return { profile: null, error: lastError };
+}
+
+async function adoptSupabaseSession(sbSession, cachedUser = null) {
+  const sbUser = sbSession?.user;
+  if (!sbUser?.id) {
+    saveSession(null);
+    return false;
+  }
+
+  const { profile, error: profileError } = await fetchProfileWithRetry(sbUser.id);
+  if (profileError || !profile) {
+    saveSession(null);
+    return false;
+  }
+
+  const role = profile.role || sbUser.user_metadata?.role || cachedUser?.role || 'solo';
+  const user = {
+    ...(cachedUser || {}),
+    id: sbUser.id,
+    email: sbUser.email || cachedUser?.email || '',
+    name: profile.name || sbUser.user_metadata?.name || cachedUser?.name || sbUser.email?.split('@')[0] || '',
+    role,
+    sport: profile.sport || null,
+    onboardingDone: profile.onboarded ?? false,
+  };
+
+  saveSession({
+    user,
+    role,
+    expiresAt: sbSession.expires_at ? sbSession.expires_at * 1000 : Date.now() + 3600000,
+  });
+  return true;
+}
+
 export function initAuth() { loadSession(); }
 export function getSession() { return _session; }
 export function isAuthenticated() { return !!_session; }
@@ -74,40 +117,36 @@ export function startDemo(role) {
   return { ok: true, session };
 }
 
+/**
+ * Reconcile the local PIQ cache with Supabase.
+ * Important: when the user arrives from an email-confirmation link there may
+ * be a valid Supabase session but no PIQ local session yet. In that case we
+ * adopt the Supabase session and hydrate the profile instead of treating the
+ * visitor as signed out.
+ */
 export async function reconcileSupabaseSession() {
-  if (!_session || _session.isDemo) return true;
+  if (_session?.isDemo) return true;
 
   const { data, error } = await supabase.auth.getSession();
   const sbSession = data?.session;
-  if (error || !sbSession?.user || sbSession.user.id !== _session.user?.id) {
-    saveSession(null);
+  if (error || !sbSession?.user) {
+    if (_session) saveSession(null);
     return false;
   }
 
-  const { profile, error: profileError } = await fetchProfile(sbSession.user.id);
-  if (profileError || !profile) {
+  if (_session?.user?.id && sbSession.user.id !== _session.user.id) {
     saveSession(null);
-    return false;
   }
 
-  const role = profile.role;
-  const user = {
-    ..._session.user,
-    id: sbSession.user.id,
-    email: sbSession.user.email || _session.user?.email || '',
-    name: profile.name || sbSession.user.user_metadata?.name || _session.user?.name || '',
-    role,
-    sport: profile.sport || null,
-    onboardingDone: profile.onboarded ?? false,
-  };
+  return adoptSupabaseSession(sbSession, _session?.user || null);
+}
 
-  saveSession({
-    ..._session,
-    user,
-    role,
-    expiresAt: sbSession.expires_at ? sbSession.expires_at * 1000 : Date.now() + 3600000,
-  });
-  return true;
+/** Adopt an already-established Supabase session after SIGNED_IN/TOKEN_REFRESHED. */
+export async function syncSupabaseSession() {
+  if (_session?.isDemo) return true;
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data?.session) return false;
+  return adoptSupabaseSession(data.session, _session?.user || null);
 }
 
 export async function signIn(email, password, roleHint) {
@@ -120,20 +159,20 @@ export async function signIn(email, password, roleHint) {
   if (error) return { ok: false, error: error.message };
 
   const sbUser = data.user;
-  const { profile, error: profileError } = await fetchProfile(sbUser.id);
-  if (profileError) {
+  const { profile, error: profileError } = await fetchProfileWithRetry(sbUser.id);
+  if (profileError || !profile) {
     await supabase.auth.signOut().catch(() => {});
     return { ok: false, error: 'Your account was authenticated, but the profile could not be loaded.' };
   }
 
-  const role = profile?.role || roleHint || 'solo';
-  const onboarded = profile?.onboarded ?? false;
+  const role = profile.role || roleHint || 'solo';
+  const onboarded = profile.onboarded ?? false;
   const user = {
     id: sbUser.id,
-    name: profile?.name || sbUser.user_metadata?.name || email.split('@')[0],
+    name: profile.name || sbUser.user_metadata?.name || email.split('@')[0],
     email,
     role,
-    sport: profile?.sport || null,
+    sport: profile.sport || null,
     onboardingDone: onboarded,
   };
 
@@ -149,8 +188,9 @@ export async function signIn(email, password, roleHint) {
 export async function signUp(email, password, name, role) {
   email = email.trim().toLowerCase();
   if (!email.includes('@')) return { ok: false, error: 'Invalid email.' };
+  if (!password || password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
   if (!name.trim()) return { ok: false, error: 'Name is required.' };
-  if (!role) return { ok: false, error: 'Please select a role.' };
+  if (!['coach','player','parent','solo'].includes(role)) return { ok: false, error: 'Please select a valid role.' };
 
   if (DEMO_USERS[email]) {
     const base = DEMO_USERS[email];
@@ -163,7 +203,10 @@ export async function signUp(email, password, name, role) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name: name.trim(), role } },
+    options: {
+      data: { name: name.trim(), role },
+      emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+    },
   });
   if (error) return { ok: false, error: error.message };
 
@@ -209,7 +252,7 @@ export function updateUser(fields) {
 }
 
 export function needsOnboarding() {
-  return _session?.user && !_session.user.onboardingDone;
+  return !!(_session?.user && !_session.user.onboardingDone);
 }
 
 export function markOnboardingDone(profile) {
