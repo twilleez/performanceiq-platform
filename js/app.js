@@ -12,7 +12,8 @@
 import { boot }                         from './core/boot.js';
 import { toggleTheme, getResolvedTheme } from './core/theme.js';
 import { isAuthenticated, getCurrentRole,
-         getInitials, signOut, signIn }  from './core/auth.js';
+         getInitials, signOut, signIn,
+         needsOnboarding }              from './core/auth.js';
 import { navigate, getCurrentRoute,
          onRouteChange, ROUTES,
          ROLE_HOME, suppressNextGuard }  from './router.js';
@@ -62,10 +63,11 @@ async function init() {
     }
   }
 
-  // Determine start route — guard in router.js will redirect if needed
+  // New/confirmed accounts must complete onboarding even after a refresh.
+  // Once onboarded, authenticated users start at their role home.
   const start = isAuthenticated()
-    ? (ROLE_HOME[getCurrentRole()] || ROUTES.PICK_ROLE)
-    : (hash === 'signup' ? ROUTES.SIGN_UP : ROUTES.WELCOME);
+    ? (needsOnboarding() ? ROUTES.ONBOARDING : (ROLE_HOME[getCurrentRole()] || ROUTES.PICK_ROLE))
+    : (hash === 'signup' ? ROUTES.SIGN_UP : hash === 'signin' ? ROUTES.SIGN_IN : ROUTES.WELCOME);
 
   navigate(start);
 
@@ -263,7 +265,6 @@ function renderNav(activeRoute) {
 // ── VIEW MAP ──────────────────────────────────────────────────
 // [modulePath, exportName]
 const VIEW_MAP = {
-  // Auth / shared
   [ROUTES.WELCOME]:          ['./views/shared/welcome.js',         'renderWelcome'],
   [ROUTES.SIGN_IN]:          ['./views/shared/signin.js',          'renderSignIn'],
   [ROUTES.SIGN_UP]:          ['./views/shared/signup.js',          'renderSignUp'],
@@ -271,7 +272,6 @@ const VIEW_MAP = {
   [ROUTES.ONBOARDING]:       ['./views/shared/onboarding.js',      'renderOnboarding'],
   [ROUTES.SETTINGS_THEME]:   ['./views/shared/settingsTheme.js',   'renderSettingsTheme'],
   [ROUTES.SETTINGS_PROFILE]: ['./views/shared/settingsProfile.js', 'renderSettingsProfile'],
-  // Coach
   [ROUTES.COACH_HOME]:       ['./views/coach/home.js',             'renderCoachHome'],
   [ROUTES.COACH_TEAM]:       ['./views/coach/team.js',             'renderCoachTeam'],
   [ROUTES.COACH_ROSTER]:     ['./views/coach/roster.js',           'renderCoachRoster'],
@@ -284,7 +284,6 @@ const VIEW_MAP = {
   [ROUTES.COACH_CALENDAR]:   ['./views/coach/calendar.js',         'renderCoachCalendar'],
   [ROUTES.COACH_REPORTS]:    ['./views/coach/reports.js',          'renderCoachReports'],
   [ROUTES.COACH_SETTINGS]:   ['./views/coach/settings.js',         'renderCoachSettings'],
-  // Player
   [ROUTES.PLAYER_HOME]:      ['./views/player/home.js',            'renderPlayerHome'],
   [ROUTES.PLAYER_TODAY]:     ['./views/player/todayWorkout.js',    'renderPlayerToday'],
   [ROUTES.PLAYER_LOG]:       ['./views/player/logWorkout.js',      'renderPlayerLog'],
@@ -296,7 +295,6 @@ const VIEW_MAP = {
   [ROUTES.PLAYER_RECRUITING]:['./views/player/recruiting.js',      'renderPlayerRecruiting'],
   [ROUTES.PLAYER_SETTINGS]:  ['./views/player/settings.js',        'renderPlayerSettings'],
   [ROUTES.PLAYER_NUTRITION]: ['./views/player/nutrition.js',       'renderPlayerNutrition'],
-  // Parent
   [ROUTES.PARENT_HOME]:      ['./views/parent/home.js',            'renderParentHome'],
   [ROUTES.PARENT_CHILD]:     ['./views/parent/childOverview.js',   'renderParentChild'],
   [ROUTES.PARENT_WEEK]:      ['./views/parent/weeklyPlan.js',      'renderParentWeek'],
@@ -305,7 +303,6 @@ const VIEW_MAP = {
   [ROUTES.PARENT_MESSAGES]:  ['./views/parent/messages.js',        'renderParentMessages'],
   [ROUTES.PARENT_BILLING]:   ['./views/parent/billing.js',         'renderParentBilling'],
   [ROUTES.PARENT_SETTINGS]:  ['./views/parent/settings.js',        'renderParentSettings'],
-  // Admin
   [ROUTES.ADMIN_HOME]:       ['./views/admin/home.js',             'renderAdminHome'],
   [ROUTES.ADMIN_ORG]:        ['./views/admin/org.js',              'renderAdminOrg'],
   [ROUTES.ADMIN_TEAMS]:      ['./views/admin/teams.js',            'renderAdminTeams'],
@@ -316,7 +313,6 @@ const VIEW_MAP = {
   [ROUTES.ADMIN_COMPLIANCE]: ['./views/admin/compliance.js',       'renderAdminCompliance'],
   [ROUTES.ADMIN_BILLING]:    ['./views/admin/billing.js',          'renderAdminBilling'],
   [ROUTES.ADMIN_SETTINGS]:   ['./views/admin/settings.js',         'renderAdminSettings'],
-  // Solo
   [ROUTES.SOLO_HOME]:         ['./views/solo/home.js',             'renderSoloHome'],
   [ROUTES.SOLO_TODAY]:        ['./views/solo/todayWorkout.js',     'renderSoloToday'],
   [ROUTES.SOLO_BUILDER]:      ['./views/solo/builder.js',          'renderSoloBuilder'],
@@ -325,18 +321,16 @@ const VIEW_MAP = {
   [ROUTES.SOLO_SCORE]:        ['./views/solo/score.js',            'renderSoloScore'],
   [ROUTES.SOLO_READINESS]:    ['./views/solo/readiness.js',        'renderSoloReadiness'],
   [ROUTES.SOLO_GOALS]:        ['./views/solo/goals.js',            'renderSoloGoals'],
-  [ROUTES.SOLO_SUBSCRIPTION]: ['./views/solo/subscription.js',    'renderSoloSubscription'],
+  [ROUTES.SOLO_SUBSCRIPTION]: ['./views/solo/subscription.js',     'renderSoloSubscription'],
   [ROUTES.SOLO_SETTINGS]:     ['./views/solo/settings.js',         'renderSoloSettings'],
   [ROUTES.SOLO_NUTRITION]:    ['./views/solo/nutrition.js',        'renderSoloNutrition'],
 };
 
-// ── ROUTE RENDERING ───────────────────────────────────────────
 async function renderRoute(route) {
   const entry = VIEW_MAP[route];
   if (!entry) {
-    // Unknown route → fall back to home
     const homeRoute = isAuthenticated()
-      ? ROLE_HOME[getCurrentRole()]
+      ? (needsOnboarding() ? ROUTES.ONBOARDING : ROLE_HOME[getCurrentRole()])
       : ROUTES.WELCOME;
     const fallback = VIEW_MAP[homeRoute];
     if (fallback) await _loadAndRender(...fallback, homeRoute);
@@ -417,5 +411,4 @@ function _renderError(route, msg) {
     </div>`;
 }
 
-// ── START ─────────────────────────────────────────────────────
 init();
