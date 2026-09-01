@@ -1,12 +1,21 @@
 /**
- * PerformanceIQ Boot v3
- * Production auth is reconciled with Supabase before route selection.
+ * PerformanceIQ Boot v4
+ * Production auth is reconciled with Supabase before route selection and
+ * confirmation-link sessions are adopted when Supabase emits SIGNED_IN.
  */
 import { initTheme } from './theme.js';
-import { initAuth, reconcileSupabaseSession, clearAuthSession } from './auth.js';
+import {
+  initAuth,
+  reconcileSupabaseSession,
+  syncSupabaseSession,
+  clearAuthSession,
+  isAuthenticated,
+  needsOnboarding,
+  getCurrentRole,
+} from './auth.js';
 import { loadState } from '../state/state.js';
 import { supabase } from './supabase.js';
-import { navigate, ROUTES } from '../router.js';
+import { navigate, ROUTES, ROLE_HOME } from '../router.js';
 
 let _booted = false;
 
@@ -17,8 +26,9 @@ export async function boot() {
   initTheme();
   initAuth();
 
-  // A local production session is only a cache. Confirm it against Supabase
-  // before app.js decides the initial authenticated route.
+  // A local production session is only a cache. Confirm/adopt the authoritative
+  // Supabase session before app.js chooses the initial route. This also handles
+  // email-confirmation redirects where Supabase has a session but PIQ does not.
   await reconcileSupabaseSession();
 
   loadState();
@@ -29,9 +39,20 @@ export async function boot() {
 function _syncSupabaseSession() {
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT') {
-      // Clear both storage and the in-memory auth module state.
       clearAuthSession();
       navigate(ROUTES.WELCOME);
+      return;
+    }
+
+    // Do not perform Supabase calls directly inside the auth callback. Schedule
+    // them for the next task so Supabase's auth lock can finish first.
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+      setTimeout(async () => {
+        const synced = await syncSupabaseSession();
+        if (!synced || !isAuthenticated()) return;
+        if (needsOnboarding()) navigate(ROUTES.ONBOARDING);
+        else navigate(ROLE_HOME[getCurrentRole()] || ROUTES.PICK_ROLE);
+      }, 0);
     }
   });
 }
