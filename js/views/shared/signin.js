@@ -40,7 +40,7 @@ document.addEventListener('piq:authRendered', () => {
   document.getElementById('si-forgot-link')?.addEventListener('click', () => navigate(ROUTES.FORGOT_PASSWORD));
   document.getElementById('si-back-link')?.addEventListener('click', () => navigate(ROUTES.WELCOME));
 
-  document.getElementById('si-submit')?.addEventListener('click', async () => {
+  const submit = async () => {
     const email = document.getElementById('si-email')?.value.trim();
     const pass  = document.getElementById('si-pass')?.value;
     const errEl = document.getElementById('si-error');
@@ -49,14 +49,26 @@ document.addEventListener('piq:authRendered', () => {
       if (errEl) { errEl.textContent = 'Enter your email and password.'; errEl.style.display = 'block'; }
       return;
     }
-    btn.textContent = 'Signing in…'; btn.disabled = true;
+    if (errEl) errEl.style.display = 'none';
+    btn.textContent = 'Signing in…'; btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     const res = await signIn(email, pass);
-    if (res.ok) { navigate(ROLE_HOME[res.session.role]); }
-    else {
-      if (errEl) { errEl.textContent = res.error || 'Invalid email or password'; errEl.style.display = 'block'; }
-      btn.textContent = 'Sign In'; btn.disabled = false;
+    if (res.ok) {
+      navigate(res.isNew ? ROUTES.ONBOARDING : (ROLE_HOME[res.session.role] || ROUTES.PICK_ROLE));
+      return;
     }
-  });
+    if (errEl) {
+      const raw = res.error || 'Invalid email or password';
+      errEl.textContent = /email not confirmed/i.test(raw)
+        ? 'Please confirm your email first, then sign in.'
+        : raw;
+      errEl.style.display = 'block';
+    }
+    btn.textContent = 'Sign In'; btn.disabled = false; btn.removeAttribute('aria-busy');
+  };
+
+  document.getElementById('si-submit')?.addEventListener('click', submit);
+  document.getElementById('si-pass')?.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  document.getElementById('si-email')?.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
 
   document.querySelectorAll('[data-demo-role]').forEach(btn => {
     btn.addEventListener('click', () => {
