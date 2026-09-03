@@ -1,57 +1,56 @@
-/**
- * Forgot Password screen
- * Wires to Supabase resetPasswordForEmail when backend is live.
- * In demo/localStorage mode, shows a mock confirmation.
- */
 import { navigate, ROUTES } from '../../router.js';
+import { requestPasswordReset } from '../../core/auth.js';
 
 export function renderForgotPassword() {
   return `
-<div class="auth-card" style="margin-top:0">
-  <h2>Reset Password</h2>
-  <p style="font-size:13px;color:#6B7280;margin-bottom:20px;line-height:1.5">
-    Enter your email and we'll send you a link to reset your password.
+<div class="auth-card" style="margin-top:0" aria-labelledby="fp-title">
+  <h2 id="fp-title">Reset Password</h2>
+  <p class="auth-help" style="font-size:13px;margin:0 0 20px;line-height:1.5">
+    Enter your email and we'll send a secure PerformanceIQ password-reset link.
   </p>
 
-  <div id="fp-form">
+  <form id="fp-form" novalidate>
     <div class="input-group">
       <div class="input-wrap">
-        <input type="email" id="fp-email" placeholder="Email address" autocomplete="email">
+        <label class="sr-only" for="fp-email">Email address</label>
+        <input type="email" id="fp-email" placeholder="Email address" autocomplete="email" required>
       </div>
     </div>
-    <p id="fp-error" style="color:#f87171;font-size:12.5px;margin-bottom:12px;display:none"></p>
-    <button class="btn-primary" id="fp-submit" style="width:100%">Send Reset Link</button>
-  </div>
+    <p id="fp-error" role="alert" style="color:#b91c1c;font-size:12.5px;margin-bottom:12px;display:none"></p>
+    <button type="submit" class="btn-primary" id="fp-submit" style="width:100%">Send Reset Link</button>
+  </form>
 
   <div id="fp-success" style="display:none;text-align:center;padding:12px 0">
     <div style="font-size:32px;margin-bottom:12px">📬</div>
-    <p style="font-size:14px;font-weight:600;color:#0f172a;margin-bottom:6px">Check your inbox</p>
-    <p style="font-size:13px;color:#6B7280;line-height:1.5">
-      If that email is registered, a reset link is on its way.
+    <p style="font-size:14px;font-weight:700;color:var(--text-primary,#0f172a);margin-bottom:6px">Check your inbox</p>
+    <p class="auth-help" style="font-size:13px;line-height:1.5">
+      If that address is registered, Supabase has sent a password-reset link. Open it to choose a new password.
     </p>
   </div>
 
   <div class="auth-foot" style="margin-top:16px">
-    <a id="fp-back-signin" style="cursor:pointer">← Back to Sign In</a>
+    <button type="button" id="fp-back-signin" class="auth-inline-link">← Back to Sign In</button>
   </div>
 </div>`;
 }
 
 document.addEventListener('piq:authRendered', () => {
+  const form = document.getElementById('fp-form');
   const submit = document.getElementById('fp-submit');
-  if (!submit) return;
+  if (!form || !submit) return;
 
-  document.getElementById('fp-back-signin')?.addEventListener('click', () =>
-    navigate(ROUTES.SIGN_IN));
+  document.getElementById('fp-back-signin')?.addEventListener('click', () => navigate(ROUTES.SIGN_IN));
 
-  submit.addEventListener('click', async () => {
-    const email = document.getElementById('fp-email')?.value.trim().toLowerCase();
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const emailEl = document.getElementById('fp-email');
+    const email = emailEl?.value.trim().toLowerCase();
     const errEl = document.getElementById('fp-error');
-    const form  = document.getElementById('fp-form');
     const success = document.getElementById('fp-success');
 
-    if (!email || !email.includes('@')) {
+    if (!emailEl?.checkValidity()) {
       if (errEl) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; }
+      emailEl?.focus();
       return;
     }
 
@@ -59,20 +58,15 @@ document.addEventListener('piq:authRendered', () => {
     submit.disabled = true;
     if (errEl) errEl.style.display = 'none';
 
-    // ── Supabase (uncomment when backend migration is complete) ──
-    // const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    //   redirectTo: `${window.location.origin}/performanceiq-platform/#/reset-password`
-    // });
-    // if (error) {
-    //   errEl.textContent = error.message;
-    //   errEl.style.display = 'block';
-    //   submit.textContent = 'Send Reset Link';
-    //   submit.disabled = false;
-    //   return;
-    // }
+    const res = await requestPasswordReset(email);
+    if (!res.ok) {
+      if (errEl) { errEl.textContent = res.error || 'Unable to send reset email. Please try again.'; errEl.style.display = 'block'; }
+      submit.textContent = 'Send Reset Link';
+      submit.disabled = false;
+      return;
+    }
 
-    // Demo / pre-Supabase: always show success (don't leak whether email exists)
     form.style.display = 'none';
-    success.style.display = 'block';
+    if (success) success.style.display = 'block';
   });
 });
