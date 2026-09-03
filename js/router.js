@@ -1,35 +1,21 @@
 /**
  * PerformanceIQ — router.js
  * Flat in-memory router.  No Supabase dependency.
- * app.js is the only consumer of navigate(); views use this module
- * only for ROUTES constants and goHome().
- *
- * Guard contract
- * ──────────────
- * Guards are sync functions: (toRoute) => string | null
- *   • return null      → allow navigation
- *   • return routeKey  → redirect to that route instead
- *
- * suppressNextGuard() lets async save operations (e.g. onboarding finish)
- * call navigate() immediately after without triggering a bounce-back.
  */
 
-// ── ROUTE REGISTRY ────────────────────────────────────────────
 export const ROUTES = {
-  // Auth / shared
   WELCOME:          'welcome',
   SIGN_IN:          'signin',
   SIGN_UP:          'signup',
   FORGOT_PASSWORD:  'forgot-password',
+  RESET_PASSWORD:   'reset-password',
   PICK_ROLE:        'pick-role',
   JOIN_TEAM:        'join-team',
   ONBOARDING:       'onboarding',
 
-  // Settings (shared, role-aware)
   SETTINGS_THEME:   'settings/theme',
   SETTINGS_PROFILE: 'settings/profile',
 
-  // Coach
   COACH_HOME:           'coach/home',
   COACH_TEAM:           'coach/team',
   COACH_ROSTER:         'coach/roster',
@@ -44,7 +30,6 @@ export const ROUTES = {
   COACH_REPORTS:        'coach/reports',
   COACH_SETTINGS:       'coach/settings',
 
-  // Player
   PLAYER_HOME:       'player/home',
   PLAYER_TODAY:      'player/today',
   PLAYER_EXERCISE:   'player/exercise/:id',
@@ -58,7 +43,6 @@ export const ROUTES = {
   PLAYER_SETTINGS:   'player/settings',
   PLAYER_NUTRITION:  'player/nutrition',
 
-  // Parent
   PARENT_HOME:     'parent/home',
   PARENT_CHILD:    'parent/child',
   PARENT_WEEK:     'parent/week',
@@ -68,7 +52,6 @@ export const ROUTES = {
   PARENT_BILLING:  'parent/billing',
   PARENT_SETTINGS: 'parent/settings',
 
-  // Admin
   ADMIN_HOME:       'admin/home',
   ADMIN_ORG:        'admin/org',
   ADMIN_TEAMS:      'admin/teams',
@@ -80,7 +63,6 @@ export const ROUTES = {
   ADMIN_BILLING:    'admin/billing',
   ADMIN_SETTINGS:   'admin/settings',
 
-  // Solo
   SOLO_HOME:         'solo/home',
   SOLO_TODAY:        'solo/today',
   SOLO_BUILDER:      'solo/builder',
@@ -94,7 +76,6 @@ export const ROUTES = {
   SOLO_NUTRITION:    'solo/nutrition',
 };
 
-// ── ROLE → HOME ROUTE MAP ─────────────────────────────────────
 export const ROLE_HOME = {
   coach:  ROUTES.COACH_HOME,
   player: ROUTES.PLAYER_HOME,
@@ -103,37 +84,24 @@ export const ROLE_HOME = {
   solo:   ROUTES.SOLO_HOME,
 };
 
-// ── ROUTER STATE ──────────────────────────────────────────────
 let _currentRoute = ROUTES.WELCOME;
 let _routeParams  = {};
 let _listeners    = [];
 let _guards       = [];
 let _skipNextGuard = false;
 
-// ── GUARD SUPPRESSION ─────────────────────────────────────────
-/**
- * Call this before navigate() inside an async save handler so the
- * guard doesn't redirect back to onboarding mid-write.
- */
-export function suppressNextGuard() {
-  _skipNextGuard = true;
-}
+export function suppressNextGuard() { _skipNextGuard = true; }
 
-// ── GUARD REGISTRATION ────────────────────────────────────────
-/** Register a route guard.  Returns an unsubscribe function. */
 export function addGuard(fn) {
   _guards.push(fn);
   return () => { _guards = _guards.filter(g => g !== fn); };
 }
 
-// ── NAVIGATION ────────────────────────────────────────────────
 export function navigate(route, params = {}) {
   let destination = route;
-
   if (_skipNextGuard) {
     _skipNextGuard = false;
   } else {
-    // Run guards in registration order; first redirect wins
     for (const guard of _guards) {
       const redirect = guard(route);
       if (redirect && redirect !== route) {
@@ -142,7 +110,6 @@ export function navigate(route, params = {}) {
       }
     }
   }
-
   _currentRoute = destination;
   _routeParams  = params;
   _listeners.forEach(fn => fn(destination, params));
@@ -151,32 +118,23 @@ export function navigate(route, params = {}) {
 export function getCurrentRoute() { return _currentRoute; }
 export function getRouteParams()  { return _routeParams;  }
 
-// ── LISTENER REGISTRATION ─────────────────────────────────────
-/** Subscribe to route changes.  Returns an unsubscribe function. */
 export function onRouteChange(fn) {
   _listeners.push(fn);
   return () => { _listeners = _listeners.filter(l => l !== fn); };
 }
 
-// ── HELPERS ───────────────────────────────────────────────────
-export function goHome(role) {
-  navigate(ROLE_HOME[role] || ROUTES.WELCOME);
-}
+export function goHome(role) { navigate(ROLE_HOME[role] || ROUTES.WELCOME); }
 
 export const AUTH_ROUTES = new Set([
   ROUTES.WELCOME,
   ROUTES.SIGN_IN,
   ROUTES.SIGN_UP,
   ROUTES.FORGOT_PASSWORD,
+  ROUTES.RESET_PASSWORD,
   ROUTES.PICK_ROLE,
   ROUTES.JOIN_TEAM,
   ROUTES.ONBOARDING,
 ]);
 
-export function isAuthRoute(route) {
-  return AUTH_ROUTES.has(route);
-}
-
-export function routeMatchesRole(route, role) {
-  return route.startsWith(role + '/') || !route.includes('/');
-}
+export function isAuthRoute(route) { return AUTH_ROUTES.has(route); }
+export function routeMatchesRole(route, role) { return route.startsWith(role + '/') || !route.includes('/'); }
