@@ -1,11 +1,12 @@
 /**
- * PerformanceIQ Auth v5
+ * PerformanceIQ Auth v6
  * Supabase is authoritative for production sessions.
  * Demo mode remains local/offline and never touches the database.
  */
 import { supabase } from './supabase.js';
 
 const SESSION_KEY = 'piq_session_v2';
+const ALLOWED_PUBLIC_ROLES = ['coach', 'player', 'parent', 'solo'];
 
 const DEMO_USERS = {
   'coach@demo.com':  { id: 'u_coach',  name: 'Alex Morgan',   role: 'coach',  sport: 'basketball' },
@@ -21,6 +22,13 @@ const DEMO_BY_ROLE = Object.values(DEMO_USERS).reduce((acc, user) => {
 }, {});
 
 let _session = null;
+
+function appReturnUrl() {
+  // GitHub Pages hosts PIQ under /performanceiq-platform/. Keeping the current
+  // pathname also makes local/staging deployments work without hardcoding a host.
+  const base = `${window.location.origin}${window.location.pathname}`;
+  return base.endsWith('/') ? base : `${base}/`;
+}
 
 function saveSession(s) {
   _session = s;
@@ -57,13 +65,13 @@ async function fetchProfile(userId) {
   return { profile: data, error: null };
 }
 
-async function fetchProfileWithRetry(userId, attempts = 4) {
+async function fetchProfileWithRetry(userId, attempts = 6) {
   let lastError = null;
   for (let i = 0; i < attempts; i += 1) {
     const res = await fetchProfile(userId);
     if (res.profile) return res;
     lastError = res.error;
-    if (i < attempts - 1) await new Promise(resolve => setTimeout(resolve, 150 * (i + 1)));
+    if (i < attempts - 1) await new Promise(resolve => setTimeout(resolve, 175 * (i + 1)));
   }
   return { profile: null, error: lastError };
 }
@@ -118,11 +126,8 @@ export function startDemo(role) {
 }
 
 /**
- * Reconcile the local PIQ cache with Supabase.
- * Important: when the user arrives from an email-confirmation link there may
- * be a valid Supabase session but no PIQ local session yet. In that case we
- * adopt the Supabase session and hydrate the profile instead of treating the
- * visitor as signed out.
+ * Reconcile the local PIQ cache with Supabase. A confirmation link can establish
+ * a valid Supabase session before PerformanceIQ has any local session; adopt it.
  */
 export async function reconcileSupabaseSession() {
   if (_session?.isDemo) return true;
@@ -134,14 +139,10 @@ export async function reconcileSupabaseSession() {
     return false;
   }
 
-  if (_session?.user?.id && sbSession.user.id !== _session.user.id) {
-    saveSession(null);
-  }
-
+  if (_session?.user?.id && sbSession.user.id !== _session.user.id) saveSession(null);
   return adoptSupabaseSession(sbSession, _session?.user || null);
 }
 
-/** Adopt an already-established Supabase session after SIGNED_IN/TOKEN_REFRESHED. */
 export async function syncSupabaseSession() {
   if (_session?.isDemo) return true;
   const { data, error } = await supabase.auth.getSession();
@@ -156,13 +157,18 @@ export async function signIn(email, password, roleHint) {
   if (demo) return startDemo(demo.role);
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    const message = /invalid login credentials/i.test(error.message)
+      ? 'Email or password is incorrect. If you previously tried to create an account with this email, use Forgot password to set a new password.'
+      : error.message;
+    return { ok: false, error: message };
+  }
 
   const sbUser = data.user;
   const { profile, error: profileError } = await fetchProfileWithRetry(sbUser.id);
   if (profileError || !profile) {
     await supabase.auth.signOut().catch(() => {});
-    return { ok: false, error: 'Your account was authenticated, but the profile could not be loaded.' };
+    return { ok: false, error: 'Your account signed in, but the PerformanceIQ profile could not be loaded. Please try again.' };
   }
 
   const role = profile.role || roleHint || 'solo';
@@ -187,14 +193,15 @@ export async function signIn(email, password, roleHint) {
 
 export async function signUp(email, password, name, role) {
   email = email.trim().toLowerCase();
-  if (!email.includes('@')) return { ok: false, error: 'Invalid email.' };
+  const cleanName = name?.trim() || '';
+  if (!email.includes('@')) return { ok: false, error: 'Enter a valid email address.' };
   if (!password || password.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
-  if (!name.trim()) return { ok: false, error: 'Name is required.' };
-  if (!['coach','player','parent','solo'].includes(role)) return { ok: false, error: 'Please select a valid role.' };
+  if (!cleanName) return { ok: false, error: 'Name is required.' };
+  if (!ALLOWED_PUBLIC_ROLES.includes(role)) return { ok: false, error: 'Please select a valid account type.' };
 
   if (DEMO_USERS[email]) {
     const base = DEMO_USERS[email];
-    const user = { ...base, name: name.trim(), role, onboardingDone: false };
+    const user = { ...base, name: cleanName, role, onboardingDone: false };
     const session = { user, role, expiresAt: Date.now() + 86400000 * 7, isDemo: true };
     saveSession(session);
     return { ok: true, session, isNew: true };
@@ -204,33 +211,69 @@ export async function signUp(email, password, name, role) {
     email,
     password,
     options: {
-      data: { name: name.trim(), role },
-      emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+      data: { name: cleanName, full_name: cleanName, role },
+      emailRedirectTo: appReturnUrl(),
     },
   });
   if (error) return { ok: false, error: error.message };
 
+  // With email confirmation enabled Supabase deliberately makes repeated-signup
+  // responses non-enumerable. identities=[] is the documented signal returned
+  // by current GoTrue builds for an already-registered identity. Do not pretend
+  // that we changed the existing password or that a new account was created.
+  const identities = data.user?.identities;
+  const possiblyExisting = Array.isArray(identities) && identities.length === 0;
+
   if (!data.session) {
     saveSession(null);
-    return { ok: true, isNew: true, requiresEmailConfirmation: true };
+    return {
+      ok: true,
+      isNew: !possiblyExisting,
+      possiblyExisting,
+      requiresEmailConfirmation: !possiblyExisting,
+      needsAccountRecovery: possiblyExisting,
+    };
   }
 
   const sbUser = data.user;
-  const user = {
+  if (!sbUser?.id) return { ok: false, error: 'Account creation did not return a valid user. Please try again.' };
+
+  const adopted = await adoptSupabaseSession(data.session, {
     id: sbUser.id,
-    name: name.trim(),
+    name: cleanName,
     email,
     role,
     sport: null,
     onboardingDone: false,
-  };
-  const session = {
-    user,
-    role,
-    expiresAt: data.session.expires_at ? data.session.expires_at * 1000 : Date.now() + 3600000,
-  };
-  saveSession(session);
-  return { ok: true, session, isNew: true };
+  });
+  if (!adopted) {
+    return { ok: false, error: 'Account was created, but the profile is still initializing. Please sign in again in a few seconds.' };
+  }
+  return { ok: true, session: _session, isNew: true };
+}
+
+export async function resendSignupConfirmation(email) {
+  const cleanEmail = email.trim().toLowerCase();
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: cleanEmail,
+    options: { emailRedirectTo: appReturnUrl() },
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function requestPasswordReset(email) {
+  const cleanEmail = email.trim().toLowerCase();
+  const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+    redirectTo: `${appReturnUrl()}#/reset-password`,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function updatePassword(newPassword) {
+  if (!newPassword || newPassword.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 export async function signOut() {
