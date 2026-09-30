@@ -47,7 +47,7 @@
 
 @media(max-width:640px){
   .ob2-wrap{padding:10px 8px calc(24px + env(safe-area-inset-bottom))}.ob2-card{border-radius:18px;box-shadow:0 14px 36px rgba(2,6,23,.15)}
-  .ob2-steps{justify-content:center;gap:5px;overflow:visible;padding:14px 10px 12px}.ob2-step{gap:4px;font-size:10px}.ob2-step-pip{width:8px;height:8px;flex-basis:8px}.ob2-step-conn{width:12px;flex-basis:12px}
+  .ob2-steps{justify-content:center;gap:8px;overflow:visible;padding:14px 10px 12px}.ob2-step{gap:5px;font-size:11px}.ob2-step span{display:none}.ob2-step.active span{display:inline}.ob2-step-pip{width:9px;height:9px;flex-basis:9px}.ob2-step-conn{width:18px;flex-basis:18px}
   .ob2-panel{padding:24px 18px 22px}.ob2-panel h2{font-size:25px}.ob2-sub{margin-bottom:20px}
   .ob2-role-grid,.ob2-sport-grid,.ob2-goals-grid,.ob2-phase-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.ob2-field-row{grid-template-columns:1fr}
   .ob2-nav{gap:10px;margin-top:24px}.ob2-btn-back,.ob2-btn-next{flex:1;padding:0 12px}
