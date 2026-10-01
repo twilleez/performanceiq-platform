@@ -30,6 +30,17 @@ test('public landing communicates value and converts to signup', async ({ page }
   await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible();
 });
 
+test('public athlete demo opens without hanging', async ({ page }) => {
+  await page.goto('/'); await waitForApp(page);
+  const demo = page.getByRole('button', { name: 'Explore Athlete Demo' });
+  await expect(demo).toBeVisible();
+  await demo.click();
+  await expect(page.locator('#piq-app')).toHaveClass(/mounted/, { timeout: 3000 });
+  await expect(page.locator('#nav-role-badge')).toContainText('player');
+  await expect(page.locator('#piq-main')).not.toBeEmpty();
+  await expect(demo).toHaveCount(0);
+});
+
 test('public signup is readable and exposes quick demos', async ({ page }) => {
   await page.goto('/#/signup'); await waitForApp(page);
   await expect(page.getByLabel('Full name')).toBeVisible();
