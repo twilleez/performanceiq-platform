@@ -3,7 +3,7 @@
  * Keeps every claim tied to functionality that exists in the product today.
  */
 import { navigate, ROLE_HOME, ROUTES } from '../../router.js';
-import { signIn } from '../../core/auth.js';
+import { startDemo } from '../../core/auth.js';
 
 export function renderWelcome() {
   return `
@@ -97,18 +97,33 @@ export function renderWelcome() {
 </div>`;
 }
 
-async function runDemo(button, email) {
+function runDemo(button, email) {
   if (!button || !email) return;
   const original = button.textContent;
-  button.textContent = 'Loading…';
+  button.textContent = 'Opening demo…';
   button.disabled = true;
-  const res = await signIn(email, 'demo');
-  if (res.ok) {
-    navigate(ROLE_HOME[res.session.role]);
-    return;
+
+  const roleByEmail = {
+    'coach@demo.com': 'coach',
+    'player@demo.com': 'player',
+    'parent@demo.com': 'parent',
+    'solo@demo.com': 'solo',
+  };
+
+  try {
+    const res = startDemo(roleByEmail[email]);
+    if (!res.ok) throw new Error(res.error || 'Unable to open demo.');
+
+    const destination = ROLE_HOME[res.session.role] || ROUTES.WELCOME;
+    requestAnimationFrame(() => navigate(destination));
+  } catch (error) {
+    console.error('[PIQ] demo launch failed:', error);
+    button.textContent = 'Unable to load demo';
+    setTimeout(() => {
+      button.textContent = original;
+      button.disabled = false;
+    }, 1800);
   }
-  button.textContent = 'Unable to load demo';
-  setTimeout(() => { button.textContent = original; button.disabled = false; }, 1800);
 }
 
 document.addEventListener('piq:authRendered', () => {
