@@ -147,6 +147,62 @@ test('Solo can choose workout type and log the selected session', async ({ page 
   await expect(page.locator('#piq-self-complete-status')).toContainText('Workout logged');
 });
 
+
+test('player core loop completes workout and exposes progress afterward', async ({ page }) => {
+  await page.addInitScript(() => {
+    const seeded = {
+      assignedWorkouts: [{
+        id: 'qa-assignment-1',
+        title: 'QA Total-Body Strength',
+        sessionType: 'Strength',
+        exercises: [
+          { name: 'Goblet Squat', sets: 4, reps: '6–8' },
+          { name: 'Romanian Deadlift', sets: 3, reps: 8 },
+          { name: 'Dumbbell Bench Press', sets: 3, reps: '8–10' },
+        ],
+        completed: false,
+      }],
+      workoutLog: [],
+    };
+    localStorage.setItem('piq_state_v8', JSON.stringify(seeded));
+  });
+
+  await openDemo(page, 'player');
+  await clickSidebar(page, 'Today');
+
+  await expect(page.getByRole('heading', { name: 'QA Total-Body Strength' })).toBeVisible();
+  await expect(page.getByText('Goblet Squat')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Complete Workout/i })).toBeVisible();
+
+  await page.locator('#duration').fill('48');
+  await page.locator('#rpe').fill('7');
+  await page.locator('#notes').fill('QA acceptance session');
+  await page.getByRole('button', { name: /Complete Workout/i }).click();
+
+  await expect(page.locator('#complete-status')).toContainText('Workout completed');
+  await page.waitForTimeout(650);
+
+  await clickSidebar(page, 'Progress');
+  await expect(page.getByRole('heading', { name: /My Progress/i })).toBeVisible();
+  await expect(page.locator('#piq-main')).toContainText('Total logged');
+  await expect(page.locator('#piq-main')).toContainText('1');
+});
+
+test('coach dashboard makes attention, assignment and analytics paths obvious', async ({ page }) => {
+  await openDemo(page, 'coach');
+
+  await expect(page.getByText('Athletes Needing Attention')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Build a session/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Analytics dashboard/i })).toBeVisible();
+
+  await page.getByRole('button', { name: /Build a session/i }).click();
+  await expect(page.locator('#piq-main')).toContainText(/Program|Build/i);
+
+  await clickSidebar(page, 'Analytics');
+  await expect(page.getByRole('heading', { name: /Team Analytics/i })).toBeVisible();
+  await expect(page.locator('#piq-main')).toContainText(/Avg Readiness|No Recent Data/);
+});
+
 test('sign out returns to the public landing page', async ({ page }) => {
   await openDemo(page, 'player'); await page.locator('[data-signout]').first().click();
   await expect(page.getByRole('heading', { name: /Know how ready you are/ })).toBeVisible();
