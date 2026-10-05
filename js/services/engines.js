@@ -22,10 +22,6 @@ import { computeACWR, sessionLoad } from './loadModel.js';
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 
-/** EWMA decay factors — Hulin et al. 2014 */
-const LAMBDA_A = 2 / (7  + 1);   // acute  (7-day EWMA)
-const LAMBDA_C = 2 / (28 + 1);   // chronic (28-day EWMA)
-
 /** sRPE = session RPE × duration in minutes (Foster 2001) */
 export function sRPE(entry) { return sessionLoad(entry) ?? 0; }
 
@@ -50,16 +46,6 @@ function withinDays(arr, n, now = Date.now()) {
     const t = a.date ? new Date(a.date).getTime() : (a.ts || 0);
     return t >= cutoff;
   });
-}
-
-/** Exponential weighted moving average over a field */
-function ewma(arr, field, lambda) {
-  if (!arr.length) return 0;
-  let val = arr[0][field] || 0;
-  for (let i = 1; i < arr.length; i++) {
-    val = lambda * (arr[i][field] || 0) + (1 - lambda) * val;
-  }
-  return val;
 }
 
 /** HRV proxy from mood + sleep + stress (Buchheit 2013 — r≈0.68 with rMSSD) */
