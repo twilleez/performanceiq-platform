@@ -1436,10 +1436,10 @@ function _buildRationale(tier, readiness, phase, moduleLabel) {
     return `Readiness ${score}/100 — optimal training window. ${phase} protocol: ${moduleLabel}. ACWR ${acwr?.toFixed(2) || 'N/A'} within sweet spot — full training stimulus appropriate.`;
   }
   if (tier === 'deload') {
-    return `ACWR ${acwr?.toFixed(2) || 'N/A'} indicates load management required (Gabbett BJSM 2016). Deload session selected: ${moduleLabel}. Maintain movement quality — protect the next 3 weeks.`;
+    return `ACWR ${acwr?.toFixed(2) || 'N/A'} is above the athlete’s recent load baseline; coach review is recommended. Deload session selected: ${moduleLabel}. Maintain movement quality — protect the next 3 weeks.`;
   }
   if (tier === 'recovery') {
-    return `Readiness ${score}/100 — recovery protocol activated. ${acwrZone === 'danger' ? 'ACWR danger zone: complete rest or light movement only.' : 'Active recovery: tissue quality work accelerates supercompensation.'} Selected: ${moduleLabel}.`;
+    return `Readiness ${score}/100 — recovery protocol activated. ${acwrZone === 'danger' ? 'Training load is well above the recent baseline; use readiness and coach judgment to modify the session.' : 'Active recovery: tissue quality work accelerates supercompensation.'} Selected: ${moduleLabel}.`;
   }
   return `Readiness ${score}/100 supports quality training. ${phase} maintenance: ${moduleLabel}. Consistent moderate sessions build the chronic base that enables peak performance.`;
 }
