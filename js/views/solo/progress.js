@@ -88,11 +88,11 @@ function acwrPill(series) {
     'sweet-spot':'#22c955', 'undertraining':'#3b82f6', 'detraining':'#94a3b8',
   };
   const labels = {
-    'danger':'⚠️ Danger >1.5 — rest required',
-    'spike':'📈 Spike 1.3–1.5 — reduce volume',
-    'sweet-spot':'✅ Sweet spot 0.8–1.3 — optimal',
-    'undertraining':'📉 Undertraining <0.8 — build progressively',
-    'detraining':'💤 Detraining — resume training',
+    'danger':'⚠️ Well above recent baseline — review recommended',
+    'spike':'📈 Above recent baseline — monitor',
+    'sweet-spot':'✅ Consistent with recent baseline',
+    'undertraining':'📉 Below recent baseline',
+    'detraining':'💤 Well below recent baseline',
   };
   const c = colors[latest.zone] || '#94a3b8';
   const l = labels[latest.zone] || latest.zone;
@@ -239,7 +239,7 @@ export function renderSoloProgress() {
         </div>` : `
         <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12.5px">
           <div style="font-size:24px;margin-bottom:8px">📊</div>
-          Log 3+ sessions to see your load chart
+          Log scored sessions to build your 28-day load history
         </div>`}
       </div>
 
@@ -247,13 +247,13 @@ export function renderSoloProgress() {
       <div class="panel">
         <div class="panel-title">Current ACWR</div>
         <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:12px">
-          Acute:Chronic Workload Ratio · Needs 3+ sessions
+          Acute:Chronic Workload Ratio · Needs 28 days + 4 scored sessions
         </div>
         <div style="margin-bottom:14px">${acwrPill(acwrSeries)}</div>
         <div style="font-size:11.5px;color:var(--text-muted);line-height:1.6">
-          Sweet spot 0.8–1.3 reduces injury risk.
-          Above 1.5 = 2–4× higher injury incidence
-          (Gabbett BJSM 2016).
+          Bands are training-load review flags, not injury predictions.
+          Most ACWR research is based on adult elite athletes; youth use should be interpreted cautiously.
+          (Gabbett BJSM 2016; later methodological critiques noted in the load model.)
         </div>
       </div>
 
