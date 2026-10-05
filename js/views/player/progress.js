@@ -52,23 +52,23 @@ export function renderPlayerProgress() {
     ? (() => {
         const last14 = acwrData.slice(-14);
         return last14.map(d => {
-          const pct = Math.min(100, Math.round((d.acwr / 2.0) * 100));
+          const hasRatio = d.acwr !== null;
           const c =
             d.zone === 'sweet-spot'    ? '#22c955' :
             d.zone === 'spike'         ? '#f59e0b' :
             d.zone === 'danger'        ? '#ef4444' :
             d.zone === 'undertraining' ? '#3b82f6' : '#888';
-          return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1" title="${d.date}: ACWR ${d.acwr} (${d.zone})">
-            <div style="font-size:9px;color:var(--text-muted)">${d.acwr}</div>
-            <div style="width:100%;max-width:22px;height:${Math.max(4,Math.round(d.acwr/2*68))}px;background:${c};border-radius:3px 3px 0 0"></div>
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1" title="${d.date}: ${hasRatio ? `ACWR ${d.acwr} (${d.zone})` : 'Not enough load history'}">
+            <div style="font-size:9px;color:var(--text-muted)">${hasRatio ? d.acwr : '—'}</div>
+            <div style="width:100%;max-width:22px;height:${hasRatio ? Math.max(4,Math.round(d.acwr/2*68)) : 4}px;background:${c};border-radius:3px 3px 0 0;opacity:${hasRatio?1:.35}"></div>
             <div style="font-size:9px;color:var(--text-muted);writing-mode:initial">${d.date.split(' ')[0]}</div>
           </div>`;
         }).join('');
       })()
-    : `<div style="color:var(--text-muted);font-size:12px;padding:20px 0;text-align:center;width:100%">Log 3+ sessions to unlock ACWR monitoring.</div>`;
+    : `<div style="color:var(--text-muted);font-size:12px;padding:20px 0;text-align:center;width:100%">ACWR appears after 28 days of history with at least 4 scored sessions.</div>`;
 
   // ── Current ACWR and zone ─────────────────────────────────────
-  const latestACWR = acwrData.length > 0 ? acwrData[acwrData.length - 1] : null;
+  const latestACWR = acwrData.filter(d => d.acwr !== null).at(-1) || null;
   const acwrZoneColor =
     !latestACWR                          ? '#888' :
     latestACWR.zone === 'sweet-spot'     ? '#22c955' :
@@ -78,10 +78,10 @@ export function renderPlayerProgress() {
 
   const acwrZoneLabel =
     !latestACWR                          ? 'No data yet' :
-    latestACWR.zone === 'sweet-spot'     ? 'Sweet Spot — ideal training zone' :
-    latestACWR.zone === 'spike'          ? 'Load Spike — reduce volume today' :
-    latestACWR.zone === 'danger'         ? 'Danger Zone — rest required' :
-    latestACWR.zone === 'undertraining'  ? 'Undertraining — build load gradually' : 'No data';
+    latestACWR.zone === 'sweet-spot'     ? 'Load is consistent with the recent baseline' :
+    latestACWR.zone === 'spike'          ? 'Load is above the recent baseline — monitor' :
+    latestACWR.zone === 'danger'         ? 'Load is well above the recent baseline — coach review recommended' :
+    latestACWR.zone === 'undertraining'  ? 'Load is below the recent baseline' : 'No data';
 
   // ── Readiness history sparkline ───────────────────────────────
   const readinessDots = checkins.length > 0
@@ -164,7 +164,7 @@ export function renderPlayerProgress() {
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
             <div>
               <div class="panel-title" style="margin:0">Acute:Chronic Workload (ACWR)</div>
-              <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Sweet spot: 0.8–1.3 · Gabbett 2016</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Review bands: 0.8–1.3 in-range · Gabbett 2016 heuristics</div>
             </div>
             ${latestACWR ? `
             <div style="text-align:right">
