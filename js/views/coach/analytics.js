@@ -1,15 +1,13 @@
 /**
  * PerformanceIQ — Coach Analytics v3
  * ─────────────────────────────────────────────────────────────
- * PHASE 2 UPGRADE: ACWR chart now reads from real workout log data
- * via getACWRSeries() and getLoadSeries() selectors.
- *
- * Falls back to seeded demo curve when log is empty (new users).
- * No-check-in flags and PIQ distribution preserved from v2.
+ * ACWR chart reads scored workout-log data through the unified load model.
+ * Insufficient history renders an explicit empty state; no synthetic ratio is shown.
+ * No-check-in flags and PIQ distribution are preserved.
  */
 import { buildSidebar }                from '../../components/nav.js';
 import { getRoster, getWorkoutLog }    from '../../state/state.js';
-import { getACWRSeries, getLoadSeries } from '../../state/selectors.js';
+import { getACWRSeries }                from '../../state/selectors.js';
 
 // ── ACWR LINE CHART ───────────────────────────────────────────
 
