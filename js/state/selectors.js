@@ -10,6 +10,7 @@
 
 import { getState }                              from './state.js';
 import { getCurrentRole }                        from '../core/auth.js';
+import { computeACWR, acwrSeries, loadSeries } from '../services/loadModel.js';
 import { getScoreBreakdownElite, getPIQScore,
          getReadinessScoreElite,
          getReadinessRingOffsetElite,
@@ -302,18 +303,9 @@ export function getReadinessResult() {
     score >= 45 ? 'Active recovery only — mobility and pliability work.' :
     'Complete rest — sleep, nutrition, and recovery only.';
 
-  const DAY_MS  = 86_400_000;
-  const now     = Date.now();
-  const sRPE    = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
-  const acute   = log.filter(w => now - w.ts < 7  * DAY_MS).reduce((s, w) => s + sRPE(w), 0);
-  const chronic = log.filter(w => now - w.ts < 28 * DAY_MS).reduce((s, w) => s + sRPE(w), 0) / 4;
-  const acwr    = chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : 1.0;
-  const acwrZone =
-    log.length < 3  ? 'no-data'       :
-    acwr > 1.50     ? 'danger'        :
-    acwr > 1.30     ? 'spike'         :
-    acwr >= 0.80    ? 'sweet-spot'    :
-    acwr >= 0.60    ? 'undertraining' : 'detraining';
+  const lm       = computeACWR(log);
+  const acwr     = lm.acwr;
+  const acwrZone = lm.zone;
 
   return {
     score, raw: score, color, ringOffset, explain,
@@ -323,79 +315,13 @@ export function getReadinessResult() {
 }
 
 // ── ACWR SERIES ───────────────────────────────────────────────────────────────
-export function getACWRSeries() {
-  const log = getState().workoutLog;
-  if (log.length < 3) return [];
-
-  const LAMBDA_A = 2 / 8;
-  const LAMBDA_C = 2 / 29;
-  const now      = Date.now();
-  const DAY_MS   = 86_400_000;
-  const days     = 28;
-  const sRPE     = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
-
-  const dailyLoad = new Array(days).fill(0);
-  log.forEach(w => {
-    const daysAgo = Math.floor((now - w.ts) / DAY_MS);
-    if (daysAgo >= 0 && daysAgo < days) dailyLoad[days - 1 - daysAgo] += sRPE(w);
-  });
-
-  let ewmaA = 0, ewmaC = 0;
-  const series = [];
-
-  for (let i = 0; i < days; i++) {
-    const load = dailyLoad[i];
-    ewmaA = LAMBDA_A * load + (1 - LAMBDA_A) * ewmaA;
-    ewmaC = LAMBDA_C * load + (1 - LAMBDA_C) * ewmaC;
-    const acwr = ewmaC > 0 ? ewmaA / ewmaC : 1.0;
-    const zone =
-      acwr > 1.50  ? 'danger'        :
-      acwr > 1.30  ? 'spike'         :
-      acwr >= 0.80 ? 'sweet-spot'    :
-      acwr >= 0.60 ? 'undertraining' :
-      i < 7        ? 'no-data'       : 'undertraining';
-
-    if (i >= 6) {
-      const d = new Date(now - (days - 1 - i) * DAY_MS);
-      series.push({
-        date: d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
-        acwr: Math.round(acwr * 100) / 100,
-        zone,
-        load: Math.round(load * 10) / 10,
-      });
-    }
-  }
-
-  return series;
+export function getACWRSeries(days = 28) {
+  return acwrSeries(getState().workoutLog, { days });
 }
 
 // ── LOAD SERIES ───────────────────────────────────────────────────────────────
-export function getLoadSeries() {
-  const log    = getState().workoutLog;
-  const now    = Date.now();
-  const DAY_MS = 86_400_000;
-  const days   = 28;
-  const sRPE   = w => (w.avgRPE || 5) * ((w.duration || 45) / 60);
-
-  const dailyLoad = new Array(days).fill(0);
-  const dailyHits = new Array(days).fill(false);
-
-  log.forEach(w => {
-    const daysAgo = Math.floor((now - w.ts) / DAY_MS);
-    if (daysAgo >= 0 && daysAgo < days) {
-      dailyLoad[days - 1 - daysAgo] += sRPE(w);
-      dailyHits[days - 1 - daysAgo] = true;
-    }
-  });
-
-  return dailyLoad.map((load, i) => {
-    const d = new Date(now - (days - 1 - i) * DAY_MS);
-    return {
-      date:    d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' }),
-      load:    Math.round(load * 10) / 10,
-      hasData: dailyHits[i],
-    };
-  });
+export function getLoadSeries(days = 28) {
+  return loadSeries(getState().workoutLog, { days });
 }
 
 // ── NUTRITION RESULT ──────────────────────────────────────────────────────────
