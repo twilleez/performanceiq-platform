@@ -14,73 +14,57 @@ import { getACWRSeries, getLoadSeries } from '../../state/selectors.js';
 // ── ACWR LINE CHART ───────────────────────────────────────────
 
 function acwrChart(series) {
-  // If no real data, show seeded demo curve with "demo" label
-  const hasData = series.some(d => d.acwr !== null);
+  const raw = series
+    .slice(-14)
+    .map((d, i) => ({ ...d, i }))
+    .filter(d => d.acwr !== null)
+    .map(d => ({ v:d.acwr, zone:d.zone, date:d.date, i:d.i }));
 
-  const raw = hasData
-    ? series.slice(-14).map(d => ({ v: d.acwr, zone: d.zone, date: d.date }))
-    : [
-        {v:1.05,zone:'sweet-spot'},{v:1.12,zone:'sweet-spot'},
-        {v:0.98,zone:'sweet-spot'},{v:1.18,zone:'sweet-spot'},
-        {v:1.25,zone:'sweet-spot'},{v:1.08,zone:'sweet-spot'},
-        {v:1.32,zone:'spike'},     {v:1.45,zone:'spike'},
-        {v:1.22,zone:'sweet-spot'},{v:1.10,zone:'sweet-spot'},
-        {v:0.95,zone:'sweet-spot'},{v:1.02,zone:'sweet-spot'},
-        {v:1.15,zone:'sweet-spot'},{v:1.08,zone:'sweet-spot'},
-      ].map((d, i) => ({ ...d, date: `Day ${i+1}` }));
+  if (!raw.length) {
+    return `
+      <div style="padding:28px 18px;text-align:center;border:1px dashed var(--border);border-radius:12px;color:var(--text-muted)">
+        <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px">Not enough load history yet</div>
+        <div style="font-size:12px;line-height:1.55">ACWR appears after 28 days of history with at least 4 sessions that include both RPE and duration.</div>
+      </div>`;
+  }
 
   const W = 580, H = 160;
   const padL = 36, padR = 16, padT = 12, padB = 28;
-  const cW   = W - padL - padR;
-  const cH   = H - padT - padB;
+  const cW = W - padL - padR;
+  const cH = H - padT - padB;
   const yMin = 0.4, yMax = 1.8;
-  const toY  = v => padT + cH - ((v - yMin) / (yMax - yMin)) * cH;
-  const toX  = i => padL + (i / Math.max(raw.length - 1, 1)) * cW;
+  const toY = v => padT + cH - ((v - yMin) / (yMax - yMin)) * cH;
+  const toX = i => padL + (i / Math.max(raw.length - 1, 1)) * cW;
   const zoneY = v => Math.max(padT, Math.min(padT + cH, toY(v)));
-
   const pts = raw.map((d, i) => `${toX(i).toFixed(1)},${toY(d.v).toFixed(1)}`).join(' ');
-  const todayVal  = raw[raw.length - 1]?.v || 1.0;
-  const lineColor = todayVal > 1.5 ? '#ef4444' : todayVal > 1.3 ? '#f59e0b' : '#22c955';
+  const todayVal = raw[raw.length - 1].v;
+  const lineColor = todayVal > 1.5 ? '#ef4444' : todayVal > 1.3 ? '#f59e0b' : todayVal >= .8 ? '#22c955' : '#3b82f6';
 
   return `
 <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible"
-  aria-label="ACWR ${hasData ? '14-day' : 'demo'} trend">
-  <!-- Zone bands -->
+  aria-label="ACWR trend from scored training sessions">
   <rect x="${padL}" y="${padT}" width="${cW}" height="${zoneY(1.5)-padT}" fill="#ef444420"/>
   <rect x="${padL}" y="${zoneY(1.5)}" width="${cW}" height="${zoneY(1.3)-zoneY(1.5)}" fill="#f59e0b18"/>
   <rect x="${padL}" y="${zoneY(1.3)}" width="${cW}" height="${zoneY(0.8)-zoneY(1.3)}" fill="#22c95518"/>
   <rect x="${padL}" y="${zoneY(0.8)}" width="${cW}" height="${padT+cH-zoneY(0.8)}" fill="#3b82f618"/>
-  <!-- Zone labels -->
-  <text x="${W-padR-2}" y="${padT+8}" text-anchor="end" font-size="9" fill="#ef4444" opacity="0.8">Danger &gt;1.5</text>
-  <text x="${W-padR-2}" y="${zoneY(1.5)+10}" text-anchor="end" font-size="9" fill="#f59e0b" opacity="0.8">Spike 1.3–1.5</text>
-  <text x="${W-padR-2}" y="${(zoneY(1.3)+zoneY(0.8))/2+4}" text-anchor="end" font-size="9" fill="#22c955" opacity="0.8">Sweet spot</text>
-  <text x="${W-padR-2}" y="${padT+cH-4}" text-anchor="end" font-size="9" fill="#3b82f6" opacity="0.8">Under-training</text>
-  <!-- Dividers -->
-  <line x1="${padL}" y1="${zoneY(1.5)}" x2="${W-padR}" y2="${zoneY(1.5)}" stroke="#ef444440" stroke-width="0.5" stroke-dasharray="3 3"/>
-  <line x1="${padL}" y1="${zoneY(1.3)}" x2="${W-padR}" y2="${zoneY(1.3)}" stroke="#f59e0b40" stroke-width="0.5" stroke-dasharray="3 3"/>
-  <line x1="${padL}" y1="${zoneY(0.8)}" x2="${W-padR}" y2="${zoneY(0.8)}" stroke="#22c95540" stroke-width="0.5" stroke-dasharray="3 3"/>
-  <!-- Y-axis labels -->
+  <text x="${W-padR-2}" y="${padT+8}" text-anchor="end" font-size="9" fill="#ef4444" opacity="0.8">Well above baseline</text>
+  <text x="${W-padR-2}" y="${zoneY(1.5)+10}" text-anchor="end" font-size="9" fill="#f59e0b" opacity="0.8">Above baseline</text>
+  <text x="${W-padR-2}" y="${(zoneY(1.3)+zoneY(0.8))/2+4}" text-anchor="end" font-size="9" fill="#22c955" opacity="0.8">In range</text>
+  <text x="${W-padR-2}" y="${padT+cH-4}" text-anchor="end" font-size="9" fill="#3b82f6" opacity="0.8">Below baseline</text>
   ${[1.6,1.4,1.2,1.0,0.8,0.6].map(v => `
     <line x1="${padL}" y1="${toY(v)}" x2="${W-padR}" y2="${toY(v)}"
       stroke="rgba(128,128,128,.1)" stroke-width="0.5"/>
     <text x="${padL-4}" y="${toY(v)+4}" text-anchor="end" font-size="9" fill="currentColor" opacity="0.5">${v.toFixed(1)}</text>
   `).join('')}
-  <!-- ACWR line -->
   <polyline points="${pts}" fill="none" stroke="${lineColor}" stroke-width="2"
     stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- Dots -->
   ${raw.map((d, i) => {
-    const c = d.v > 1.5 ? '#ef4444' : d.v > 1.3 ? '#f59e0b' : d.v >= 0.8 ? '#22c955' : '#3b82f6';
-    const r = i === raw.length - 1 ? 4 : 2.5;
-    return `<circle cx="${toX(i).toFixed(1)}" cy="${toY(d.v).toFixed(1)}" r="${r}"
-      fill="${c}" stroke="transparent" stroke-width="1.5"/>`;
+    const color = d.v > 1.5 ? '#ef4444' : d.v > 1.3 ? '#f59e0b' : d.v >= 0.8 ? '#22c955' : '#3b82f6';
+    const radius = i === raw.length - 1 ? 4 : 2.5;
+    return `<circle cx="${toX(i).toFixed(1)}" cy="${toY(d.v).toFixed(1)}" r="${radius}" fill="${color}"/>`;
   }).join('')}
-  <!-- Today callout -->
   <text x="${toX(raw.length-1).toFixed(1)}" y="${toY(todayVal)-10}"
-    text-anchor="middle" font-size="10" font-weight="600" fill="${lineColor}">
-    ${todayVal.toFixed(2)}${!hasData?' (demo)':''}
-  </text>
-  <!-- X-axis labels: first and last -->
+    text-anchor="middle" font-size="10" font-weight="600" fill="${lineColor}">${todayVal.toFixed(2)}</text>
   <text x="${padL}" y="${H-2}" font-size="9" fill="currentColor" opacity="0.4">${raw[0]?.date||''}</text>
   <text x="${W-padR}" y="${H-2}" font-size="9" text-anchor="end" fill="currentColor" opacity="0.4">${raw[raw.length-1]?.date||'Today'}</text>
 </svg>`;
@@ -106,7 +90,6 @@ export function renderCoachAnalytics() {
   const roster     = getRoster();
   const log        = getWorkoutLog();
   const acwrSeries = getACWRSeries(14);
-  const loadSeries = getLoadSeries(14);
   const hasRealACWR = acwrSeries.some(d => d.acwr !== null);
 
   const avgPIQ    = Math.round(roster.reduce((s,a) => s+a.piq,      0) / roster.length);
@@ -165,20 +148,15 @@ export function renderCoachAnalytics() {
           <div class="panel-title" style="margin:0">Acute:Chronic Workload Ratio (ACWR)</div>
           <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px">
             ${hasRealACWR
-              ? `14-day trend from real session data · ${log.length} sessions logged`
-              : `Demo curve — athletes need 3+ logged sessions to generate real ACWR`}
-            · Sweet spot 0.8–1.3 (Gabbett BJSM 2016) · Above 1.5 = 2–4× injury risk
+              ? `14-day ratio trend from scored session data · ${log.length} sessions logged`
+              : `Needs 28 days of history + at least 4 scored sessions`}
+            · Bands are training-load review flags, not injury predictions
           </div>
         </div>
-        ${!hasRealACWR ? `
-        <div style="font-size:11px;padding:4px 10px;border-radius:8px;background:#f59e0b14;
-                    color:#f59e0b;font-weight:600;white-space:nowrap;flex-shrink:0">
-          Demo data
-        </div>` : `
-        <div style="font-size:11px;padding:4px 10px;border-radius:8px;background:#22c95514;
-                    color:#22c955;font-weight:600;white-space:nowrap;flex-shrink:0">
-          Live data
-        </div>`}
+        <div style="font-size:11px;padding:4px 10px;border-radius:8px;background:${hasRealACWR?'#22c95514':'#64748b14'};
+                    color:${hasRealACWR?'#22c955':'#94a3b8'};font-weight:600;white-space:nowrap;flex-shrink:0">
+          ${hasRealACWR ? 'Scored data' : 'Awaiting history'}
+        </div>
       </div>
       <div style="overflow-x:auto">${acwrChart(acwrSeries)}</div>
     </div>
