@@ -35,6 +35,7 @@
 
 import { getState }                        from './state.js';
 import { getCurrentRole, getCurrentUser }  from '../core/auth.js';
+import { computeACWR }                    from '../services/loadModel.js';
 
 // ────────────────────────────────────────────────────────────────
 // SPORT-SPECIFIC WEIGHTING
@@ -289,16 +290,18 @@ function _calculateCompliance(log) {
 // ────────────────────────────────────────────────────────────────
 
 function _calculateLoadManagement(log) {
-  if (log.length < 14) return { raw: 60, acuteChronicRatio: 1.0 };
-  const now         = Date.now();
-  const acuteLoad   = log.filter(w => now - w.ts <  7 * 86_400_000).reduce((s, w) => s + ((w.avgRPE || 5) * (w.duration || 45) / 60), 0);
-  const chronicLoad = log.filter(w => now - w.ts < 28 * 86_400_000).reduce((s, w) => s + ((w.avgRPE || 5) * (w.duration || 45) / 60), 0) / 4;
-  const acuteChronicRatio = chronicLoad > 0 ? acuteLoad / chronicLoad : 1.0;
-  let raw = 100;
-  if      (acuteChronicRatio < 0.8)  raw = 70;
-  else if (acuteChronicRatio > 1.5)  raw = 60;
-  else if (acuteChronicRatio > 1.3)  raw = 80;
-  return { raw, acuteChronicRatio: Math.round(acuteChronicRatio * 100) / 100 };
+  const lm = computeACWR(log);
+  const acuteChronicRatio = lm.acwr;
+
+  let raw = 65; // insufficient data = neutral, not falsely "normal"
+  if (acuteChronicRatio !== null) {
+    raw = 100;
+    if      (acuteChronicRatio < 0.8) raw = 70;
+    else if (acuteChronicRatio > 1.5) raw = 60;
+    else if (acuteChronicRatio > 1.3) raw = 80;
+  }
+
+  return { raw, acuteChronicRatio, loadStatus: lm.status, loadLabel: lm.label };
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -310,10 +313,10 @@ function _calculateInjuryRisk(log, profile) {
   let riskScore = 0;
   const now = Date.now();
 
-  if (log.length >= 14) {
-    const week1Load = log.filter(w => now - w.ts <  7 * 86_400_000).reduce((s, w) => s + (w.avgRPE || 5), 0);
-    const week4Load = log.filter(w => now - w.ts < 28 * 86_400_000).reduce((s, w) => s + (w.avgRPE || 5), 0) / 4;
-    if (week1Load > week4Load * 1.5) { flags.push('Rapid load increase detected'); riskScore += 25; }
+  const lm = computeACWR(log);
+  if (lm.uncoupled.ratio !== null && lm.uncoupled.ratio > 1.5) {
+    flags.push('Rapid load increase detected');
+    riskScore += 25;
   }
 
   const recentSoreness = log.slice(-3).reduce((s, w) => s + (w.soreness || 0), 0) / 3;

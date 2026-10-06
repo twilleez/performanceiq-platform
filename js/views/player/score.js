@@ -64,7 +64,7 @@ export function renderPlayerScore() {
       icon:  '⚖️',
       tip:   latestACWR
         ? `ACWR ${latestACWR.acwr} — ${latestACWR.zone.replace('-',' ')} (Gabbett BJSM 2016)`
-        : 'Log 3+ sessions to unlock ACWR · Sweet spot 0.8–1.3 (Gabbett BJSM 2016)',
+        : 'Needs 28 days of history and at least 4 scored sessions before ACWR is shown',
       detail: latestACWR ? `ACWR ${latestACWR.acwr}` : null,
     },
     {
@@ -151,7 +151,7 @@ export function renderPlayerScore() {
               ['📅', 'Log every session', 'Consistency = ' + (sb.weights?.consistency ? Math.round(sb.weights.consistency*100) : 28) + '% of your score'],
               ['💚', 'Daily check-in', 'Readiness pillar needs fresh data every day'],
               ['✅', hasAssigned ? 'Complete assigned sessions' : 'Complete workouts', hasAssigned ? `${assigned.length - assignedDone} pending from coach` : 'Compliance drives ' + (sb.weights?.compliance ? Math.round(sb.weights.compliance*100) : 20) + '% of your score'],
-              ['⚖️', 'Stay in ACWR 0.8–1.3', latestACWR ? `Current: ${latestACWR.acwr} (${latestACWR.zone.replace('-',' ')})` : 'Log sessions to enable ACWR monitoring'],
+              ['⚖️', 'Keep load changes controlled', latestACWR ? `Current: ${latestACWR.acwr} (${latestACWR.zone.replace('-',' ')})` : 'Log sessions to enable ACWR monitoring'],
               ['👤', 'Complete your profile', 'Unlocks sport-specific pillar weights'],
             ].map(([icon, title, desc]) => `
             <div style="display:flex;gap:10px;padding:10px;background:var(--surface-2);border-radius:10px">
@@ -170,7 +170,7 @@ export function renderPlayerScore() {
                       letter-spacing:.06em;margin-bottom:8px">EVIDENCE BASE</div>
           <div style="font-size:12.5px;color:#c8d8e8;line-height:1.7">
             5-pillar composite with sport-specific weights (Bompa & Haff 2009).
-            Load pillar uses EWMA ACWR (Gabbett BJSM 2016, sweet spot 0.8–1.3).
+            Load pillar uses rolling 7-day / 28-day ACWR with RPE × minutes and explicit data-quality gates.
             Readiness uses Halson 2014 factor weights + HRV proxy (Buchheit 2013).
           </div>
         </div>

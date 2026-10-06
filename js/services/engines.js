@@ -3,7 +3,7 @@
  * ─────────────────────────────────────────────────────────────
  * Self-contained, pure-function computation engines.
  * Each engine takes a plain state snapshot and returns results.
- * No DOM, no imports — safe to call from any selector or view.
+ * No DOM/state access. Imports only the pure load model.
  *
  * Evidence base:
  *   Gabbett TJ. BJSM 2016         — ACWR injury risk (sweet spot 0.8–1.3)
@@ -18,16 +18,12 @@
  *   Norton & Layman 2006           — leucine threshold for MPS
  */
 
+import { computeACWR, sessionLoad } from './loadModel.js';
+
 // ── CONSTANTS ─────────────────────────────────────────────────
 
-/** EWMA decay factors — Hulin et al. 2014 */
-const LAMBDA_A = 2 / (7  + 1);   // acute  (7-day EWMA)
-const LAMBDA_C = 2 / (28 + 1);   // chronic (28-day EWMA)
-
 /** sRPE = session RPE × duration in minutes (Foster 2001) */
-export function sRPE(entry) {
-  return (entry.avgRPE || entry.rpe || 5) * (entry.duration || 30);
-}
+export function sRPE(entry) { return sessionLoad(entry) ?? 0; }
 
 // ── HELPERS ───────────────────────────────────────────────────
 
@@ -50,16 +46,6 @@ function withinDays(arr, n, now = Date.now()) {
     const t = a.date ? new Date(a.date).getTime() : (a.ts || 0);
     return t >= cutoff;
   });
-}
-
-/** Exponential weighted moving average over a field */
-function ewma(arr, field, lambda) {
-  if (!arr.length) return 0;
-  let val = arr[0][field] || 0;
-  for (let i = 1; i < arr.length; i++) {
-    val = lambda * (arr[i][field] || 0) + (1 - lambda) * val;
-  }
-  return val;
 }
 
 /** HRV proxy from mood + sleep + stress (Buchheit 2013 — r≈0.68 with rMSSD) */
@@ -131,27 +117,14 @@ export function calcReadiness(state) {
   }
 
   // ── ACWR load context ────────────────────────────────────────
-  const loaded = byDate(log.map(e => ({ ...e, load: sRPE(e) })));
-  const r7  = withinDays(loaded, 7,  now);
-  const r28 = withinDays(loaded, 28, now);
-
-  let acwr = null;
-  let acwrZone = 'no-data';
-  let loadModifier = 0; // score adjustment based on load zone
-
-  if (r28.length >= 3) {
-    const acute   = ewma(r7,  'load', LAMBDA_A);
-    const chronic = ewma(r28, 'load', LAMBDA_C);
-    acwr = chronic > 0 ? +(acute / chronic).toFixed(2) : null;
-
-    if (acwr !== null) {
-      if      (acwr > 1.50) { acwrZone = 'danger';       loadModifier = -15; }
-      else if (acwr > 1.30) { acwrZone = 'spike';        loadModifier = -8;  }
-      else if (acwr >= 0.80){ acwrZone = 'sweet-spot';   loadModifier = +5;  }
-      else if (acwr >= 0.60){ acwrZone = 'undertraining';loadModifier = -3;  }
-      else                  { acwrZone = 'detraining';   loadModifier = -8;  }
-    }
-  }
+  const LOAD_MODIFIER = {
+    'danger': -15, 'spike': -8, 'sweet-spot': 5,
+    'undertraining': -3, 'detraining': -8, 'no-data': 0
+  };
+  const lm           = computeACWR(log, { now });
+  const acwr         = lm.acwr;
+  const acwrZone     = lm.zone;
+  const loadModifier = LOAD_MODIFIER[acwrZone] ?? 0;
 
   // ── HRV proxy ────────────────────────────────────────────────
   const hrv = hasCI ? hrvProxy({
@@ -178,11 +151,8 @@ export function calcReadiness(state) {
 
   const color = composite >= 80 ? '#22c955' : composite >= 60 ? '#f59e0b' : '#ef4444';
 
-  const acwrMsg = acwr === null ? ''
-    : acwr > 1.5  ? ` ACWR ${acwr} — danger zone. Rest required.`
-    : acwr > 1.3  ? ` ACWR ${acwr} — spike detected. Reduce volume.`
-    : acwr >= 0.8 ? ` ACWR ${acwr} — optimal load zone.`
-    : ` ACWR ${acwr} — build progressively.`;
+  const acwrMsg = acwr === null ? ` ${lm.reason}`
+    : ` ACWR ${acwr} — ${lm.label}.`;
 
   return {
     score:    composite,
@@ -236,19 +206,14 @@ export function calcPIQ(state) {
   const C_comp = r14.length ? clamp100((doneN / r14.length) * 100) : 60;
 
   // ── Load Management (ACWR-based) ─────────────────────────────
-  const loaded = byDate(log.map(e => ({ ...e, load: sRPE(e) })));
-  const r7L  = withinDays(loaded, 7,  now);
-  const r28L = withinDays(loaded, 28, now);
-  let C_load = 65; // default: unknown load = neutral
-  if (r28L.length >= 3) {
-    const acwr = ewma(r7L, 'load', LAMBDA_A) / (ewma(r28L, 'load', LAMBDA_C) || 1);
-    C_load = acwr >= 0.80 && acwr <= 1.10 ? 100
-           : acwr >  1.10 && acwr <= 1.30 ? 83
-           : acwr >= 0.60 && acwr <  0.80 ? 67
-           : acwr >  1.30 && acwr <= 1.50 ? 43
-           : acwr >  1.50                 ? 13
-           : 33; // detraining
-  }
+  const { acwr } = computeACWR(log, { now });
+  const C_load = acwr === null                 ? 65
+               : acwr >= 0.80 && acwr <= 1.10  ? 100
+               : acwr >  1.10 && acwr <= 1.30  ? 83
+               : acwr >= 0.60 && acwr <  0.80  ? 67
+               : acwr >  1.30 && acwr <= 1.50  ? 43
+               : acwr >  1.50                  ? 13
+               : 33;
 
   // ── Profile Completeness ─────────────────────────────────────
   const PROFILE_FIELDS = ['sport','position','age','weightLbs','primaryGoal','team','trainingLevel'];

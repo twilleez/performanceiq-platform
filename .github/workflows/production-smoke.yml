@@ -22,3 +22,5 @@ jobs:
           node-version: '20'
       - name: Run static production smoke checks
         run: node scripts/smoke-static.mjs
+      - name: Run load model regression tests
+        run: npm run test:load

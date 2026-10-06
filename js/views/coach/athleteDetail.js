@@ -52,7 +52,7 @@ export function renderCoachAthleteDetail() {
 
   const rColor    = getReadinessColor(athlete.readiness);
   const acwrSeries = getACWRSeries(14);   // team-level; per-athlete needs backend
-  const loadSeries = getLoadSeries(14);
+  const loadSeries = getLoadSeries(28);
   const latestACWR = acwrSeries.filter(d => d.acwr !== null).at(-1);
   const assigned   = getAssignedWorkouts().filter(w => w.athleteId === athlete.id);
   const done       = assigned.filter(w => w.completed).length;
@@ -64,8 +64,8 @@ export function renderCoachAthleteDetail() {
   const flags = [];
   if (athlete.readiness < 60)  flags.push({ label: 'Low readiness', color: '#ef4444' });
   if (athlete.streak === 0)    flags.push({ label: 'No recent sessions', color: '#f59e0b' });
-  if (latestACWR?.zone === 'danger')  flags.push({ label: 'ACWR danger zone', color: '#ef4444' });
-  if (latestACWR?.zone === 'spike')   flags.push({ label: 'ACWR spike', color: '#f59e0b' });
+  if (latestACWR?.zone === 'danger')  flags.push({ label: 'Load well above recent baseline', color: '#ef4444' });
+  if (latestACWR?.zone === 'spike')   flags.push({ label: 'Load above recent baseline', color: '#f59e0b' });
 
   const circum = 326.7;
   const rdyOffset = circum - (athlete.readiness / 100) * circum;
