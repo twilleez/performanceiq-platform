@@ -68,7 +68,8 @@ assert('root package has no legacy workspaces', !Object.hasOwn(pkg, 'workspaces'
 assert('root package exposes smoke test', pkg.scripts?.['test:smoke'] === 'node scripts/smoke-static.mjs');
 assert('root package exposes browser journey test', pkg.scripts?.['test:e2e'] === 'playwright test');
 assert('root package exposes load-model regression test', pkg.scripts?.['test:load'] === 'node --test tests/loadModel.test.mjs');
-assert('root package test runs smoke, load model, then browser journeys', pkg.scripts?.test === 'npm run test:smoke && npm run test:load && npm run test:e2e');
+assert('root package exposes consistency and cloud-mapping unit tests', pkg.scripts?.['test:unit'] === 'node --test tests/consistency.test.mjs tests/cloudMap.test.mjs');
+assert('root package test runs smoke, load model, unit tests, then browser journeys', pkg.scripts?.test === 'npm run test:smoke && npm run test:load && npm run test:unit && npm run test:e2e');
 assert('browser workflow runs Playwright journeys', browserWorkflow.includes('npm run test:e2e'));
 assert('browser workflow starts production-equivalent HTTP server', browserWorkflow.includes('python3 -m http.server 4173'));
 assert('deployment stages a dedicated Pages directory', deploy.includes('mkdir -p .pages'));
