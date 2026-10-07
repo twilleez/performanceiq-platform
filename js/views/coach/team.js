@@ -1,7 +1,10 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealCoachTeam } from './realTeam.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster } from '../../state/state.js';
 const SPORT_EMOJI = {basketball:'🏀',football:'🏈',soccer:'⚽',baseball:'⚾',volleyball:'🏐',track:'🏃'};
 export function renderCoachTeam() {
+  if (isCloudAccount()) return renderRealCoachTeam();
   const roster = getRoster();
   const ready = roster.filter(a=>a.readiness>=80).length;
   const caution = roster.filter(a=>a.readiness<60).length;
