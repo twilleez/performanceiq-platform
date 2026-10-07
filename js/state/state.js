@@ -25,14 +25,14 @@ function newId() {
 }
 function demoRoster() {
   return [
-    { id:'r1', name:'Jake Williams', position:'PG', sport:'basketball', readiness:82, piq:79, streak:5, weight:165, height:"6'0"", age:17, level:'advanced', compPhase:'in-season' },
-    { id:'r2', name:'Marcus Thompson', position:'SF', sport:'basketball', readiness:74, piq:85, streak:12, weight:185, height:"6'4"", age:17, level:'elite', compPhase:'in-season' },
-    { id:'r3', name:'Jamal Robinson', position:'C', sport:'basketball', readiness:91, piq:71, streak:3, weight:220, height:"6'8"", age:16, level:'intermediate', compPhase:'in-season' },
-    { id:'r4', name:'Devon Nguyen', position:'SG', sport:'basketball', readiness:55, piq:68, streak:0, weight:160, height:"5'11"", age:15, level:'intermediate', compPhase:'in-season' },
-    { id:'r5', name:'Aliyah Reeves', position:'PF', sport:'basketball', readiness:88, piq:92, streak:8, weight:155, height:"6'1"", age:18, level:'elite', compPhase:'in-season' },
-    { id:'r6', name:'Jordan Kim', position:'PG', sport:'basketball', readiness:67, piq:76, streak:4, weight:158, height:"5'10"", age:16, level:'intermediate', compPhase:'in-season' },
-    { id:'r7', name:'Taylor Santos', position:'SF', sport:'basketball', readiness:78, piq:81, streak:6, weight:175, height:"6'3"", age:17, level:'advanced', compPhase:'in-season' },
-    { id:'r8', name:'Casey Monroe', position:'SG', sport:'basketball', readiness:63, piq:73, streak:2, weight:175, height:"6'1"", age:16, level:'intermediate', compPhase:'in-season' },
+    { id:'r1', name:'Jake Williams', position:'PG', sport:'basketball', readiness:82, piq:79, streak:5, weight:165, height:"6 ft 0 in", age:17, level:'advanced', compPhase:'in-season' },
+    { id:'r2', name:'Marcus Thompson', position:'SF', sport:'basketball', readiness:74, piq:85, streak:12, weight:185, height:"6 ft 4 in", age:17, level:'elite', compPhase:'in-season' },
+    { id:'r3', name:'Jamal Robinson', position:'C', sport:'basketball', readiness:91, piq:71, streak:3, weight:220, height:"6 ft 8 in", age:16, level:'intermediate', compPhase:'in-season' },
+    { id:'r4', name:'Devon Nguyen', position:'SG', sport:'basketball', readiness:55, piq:68, streak:0, weight:160, height:"5 ft 11 in", age:15, level:'intermediate', compPhase:'in-season' },
+    { id:'r5', name:'Aliyah Reeves', position:'PF', sport:'basketball', readiness:88, piq:92, streak:8, weight:155, height:"6 ft 1 in", age:18, level:'elite', compPhase:'in-season' },
+    { id:'r6', name:'Jordan Kim', position:'PG', sport:'basketball', readiness:67, piq:76, streak:4, weight:158, height:"5 ft 10 in", age:16, level:'intermediate', compPhase:'in-season' },
+    { id:'r7', name:'Taylor Santos', position:'SF', sport:'basketball', readiness:78, piq:81, streak:6, weight:175, height:"6 ft 3 in", age:17, level:'advanced', compPhase:'in-season' },
+    { id:'r8', name:'Casey Monroe', position:'SG', sport:'basketball', readiness:63, piq:73, streak:2, weight:175, height:"6 ft 1 in", age:16, level:'intermediate', compPhase:'in-season' },
   ];
 }
 function defaultState(scope = _scope) {
