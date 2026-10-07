@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealCoachAnalytics } from './realTeam.js';
 /**
  * PerformanceIQ — Coach Analytics v3
  * ─────────────────────────────────────────────────────────────
@@ -85,6 +87,7 @@ function distBar(label, count, total, color) {
 
 // ── MAIN RENDER ───────────────────────────────────────────────
 export function renderCoachAnalytics() {
+  if (isCloudAccount()) return renderRealCoachAnalytics();
   const roster     = getRoster();
   const log        = getWorkoutLog();
   const acwrSeries = getACWRSeries(14);
