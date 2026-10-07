@@ -24,3 +24,5 @@ jobs:
         run: node scripts/smoke-static.mjs
       - name: Run load model regression tests
         run: npm run test:load
+      - name: Consistency and cloud-mapping unit tests
+        run: npm run test:unit
