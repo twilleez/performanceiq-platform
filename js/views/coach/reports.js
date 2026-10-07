@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealCoachReports } from './realTeam.js';
 /**
  * Coach Reports View — UX Enhanced
  *
@@ -15,6 +17,7 @@ function esc(s) {
 }
 
 export function renderCoachReports() {
+  if (isCloudAccount()) return renderRealCoachReports();
   const roster = getRoster();
   const state  = getState();
   const logs   = state.workoutLog || [];
