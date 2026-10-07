@@ -1,6 +1,9 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealAdminNotice } from './realNotice.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster } from '../../state/state.js';
 export function renderAdminTeams() {
+  if (isCloudAccount()) return renderRealAdminNotice('admin/teams');
   const roster = getRoster();
   const teams = [
     {name:'Varsity Basketball',sport:'Basketball',athletes:roster.length,coach:'Alex Morgan',season:'In-Season',color:'#22c955'},
