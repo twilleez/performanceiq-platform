@@ -20,6 +20,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Run production JavaScript syntax checks
+        run: find js -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Run static production smoke checks
         run: node scripts/smoke-static.mjs
       - name: Run load model regression tests
