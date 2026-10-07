@@ -4,6 +4,7 @@ import { buildSidebar } from '../../components/nav.js';
 import { getRoster } from '../../state/state.js';
 export function renderAdminAthletes() {
   if (isCloudAccount()) return renderRealAdminNotice('admin/athletes');
+  if (isCloudAccount()) return renderRealAdminNotice('admin/athletes');
   const roster = getRoster();
   const avgPIQ = Math.round(roster.reduce((s,a)=>s+a.piq,0)/roster.length);
   const avgRdy = Math.round(roster.reduce((s,a)=>s+a.readiness,0)/roster.length);
