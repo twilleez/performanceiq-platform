@@ -6,6 +6,7 @@ import { buildSidebar }                              from '../../components/nav.
 import { getCurrentRole, getCurrentUser }            from '../../core/auth.js';
 import { getMessages, addMessage, markThreadRead }   from '../../state/state.js';
 import { navigate }                                  from '../../router.js';
+import { isCloudAccount }                            from '../../services/cloudSync.js';
 
 export function renderPlayerMessages() {
   const role    = getCurrentRole() || 'player';
