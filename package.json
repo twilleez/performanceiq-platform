@@ -4,11 +4,12 @@
   "private": true,
   "description": "PerformanceIQ production static application",
   "scripts": {
-    "test": "npm run test:smoke && npm run test:load && npm run test:e2e",
+    "test": "npm run test:smoke && npm run test:load && npm run test:unit && npm run test:e2e",
     "test:smoke": "node scripts/smoke-static.mjs",
     "test:e2e": "playwright test",
     "test:e2e:report": "playwright show-report",
-    "test:load": "node --test tests/loadModel.test.mjs"
+    "test:load": "node --test tests/loadModel.test.mjs",
+    "test:unit": "node --test tests/consistency.test.mjs tests/cloudMap.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0"
