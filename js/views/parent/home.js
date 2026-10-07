@@ -1,8 +1,11 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealParentView } from './realAthlete.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getCurrentUser } from '../../core/auth.js';
 import { getRoster, getState } from '../../state/state.js';
 import { getReadinessColor } from '../../state/selectors.js';
 export function renderParentHome() {
+  if (isCloudAccount()) return renderRealParentView('parent/home');
   const user = getCurrentUser();
   const roster = getRoster();
   const state = getState();
