@@ -1,5 +1,8 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealAdminNotice } from './realNotice.js';
 import { buildSidebar } from '../../components/nav.js';
 export function renderAdminCoaches() {
+  if (isCloudAccount()) return renderRealAdminNotice('admin/coaches');
   const coaches = [{name:'Alex Morgan',sport:'Basketball',athletes:5,status:'Active',piq:88},{name:'Sam Rivera',sport:'Track & Field',athletes:3,status:'Active',piq:82},{name:'Jordan Kim',sport:'Soccer',athletes:4,status:'Active',piq:85}];
   return `
 <div class="view-with-sidebar">
