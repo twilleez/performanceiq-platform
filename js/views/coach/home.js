@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealCoachHome } from './realTeam.js';
 /**
  * PerformanceIQ — Coach Home Dashboard v3
  * ─────────────────────────────────────────────────────────────
@@ -128,6 +130,7 @@ function rosterRow(a) {
 
 // ── MAIN RENDER ───────────────────────────────────────────────
 export function renderCoachHome() {
+  if (isCloudAccount()) return renderRealCoachHome();
   const user    = getCurrentUser() || {};
   const role    = getCurrentRole() || 'coach';
   const fname   = user.name?.split(' ')[0] || 'Coach';
