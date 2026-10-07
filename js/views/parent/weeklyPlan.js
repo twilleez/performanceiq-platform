@@ -1,6 +1,9 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealParentView } from './realAthlete.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster, getState } from '../../state/state.js';
 export function renderParentWeek() {
+  if (isCloudAccount()) return renderRealParentView('parent/week');
   const roster = getRoster();
   const state = getState();
   const a = roster.find(x=>x.id===state.linkedAthlete)||roster[0]||{};
