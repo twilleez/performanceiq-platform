@@ -9,6 +9,7 @@ import { buildSidebar }                              from '../../components/nav.
 import { getCurrentUser }                            from '../../core/auth.js';
 import { getMessages, addMessage, markThreadRead }   from '../../state/state.js';
 import { navigate }                                  from '../../router.js';
+import { isCloudAccount }                            from '../../services/cloudSync.js';
 
 export function renderCoachMessages() {
   const user    = getCurrentUser();
