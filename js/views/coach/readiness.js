@@ -1,6 +1,9 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealCoachReadiness } from './realTeam.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster } from '../../state/state.js';
 export function renderCoachReadiness() {
+  if (isCloudAccount()) return renderRealCoachReadiness();
   const roster = getRoster();
   const avgRdy = Math.round(roster.reduce((s,a)=>s+a.readiness,0)/roster.length);
   const rColor = avgRdy>=80?'#22c955':avgRdy<60?'#ef4444':'#f59e0b';
