@@ -35,6 +35,8 @@
 
 import { getState }                        from './state.js';
 import { getCurrentRole, getCurrentUser }  from '../core/auth.js';
+import { currentStreak, planAdherence,
+         trainingEntries }                 from '../services/consistency.js';
 import { computeACWR }                    from '../services/loadModel.js';
 
 // ────────────────────────────────────────────────────────────────
@@ -110,20 +112,18 @@ export function getPIQScore() {
 // ────────────────────────────────────────────────────────────────
 
 function _calculateConsistency(log, profile) {
-  const streak     = _getStreak(log);
-  const n          = log.length;
-  const daysPerWk  = parseInt(profile.daysPerWeek) || 4;
-
+  const daysPerWeek  = parseInt(profile.daysPerWeek) || 4;
+  const streak       = currentStreak(log, { daysPerWeek });
   const streakScore  = Math.min(100, streak * 10);
-  const volumeScore  = Math.min(100, (n / (daysPerWk * 4)) * 100);
+  const volumeScore  = planAdherence(log, { daysPerWeek });
   const momentum     = _calculateMomentum(log);
   const momentumBonus = momentum > 0 ? Math.min(10, momentum * 10) : 0;
-
   const raw = Math.round(streakScore * 0.5 + volumeScore * 0.4 + momentumBonus * 0.1);
   return { raw: Math.min(100, raw), momentum };
 }
 
-function _calculateMomentum(log) {
+function _calculateMomentum(fullLog) {
+  const log = trainingEntries(fullLog);
   if (log.length < 14) return 0;
   const now   = Date.now();
   const week1 = log.filter(w => now - w.ts < 7  * 86_400_000);
@@ -147,22 +147,7 @@ function _calculateMomentum(log) {
  * (completed === undefined → counts) to preserve backwards compatibility.
  */
 function _getStreak(log) {
-  if (!log.length) return 0;
-  const done    = log.filter(w => w.completed !== false);
-  if (!done.length) return 0;
-  const sorted  = [...done].sort((a, b) => b.ts - a.ts);
-  let streak    = 0;
-  let current   = new Date();
-  for (const w of sorted) {
-    const d = new Date(w.ts);
-    if (d.toDateString() === current.toDateString()) {
-      streak++;
-      current.setDate(current.getDate() - 1);
-    } else {
-      break;
-    }
-  }
-  return streak;
+  return currentStreak(log, { daysPerWeek: getState().athleteProfile?.daysPerWeek });
 }
 
 // ────────────────────────────────────────────────────────────────
