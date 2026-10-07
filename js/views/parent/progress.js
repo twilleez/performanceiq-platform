@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealParentView } from './realAthlete.js';
 /**
  * Parent Progress View — athlete progress overview for parent
  * Reads from real state. Language is parent-facing (non-technical).
@@ -11,6 +13,7 @@ function esc(s) {
 }
 
 export function renderParentProgress() {
+  if (isCloudAccount()) return renderRealParentView('parent/progress');
   const roster    = getRoster();
   const state     = getState();
   const athlete   = roster[0] || { name: 'Jake Williams', readiness: 82, piq: 79, streak: 5, sport: 'basketball' };

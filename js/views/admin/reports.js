@@ -1,6 +1,9 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealAdminNotice } from './realNotice.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster } from '../../state/state.js';
 export function renderAdminReports() {
+  if (isCloudAccount()) return renderRealAdminNotice('admin/reports');
   const roster = getRoster();
   const avgPIQ = Math.round(roster.reduce((s,a)=>s+a.piq,0)/roster.length);
   const reports = [{icon:'📊',title:'Weekly Platform Summary',desc:'All-user activity and engagement',ready:true},{icon:'📈',title:'PIQ Trend Analysis',desc:'Score trends across all athletes',ready:true},{icon:'💚',title:'Wellness Heatmap',desc:'Team readiness patterns over time',ready:true},{icon:'📋',title:'Compliance Report',desc:'Workout completion by team/athlete',ready:true},{icon:'🎯',title:'Goal Achievement',desc:'Goal tracking across the program',ready:false},{icon:'🏥',title:'Injury Risk Report',desc:'ACWR flags and at-risk athletes',ready:false}];

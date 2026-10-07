@@ -24,16 +24,20 @@ const DEMO_BY_ROLE = Object.values(DEMO_USERS).reduce((acc, user) => {
 let _session = null;
 
 function appReturnUrl() {
-  // GitHub Pages hosts PIQ under /performanceiq-platform/. Keeping the current
-  // pathname also makes local/staging deployments work without hardcoding a host.
   const base = `${window.location.origin}${window.location.pathname}`;
   return base.endsWith('/') ? base : `${base}/`;
 }
 
 function saveSession(s) {
+  const before = _session?.isDemo ? 'demo' : (_session?.user?.id || null);
   _session = s;
   if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
   else localStorage.removeItem(SESSION_KEY);
+
+  const after = s?.isDemo ? 'demo' : (s?.user?.id || null);
+  if (before !== after) {
+    try { document.dispatchEvent(new CustomEvent('piq:sessionChanged', { detail: { scope: after } })); } catch (_) {}
+  }
 }
 
 function loadSession() {
@@ -115,7 +119,6 @@ export function getCurrentRole() { return _session?.role || null; }
 export function getCurrentUser() { return _session?.user || null; }
 export function clearAuthSession() { saveSession(null); }
 
-/** Deterministic offline demo start. No network request and no password path. */
 export function startDemo(role) {
   const normalized = role === 'athlete' ? 'player' : role;
   const demo = DEMO_BY_ROLE[normalized];
@@ -125,20 +128,14 @@ export function startDemo(role) {
   return { ok: true, session };
 }
 
-/**
- * Reconcile the local PIQ cache with Supabase. A confirmation link can establish
- * a valid Supabase session before PerformanceIQ has any local session; adopt it.
- */
 export async function reconcileSupabaseSession() {
   if (_session?.isDemo) return true;
-
   const { data, error } = await supabase.auth.getSession();
   const sbSession = data?.session;
   if (error || !sbSession?.user) {
     if (_session) saveSession(null);
     return false;
   }
-
   if (_session?.user?.id && sbSession.user.id !== _session.user.id) saveSession(null);
   return adoptSupabaseSession(sbSession, _session?.user || null);
 }
@@ -152,7 +149,6 @@ export async function syncSupabaseSession() {
 
 export async function signIn(email, password, roleHint) {
   email = email.trim().toLowerCase();
-
   const demo = DEMO_USERS[email];
   if (demo) return startDemo(demo.role);
 
@@ -217,10 +213,6 @@ export async function signUp(email, password, name, role) {
   });
   if (error) return { ok: false, error: error.message };
 
-  // With email confirmation enabled Supabase deliberately makes repeated-signup
-  // responses non-enumerable. identities=[] is the documented signal returned
-  // by current GoTrue builds for an already-registered identity. Do not pretend
-  // that we changed the existing password or that a new account was created.
   const identities = data.user?.identities;
   const possiblyExisting = Array.isArray(identities) && identities.length === 0;
 

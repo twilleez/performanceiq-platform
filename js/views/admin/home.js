@@ -1,7 +1,10 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealAdminNotice } from './realNotice.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getCurrentUser } from '../../core/auth.js';
 import { getRoster } from '../../state/state.js';
 export function renderAdminHome() {
+  if (isCloudAccount()) return renderRealAdminNotice('admin/home');
   const user = getCurrentUser();
   const fname = user?.name?.split(' ')[0]||'Admin';
   const roster = getRoster();

@@ -1,6 +1,10 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealAdminNotice } from './realNotice.js';
 import { buildSidebar } from '../../components/nav.js';
 import { getRoster } from '../../state/state.js';
 export function renderAdminAdoption() {
+  if (isCloudAccount()) return renderRealAdminNotice('admin/adoption');
+  if (isCloudAccount()) return renderRealAdminNotice('admin/adoption');
   const roster = getRoster();
   const avgPIQ = Math.round(roster.reduce((s,a)=>s+a.piq,0)/roster.length);
   const avgRdy = Math.round(roster.reduce((s,a)=>s+a.readiness,0)/roster.length);

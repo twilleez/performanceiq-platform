@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealCoachRoster } from './realTeam.js';
 /**
  * PerformanceIQ — Coach Roster v2
  * Phase 5: Athlete cards are now clickable → athlete detail view.
@@ -19,6 +21,7 @@ const INTEREST_META = {
 };
 
 export function renderCoachRoster() {
+  if (isCloudAccount()) return renderRealCoachRoster();
   const roster = getRoster();
   return `
 <div class="view-with-sidebar">

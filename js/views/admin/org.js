@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealAdminNotice } from './realNotice.js';
 /**
  * PerformanceIQ — Admin Org View
  * ─────────────────────────────────────────────────────────────
@@ -11,6 +13,7 @@ import { getRoster }          from '../../state/state.js';
 import { showToast }          from '../../core/notifications.js';
 
 export function renderAdminOrg() {
+  if (isCloudAccount()) return renderRealAdminNotice('admin/org');
   const user    = getCurrentUser();
   const roster  = getRoster();
   const avgPIQ  = roster.length ? Math.round(roster.reduce((s,a) => s+a.piq, 0) / roster.length) : 0;

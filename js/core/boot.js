@@ -1,5 +1,5 @@
 /**
- * PerformanceIQ Boot v4
+ * PerformanceIQ Boot v5
  * Production auth is reconciled with Supabase before route selection and
  * confirmation-link sessions are adopted when Supabase emits SIGNED_IN.
  */
@@ -13,7 +13,8 @@ import {
   needsOnboarding,
   getCurrentRole,
 } from './auth.js';
-import { loadState } from '../state/state.js';
+import { applySessionScope } from '../services/cloudSync.js';
+import '../components/accountLinking.js';
 import { supabase } from './supabase.js';
 import { navigate, ROUTES, ROLE_HOME } from '../router.js';
 
@@ -25,13 +26,8 @@ export async function boot() {
 
   initTheme();
   initAuth();
-
-  // A local production session is only a cache. Confirm/adopt the authoritative
-  // Supabase session before app.js chooses the initial route. This also handles
-  // email-confirmation redirects where Supabase has a session but PIQ does not.
   await reconcileSupabaseSession();
-
-  loadState();
+  applySessionScope();
   _syncSupabaseSession();
   _registerSW();
 }
@@ -43,9 +39,6 @@ function _syncSupabaseSession() {
       navigate(ROUTES.WELCOME);
       return;
     }
-
-    // Do not perform Supabase calls directly inside the auth callback. Schedule
-    // them for the next task so Supabase's auth lock can finish first.
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
       setTimeout(async () => {
         const synced = await syncSupabaseSession();

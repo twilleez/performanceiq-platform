@@ -210,6 +210,7 @@ export async function completeWorkout(id, { exerciseLogs, durationMin, rpeActual
   if (error) { addToOfflineQueue({ type: 'complete_workout', id, data: payload }); throw error }
   _clearCache(CACHE_KEY_WO)
   supabase.functions.invoke('compute-daily-scores').catch(() => {})
+  try { document.dispatchEvent(new CustomEvent('piq:cloudChanged')) } catch (_) {}
   return data
 }
 

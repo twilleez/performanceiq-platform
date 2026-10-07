@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealParentView } from './realAthlete.js';
 /**
  * Parent Wellness View — athlete wellness overview for parent
  * Parent-facing language with evidence-based guidance.
@@ -10,6 +12,7 @@ function esc(s) {
 }
 
 export function renderParentWellness() {
+  if (isCloudAccount()) return renderRealParentView('parent/wellness');
   const roster  = getRoster();
   const state   = getState();
   const athlete = roster[0] || { name: 'Jake Williams', readiness: 82, piq: 79, streak: 5 };

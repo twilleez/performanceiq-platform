@@ -10,6 +10,8 @@
 
 import { getState }                              from './state.js';
 import { getCurrentRole }                        from '../core/auth.js';
+import { currentStreak, completedSessions,
+         trainingEntries }                       from '../services/consistency.js';
 import { computeACWR, acwrSeries, loadSeries } from '../services/loadModel.js';
 import { getScoreBreakdownElite, getPIQScore,
          getReadinessScoreElite,
@@ -36,25 +38,13 @@ export function getReadinessScore() {
 
 // ── STREAK ────────────────────────────────────────────────────────────────────
 export function getStreak() {
-  const log  = getState().workoutLog;
-  if (!log.length) return 0;
-  const done = log.filter(w => w.completed !== false);
-  if (!done.length) return 0;
-  const sorted  = [...done].sort((a, b) => b.ts - a.ts);
-  let streak    = 0;
-  let current   = new Date();
-  for (const w of sorted) {
-    const d = new Date(w.ts);
-    if (d.toDateString() === current.toDateString()) {
-      streak++;
-      current.setDate(current.getDate() - 1);
-    } else break;
-  }
-  return streak;
+  const { workoutLog, athleteProfile } = getState();
+  return currentStreak(workoutLog, { daysPerWeek: athleteProfile?.daysPerWeek });
 }
 
+/** Completed training sessions. Readiness check-ins are not sessions. */
 export function getWorkoutCount() {
-  return getState().workoutLog.length;
+  return completedSessions(getState().workoutLog).length;
 }
 
 // ── MINDSET / DAILY WELLNESS ──────────────────────────────────────────────────
@@ -77,8 +67,7 @@ export function getWeeklyProgress() {
   sunday.setDate(monday.getDate() + 6);
   sunday.setHours(23, 59, 59, 999);
 
-  const completed = log.filter(w =>
-    w.completed !== false &&
+  const completed = completedSessions(log).filter(w =>
     w.ts >= monday.getTime() &&
     w.ts <= sunday.getTime()
   ).length;
@@ -94,7 +83,7 @@ export function getWeeklyProgress() {
 
 // ── PIQ TREND ─────────────────────────────────────────────────────────────────
 export function getPIQTrend() {
-  const log = getState().workoutLog;
+  const log = trainingEntries(getState().workoutLog);
   const now = Date.now();
   const DAY = 86_400_000;
 
