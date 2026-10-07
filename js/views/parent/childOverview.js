@@ -1,3 +1,5 @@
+import { isCloudAccount } from '../../services/cloudSync.js';
+import { renderRealParentView } from './realAthlete.js';
 /**
  * PerformanceIQ — Parent Child Overview
  * ─────────────────────────────────────────────────────────────
@@ -21,6 +23,7 @@ import { getRoster, getState }       from '../../state/state.js';
 import { getScoreBreakdown }         from '../../state/selectors.js';
 
 export function renderParentChild() {
+  if (isCloudAccount()) return renderRealParentView('parent/child');
   // ── Resolve linked athlete ────────────────────────────────
   const roster        = getRoster();
   const { linkedAthlete } = getState();
