@@ -176,3 +176,32 @@ test('fallback tier mapping targets real READINESS_COPY keys (previously returne
   assert.deepEqual(Object.keys(pairs).sort(), ['caution', 'ready', 'rest']);
   for (const k of Object.values(pairs)) assert.ok(READINESS_COPY[k], `READINESS_COPY has no key "${k}"`);
 });
+
+// ── Regression: adversarial phrasings found in the PIQ-AI-01 self-probe ─────
+test('probe false negatives are now rejected', () => {
+  const unsafe = {
+    'number as word':        'Do twenty extra minutes of sprints.',
+    'full-width 1RM':        'Try a 1ＲＭ test.',
+    'PR alone':              'Chase a new PR today.',
+    'go hard':               'Go hard in practice today.',
+    'another workout':       'Do another workout tonight.',
+    'lift heavier':          'Lift heavier than usual today.',
+    'named injury':          'That ankle sprain needs rest.',
+    'semicolon sentences':   'Rest now; then lift; then run.',
+    'newline sentences':     'Rest now\nthen walk\nthen stretch',
+    'ignore soreness':       'Ignore the soreness and keep going.',
+    'sleep reduction':       'Stay up late to study film.',
+    'medication class':      'Take an anti-inflammatory before practice.',
+  };
+  for (const [name, action] of Object.entries(unsafe)) {
+    assert.equal(validateInsight(good({ action }), youthCaution).ok, false, `should reject: ${name}`);
+  }
+});
+test('safe phrasings near the new patterns still pass (false-positive guard)', () => {
+  for (const action of [
+    'Keep today controlled and prioritize sleep tonight.',
+    'Consider a lighter, technique-focused session today.',
+    'Hydrate so you recover fast before the next game.',
+    'One option is a short mobility block instead of conditioning.',
+  ]) assert.deepEqual(validateInsight(good({ action }), youthCaution), { ok: true, reasons: [] }, action);
+});

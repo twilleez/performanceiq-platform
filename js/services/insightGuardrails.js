@@ -214,6 +214,8 @@ const MEDICAL_PATTERNS = [
   /\byou (have|might have|may have|probably have)\b.{0,30}\b(injur|condition|disorder|concussion|fracture|tear|strain|sprain|infection|illness)/i,
   /\b(concussion|fracture|tendin|tendon(itis)?|stress reaction|overtraining syndrome|rhabdo)/i,
   /\bsee a doctor immediately\b/i, /\bemergency\b/i,
+  /\b(sprain(ed)?|fractured?|torn|ligament|meniscus|ACL|MCL|shin splints)\b/i,
+  /\b(ibuprofen|acetaminophen|paracetamol|naproxen|aspirin|anti-?inflammator\w*|painkillers?|pain relievers?)\b/i,
 ];
 const PAIN_PATTERN = /\b(pain|painful|injur|hurt|hurting|unwell|sick)/i;
 // A coach alone does not satisfy the referral rule (Standards §4: "qualified professional").
@@ -223,10 +225,14 @@ const UNSAFE_PATTERNS = [
   /\bguarantee/i, /\b100\s?%/i, /\bproven to\b/i, /\brisk[- ]free\b/i,
   /\b(will|to) prevent (an |all )?injur/i, /\beliminat\w* (the |any |all )?(injury )?risk/i,
   /\bHRV\b/i, /\bheart rate variability\b/i,
+  /\bignor(e|ing) (the |your |any )?(soreness|pain|fatigue|tiredness|warning signs?)\b/i,
+  /\b(stay(ing)? up late|less sleep|cut(ting)? (back on )?sleep|skip(ping)? (sleep|rest|recovery))\b/i,
 ];
 const INTENSITY_ESCALATION = [
   /\bmax(imal)?[- ](effort|out|intensity|attempt)/i, /\bmax out\b/i, /\b1\s?RM\b/i, /\bone[- ]rep max/i,
-  /\bPR attempt/i, /\bpersonal record\b/i, /\ball[- ]out\b/i, /\bpush (hard|harder|it)\b/i,
+  /\bPR attempt/i, /\bPRs?\b/, /\bpersonal (record|best)\b/i, /\bgo (hard|heavy|big)\b/i,
+  /\b(another|second|extra|additional) (workout|session|practice|run|lift)\b/i,
+  /\b(lift|go|train|run) (heavier|harder|longer)\b/i, /\b(heavier|harder|longer) than (usual|normal)\b/i, /\ball[- ]out\b/i, /\bpush (hard|harder|it)\b/i,
   /\b(increase|raise|bump up|ramp up)\b.{0,20}\b(volume|load|intensity|sessions?)\b/i,
   /\badd(ing)? (more |extra )?(sets|reps|volume|sessions?|load)\b/i,
   /\b(double|extra) sessions?\b/i, /\btwo[- ]a[- ]days?\b/i,
@@ -265,8 +271,9 @@ export function validateInsight(out, ctx) {
   if (_sentences(explanation) > LIMITS.explanationSentences) reasons.push('explanation over sentence limit');
   if (_sentences(action) > LIMITS.actionSentences) reasons.push('action over sentence limit');
 
-  const text = `${headline} ${explanation} ${action}`;
-  const all  = `${text} ${calculation}`;
+  // NFKC folds look-alike Unicode (e.g. full-width "１ＲＭ") before pattern checks.
+  const text = `${headline} ${explanation} ${action}`.normalize('NFKC');
+  const all  = `${text} ${calculation.normalize('NFKC')}`;
 
   // §4 / §6 — medical and unsafe language
   if (MEDICAL_PATTERNS.some(rx => rx.test(all))) reasons.push('medical or diagnostic language');
@@ -306,13 +313,22 @@ export function validateInsight(out, ctx) {
 function _round(n, dp = 0) { const m = 10 ** dp; return Math.round(n * m) / m; }
 function _words(s) { return s.trim().split(/\s+/).filter(Boolean).length; }
 function _sentences(s) {
-  // Count sentence terminators; ignore decimals (e.g. "1.3") and trailing punctuation runs.
+  // Terminators, semicolons and line breaks all split sentences; decimals ("1.3") do not.
   const t = s.trim().replace(/(\d)\.(\d)/g, '$1$2');
-  const n = (t.match(/[.!?]+(\s|$)/g) || []).length;
-  return Math.max(1, n);
+  const n = (t.match(/([.!?]+|;)(\s|$)|\n+/g) || []).length;
+  const endsClean = /[.!?;]$/.test(t);
+  return Math.max(1, endsClean ? n : n + 1);
 }
+// Number words count as numbers so "twenty extra minutes" can't bypass grounding.
+// "one" is excluded: it is overwhelmingly used as an article ("one option").
+const NUMBER_WORDS = { two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10,
+  eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18,
+  nineteen:19, twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90, hundred:100 };
 function _numbers(s) {
-  return (s.replace(/(\d),(\d{3})/g, '$1$2').match(/\d+(\.\d+)?/g) || []).map(Number);
+  const t = s.normalize('NFKC').replace(/(\d),(\d{3})/g, '$1$2');
+  const digits = (t.match(/\d+(\.\d+)?/g) || []).map(Number);
+  const words = (t.toLowerCase().match(/\b[a-z]+\b/g) || []).filter(w => w in NUMBER_WORDS).map(w => NUMBER_WORDS[w]);
+  return [...digits, ...words];
 }
 function _allowedNumbers(ctx, tag) {
   const f = ctx.factor || {};
