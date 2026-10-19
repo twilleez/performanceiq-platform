@@ -1,5 +1,5 @@
 // supabase/functions/generate-insight/index.ts
-// Phase 2 PoC — server-side proxy to the Anthropic API.
+// Server-side proxy to the Anthropic API for the PIQ AI insight layer.
 //
 // Why this exists: insightBuilder.js runs in a static GitHub Pages bundle.
 // An Anthropic API key must never ship to that client. This edge function
@@ -8,69 +8,67 @@
 // Deploy: supabase functions deploy generate-insight
 // Secret: supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 //
-// Input (from insightBuilder.js):
-//   { role, raw, trend, sleepDebt, factor: { label, score, max, reason, tip, acwr?, zone? } }
+// Input  (built by insightGuardrails.buildInsightContext on the client):
+//   { role, raw, tier, trend, sleepDebt, ageBand, phase, factor: { key, label, score, max, acwr? } }
+// Output (checked by insightGuardrails.validateInsight on BOTH sides):
+//   { headline, explanation, action, calculation, evidenceTag, confidence }
+//   A rejected generation is returned as { confidence: 'low', guardrail: [...reasons] }
+//   so the client falls back to static copy. Reasons are for logging, not display.
 //
-// Output (must match insightBuilder.js's _validate contract):
-//   { headline, explanation, action, evidenceTag, confidence }
+// The prompt and validator come from ../_shared/insightGuardrails.js, a mirror
+// of js/services/insightGuardrails.js (see scripts/sync-insight-guardrails.mjs).
 
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
+import {
+  buildSystemPrompt,
+  validateContext,
+  validateInsight,
+} from '../_shared/insightGuardrails.js';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const MODEL = 'claude-sonnet-4-6';
+const SYSTEM_PROMPT = buildSystemPrompt();
 
-const ALLOWED_EVIDENCE_TAGS = ['Gabbett2016', 'Halson2014', 'Bompa2019', 'HulinEWMA', 'none'];
+const ALLOWED_ORIGINS = ['https://twilleez.github.io'];
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
-const SYSTEM_PROMPT = `You generate a short training-readiness insight for the PerformanceIQ app.
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin') || '';
+  const allow = ALLOWED_ORIGINS.includes(origin) || LOCAL_ORIGIN.test(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+}
 
-STRICT RULES — violating any of these means your output will be discarded:
-1. Only reference the factor data provided in the user message. Never invent a
-   number, factor, or trend that wasn't supplied.
-2. Never use diagnostic or medical language (no "diagnosis", no "you have [condition]",
-   no prescribing medication, no "see a doctor immediately"). This is a training-load
-   tool, not a medical device.
-3. evidenceTag must be exactly one of: Gabbett2016, Halson2014, Bompa2019, HulinEWMA, none.
-   Only use a real tag if the factor data actually supports that specific evidence base:
-   - Gabbett2016: ACWR / load-spike / injury-risk framing
-   - Halson2014: sleep as recovery driver
-   - Bompa2019: periodization / phase-appropriate volume framing
-   - HulinEWMA: acute:chronic workload ratio methodology itself
-   If none of these specifically apply, use "none" — do not force a citation.
-4. Set confidence to "low" if the supplied factor data is sparse, contradictory,
-   or you are not confident the explanation is well-grounded. A "low" response
-   will be discarded by the client and replaced with a safe static fallback, so
-   it is always safer to mark low confidence than to overstate certainty.
-5. Tailor tone to role:
-   - coach: frame as a decision lever ("consider reducing X" / "this supports Y today")
-   - player: plain-language, second person, no jargon
-   - parent: non-alarming, development-safe framing, never urgent-sounding
-   - solo: plain-language, second person, slightly more technical is OK
-6. headline ≤ 12 words. explanation ≤ 2 sentences. action ≤ 1 sentence.
-
-Respond ONLY with a JSON object, no markdown fences, no preamble:
-{"headline": "...", "explanation": "...", "action": "...", "evidenceTag": "...", "confidence": "..."}`;
+function json(req: Request, body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(req) },
+  });
+}
 
 serve(async (req: Request) => {
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'POST only' }), { status: 405 });
-  }
-  if (!ANTHROPIC_API_KEY) {
-    return new Response(JSON.stringify({ error: 'server misconfigured' }), { status: 500 });
-  }
+  // Browsers send a CORS preflight before a JSON POST; without this the call never reaches POST.
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
+  if (req.method !== 'POST') return json(req, { error: 'POST only' }, 405);
+  if (!ANTHROPIC_API_KEY) return json(req, { error: 'server misconfigured' }, 500);
 
-  let body;
+  let ctx;
   try {
-    body = await req.json();
+    ctx = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: 'invalid JSON body' }), { status: 400 });
+    return json(req, { error: 'invalid JSON body' }, 400);
   }
 
-  const { role, raw, trend, sleepDebt, factor } = body;
-  if (!role || typeof raw !== 'number' || !factor) {
-    return new Response(JSON.stringify({ error: 'missing required fields' }), { status: 400 });
-  }
+  const inputErrors = validateContext(ctx);
+  if (inputErrors.length) return json(req, { error: 'invalid input', details: inputErrors }, 400);
 
-  const userMessage = JSON.stringify({ role, raw, trend, sleepDebt, factor });
+  // Forward only the whitelisted context fields — never pass arbitrary client JSON to the model.
+  const { role, raw, tier, trend, sleepDebt, ageBand, phase, factor } = ctx;
+  const userMessage = JSON.stringify({ role, raw, tier, trend, sleepDebt, ageBand, phase, factor });
 
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -82,43 +80,39 @@ serve(async (req: Request) => {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 300,
+        max_tokens: 400,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }),
     });
 
     if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      console.error('Anthropic API error:', anthropicRes.status, errText);
-      return new Response(JSON.stringify({ error: 'generation upstream error' }), { status: 502 });
+      console.error('Anthropic API error:', anthropicRes.status, await anthropicRes.text());
+      return json(req, { error: 'generation upstream error' }, 502);
     }
 
     const data = await anthropicRes.json();
-    const textBlock = data.content?.find((b: any) => b.type === 'text');
-    if (!textBlock?.text) {
-      return new Response(JSON.stringify({ error: 'no text in model response' }), { status: 502 });
-    }
+    const textBlock = data.content?.find((b: { type: string }) => b.type === 'text');
+    if (!textBlock?.text) return json(req, { error: 'no text in model response' }, 502);
 
     let parsed;
     try {
-      const cleaned = textBlock.text.replace(/```json|```/g, '').trim();
-      parsed = JSON.parse(cleaned);
+      parsed = JSON.parse(textBlock.text.replace(/```json|```/g, '').trim());
     } catch {
-      return new Response(JSON.stringify({ error: 'model returned non-JSON' }), { status: 502 });
+      return json(req, { error: 'model returned non-JSON' }, 502);
     }
 
-    // Server-side first line of defense — client re-validates independently.
-    if (!ALLOWED_EVIDENCE_TAGS.includes(parsed.evidenceTag)) {
-      parsed.confidence = 'low';
+    // First line of defense. The client re-runs the same validator independently.
+    const verdict = validateInsight(parsed, { role, raw, tier, trend, sleepDebt, ageBand, phase, factor });
+    if (!verdict.ok) {
+      console.warn('generate-insight guardrail rejection:', verdict.reasons.join('; '));
+      return json(req, { confidence: 'low', guardrail: verdict.reasons });
     }
 
-    return new Response(JSON.stringify(parsed), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const { headline, explanation, action, calculation = '', evidenceTag, confidence } = parsed;
+    return json(req, { headline, explanation, action, calculation, evidenceTag, confidence });
   } catch (err) {
     console.error('generate-insight error:', err);
-    return new Response(JSON.stringify({ error: 'internal error' }), { status: 500 });
+    return json(req, { error: 'internal error' }, 500);
   }
 });
