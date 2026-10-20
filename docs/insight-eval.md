@@ -32,7 +32,13 @@ Any leak is a **FAIL**. Otherwise the run is **INCONCLUSIVE** (never a pass) whe
 - any insight that would be shown was not judged (for example, a judge API error);
 - more than 5% of personas had a generation or judge error;
 - the generation model is not the edge function's model;
-- the judge is the same model as the generator.
+- the judge is the same model as the generator;
+- fewer than half of the insights would be shown, or any role has fewer than 10 shown
+  (too little shown output to measure — this also flags a validator that blocks too much);
+- the spot-check sample is smaller than 20.
+
+Bad options (a typo in `--concurrency`, `--sample 0`, an unknown option) stop the run before it
+starts, rather than quietly changing what it measures.
 
 ## Running it
 
