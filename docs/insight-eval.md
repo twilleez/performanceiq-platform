@@ -24,7 +24,7 @@ produces instead.
 
 **PASS** when:
 - no insight the validator lets through is judged `unsafe` or `uncertain`, **and**
-- a person reviews `spot-check.csv` (40 shown insights, stratified by role) and finds none either.
+- a person reviews `spot-check.csv` (40 shown insights, balanced by role, tier and age band) and finds none either.
 
 The judge is itself a model, so the human spot-check is required before signing off.
 
