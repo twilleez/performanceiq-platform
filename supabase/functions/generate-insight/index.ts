@@ -9,7 +9,13 @@
 // Secret: supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 //
 // Input  (built by insightGuardrails.buildInsightContext on the client):
-//   { role, raw, tier, trend, sleepDebt, ageBand, phase, factor: { key, label, score, max, acwr? } }
+//   { role, raw, tier, trend, sleepDebt, ageBand, phase, factor: { key, score, max: 100, acwr? } }
+//   Re-built server-side by sanitizeContext(): factor.label is replaced with the
+//   canonical FACTOR_LABELS text, unknown keys are dropped, every field is range-checked.
+//
+// NOT access control: CORS only stops browsers on other origins from reading the
+// response. Anyone with the public anon key can call this function and spend
+// Anthropic credits — auth / rate limiting is an open item (see PR #13).
 // Output (checked by insightGuardrails.validateInsight on BOTH sides):
 //   { headline, explanation, action, calculation, evidenceTag, confidence }
 //   A rejected generation is returned as { confidence: 'low', guardrail: [...reasons] }
@@ -21,13 +27,14 @@
 import { serve } from 'https://deno.land/std@0.190.0/http/server.ts';
 import {
   buildSystemPrompt,
-  validateContext,
+  sanitizeContext,
   validateInsight,
 } from '../_shared/insightGuardrails.js';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const MODEL = 'claude-sonnet-4-6';
 const SYSTEM_PROMPT = buildSystemPrompt();
+const MAX_BODY_BYTES = 2048;
 
 const ALLOWED_ORIGINS = ['https://twilleez.github.io'];
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -56,19 +63,22 @@ serve(async (req: Request) => {
   if (req.method !== 'POST') return json(req, { error: 'POST only' }, 405);
   if (!ANTHROPIC_API_KEY) return json(req, { error: 'server misconfigured' }, 500);
 
-  let ctx;
+  // The real context is ~300 bytes; anything far larger is not a legitimate client.
+  const bodyText = await req.text();
+  if (bodyText.length > MAX_BODY_BYTES) return json(req, { error: 'request too large' }, 413);
+
+  let input;
   try {
-    ctx = await req.json();
+    input = JSON.parse(bodyText);
   } catch {
     return json(req, { error: 'invalid JSON body' }, 400);
   }
 
-  const inputErrors = validateContext(ctx);
-  if (inputErrors.length) return json(req, { error: 'invalid input', details: inputErrors }, 400);
-
-  // Forward only the whitelisted context fields — never pass arbitrary client JSON to the model.
-  const { role, raw, tier, trend, sleepDebt, ageBand, phase, factor } = ctx;
-  const userMessage = JSON.stringify({ role, raw, tier, trend, sleepDebt, ageBand, phase, factor });
+  // Rebuild the context from the whitelist. Free text the client sent (factor
+  // labels, extra keys, personal data) is dropped here and never reaches the model.
+  const { ctx, errors } = sanitizeContext(input);
+  if (!ctx) return json(req, { error: 'invalid input', details: errors }, 400);
+  const userMessage = JSON.stringify(ctx);
 
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -103,7 +113,7 @@ serve(async (req: Request) => {
     }
 
     // First line of defense. The client re-runs the same validator independently.
-    const verdict = validateInsight(parsed, { role, raw, tier, trend, sleepDebt, ageBand, phase, factor });
+    const verdict = validateInsight(parsed, ctx);
     if (!verdict.ok) {
       console.warn('generate-insight guardrail rejection:', verdict.reasons.join('; '));
       return json(req, { confidence: 'low', guardrail: verdict.reasons });

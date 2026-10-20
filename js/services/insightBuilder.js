@@ -20,7 +20,7 @@
 
 import { getReadinessScoreElite } from '../state/selectorsElite.js';
 import { getState }               from '../state/state.js';
-import { getCurrentRole }         from '../core/auth.js';
+import { getCurrentRole, getCurrentUser } from '../core/auth.js';
 import { supabase }               from '../core/supabase.js';
 import { getReadinessCopy }       from '../components/readiness-copy.js';
 import {
@@ -54,7 +54,8 @@ export async function getInsight() {
     profile: getState()?.athleteProfile || {},
   });
 
-  const cached = _readCache(ctx.role, ctx.raw);
+  const cacheKey = _cacheKey(ctx);
+  const cached = _readCache(cacheKey);
   if (cached) return cached;
 
   let result;
@@ -88,7 +89,7 @@ export async function getInsight() {
     }
   }
 
-  _writeCache(ctx.role, ctx.raw, result);
+  _writeCache(cacheKey, result);
   return result;
 }
 
@@ -120,26 +121,30 @@ function _fallback(readiness, ctx) {
   };
 }
 
-// ── Cache: one insight per user per day per role, avoids re-generating
+// ── Cache: one insight per user per day per context, avoids re-generating
 //    on every dashboard render. Scoped separately from main v7 state key
 //    so it can be cleared independently without touching core app state.
-function _cacheKey(role, raw) {
+//    Keyed by user id so two accounts on a shared device never see each
+//    other's insight, and by every context field that changes the guardrails.
+function _cacheKey(ctx) {
+  const userId = getCurrentUser()?.id || 'anon';
   const today = new Date().toDateString();
-  return `${CACHE_KEY_PREFIX}:${role}:${today}:${raw}`;
+  const f = ctx.factor ? `${ctx.factor.key}${ctx.factor.score}` : 'none';
+  return `${CACHE_KEY_PREFIX}:${userId}:${ctx.role}:${ctx.ageBand}:${ctx.phase}:${ctx.trend}:${f}:${today}:${ctx.raw}`;
 }
 
-function _readCache(role, raw) {
+function _readCache(key) {
   try {
-    const stored = localStorage.getItem(_cacheKey(role, raw));
+    const stored = localStorage.getItem(key);
     return stored ? JSON.parse(stored) : null;
   } catch {
     return null;
   }
 }
 
-function _writeCache(role, raw, value) {
+function _writeCache(key, value) {
   try {
-    localStorage.setItem(_cacheKey(role, raw), JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Storage full or unavailable — non-fatal, just skip caching.
   }
