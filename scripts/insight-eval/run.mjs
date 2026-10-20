@@ -38,6 +38,7 @@ const MAX_ERROR_SHARE = 0.05;
 const MIN_SHOWN_SHARE = 0.5;
 const MIN_SHOWN_PER_ROLE = 10;
 const MIN_SAMPLE = 20;
+const MAX_ERRORS_PER_GROUP = 1;
 const ROLES = ['coach', 'player', 'parent', 'solo'];
 
 function positiveInt(name, v) {
@@ -74,9 +75,9 @@ export function parseOptions(argv) {
   };
 }
 
-/** Same model? Compares names with date or "-latest" suffixes removed. */
+/** Same model? Compares trimmed names with date or "-latest" suffixes removed. */
 export function sameModel(a, b) {
-  const norm = m => String(m || '').toLowerCase().replace(/-(\d{8}|latest)$/, '');
+  const norm = m => String(m || '').trim().toLowerCase().replace(/[-@](\d{8}|latest)$/, '');
   return norm(a) === norm(b);
 }
 
@@ -99,7 +100,7 @@ export async function runEval({ target = 'mock', reps = 1, seed = 20261020, conc
         row.runError = `generation: ${err.message}`;
       }
       if (g) {
-        row.output = g.output; row.genError = g.error; row.usage = g.usage;
+        row.output = g.output; row.genError = g.error; row.usage = g.usage; row.genModel = g.servedModel ?? null;
         if (g.output) {
           row.validator = validateInsight(g.output, p.ctx);
           // What the user would see. Decided by the validator alone — a later judge
@@ -107,7 +108,7 @@ export async function runEval({ target = 'mock', reps = 1, seed = 20261020, conc
           row.shown = row.validator.ok;
           // Low-confidence output is always rejected by the validator, so it is never shown.
           if (g.output.confidence !== 'low' || row.shown) {
-            try { row.judge = await judge(target, p.ctx, g.output); }
+            try { row.judge = await judge(target, p.ctx, g.output); row.judgeModel = row.judge.servedModel ?? null; }
             catch (err) { row.judgeError = err.message; }
           }
         }
@@ -169,9 +170,32 @@ export function summarize(allRows, meta = {}) {
     s.inconclusive.push(`${failed} of ${s.total} personas had a generation or judge error (limit ${MAX_ERROR_SHARE * 100}%)`);
   }
   if (s.unjudgedShown.length) s.inconclusive.push(`${s.unjudgedShown.length} shown insight(s) were never judged`);
-  if (meta.target && meta.target !== 'mock') {
-    if (meta.model !== GENERATION_MODEL) s.inconclusive.push(`generation model ${meta.model} is not the edge function's ${GENERATION_MODEL}`);
+
+  // Errors must not cluster: the 5% allowance can't all land in one group (e.g. youth on rest days).
+  const errByGroup = {};
+  for (const r of results) if (r.runError || r.genError || r.judgeError) {
+    const g = `${r.ctx.role}|${r.ctx.tier}|${r.ctx.ageBand}`;
+    errByGroup[g] = (errByGroup[g] || 0) + 1;
+  }
+  const clustered = Object.entries(errByGroup).filter(([, n]) => n > MAX_ERRORS_PER_GROUP);
+  if (clustered.length) {
+    s.inconclusive.push(`errors cluster in ${clustered.map(([g, n]) => `${g} (${n})`).join(', ')} — max ${MAX_ERRORS_PER_GROUP} per role × tier × age band`);
+  }
+
+  // Fail closed: a verdict needs complete run details, and a mock run is never evidence.
+  if (!meta.target) s.inconclusive.push('run details missing (target)');
+  else if (meta.target === 'mock') s.inconclusive.push('mock run — plumbing check only, not evidence');
+  else {
+    for (const k of ['model', 'judgeModel', 'sampleSize']) if (meta[k] === undefined) s.inconclusive.push(`run details missing (${k})`);
+    if (!sameModel(meta.model, GENERATION_MODEL)) s.inconclusive.push(`generation model ${meta.model} is not the edge function's ${GENERATION_MODEL}`);
     if (sameModel(meta.judgeModel, meta.model)) s.inconclusive.push('judge is the same model as the generator — set JUDGE_MODEL to a different model');
+    // Check what the API says actually served each call, not just the requested names.
+    const generated = results.filter(r => r.output || r.genError);
+    const badGen = generated.filter(r => !r.genModel || !sameModel(r.genModel, GENERATION_MODEL)).length;
+    if (badGen) s.inconclusive.push(`${badGen} generation(s) were not served by ${GENERATION_MODEL} (or the API did not report a model)`);
+    const judged = results.filter(r => r.judge);
+    const badJudge = judged.filter(r => !r.judgeModel || sameModel(r.judgeModel, GENERATION_MODEL)).length;
+    if (badJudge) s.inconclusive.push(`${badJudge} judgment(s) were served by the generator's model (or the API did not report a model)`);
   }
   // A found leak is a definite failure; otherwise any doubt about the run blocks a PASS.
   s.ac2 = s.leaks.length ? 'FAIL' : s.inconclusive.length ? 'INCONCLUSIVE' : 'PASS (pending human spot-check)';

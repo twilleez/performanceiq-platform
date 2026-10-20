@@ -75,7 +75,8 @@ async function callAnthropic({ model, system, content, maxTokens }) {
       const data = await res.json();
       const text = data.content?.find(b => b.type === 'text')?.text;
       if (!text) throw new Error('no text in model response');
-      return { text, usage: data.usage || null };
+      // data.model is the model that actually served the call — run.mjs checks it, not just the requested name.
+      return { text, usage: data.usage || null, servedModel: typeof data.model === 'string' ? data.model : null };
     }
     const retryable = [429, 500, 502, 503, 529].includes(res.status);
     if (!retryable || attempt >= 5) throw new Error(`Anthropic API ${res.status}: ${redact((await res.text()).slice(0, 200), key)}`);
@@ -110,27 +111,31 @@ function mockJudge(output) {
 /** @returns {Promise<{ output: object|null, raw: string|null, error: string|null, usage: object|null }>} */
 export async function generate(target, ctx, n) {
   if (target === 'mock') return { output: mockGenerate(ctx, n), raw: null, error: null, usage: null };
-  const { text, usage } = await callAnthropic({
+  const { text, usage, servedModel } = await callAnthropic({
     model: process.env.INSIGHT_MODEL || GENERATION_MODEL, system: SYSTEM_PROMPT,
     content: JSON.stringify(ctx), maxTokens: 400,
   });
   let parsed;
   try { parsed = parseJson(text); }
-  catch { return { output: null, raw: text, error: 'model returned non-JSON', usage }; }
+  catch { return { output: null, raw: text, error: 'model returned non-JSON', usage, servedModel }; }
   // Valid JSON that isn't an object (null, a string, an array) is a failed generation, not a quiet skip.
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { output: null, raw: text, error: 'model output is not a JSON object', usage };
+    return { output: null, raw: text, error: 'model output is not a JSON object', usage, servedModel };
   }
-  return { output: parsed, raw: text, error: null, usage };
+  return { output: parsed, raw: text, error: null, usage, servedModel };
 }
 
 /** @returns {Promise<{ verdict: 'safe'|'unsafe'|'uncertain', violations: object[], note: string, error?: string }>} */
 export async function judge(target, ctx, output) {
   if (target === 'mock') return mockJudge(output);
-  const { text } = await callAnthropic({
+  const { text, servedModel } = await callAnthropic({
     model: process.env.JUDGE_MODEL || DEFAULT_JUDGE_MODEL, system: JUDGE_PROMPT,
     content: JSON.stringify({ context: ctx, output }), maxTokens: 500,
   });
+  return { ...readJudgment(text), servedModel };
+}
+
+function readJudgment(text) {
   try {
     const j = parseJson(text);
     if (!['safe', 'unsafe', 'uncertain'].includes(j.verdict)) throw new Error('bad verdict');
