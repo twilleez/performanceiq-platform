@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildPersonas, ROLES, TIERS, AGES, PHASES } from '../scripts/insight-eval/personas.mjs';
-import { runEval, summarize, buildReport, spotCheckSample, toCsv } from '../scripts/insight-eval/run.mjs';
+import { runEval, summarize, buildReport, spotCheckSample, toCsv, parseOptions, sameModel } from '../scripts/insight-eval/run.mjs';
 import { GENERATION_MODEL, DEFAULT_JUDGE_MODEL } from '../scripts/insight-eval/models.mjs';
 import { sanitizeContext } from '../js/services/insightGuardrails.js';
 
@@ -45,13 +45,16 @@ test('mock run: a leak the validator misses is caught by the judge and fails AC2
   assert.ok(results.filter(r => r.output?.confidence === 'low').every(r => !r.shown && r.judge === null));
 });
 
+// A full, clean set of rows: every persona shown and judged safe.
+const fullRows = () => buildPersonas().map(p => ({ id: p.id, ctx: p.ctx, output: {}, validator: { ok: true, reasons: [] },
+  shown: true, judge: { verdict: 'safe', violations: [] } }));
+
 test('AC2 passes only with zero shown leaks, and is inconclusive when the run mostly errored', () => {
-  const ctx = buildPersonas()[0].ctx;
-  const ok = { ctx, output: {}, validator: { ok: true, reasons: [] }, shown: true, judge: { verdict: 'safe', violations: [] } };
-  assert.match(summarize([ok, ok]).ac2, /^PASS/);
-  assert.equal(summarize([ok, { ...ok, judge: { verdict: 'uncertain', violations: [] } }]).ac2, 'FAIL');
-  const err = { ctx, runError: 'Anthropic API 529', shown: false };
-  assert.equal(summarize([ok, err, err]).ac2, 'INCONCLUSIVE');
+  assert.match(summarize(fullRows()).ac2, /^PASS/);
+  const leak = fullRows(); leak[5].judge = { verdict: 'uncertain', violations: [] };
+  assert.equal(summarize(leak).ac2, 'FAIL');
+  const errs = fullRows().map((r, i) => i < 20 ? { ...r, runError: 'Anthropic API 529', shown: false, judge: null } : r);
+  assert.equal(summarize(errs).ac2, 'INCONCLUSIVE');
 });
 
 test('report and spot-check sample are built from shown insights only', async () => {
@@ -139,10 +142,63 @@ test('judge saying "safe" while listing violations is treated as a leak', async 
   assert.equal(s.leaks[0].judge.verdict, 'uncertain');
 });
 test('a run on a different generation model, or with judge = generator, cannot PASS', () => {
-  const ctx = buildPersonas()[0].ctx;
-  const ok = { ctx, output: {}, validator: { ok: true, reasons: [] }, shown: true, judge: { verdict: 'safe', violations: [] } };
-  assert.equal(summarize([ok], { target: 'anthropic', model: 'claude-other', judgeModel: DEFAULT_JUDGE_MODEL }).ac2, 'INCONCLUSIVE');
-  assert.equal(summarize([ok], { target: 'anthropic', model: GENERATION_MODEL, judgeModel: GENERATION_MODEL }).ac2, 'INCONCLUSIVE');
-  assert.match(summarize([ok], { target: 'anthropic', model: GENERATION_MODEL, judgeModel: DEFAULT_JUDGE_MODEL }).ac2, /^PASS/);
+  const ok = fullRows();
+  assert.equal(summarize(ok, { target: 'anthropic', model: 'claude-other', judgeModel: DEFAULT_JUDGE_MODEL }).ac2, 'INCONCLUSIVE');
+  assert.equal(summarize(ok, { target: 'anthropic', model: GENERATION_MODEL, judgeModel: GENERATION_MODEL }).ac2, 'INCONCLUSIVE');
+  assert.equal(summarize(ok, { target: 'anthropic', model: GENERATION_MODEL, judgeModel: `${GENERATION_MODEL}-20260101` }).ac2, 'INCONCLUSIVE');
+  assert.match(summarize(ok, { target: 'anthropic', model: GENERATION_MODEL, judgeModel: DEFAULT_JUDGE_MODEL }).ac2, /^PASS/);
   assert.notEqual(DEFAULT_JUDGE_MODEL, GENERATION_MODEL);
+});
+
+// ── Regression: false-PASS routes from the independent RE-review ─────────────
+test('bad command-line options stop the run instead of changing it', () => {
+  for (const argv of [['--concurrency', 'abc'], ['--concurrency', '0'], ['--reps', '0'], ['--sample', '0'],
+    ['--sample', 'abc'], ['--seed', 'abc'], ['--target', 'prod'], ['--concurency', '4'], ['--reps'], ['stray']]) {
+    assert.throws(() => parseOptions(argv), undefined, argv.join(' '));
+  }
+  assert.deepEqual(parseOptions([]), { target: 'mock', reps: 1, seed: 20261020, concurrency: 4, sample: 40, out: undefined });
+  assert.equal(parseOptions(['--concurrency', '8']).concurrency, 8);
+});
+test('runEval refuses non-positive concurrency; rows that never ran make AC2 INCONCLUSIVE', async () => {
+  await assert.rejects(runEval({ target: 'mock', concurrency: NaN }));
+  const holes = new Array(180);
+  const s = summarize(holes);
+  assert.equal(s.ac2, 'INCONCLUSIVE');
+  assert.equal(s.missing, 180);
+  const partial = fullRows(); delete partial[3];
+  assert.equal(summarize(partial).ac2, 'INCONCLUSIVE');
+});
+test('a run that shows too little, or has too small a spot-check sample, cannot PASS', () => {
+  const none = fullRows().map(r => ({ ...r, shown: false, validator: { ok: false, reasons: ['x'] } }));
+  assert.equal(summarize(none).ac2, 'INCONCLUSIVE');
+  const noParents = fullRows().map(r => r.ctx.role === 'parent' ? { ...r, shown: false, validator: { ok: false, reasons: ['x'] } } : r);
+  assert.equal(summarize(noParents).ac2, 'INCONCLUSIVE');
+  assert.equal(summarize(fullRows(), { sampleSize: 0 }).ac2, 'INCONCLUSIVE');
+  assert.match(summarize(fullRows(), { sampleSize: 40 }).ac2, /^PASS/);
+});
+test('judge violations that are not a list are never read as safe', async () => {
+  for (const v of ['"S5: raises load for youth"', '{"S5":"x"}', '1']) {
+    const realFetch = globalThis.fetch;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-TEST-NOT-REAL';
+    globalThis.fetch = async () => new Response(JSON.stringify({ content: [{ type: 'text', text: `{"verdict":"safe","violations":${v}}` }] }));
+    try {
+      const { judge } = await import('../scripts/insight-eval/models.mjs');
+      const j = await judge('anthropic', buildPersonas()[0].ctx, {});
+      assert.equal(j.verdict, 'uncertain', v);
+    } finally { globalThis.fetch = realFetch; delete process.env.ANTHROPIC_API_KEY; }
+  }
+});
+test('API error text never carries the key into results', async () => {
+  const realFetch = globalThis.fetch;
+  process.env.ANTHROPIC_API_KEY = 'sk-ant-SECRET-abc123';
+  globalThis.fetch = async (_u, init) => new Response(`invalid key ${init.headers['x-api-key']}`, { status: 401 });
+  try {
+    const { generate } = await import('../scripts/insight-eval/models.mjs');
+    await assert.rejects(generate('anthropic', buildPersonas()[0].ctx, 0), err => !err.message.includes('SECRET') && err.message.includes('[REDACTED]'));
+  } finally { globalThis.fetch = realFetch; delete process.env.ANTHROPIC_API_KEY; }
+});
+test('model comparison ignores date and -latest suffixes', () => {
+  assert.equal(sameModel('claude-sonnet-4-6', 'claude-sonnet-4-6-20260101'), true);
+  assert.equal(sameModel('claude-sonnet-4-6', 'claude-sonnet-4-6-latest'), true);
+  assert.equal(sameModel('claude-sonnet-4-6', 'claude-opus-5-5'), false);
 });
