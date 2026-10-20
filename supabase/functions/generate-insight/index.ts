@@ -13,6 +13,9 @@
 //   Re-built server-side by sanitizeContext(): factor.label is replaced with the
 //   canonical FACTOR_LABELS text, unknown keys are dropped, every field is range-checked.
 //
+// Residual: ageBand is asserted by the client (exact age never leaves the device), so the
+// server cannot verify it. A client that claims "adult" only changes its own insight.
+//
 // NOT access control: CORS only stops browsers on other origins from reading the
 // response. Anyone with the public anon key can call this function and spend
 // Anthropic credits — auth / rate limiting is an open item (see PR #13).
@@ -50,6 +53,28 @@ function corsHeaders(req: Request): Record<string, string> {
   };
 }
 
+/** Reads the body as UTF-8, or returns null once it exceeds maxBytes. */
+async function readCapped(req: Request, maxBytes: number): Promise<string | null> {
+  if (!req.body) return '';
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { buf.set(c, offset); offset += c.byteLength; }
+  return new TextDecoder().decode(buf);
+}
+
 function json(req: Request, body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -64,8 +89,11 @@ serve(async (req: Request) => {
   if (!ANTHROPIC_API_KEY) return json(req, { error: 'server misconfigured' }, 500);
 
   // The real context is ~300 bytes; anything far larger is not a legitimate client.
-  const bodyText = await req.text();
-  if (bodyText.length > MAX_BODY_BYTES) return json(req, { error: 'request too large' }, 413);
+  // Measured in bytes, and the read stops as soon as the cap is passed.
+  const declared = Number(req.headers.get('Content-Length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return json(req, { error: 'request too large' }, 413);
+  const bodyText = await readCapped(req, MAX_BODY_BYTES);
+  if (bodyText === null) return json(req, { error: 'request too large' }, 413);
 
   let input;
   try {

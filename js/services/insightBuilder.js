@@ -59,8 +59,9 @@ export async function getInsight() {
   if (cached) return cached;
 
   let result;
-  if (!ctx.factor) {
-    // No check-in factors today → nothing grounded to explain. Don't call the model.
+  let cacheable = true;
+  if (!ctx.factor || ctx.raw == null) {
+    // No check-in factors (or no score) today → nothing grounded to explain. Don't call the model.
     result = _fallback(readiness, ctx);
   } else {
     try {
@@ -86,10 +87,11 @@ export async function getInsight() {
       // Network/edge-function failure — never surface this to the user as an error.
       console.warn('[insightBuilder] generation failed, using static fallback:', err.message);
       result = _fallback(readiness, ctx);
+      cacheable = false; // a transient outage must not pin the fallback for the rest of the day
     }
   }
 
-  _writeCache(cacheKey, result);
+  if (cacheable) _writeCache(cacheKey, result);
   return result;
 }
 
@@ -129,8 +131,8 @@ function _fallback(readiness, ctx) {
 function _cacheKey(ctx) {
   const userId = getCurrentUser()?.id || 'anon';
   const today = new Date().toDateString();
-  const f = ctx.factor ? `${ctx.factor.key}${ctx.factor.score}` : 'none';
-  return `${CACHE_KEY_PREFIX}:${userId}:${ctx.role}:${ctx.ageBand}:${ctx.phase}:${ctx.trend}:${f}:${today}:${ctx.raw}`;
+  const f = ctx.factor ? `${ctx.factor.key}${ctx.factor.score}a${ctx.factor.acwr ?? ''}` : 'none';
+  return `${CACHE_KEY_PREFIX}:${userId}:${ctx.role}:${ctx.ageBand}:${ctx.phase}:${ctx.trend}:${f}:sd${ctx.sleepDebt ?? ''}:${today}:${ctx.raw}`;
 }
 
 function _readCache(key) {

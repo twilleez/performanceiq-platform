@@ -276,76 +276,102 @@ Respond with ONLY this JSON object — no markdown, no preamble:
 }
 
 // ── Output validation ────────────────────────────────────────────────────────
-// Each list is tagged with whether a preceding negation ("avoid", "don't",
-// "rather than", …) makes the phrase safe. Medical, pain and overclaiming
-// language is never excused by negation.
+// LIMITATION: these are deny-lists. They catch the phrasings found so far
+// (two independent adversarial reviews, fixtures in tests/fixtures/), not
+// every possible paraphrase. They are a backstop behind the prompt.
+//
+// Negation is honored only when the negator directly governs the phrase
+// ("avoid max-effort", "rather than adding sets", "well short of a 1RM").
+// Medical, pain, overclaiming and hype language is never excused by negation.
 
-const BODY_PART = '(ankles?|hamstrings?|groins?|knees?|backs?|shoulders?|wrists?|calf|calves|quads?|hips?|elbows?|necks?|feet|foot|achilles|muscles?|ligaments?|tendons?)';
+const BODY_PART = '(ankles?|hamstrings?|groins?|knees?|backs?|shoulders?|wrists?|calf|calves|quads?|hips?|elbows?|necks?|feet|foot|achilles|muscles?|ligaments?|tendons?|joints?|shins?|legs?|arms?)';
 
 const MEDICAL_PATTERNS = [
-  /\bdiagnos/i, /\bprescri/i, /\bmedicat/i, /\bmedical condition\b/i, /\bovertrain/i,
+  /\bdiagnos/i, /\bprescri/i, /\bmedicat/i, /\bmedical condition\b/i, /\bovertrain/i, /\bdeficien/i,
   /\byou (have|might have|may have|probably have)\b.{0,30}\b(injur|condition|disorder|concussion|fracture|tear|strain|sprain|infection|illness)/i,
-  /\b(concussion|fracture|tendin|tendon(itis)?|stress reaction|rhabdo)/i,
+  /\b(concussion|fracture|tendin|tendon(itis)?|stress reaction|rhabdo|anemi|anaemi)/i,
   /\bsee a doctor immediately\b/i, /\bemergency\b/i,
   /\b(sprain(ed)?|fractured?|torn|meniscus|ACL|MCL|shin splints)\b/i,
-  /\b(ibuprofen|acetaminophen|paracetamol|naproxen|aspirin|advil|motrin|tylenol|aleve|excedrin|nsaids?|anti-?inflammator\w*|painkillers?|pain relievers?|pills?|tablets?|meds)\b/i,
-  /\bic(e|ing) (the|your|it|that|this)\b/i,
-  new RegExp(`\\b(rolled|tweaked|pulled|strained|twisted|jammed|bruised|sore|aching|achy|injured|hurt|bad|banged[- ]up) (\\w+ )?${BODY_PART}\\b`, 'i'),
+  /\b(ibuprofen|acetaminophen|paracetamol|naproxen|aspirin|advil|motrin|tylenol|aleve|excedrin|nsaids?|anti-?inflammator\w*|painkillers?|pain relievers?|pills?|tablets?|meds|melatonin|supplements?|iron|magnesium|creatine|caffeine|energy drinks?|pre-?workout)\b/i,
+  /\bic(e|ing) (the|your|it|that|this|down)\b/i, /\bice baths?\b/i, /\bcold (plunge|tub)s?\b/i, /\bheat(ing)? pads?\b/i,
+  new RegExp(`\\b(rolled|tweaked|pulled|strained|twisted|jammed|bruised|sore|aching|achy|injured|hurt|bad|banged[- ]up|beat[- ]up|tight) (\\w+ )?${BODY_PART}\\b`, 'i'),
+  new RegExp(`\\b${BODY_PART} (is|are) (barking|throbbing|aching|banged[- ]up|beat[- ]up|tweaked|tight)\\b`, 'i'),
 ];
 // Pain/injury words require a qualified-professional referral in the same insight.
-// "injury risk" / "injury-free" are excluded here (the latter is caught as an overclaim).
-const PAIN_PATTERN = /\b(pain|painful|hurts?|hurting|unwell|sick|aches?|aching|achy|sore|tender|discomfort|injur(y|ies|ed)(?![- ](risk|free)))\b/i;
+const PAIN_PATTERN = /\b(pain|painful|hurts?|hurting|unwell|sick|aches?|aching|achy|sore|tender|discomfort|barking|throb\w*|banged[- ]up|beat[- ]up|tweak\w*|tight spot|tightness|injur(y|ies|ed))\b/i;
+// Phrases the prompt itself asks for (ACWR framing) or that only describe risk — removed before the pain check.
+const PAIN_EXEMPT = /\b((not|never|isn'?t) an? )?injury (prediction|predictor|forecast|risk)s?\b|\b(predicts?|predicting|forecasts?|forecasting) (an? )?injur(y|ies)\b/gi;
 // A coach alone does not satisfy the referral rule (Standards §4: "qualified professional").
 const REFERRAL_PATTERN = /\b(athletic trainer|physio|physiotherapist|physical therapist|doctor|physician|qualified (healthcare |health |medical )?professional|healthcare provider)\b/i;
 
 const OVERCLAIM_PATTERNS = [
   /\bno pain,? no gain\b/i, /\bguarantee/i, /\b100\s?%/i, /\bproven to\b/i, /\brisk[- ]free\b/i,
-  /\binjury[- ]free\b/i, /\bcertain(ly)? to\b/i, /\bkeep you (healthy|safe|injury)/i,
-  /\b(will|to) prevent (an |all )?injur/i, /\beliminat\w* (the |any |all )?(injury )?risk/i,
+  /\binjury[- ]free\b/i, /\bcertain(ly)? to\b/i, /\bkeeps? (you|your body) (healthy|safe|injury)/i,
+  /\b(you will|you'll|will) (stay|be|remain|keep) (healthy|safe|injury|fine)/i,
+  /\b(will |to )?prevents? (an |all |any )?injur/i, /\beliminat\w* (the |any |all )?(injury )?risk/i,
   /\bHRV\b/i, /\bheart rate variability\b/i, /\bnervous system\b/i, /\bCNS\b/,
 ];
 const HYPE_PATTERNS = [
-  /!/, /\b(beast|crush(ing|ed)? (it|today|this|the)|dominat\w*|unstoppable|insane|monster|killer|epic|legendary|go crazy|beast mode)\b/i,
+  /!/, /\b(beast|crush(ing|ed)? (it|today|this|the)|dominat\w*|unstoppable|insane|monster|killer|epic|legendary|go crazy|beast mode|absolutely|massive|champ|go get it|get after it|let'?s go|no excuses|never settle|leave it all)\b/i,
 ];
 
-// Negation-aware: "don't push through pain" is safe, "push through pain" is not.
+// Unsafe training / sleep advice (negation-aware).
 const UNSAFE_NEGATABLE = [
-  /\b(push|pushing|grind|grinding|play|playing|fight|fighting|power|powering|battle|battling|gut|gutting) (it )?through\b/i,
-  /\b(work|working|train|training) through (the |your |any )?(pain|soreness|discomfort|fatigue|tiredness|aches?)\b/i,
-  /\btough(ing)? it out\b/i, /\bsuck it up\b/i,
+  /\b(push|pushing|grind|grinding|play|playing|fight|fighting|power|powering|battle|battling|gut|gutting) (it |on )?(through|past)\b/i,
+  /\b(work|working|train|training|run|running|lift|lifting) (through|past) (the |your |any )?(pain|soreness|discomfort|fatigue|tiredness|aches?)\b/i,
+  /\bpower(ing)? on\b/i, /\btough(ing)? it out\b/i, /\bsuck it up\b/i, /\bno rest (needed|required)\b/i,
+  /\b(keep|kept|keeps) (playing|running|going|lifting|training|practicing) (on it|anyway|through)\b/i,
+  /\b(play|playing|run|running|lift|lifting|train|training|practice|practicing) on it\b/i,
+  /\b(lift|lifting|train|training|run|running|play|playing|practice|practicing|keep (playing|running|going|lifting|training)) anyway\b/i,
   /\bignor(e|ing) (the |your |any )?(soreness|pain|fatigue|tiredness|warning signs?|discomfort|aches?)\b/i,
-  /\b(sacrific\w* (some |your )?(sleep|rest)|fewer hours of sleep|sleep less|less sleep (tonight|this week)|get by on (less|little) sleep|cut(ting)? (back on |down on )?(your )?sleep|all[- ]nighters?|stay(ing)? up (late|later|all night)|skip(ping)? (sleep|rest|recovery|rest days?)|go(ing)? to bed later)\b/i,
+  /\buntil (someone|they|you|he|she|it) (quits?|drops?|can'?t|pukes?|fails?|breaks?)\b/i,
+  /\b(sacrific\w* (some |your )?(sleep|rest)|fewer hours of sleep|sleep less|less sleep (tonight|this week)|get by on (less|little) sleep|(cut|trim|shave)(ting)? (back on |down on |off )?(some |a little )?(of )?(your )?sleep|all[- ]nighters?|stay(ing)? up (late|later|all night)|skip(ping)? (sleep|rest|recovery|rest days?)|go(ing)? to bed later|push(ing)? (your )?bed ?time|bed ?time later|wake (up )?earlier)\b/i,
 ];
 const INTENSITY_ESCALATION = [
   /\bmax(imum|imal)?[- ]?(effort|out|intensity|attempts?|lifts?|weights?|sets?|reps?)\b/i, /\bmax(ing)? out\b/i,
   /\b1\s*-?\s*RM\b/i, /\bone[- ]rep[- ]max/i, /\bPRs?\b/, /\bpersonal (record|best)s?\b/i,
   /\bgo(ing)? (hard|heavy|big)\b/i, /\b(heavier|harder)\b/i, /\ball[- ]?out\b/i,
-  /\bpush(ing)? (hard|harder|it|the pace)\b/i,
+  /\bpush(ing)? (hard|harder|it|the pace)\b/i, /\b(to|until) failure\b/i, /\bempty the tank\b/i, /\bleave nothing\b/i,
+  /\bas (hard|fast|heavy|much) as (you|they|he|she|possible)\b/i, /\bheavy singles?\b/i,
+  /\b(top|max|heaviest) (squat|bench|deadlift|lift|set|single|weight)s?\b/i, /\btest (your |their |his |her )?(top|max|strength)/i,
+  /\bup the (weight|load|volume|intensity|reps|sets|mileage)\b/i, /\bbigger (plates|loads?|weights?|base)\b/i,
   /\b(increase|increasing|raise|raising|bump(ing)? up|ramp(ing)? up|pile on|piling on|crank(ing)? up)\b.{0,20}\b(volume|load|intensity|sessions?|weights?|sets|reps|mileage)\b/i,
   /\b(add|adding)\b.{0,12}\b(sets|reps|volume|sessions?|load|weight|sprints?|conditioning|workouts?)\b/i,
-  /\bmore (volume|load|weight|sets|reps|intensity|sessions?|sprints?|workouts?|mileage)\b/i,
-  /\b(another|second|third|fourth|extra|additional|one more) (hard |heavy )?(sets?|workouts?|sessions?|practices?|runs?|lifts?|rounds?)\b/i,
+  /\bmore (volume|load|weight|sets|reps|intensity|sessions?|sprints?|workouts?|mileage|conditioning)\b/i,
+  /\b(another|second|third|fourth|extra|additional|bonus|one more) (hard |heavy )?(sets?|workouts?|sessions?|practices?|runs?|lifts?|rounds?|conditioning|lift sessions?)\b/i,
   /\bdouble (session|workout|practice|day)s?\b/i, /\btwo[- ]a[- ]days?\b/i,
+  /\b(run|sprint|train|lift)\w* until\b/i,
 ];
 // Applies to every role: a readiness insight has no weight or diet data to ground this in.
 const WEIGHT_RESTRICTION = [
   /\b(drop|dropping|lose|losing|shed|shedding|cut|cutting)\b.{0,15}\b(pounds|lbs|kilos?|kg|weight|body ?fat)\b/i,
-  /\bmake weight\b/i, /\bweight[- ]?cut/i, /\bcalorie deficit\b/i,
+  /\bmake weight\b/i, /\bweight[- ]?cut/i, /\bcalorie deficit\b/i, /\blean(ing)? out\b/i, /\beat(ing)? (lighter|less)\b/i,
   /\b(cut|cutting|restrict\w*|limit\w*) (out |back on )?(carbs|carbohydrates|calories|food|meals?|eating)\b/i,
   /\b(skip|skipping) (meals?|breakfast|lunch|dinner)\b/i, /\bfast(ing|ed)\b/i,
 ];
 
-const NEGATOR = /\b(avoid|avoiding|don'?t|do not|does not|doesn'?t|not|no|never|skip|skipping|without|instead of|rather than|hold off( on)?|stay away from|limit|limiting|minimi[sz]e|minimi[sz]ing|steer clear of)\b/i;
-// Phrases that turn a negator back into encouragement ("don't hesitate to…", "never miss a chance to…").
-const NEGATION_CANCEL = /\b(hesitate|afraid|hold back|fear|shy away|forget|miss|chance|opportunity|reason not|wait)\b/i;
+// Negators that may directly govern a phrase. Fillers ("any", "the", "a", "to"…) may sit between.
+const NEGATORS = ['avoid', 'avoiding', 'skip', 'skipping', 'no', 'not', "don't", 'dont', 'do not', 'never', 'without',
+  'rather than', 'instead of', 'hold off on', 'holding off on', 'postpone', 'postponing', 'delay', 'delaying',
+  'resist the urge', 'resisting the urge',
+  'defer', 'deferring', 'save', 'saving', 'short of', 'limit', 'limiting', 'minimize', 'minimise', 'than'];
+const NEGATION_FILLER = new Set(['any', 'the', 'your', 'their', 'his', 'her', 'all', 'a', 'an', 'to', 'on', 'those', 'these']);
+// Words just before a negator that flip it back ("don't avoid", "never miss", "no need to skip").
+const NEGATION_CANCEL = /\b(avoid|avoiding|don'?t|do not|not|no|never|stop|hesitate|afraid|fear|forget|miss|chance|need|reason|excuse|just|only|settle)\b/i;
+// Clause boundaries: punctuation and coordinating conjunctions ("avoid easy work AND go heavier").
+// Dashes between digits ("0.8–1.3") and parentheses are not boundaries.
+const CLAUSE_SPLIT = /(?<!\d)[.!?;:](?!\d)|(?<!\d)[—–](?!\d)|[,•\n]|\b(and|but|so|then|or|yet)\b/i;
 
-// Plain English check: a field of 4+ words with none of these is treated as non-English.
+// Plain English check: a field of 4+ words with no common English word, or with
+// two or more common Spanish/French/German function words, is not plain English.
+const FOREIGN_HINTS = new Set(('y el la los las del que con por para una es muy pero sin al le les et du des est ' +
+  'pour avec und der die das ist nicht mit hoy entrena descansa descanses duro').split(' '));
 const ENGLISH_HINTS = new Set(('the a an to and or of in on for with at by from is are was be it this that your you ' +
   'do does did if as so but can will may more less than then how what when up down out over about into ' +
   'get go make try aim help take use stay good well all any each every just only also very much ' +
   'today tonight tomorrow week day keep sleep bed score readiness recovery recover train training session ' +
   'practice game games effort rest light easy low high warm cool consider their they them he she we our ' +
-  'athlete check focus lower lowest steady caution ready').split(' '));
+  'athlete check focus lower lowest steady caution ready no not one option plan').split(' '));
 
 /**
  * @param {object} out  model output { headline, explanation, action, calculation, evidenceTag, confidence }
@@ -386,23 +412,28 @@ export function validateInsight(out, ctx) {
   if (_sentences(action) > LIMITS.actionSentences) reasons.push('action over sentence limit');
   if (_words(action) > LIMITS.actionWords) reasons.push('action over word limit');
 
+  // The calculation line is shown to users too, so every content check covers it.
   const text = `${headline}\n${explanation}\n${action}`;
   const all  = `${text}\n${calculation}`;
 
   // §5 — English, neutral tone
-  if ([headline, explanation, action].some(_nonEnglish)) reasons.push('not plain English');
-  if (HYPE_PATTERNS.some(rx => rx.test(text))) reasons.push('hype or non-neutral tone');
+  if ([headline, explanation, action].some(f => _nonEnglish(f)) || _nonEnglish(calculation, { terse: true })) {
+    reasons.push('not plain English');
+  }
+  if (HYPE_PATTERNS.some(rx => rx.test(all))) reasons.push('hype or non-neutral tone');
 
   // §4 / §6 — medical, pain, overclaiming, and unsafe language
   if (MEDICAL_PATTERNS.some(rx => rx.test(all))) reasons.push('medical or diagnostic language');
-  if (PAIN_PATTERN.test(text) && !REFERRAL_PATTERN.test(text)) reasons.push('pain/injury mentioned without professional referral');
+  if (PAIN_PATTERN.test(all.replace(PAIN_EXEMPT, ' ')) && !REFERRAL_PATTERN.test(all)) {
+    reasons.push('pain/injury mentioned without professional referral');
+  }
   if (OVERCLAIM_PATTERNS.some(rx => rx.test(all))) reasons.push('overclaiming or unsupported-measurement language');
-  if (UNSAFE_NEGATABLE.some(rx => _affirmed(rx, text))) reasons.push('unsafe training or sleep advice');
-  if (WEIGHT_RESTRICTION.some(rx => _affirmed(rx, text))) reasons.push('weight-cutting or food-restriction language');
+  if (UNSAFE_NEGATABLE.some(rx => _affirmed(rx, all))) reasons.push('unsafe training or sleep advice');
+  if (WEIGHT_RESTRICTION.some(rx => _affirmed(rx, all))) reasons.push('weight-cutting or food-restriction language');
 
   // §7 — tier, phase and developmental-stage consistency
   const conservative = ctx.tier !== 'ready' || ctx.phase === 'post-season' || ctx.ageBand !== 'adult';
-  if (conservative && INTENSITY_ESCALATION.some(rx => _affirmed(rx, text))) {
+  if (conservative && INTENSITY_ESCALATION.some(rx => _affirmed(rx, all))) {
     reasons.push(`intensity escalation not allowed (tier=${ctx.tier}, phase=${ctx.phase}, ageBand=${ctx.ageBand})`);
   }
 
@@ -417,8 +448,8 @@ export function validateInsight(out, ctx) {
   }
   if (evidenceTag === 'Bompa2019' && ctx.phase === 'unknown') reasons.push('Bompa2019 used without a known phase');
 
-  // §3 — every number must be a supplied value, tied to its metric, unit-free,
-  // and repeated in the calculation line.
+  // §3 — every number must be a supplied value, sit next to ITS OWN metric,
+  // not be used as an amount, and be repeated in the calculation line.
   reasons.push(..._numberReasons(text, calculation, ctx, evidenceTag));
 
   return { ok: reasons.length === 0, reasons };
@@ -431,12 +462,12 @@ function _clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 function _validAcwr(v) { return Number.isFinite(v) && v > 0 && v <= ACWR_MAX; }
 function _clean(s) { return String(s).normalize('NFKC').replace(/\p{Cf}/gu, ''); }
 function _words(s) { return s.trim().split(/\s+/).filter(Boolean).length; }
+// Same-length replacement so character indices stay aligned with the original.
+function _unabbreviate(s) { return s.replace(/\b(vs|e\.g|i\.e|etc|approx|incl)\./gi, m => m.replace(/\./g, ' ')); }
 
 function _sentences(s) {
   // Abbreviations and decimals are not sentence ends.
-  const t = s.trim()
-    .replace(/\b(vs|e\.g|i\.e|etc|approx|incl)\./gi, '$1')
-    .replace(/(\d)\.(\d)/g, '$1$2');
+  const t = _unabbreviate(s.trim()).replace(/(\d)\.(\d)/g, '$1$2').trim();
   // Hard breaks: terminators, line breaks, bullets.
   const hard = (t.match(/[.!?]+(?=\s|$)|\n+|[•·▪◦]/g) || []).length;
   const endsClean = /[.!?]$/.test(t);
@@ -447,19 +478,41 @@ function _sentences(s) {
   return n;
 }
 
-function _nonEnglish(s) {
+function _nonEnglish(s, { terse = false } = {}) {
+  if (!s) return false;
   if (/[^\P{L}A-Za-z]/u.test(s)) return true; // any letter outside basic Latin
   const words = s.toLowerCase().match(/[a-z']+/g) || [];
-  return words.length >= 4 && !words.some(w => ENGLISH_HINTS.has(w));
+  if (words.filter(w => FOREIGN_HINTS.has(w)).length >= 2) return true;
+  // The calculation line is terse by design ("ACWR 1.4 from training log"), so skip the hint test there.
+  return !terse && words.length >= 4 && !words.some(w => ENGLISH_HINTS.has(w));
 }
 
-/** True when rx matches somewhere in text without a negation in front of it (same clause, ≤5 words back). */
+/** Clause text before index i (back to the nearest clause boundary). */
+function _clauseBefore(text, i) {
+  const parts = _unabbreviate(text.slice(0, i)).split(CLAUSE_SPLIT);
+  return (parts.pop() || '');
+}
+
+/**
+ * True when rx matches somewhere in text and that occurrence is NOT directly
+ * governed by a negator. "avoid any max-effort lifts" → negated;
+ * "avoid easy work and go heavier" → affirmed (different clause);
+ * "don't avoid max-effort" / "never stop adding sets" → affirmed.
+ */
 function _affirmed(rx, text) {
   const g = new RegExp(rx.source, rx.flags.includes('g') ? rx.flags : rx.flags + 'g');
   for (const m of text.matchAll(g)) {
-    const clause = text.slice(0, m.index).split(/[.;:!?—–,•\n()]/).pop();
-    const window = clause.trim().split(/\s+/).slice(-5).join(' ');
-    if (NEGATOR.test(window) && !NEGATION_CANCEL.test(window)) continue;
+    const words = _clauseBefore(text, m.index).toLowerCase().replace(/[^a-z' ]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    while (words.length && NEGATION_FILLER.has(words[words.length - 1])) words.pop();
+    let negLen = 0;
+    for (const n of NEGATORS) {
+      const nw = n.split(' ');
+      if (nw.length <= words.length && nw.every((w, k) => words[words.length - nw.length + k] === w)) negLen = Math.max(negLen, nw.length);
+    }
+    if (negLen) {
+      const lead = words.slice(Math.max(0, words.length - negLen - 3), words.length - negLen).join(' ');
+      if (!NEGATION_CANCEL.test(lead)) continue; // genuinely negated
+    }
     return true;
   }
   return false;
@@ -473,22 +526,52 @@ const NUMBER_WORDS = { two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, 
   nineteen:19, twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90,
   hundred:100, dozen:12, twice:2, thrice:3 };
 const FRACTION_PHRASE = /\b((by|in|to) (a |one )?(half|third|quarter|fifth|tenth)|(half|a third|a quarter|two thirds|three quarters) (of|as much)|halve|halving)\b/i;
-const UNIT_AFTER = /^\s*(%|percent\b|per ?cent\b|pct\b|×|x\b|(min|mins|minutes?|hrs?|hours?|secs?|seconds?|reps?|sets?|lbs?|pounds?|kgs?|kilos?|kilograms?|miles?|km|meters?|metres?|yards?|yds|laps?|sprints?|burpees?|days?|weeks?|nights?|times|rounds?|workouts?|sessions?|calories|grams?|oz|ounces?|cups?)\b)/i;
-const METRIC_WORD = /\b(score|scores|readiness|ratio|acwr|workload|marker|range|spike|sleep[- ]debt)\b/i;
+// Vague training amounts ("a handful of sprints") are invented prescriptions too.
+const VAGUE_AMOUNT = /\b(a handful|a couple|a few|several|a bunch|a lot|lots|plenty) (of )?(more |extra |hard |heavy |quick )?(sets|reps|sprints|rounds|laps|jumps|throws|lifts|sessions|workouts|miles|intervals|drills|hills?)\b/i;
+const ROMAN_NUMERAL = /\b(II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XV|XX|XXX)\b(?![-'])/;
+const UNIT_AFTER = /^\s*(%|percent\b|per ?cent\b|pct\b|×|x\b|(min|mins|minutes?|hrs?|hours?|secs?|seconds?|reps?|sets?|lbs?|pounds?|kgs?|kilos?|kilograms?|miles?|km|meters?|metres?|yards?|yds|laps?|sprints?|burpees?|days?|weeks?|nights?|times|rounds?|workouts?|sessions?|calories|grams?|oz|ounces?|cups?|points?)\b)/i;
+// Words allowed directly after a number; anything else ("40 box jumps") reads as a quantity.
+const FOLLOW_OK = new Set(('is was are and or out of in on at for today this the which with but so from to vs versus ' +
+  'compared while yesterday tonight as after before since because than above below puts means sits signals ' +
+  'suggests reflects places keeps range score readiness marker spike ratio lowest highest mark band').split(' '));
+// Which words identify each metric.
+const METRIC_RX = {
+  readiness: /\breadiness\b/i,
+  sleep:     /\bsleep\b/i,
+  energy:    /\benergy\b/i,
+  soreness:  /\bsore(ness)?\b/i,
+  mood:      /\bmood\b/i,
+  stress:    /\bstress\b/i,
+  sleepDebt: /\bsleep[- ]?debt\b|\bmissed sleep\b/i,
+  acwr:      /\b(acwr|ratio|workload|acute|chronic|load|range|spike|marker|band)\b/i,
+};
 
 function _numberTokens(s) {
-  const t = s.replace(/(\d),(\d{3})/g, '$1$2');
+  // "1,000" → "1000 " (same length) so token indices stay aligned with s.
+  const src = s.replace(/(\d),(\d{3})/g, (m, a, b) => `${a}${b} `);
   const out = [];
-  for (const m of t.matchAll(/\d+(?:\.\d+)?/g)) {
+  for (const m of src.matchAll(/\d+(?:\.\d+)?/g)) {
     // "1RM" is a term, not a quantity; whether it is allowed is decided by INTENSITY_ESCALATION.
-    if (/^\s*-?\s*RM\b/i.test(t.slice(m.index + m[0].length))) continue;
+    if (/^\s*-?\s*RM\b/i.test(src.slice(m.index + m[0].length))) continue;
     out.push({ value: Number(m[0]), index: m.index, end: m.index + m[0].length });
   }
-  for (const m of t.matchAll(/[A-Za-z]+/g)) {
+  for (const m of src.matchAll(/[A-Za-z]+/g)) {
     const w = m[0].toLowerCase();
     if (w in NUMBER_WORDS) out.push({ value: NUMBER_WORDS[w], index: m.index, end: m.index + m[0].length });
   }
-  return { t, out };
+  return { t: src, out };
+}
+
+/** Which supplied metrics carry this value (a value can belong to more than one). */
+function _metricsFor(v, ctx, tag) {
+  const f = ctx.factor || {};
+  const eq = a => Number.isFinite(a) && Math.abs(a - v) <= 0.051;
+  const m = [];
+  if (eq(ctx.raw)) m.push('readiness');
+  if (eq(f.score) && f.key) m.push(f.key);
+  if (eq(ctx.sleepDebt)) m.push('sleepDebt');
+  if (eq(f.acwr) || (REFERENCE_NUMBERS[tag] || []).some(eq)) m.push('acwr');
+  return m;
 }
 
 function _numberReasons(text, calculation, ctx, tag) {
@@ -497,24 +580,28 @@ function _numberReasons(text, calculation, ctx, tag) {
   const allowed = [ctx.raw, ctx.sleepDebt, f.score, f.max, f.acwr, ...(REFERENCE_NUMBERS[tag] || [])].filter(Number.isFinite);
   const isAllowed = n => allowed.some(a => Math.abs(a - n) <= 0.051);
 
-  if (FRACTION_PHRASE.test(text)) reasons.push('ungrounded quantity (fraction)');
+  if (FRACTION_PHRASE.test(text) || VAGUE_AMOUNT.test(text) || ROMAN_NUMERAL.test(text)) reasons.push('ungrounded quantity');
 
   const { t, out } = _numberTokens(text);
   const stray = [], unitBearing = [], untied = [];
   for (const tok of out) {
     if (!isAllowed(tok.value)) { stray.push(tok.value); continue; }
-    if (UNIT_AFTER.test(t.slice(tok.end))) { unitBearing.push(tok.value); continue; }
+    const after = t.slice(tok.end);
+    if (UNIT_AFTER.test(after)) { unitBearing.push(tok.value); continue; }
     const before = t.slice(0, tok.index);
-    const isDenominator = tok.value === f.max && /(\/|\bout of|\bof)\s*$/i.test(before);
-    const back = before.split(/[.;!?\n]/).pop().trim().split(/\s+/).slice(-6).join(' ');
-    const ahead = t.slice(tok.end).split(/[.;!?\n]/)[0].trim().split(/\s+/).slice(0, 3).join(' ');
-    if (!isDenominator && !METRIC_WORD.test(back) && !METRIC_WORD.test(ahead) && !/^\//.test(t.slice(tok.end))) {
-      untied.push(tok.value);
-    }
+    if (tok.value === f.max && /(\/|\bout of|\bof)\s*$/i.test(before)) continue; // "40/100", "40 out of 100"
+    const next = (after.match(/^\s*([A-Za-z]+)/) || [])[1];
+    if (next && !FOLLOW_OK.has(next.toLowerCase()) && !/^\s*\//.test(after)) { unitBearing.push(tok.value); continue; }
+    // The metric must appear in the same clause (up to 12 words back, or 3 words ahead).
+    const back  = _clauseBefore(t, tok.index).trim().split(/\s+/).slice(-12).join(' ');
+    const ahead = (_unabbreviate(after).split(CLAUSE_SPLIT)[0] || '').trim().split(/\s+/).slice(0, 3).join(' ');
+    const metrics = _metricsFor(tok.value, ctx, tag);
+    const tied = metrics.some(k => METRIC_RX[k] && (METRIC_RX[k].test(back) || METRIC_RX[k].test(ahead)));
+    if (!tied) untied.push(tok.value);
   }
   if (stray.length) reasons.push(`ungrounded number(s): ${stray.join(', ')}`);
   if (unitBearing.length) reasons.push(`number used as a unit or prescribed amount: ${unitBearing.join(', ')}`);
-  if (untied.length) reasons.push(`number not tied to a supplied metric: ${untied.join(', ')}`);
+  if (untied.length) reasons.push(`number not next to its own metric: ${untied.join(', ')}`);
 
   if (out.length) {
     if (!calculation.trim()) {

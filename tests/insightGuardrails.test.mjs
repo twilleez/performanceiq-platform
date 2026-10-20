@@ -254,3 +254,45 @@ test('calculation must repeat each number and may cite only the tag year', () =>
   reject(good({ explanation: ex, calculation: 'Readiness 58; sleep 40/100; per Halson 2016' }), youthCaution, /calculation uses ungrounded/);
   assert.equal(validateInsight(good({ explanation: ex, calculation: 'Readiness 58; sleep score 40/100; Halson 2014' }), youthCaution).ok, true);
 });
+
+// ── Independent RE-review corpora (tests/fixtures/insightCorpus2.mjs) ────────
+test('re-review corpus: every unsafe output is rejected', async () => {
+  const { UNSAFE2, UNSAFE2_BASE } = await import('./fixtures/insightCorpus2.mjs');
+  assert.equal(UNSAFE2.length, 42);
+  const passed = UNSAFE2.filter(([, o, ctx]) => validateInsight({ ...UNSAFE2_BASE, ...o }, ctx).ok).map(([n]) => n);
+  assert.deepEqual(passed, [], `unsafe outputs passed: ${passed.join('; ')}`);
+});
+test('re-review corpus: realistic safe insights pass for every role', async () => {
+  const { SAFE2, SAFE2_EXPECTED_REJECT } = await import('./fixtures/insightCorpus2.mjs');
+  for (const [role, items] of Object.entries(SAFE2)) {
+    assert.equal(items.length, 10);
+    for (const [it, ctx] of items) {
+      const v = validateInsight(it, ctx);
+      assert.equal(v.ok, !SAFE2_EXPECTED_REJECT.has(it.headline), `[${role}] "${it.headline}" -> ${v.reasons.join(' | ')}`);
+    }
+  }
+});
+test('coach deferral phrasings: governed negation passes; known false positives documented', async () => {
+  const { DEFERRAL_SAFE, DEFERRAL_KNOWN_FP } = await import('./fixtures/insightCorpus2.mjs');
+  const coachCaution = { ...youthCaution, role: 'coach', ageBand: 'adult' };
+  for (const action of DEFERRAL_SAFE) assert.equal(validateInsight(good({ action }), coachCaution).ok, true, action);
+  // If one of these starts passing, move it to DEFERRAL_SAFE — but check UNSAFE2 still fully rejects.
+  for (const action of DEFERRAL_KNOWN_FP) assert.equal(validateInsight(good({ action }), coachCaution).ok, false, action);
+});
+test('numbers are bound to their own metric, not just a matching value', () => {
+  const calc = 'Readiness 58 from check-in; sleep score 40/100';
+  reject(good({ explanation: 'Sleep score 58 is the lowest input.', calculation: 'Readiness 58 from check-in' }), youthCaution, /own metric/);
+  reject(good({ action: 'With a sleep score of 40, finish with 40 box jumps.', calculation: calc }), youthCaution, /prescribed amount/);
+  reject(good({ explanation: 'Readiness 58 is 40 points below normal.', calculation: calc }), youthCaution);
+  assert.equal(validateInsight(good({ explanation: 'Your sleep quality score is the lowest input at 40/100, and readiness is 58.', calculation: calc }), youthCaution).ok, true);
+});
+test('calculation line is checked for unsafe content, not just numbers', () => {
+  reject(good({ calculation: 'No numbers used; skip sleep tonight and max out tomorrow' }), youthCaution, /unsafe|escalation/);
+});
+test('ACWR wording the prompt asks for is not treated as an injury mention', () => {
+  const acwrCtx = { ...adultReady, tier: 'caution', raw: 63, factor: { key: 'energy', label: 'Energy score', score: 55, max: 100, acwr: 1.4 } };
+  const v = validateInsight(good({
+    explanation: 'Your acute:chronic workload ratio (recent vs. longer-term load) is 1.4, above the 0.8–1.3 range. Treat it as a monitoring signal, not an injury prediction.',
+    calculation: 'ACWR 1.4 from training log; 0.8–1.3 range from Gabbett 2016', evidenceTag: 'Gabbett2016' }), acwrCtx);
+  assert.deepEqual(v, { ok: true, reasons: [] });
+});
